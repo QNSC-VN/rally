@@ -30,6 +30,7 @@ import {
 } from '@/entities/work-item/model/types'
 import { fmtRange } from '../model/iteration-helpers'
 import { type ColKey, OWNER_UNASSIGNED, HEADER_META } from '../model/columns'
+import { formatWholePercent } from '@/shared/lib/utils'
 
 export function IterationHeader({
   iterations,
@@ -267,7 +268,8 @@ export function MetricsStrip({
   iterationProgressPct,
 }: {
   metrics: import('@/features/iterations/api').IterationStatus['metrics'] | undefined
-  velocityPct: number
+  /** Null when the iteration has no velocity target — renders as an em-dash. */
+  velocityPct: number | null
   acceptedPct: number
   iterationEnd: { value: string; label: string; color: string }
   iterationProgressPct: number
@@ -283,14 +285,20 @@ export function MetricsStrip({
     >
       {/* Left side: KPI cards from the iteration read-model */}
       <div className="flex items-stretch" style={{ gap: 32, flex: 1 }}>
+        {/* No target set renders "—" with an empty bar, not "0%" over "16 of 0 Points".
+            Attainment against a target that does not exist is unanswerable. */}
         <MetricCard
           label={t('metrics.plannedVelocity')}
-          value={`${velocityPct}%`}
-          caption={t('metrics.points', {
-            current: metrics?.totalPlanEstimate ?? 0,
-            total: metrics?.plannedVelocity ?? 0,
-          })}
-          progressPct={velocityPct}
+          value={formatWholePercent(velocityPct)}
+          caption={
+            metrics?.plannedVelocity == null
+              ? t('metrics.noVelocityTarget')
+              : t('metrics.points', {
+                  current: metrics.totalPlanEstimate ?? 0,
+                  total: metrics.plannedVelocity,
+                })
+          }
+          progressPct={velocityPct ?? 0}
           minWidth={160}
         />
         <MetricCard

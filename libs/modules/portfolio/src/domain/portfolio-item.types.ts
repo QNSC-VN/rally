@@ -36,12 +36,14 @@ export interface PortfolioItem {
   type: PortfolioItemType;
   name: string;
   description: string | null;
+  notes: string | null;
+  releaseNotes: string | null;
   state: PortfolioItemState;
   preliminaryEstimate: PreliminaryEstimateSize;
   /** Top-down points forecast. Feeds Estimated Progress only, never Percent Done. */
-  refinedEstimate: string | null;
+  refinedEstimate: string;
   /** Top-down child-count forecast. */
-  refinedItemCountEstimate: number | null;
+  refinedItemCountEstimate: number;
   /** Feature → Epic. Always null for an Epic. */
   parentId: string | null;
   /** Feature only. */
@@ -145,10 +147,12 @@ export interface CreatePortfolioItemInput {
   type: PortfolioItemType;
   name: string;
   description?: string | null;
+  notes?: string | null;
+  releaseNotes?: string | null;
   state?: PortfolioItemState;
   preliminaryEstimate?: PreliminaryEstimateSize;
-  refinedEstimate?: string | null;
-  refinedItemCountEstimate?: number | null;
+  refinedEstimate?: string;
+  refinedItemCountEstimate?: number;
   /** Feature only — an Epic must leave these null (`ck_portfolio_epic_shape`). */
   parentId?: string | null;
   teamId?: string | null;
@@ -171,10 +175,20 @@ export interface CreatePortfolioItemInput {
 export interface UpdatePortfolioItemInput {
   name?: string;
   description?: string | null;
+  notes?: string | null;
+  releaseNotes?: string | null;
+  /**
+   * Move the item to another project. Not nullable — an item always has one.
+   *
+   * Setting it is not a plain column write: `project_id` is the scope for `team_id`,
+   * `release_id` and `parent_id`, so the service reconciles those (see
+   * `applyProjectMove`) before the update lands.
+   */
+  projectId?: string;
   state?: PortfolioItemState;
   preliminaryEstimate?: PreliminaryEstimateSize;
-  refinedEstimate?: string | null;
-  refinedItemCountEstimate?: number | null;
+  refinedEstimate?: string;
+  refinedItemCountEstimate?: number;
   parentId?: string | null;
   teamId?: string | null;
   releaseId?: string | null;

@@ -222,7 +222,7 @@ export function ProjectDetailPage() {
                 value={teams.map((tm) => tm.id)}
                 readOnly={!canManage}
                 ariaLabel={t('fields.teams')}
-                placeholder="—"
+                placeholder="--"
                 searchPlaceholder="Search"
                 options={allTeams.map((tm) => ({
                   value: tm.id,

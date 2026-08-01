@@ -188,7 +188,7 @@ export function ReleaseDetailPage() {
             <>
               <div className="space-y-4">
                 <DetailField label={t('detailPage.projectScope')}>
-                  <DetailReadonlyValue>{project?.projectName ?? '—'}</DetailReadonlyValue>
+                  <DetailReadonlyValue>{project?.projectName ?? '--'}</DetailReadonlyValue>
                 </DetailField>
 
                 <DetailField label={t('detailPage.lifecycleState')}>
@@ -242,7 +242,7 @@ export function ReleaseDetailPage() {
                         placeholder="0"
                       />
                     ) : (
-                      <DetailReadonlyValue mono>{vrel.plannedVelocity ?? '—'}</DetailReadonlyValue>
+                      <DetailReadonlyValue mono>{vrel.plannedVelocity ?? '--'}</DetailReadonlyValue>
                     )}
                   </DetailField>
 
@@ -260,7 +260,7 @@ export function ReleaseDetailPage() {
                         placeholder="0"
                       />
                     ) : (
-                      <DetailReadonlyValue mono>{vrel.planEstimate ?? '—'}</DetailReadonlyValue>
+                      <DetailReadonlyValue mono>{vrel.planEstimate ?? '--'}</DetailReadonlyValue>
                     )}
                   </DetailField>
                 </DetailFieldPair>
@@ -273,7 +273,7 @@ export function ReleaseDetailPage() {
                       placeholder="e.g. v2.4.0"
                     />
                   ) : (
-                    <DetailReadonlyValue>{vrel.version || '—'}</DetailReadonlyValue>
+                    <DetailReadonlyValue>{vrel.version || '--'}</DetailReadonlyValue>
                   )}
                 </DetailField>
               </div>

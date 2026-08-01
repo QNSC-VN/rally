@@ -8,7 +8,7 @@ import {
   type DataTableSort,
 } from '@/shared/ui/data-table-header'
 import { DateField } from '@/shared/ui/date-field'
-import { cn } from '@/shared/lib/utils'
+import { cn, formatNumber, NUMERIC_CELL_CLASS } from '@/shared/lib/utils'
 
 import { type ColStyleMap, type ColumnSpec, toColumnDef } from './types'
 
@@ -24,19 +24,32 @@ function renderTypedCell<Row, Ctx, K extends string>(
   if (!c.type) return null
   const raw = c.accessor
     ? c.accessor(row)
-    : (row as Record<string, unknown>)[c.key] as string | number | null | undefined
+    : ((row as Record<string, unknown>)[c.key] as string | number | null | undefined)
   switch (c.type) {
     case 'date':
       return <DateField value={raw == null ? null : String(raw)} readOnly />
     case 'number':
+      // Delegates to the shared formatter and class rather than restating them. This
+      // branch has no call site yet — only 6 of 20 grids use `renderCells`, and the
+      // editable ones render their own rows — but it is the canonical definition, so it
+      // must not hold a SECOND opinion about what a number looks like. Self-rendering
+      // rows import `NUMERIC_CELL_CLASS` / `formatNumber` and get the same result.
       return (
-        <span className="w-full text-right font-mono text-ui-sm tabular-nums text-foreground">
-          {raw ?? '—'}
+        <span className={cn('w-full text-ui-sm text-foreground', NUMERIC_CELL_CLASS)}>
+          {formatNumber(raw)}
         </span>
       )
     case 'text':
     default:
-      return <span className="truncate text-ui-sm text-foreground">{raw ?? '—'}</span>
+      // Free text WRAPS rather than truncating: this is the generic `type: 'text'`
+      // renderer, so its value is a user-typed sentence of unbounded length, and rows
+      // use `min-h-*` and can grow. Truncating hid the end of every long value behind
+      // a tooltip nobody opens.
+      return (
+        <span className="text-ui-sm break-words whitespace-normal text-foreground">
+          {raw ?? '--'}
+        </span>
+      )
   }
 }
 

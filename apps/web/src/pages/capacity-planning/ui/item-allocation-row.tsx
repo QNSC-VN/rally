@@ -50,7 +50,7 @@ export function ItemAllocationRow({
 
       <div style={colStyleFor('assignment', { flexShrink: 0 })} className="min-w-0 px-2">
         <span className="truncate text-foreground" title={teamName ?? undefined}>
-          {teamName ?? '—'}
+          {teamName ?? '--'}
         </span>
       </div>
 

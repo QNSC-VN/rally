@@ -52,7 +52,7 @@ function ArtifactRow({
       </td>
       {/* Name */}
       <td className="h-8 px-3">
-        <span className="block max-w-[300px] truncate text-ui-md font-medium text-foreground">
+        <span className="block max-w-[300px] text-ui-md font-medium break-words whitespace-normal text-foreground">
           {item.title}
         </span>
       </td>
@@ -75,7 +75,7 @@ function ArtifactRow({
       </td>
       {/* Estimate */}
       <td className="h-8 px-3 text-center font-mono text-ui-xs text-muted-foreground">
-        {item.storyPoints ?? '—'}
+        {item.storyPoints ?? '--'}
       </td>
     </tr>
   )

@@ -197,7 +197,7 @@ export function CapacityPlanDetailPage() {
   const itemProjects = useMemo(() => {
     const names = new Map<string, string>()
     for (const item of plan?.items ?? []) {
-      names.set(item.projectId, item.projectName ?? '—')
+      names.set(item.projectId, item.projectName ?? '--')
     }
     return [...names].map(([id, name]) => ({ id, name }))
   }, [plan?.items])
@@ -230,7 +230,7 @@ export function CapacityPlanDetailPage() {
   const assignOptions = useMemo(
     () => [
       { value: '', label: t('items.unassign') },
-      ...(plan?.teams ?? []).map((pt) => ({ value: pt.teamId, label: pt.teamName ?? '—' })),
+      ...(plan?.teams ?? []).map((pt) => ({ value: pt.teamId, label: pt.teamName ?? '--' })),
     ],
     [plan?.teams, t],
   )
@@ -310,7 +310,7 @@ export function CapacityPlanDetailPage() {
         owner: owner === null ? null : (teamNameById.get(owner) ?? null),
         contributors: rows
           .filter((a) => !a.isPrimary && a.teamId !== null)
-          .map((a) => teamNameById.get(a.teamId as string) ?? '—'),
+          .map((a) => teamNameById.get(a.teamId as string) ?? '--'),
       }
     },
     [plan?.allocations, teamNameById],
@@ -638,7 +638,7 @@ export function CapacityPlanDetailPage() {
                         <option value="unassigned">{t('items.notAssigned')}</option>
                         {plan.teams.map((pt) => (
                           <option key={pt.teamId} value={pt.teamId}>
-                            {pt.teamName ?? '—'}
+                            {pt.teamName ?? '--'}
                           </option>
                         ))}
                       </InlineSelect>

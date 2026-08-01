@@ -64,13 +64,15 @@ export function TeamCell({
   className?: string
 }) {
   if (!name && !teamKey) {
-    return <span className="text-ui-xs text-foreground-disabled">—</span>
+    return <span className="text-ui-xs text-foreground-disabled">--</span>
   }
 
   return (
-    <div className={cn('flex items-center gap-1 overflow-hidden', className)}>
+    <div className={cn('flex items-start gap-1', className)}>
       <TeamAvatar teamKey={teamKey} name={name} />
-      <span className="truncate text-ui-xs text-muted-foreground">{name ?? teamKey}</span>
+      <span className="text-ui-xs break-words whitespace-normal text-muted-foreground">
+        {name ?? teamKey}
+      </span>
     </div>
   )
 }

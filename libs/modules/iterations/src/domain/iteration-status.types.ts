@@ -8,11 +8,13 @@ import type { WorkItemType, WorkItemScheduleState } from '../../../../../db/sche
 
 export interface IterationStatusMetrics {
   /** acceptedPoints / plannedVelocity as a percent (0 when velocity is 0). */
-  plannedVelocityPercent: number;
+  /** Null when there is no velocity target — attainment against nothing is unanswerable. */
+  plannedVelocityPercent: number | null;
   /** Sum of story points on items whose schedule state is 'accepted'. */
   acceptedPoints: number;
   /** The iteration's planned velocity (0 when unset). */
-  plannedVelocity: number;
+  /** Null when no target was set; `iterations.planned_velocity` is nullable. */
+  plannedVelocity: number | null;
   /** acceptedPoints / totalPlanEstimate as a percent (0 when total is 0). */
   acceptedPercent: number;
   /** Sum of story points across all assigned (non-deleted) items. */

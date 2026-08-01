@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => ({
     allowedHosts: ['.trycloudflare.com'],
     proxy: {
       '/v1': {
-        target: 'http://localhost:3000',
+        target: process.env.API_TARGET ?? 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
       },

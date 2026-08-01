@@ -24,6 +24,8 @@ import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { notify } from '@/shared/lib/toast'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions, useProjectPermissionsFor } from '@/features/access/api'
+import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useProjects } from '@/features/projects/api'
 import { type RowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
@@ -43,6 +45,7 @@ import {
   type PortfolioItem,
 } from '@/features/portfolio/api'
 import { PORTFOLIO_COLUMNS, type ColKey } from './model/columns'
+import { usePortfolioCellOptions } from './model/use-cell-options'
 import { PORTFOLIO_STATES } from './model/portfolio-states'
 import { PortfolioRow } from './ui/portfolio-row'
 import { PortfolioTypeSwitcher } from './ui/portfolio-type-switcher'
@@ -65,15 +68,44 @@ export function PortfolioPage() {
    */
   const [revealId, setRevealId] = useState<string | null>(null)
   const [confirmArchive, setConfirmArchive] = useState(false)
+  /**
+   * Opt OUT of the selected-project scope, showing every project the caller can read.
+   *
+   * The page used to be unconditionally cross-project, which meant the global project
+   * selector said "NX Platform" while the grid listed items from every other project —
+   * every other list surface (Releases, Milestones, Iterations) narrows to
+   * `project.projectId`, so this one read as a bug even though it was intentional.
+   *
+   * Kept as an explicit opt-out rather than deleted, because the cross-project view is
+   * genuinely useful to a Workspace Admin comparing portfolios — which is also why
+   * Project remains a column.
+   */
+  const [allProjects, setAllProjects] = useState(false)
 
   // Creating targets ONE project, so it uses the currently-selected project the way every
-  // other list page does. Editing is per-row (see `rowPerms`) because the grid is
-  // cross-project and each row may sit in a different one.
-  const { project } = useAppContext()
+  // other list page does. Editing is per-row (see `rowPerms`) because the grid can be
+  // cross-project and each row may then sit in a different one.
+  const { project, workspace } = useAppContext()
   const createProjectId = project?.projectId
+  /**
+   * The project the list is narrowed to, or `undefined` for every readable project.
+   *
+   * Derived from the selector rather than copied into state, so switching projects in the
+   * header re-scopes the grid immediately. With no project selected there is nothing to
+   * narrow to, so it falls back to showing everything instead of an empty grid.
+   */
+  const scopedProjectId = allProjects ? undefined : createProjectId
   const { can: canInProject } = useProjectPermissions(createProjectId)
   const canCreate = !!createProjectId && canInProject('portfolio:create')
   const setArchived = useSetPortfolioItemArchived()
+
+  /**
+   * Roster for the inline Owner picker. Fetched ONCE here and handed to every row —
+   * per-row would be one request per visible row for a list that is already cached
+   * workspace-wide (`workspace-members-profile`). Workspace-scoped, not project-scoped:
+   * this grid is cross-project, so a single roster covers every row.
+   */
+  const { data: members = [] } = useWorkspaceMembers(workspace?.workspaceId)
 
   const table = useDataTable<PortfolioItem, unknown, ColKey>(PORTFOLIO_COLUMNS, {
     storageKey: STORAGE_KEYS.PORTFOLIO_COLUMNS,
@@ -84,14 +116,49 @@ export function PortfolioPage() {
     [table],
   )
 
-  // Type is a SERVER filter — the API has no combined Epic+Feature view, matching
-  // the spec's exclusive Type selector.
-  const { items, total, isLoading, isError } = usePortfolioItems({ type })
+  // Type and project are SERVER filters — the API has no combined Epic+Feature view
+  // (matching the spec's exclusive Type selector), and narrowing the project server-side
+  // is what keeps `total` describing the scope the user is actually looking at.
+  const { items, total, isLoading, isError } = usePortfolioItems({
+    type,
+    projectId: scopedProjectId,
+  })
 
   // One permission lookup per DISTINCT project on the page, deduped and cache-shared with
   // the single-project hook.
   const projectIds = useMemo(() => items.map((i) => i.projectId), [items])
   const rowPerms = useProjectPermissionsFor(projectIds)
+  /**
+   * Edit rights by project, for the rows a disclosure reveals.
+   *
+   * A child Feature may live in a project that has no top-level row on this page, so its
+   * id was never in `projectIds` and no per-project lookup was fetched for it. `can` then
+   * falls back to the workspace baseline, which is safe because the model is purely
+   * additive — and the API is the real gate either way.
+   */
+  const canEditProject = useCallback(
+    (projectId: string) => rowPerms.can(projectId, 'portfolio:edit'),
+    [rowPerms],
+  )
+
+  // Epic / Release / Team pickers, scoped to each row's own project — see the hook.
+  const optionsFor = usePortfolioCellOptions(workspace?.workspaceId, projectIds)
+
+  /**
+   * Move destinations for the Project cell — workspace-wide, not the loaded rows' projects.
+   *
+   * A move targets a project the grid may not be showing (that is the point of a move), so
+   * this deliberately does not reuse `projectIds`. Archived projects are dropped: they
+   * cannot take new work.
+   */
+  const { data: allProjectRows = [] } = useProjects(workspace?.workspaceId)
+  const projectOptions = useMemo(
+    () =>
+      allProjectRows
+        .filter((p) => p.status !== 'archived')
+        .map((p) => ({ id: p.id, key: p.key, name: p.name })),
+    [allProjectRows],
+  )
 
   const openDetail = useCallback(
     (id: string) => void navigate({ to: '/portfolio/$itemId', params: { itemId: id } }),
@@ -201,24 +268,46 @@ export function PortfolioPage() {
           ariaLabel: t('searchPlaceholder'),
           width: 200,
         }}
-        activeFilterCount={stateFilter !== 'all' ? 1 : 0}
+        activeFilterCount={(stateFilter !== 'all' ? 1 : 0) + (allProjects ? 1 : 0)}
         filters={
-          <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
-            {t('filters.state')}
-            <InlineSelect
-              value={stateFilter}
-              aria-label={t('filters.state')}
-              onChange={(e) => setStateFilter(e.target.value)}
-              className="w-auto"
-            >
-              <option value="all">{t('filters.allStates')}</option>
-              {PORTFOLIO_STATES.map((s) => (
-                <option key={s} value={s}>
-                  {t(`states.${s}`, { defaultValue: s })}
-                </option>
-              ))}
-            </InlineSelect>
-          </label>
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+              {t('filters.state')}
+              <InlineSelect
+                value={stateFilter}
+                aria-label={t('filters.state')}
+                onChange={(e) => setStateFilter(e.target.value)}
+                className="w-auto"
+              >
+                <option value="all">{t('filters.allStates')}</option>
+                {PORTFOLIO_STATES.map((s) => (
+                  <option key={s} value={s}>
+                    {t(`states.${s}`, { defaultValue: s })}
+                  </option>
+                ))}
+              </InlineSelect>
+            </label>
+
+            {/* Scope. The selected project is the DEFAULT so the grid agrees with the
+                header selector; "All projects" is the deliberate opt-out. Only offered
+                when a project is actually selected — with none, "all" is all there is. */}
+            {createProjectId && (
+              <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+                {t('filters.project')}
+                <InlineSelect
+                  value={allProjects ? 'all' : 'current'}
+                  aria-label={t('filters.project')}
+                  onChange={(e) => setAllProjects(e.target.value === 'all')}
+                  className="w-auto"
+                >
+                  <option value="current">
+                    {project?.projectName ?? t('filters.currentProject')}
+                  </option>
+                  <option value="all">{t('filters.allProjects')}</option>
+                </InlineSelect>
+              </label>
+            )}
+          </div>
         }
         fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
         actions={
@@ -286,6 +375,11 @@ export function PortfolioPage() {
             revealed={revealed}
             canEdit={rowPerms.can(item.projectId, 'portfolio:edit')}
             canRank={sortField === null && rowPerms.can(item.projectId, 'portfolio:edit')}
+            members={members}
+            canEditProject={canEditProject}
+            options={optionsFor(item.projectId)}
+            optionsFor={optionsFor}
+            projects={projectOptions}
             colStyleFor={colStyleFor}
             gutterProps={gutterProps}
             onOpen={openDetail}

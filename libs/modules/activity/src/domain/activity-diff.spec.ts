@@ -49,7 +49,11 @@ describe('diffFields', () => {
 
   it('preserves config field order and omits the action when unconfigured', () => {
     const before: Item = { name: 'A', points: 1, notes: null };
-    const out = diffFields(before, { points: 2, name: 'B' }, { fields: ['name', 'points', 'notes'] });
+    const out = diffFields(
+      before,
+      { points: 2, name: 'B' },
+      { fields: ['name', 'points', 'notes'] },
+    );
     expect(out.map((e) => e.change.field)).toEqual(['name', 'points']);
     expect(out[0].action).toBeUndefined();
   });

@@ -25,7 +25,19 @@ import {
   useAttachments,
   useUploadAttachment,
   useDeleteAttachment,
+  type EntityRefType,
+  type EntitySubject,
 } from '@/features/collaboration/api'
+
+/**
+ * Row-level path prefix. The `/content` URL is built from the ROW's own subject, not from the
+ * block's prop: they are always the same today, but a row already carries the truth and
+ * reading it there means the link cannot point at the wrong entity.
+ */
+const ENTITY_PATH: Record<EntityRefType, string> = {
+  work_item: '/v1/work-items',
+  portfolio_item: '/v1/portfolio-items',
+}
 
 /** Column headers — an array (not literal JSX text) so labels stay data. */
 const COLUMN_LABELS = ['Name', 'Description', 'When', 'Size']
@@ -39,15 +51,20 @@ function formatBytes(bytes: number): string {
 }
 
 interface AttachmentBlockProps {
-  workItemId: string | undefined
+  /**
+   * The entity the files hang off — a work item or a portfolio item. A pair rather than a
+   * bare id because the two live at different API paths and carry different edit
+   * permissions; the block itself is identical for both.
+   */
+  subject: EntitySubject | undefined
   readOnly?: boolean
 }
 
-export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBlockProps) {
+export function AttachmentBlock({ subject, readOnly = false }: AttachmentBlockProps) {
   const { t } = useTranslation('work-items')
-  const { data: attachments = [], isLoading } = useAttachments(workItemId)
-  const uploadMutation = useUploadAttachment(workItemId)
-  const deleteMutation = useDeleteAttachment(workItemId)
+  const { data: attachments = [], isLoading } = useAttachments(subject)
+  const uploadMutation = useUploadAttachment(subject)
+  const deleteMutation = useDeleteAttachment(subject)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -108,9 +125,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
       </span>
 
       <div className="rounded border border-input bg-card">
-        {isLoading && (
-          <div className="px-4 py-3 text-ui-md text-foreground-subtle">Loading…</div>
-        )}
+        {isLoading && <div className="px-4 py-3 text-ui-md text-foreground-subtle">Loading…</div>}
 
         {!isLoading && hasRows && (
           <table className="w-full text-left text-ui-sm">
@@ -133,7 +148,7 @@ export function AttachmentBlock({ workItemId, readOnly = false }: AttachmentBloc
               {attachments.map((a) => {
                 const isDeleting = deletingId === a.id
                 // /content re-authorizes then 302s to a fresh presigned URL.
-                const downloadUrl = `/v1/work-items/${a.workItemId}/attachments/${a.id}/content`
+                const downloadUrl = `${ENTITY_PATH[a.entityType]}/${a.entityId}/attachments/${a.id}/content`
                 const isImage = a.mimeType?.startsWith('image/')
                 return (
                   <tr

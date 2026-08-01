@@ -62,12 +62,23 @@ export class IterationStatusService {
       this.statusRepo.listItems(iterationId, actor.workspaceId, filters, args),
     ]);
 
-    const plannedVelocity = iteration.plannedVelocity ?? 0;
+    /**
+     * Passed through UNCHANGED, including null.
+     *
+     * This used to be `?? 0`, which flattened "no target set" into "target of zero" — the
+     * response then carried `plannedVelocity: 0` while its own DTO declared the field
+     * nullable, and the header rendered "PLANNED VELOCITY / 0% / 16 of 0 Points". The
+     * percent is null for the same reason: attainment against a target that does not exist
+     * is not 0%, it is unanswerable. A REAL target of 0 still yields 0% via `percent()`,
+     * which SRS §8 requires.
+     */
+    const plannedVelocity = iteration.plannedVelocity;
     const metrics: IterationStatusMetrics = {
       plannedVelocity,
       acceptedPoints: raw.acceptedPoints,
       totalPlanEstimate: raw.totalPlanEstimate,
-      plannedVelocityPercent: this.percent(raw.acceptedPoints, plannedVelocity),
+      plannedVelocityPercent:
+        plannedVelocity === null ? null : this.percent(raw.acceptedPoints, plannedVelocity),
       acceptedPercent: this.percent(raw.acceptedPoints, raw.totalPlanEstimate),
       daysLeft: this.daysLeft(iteration.endDate),
       defectCount: raw.defectCount,

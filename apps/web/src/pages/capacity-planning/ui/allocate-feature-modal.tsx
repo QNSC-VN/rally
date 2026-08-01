@@ -97,7 +97,7 @@ export function AllocateFeatureModal({
     )
     return plan.teams
       .filter((team) => !taken.has(team.teamId))
-      .map((team) => ({ value: team.teamId, label: team.teamName ?? '—' }))
+      .map((team) => ({ value: team.teamId, label: team.teamName ?? '--' }))
   }
 
   const canAddRow = rows.length < plan.teams.length

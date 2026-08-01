@@ -102,7 +102,7 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
       <>
         <OwnerAvatar name={m.displayName ?? undefined} />
         <span className="truncate text-ui-md text-foreground" title={m.displayName ?? undefined}>
-          {m.displayName ?? '—'}
+          {m.displayName ?? '--'}
         </span>
         {m.userId === ctx.currentUserId && (
           <span className="shrink-0 rounded bg-primary-lighter px-1 py-0.5 text-ui-xs text-primary">
@@ -120,8 +120,11 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
     minWidth: 140,
     cellClassName: 'flex min-w-0 items-center',
     cell: (m) => (
-      <span className="truncate text-ui-md text-muted-foreground" title={m.email ?? ''}>
-        {m.email ?? '—'}
+      <span
+        className="text-ui-md break-words whitespace-normal text-muted-foreground"
+        title={m.email ?? ''}
+      >
+        {m.email ?? '--'}
       </span>
     ),
   },
@@ -190,7 +193,7 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
           readOnly={m.roleSlug === 'workspace_admin'}
           options={ctx.teamOptions}
           ariaLabel={ctx.labels.teams}
-          placeholder="—"
+          placeholder="--"
           searchPlaceholder={ctx.labels.searchTeams}
           onChange={(ids) => ctx.commitTeams(m.id, ids as string[])}
         />
@@ -530,7 +533,7 @@ export function MembersTab() {
             </h3>
             <div className="max-h-56 overflow-y-auto rounded-lg border">
               {invitations.map((inv: { id: string; email: string; roleId: string | null }) => {
-                const roleLabel = roles.find((r) => r.id === inv.roleId)?.name ?? '—'
+                const roleLabel = roles.find((r) => r.id === inv.roleId)?.name ?? '--'
                 return (
                   <div
                     key={`inv-${inv.id}`}

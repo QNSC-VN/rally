@@ -271,7 +271,7 @@ export function DetailSidebar({
         {/* Project — read-only (WID-FR-007). A work item's project is fixed. */}
         <FormField label={t('sidebar.project', 'Project')}>
           <div className="flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground">
-            {project?.projectName ?? '—'}
+            {project?.projectName ?? '--'}
           </div>
         </FormField>
 

@@ -112,7 +112,7 @@ export function CapacityTeamRow({
           }
         />
         <span className="truncate text-foreground" title={team.teamName ?? undefined}>
-          {team.teamName ?? '—'}
+          {team.teamName ?? '--'}
         </span>
       </div>
 

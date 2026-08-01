@@ -1,4 +1,5 @@
 import { cn } from '@/shared/lib/utils'
+import { formatNumber, formatWholePercent } from '@/shared/lib/utils'
 
 /**
  * A number with its percentage beside it, as Rally writes every capacity figure: `328 69%`.
@@ -20,9 +21,14 @@ export function MetricValue({
   className?: string
 }) {
   return (
-    <span className={cn('inline-flex items-baseline gap-1 tabular-nums', className)}>
-      <span className="text-foreground">{value}</span>
-      {pct !== null && <span className="text-ui-xs text-foreground-subtle">{pct}%</span>}
+    // `font-mono` alongside `tabular-nums`: both are needed for digits to line up in a
+    // column, and this component is every capacity grid's numeric cell, so omitting it
+    // left them all subtly ragged. Matches the shared table cell's contract.
+    <span className={cn('inline-flex items-baseline gap-1 font-mono tabular-nums', className)}>
+      <span className="text-foreground">{formatNumber(value)}</span>
+      {pct !== null && (
+        <span className="text-ui-xs text-foreground-subtle">{formatWholePercent(pct)}</span>
+      )}
     </span>
   )
 }

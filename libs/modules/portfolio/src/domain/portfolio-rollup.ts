@@ -34,9 +34,13 @@ export interface PortfolioRollupInput {
 
 /** Optional top-down forecasts stored on the item, plus the workspace fallback. */
 export interface PortfolioForecastInput {
-  /** `refined_estimate`, or null when not forecast. */
+  /**
+   * `refined_estimate`. Since 0081 the column is NOT NULL DEFAULT 0, so a real row carries
+   * 0 rather than null when nothing was forecast; nullable is kept only for callers that
+   * assemble this input from a partial read-model.
+   */
   refinedPoints: number | null;
-  /** `refined_item_count_estimate`, or null when not forecast. */
+  /** `refined_item_count_estimate`. Same 0-means-not-forecast rule. */
   refinedCount: number | null;
   /** Points the item's Preliminary Estimate size maps to, from workspace settings. */
   preliminaryPoints: number;
@@ -73,8 +77,8 @@ export function computePortfolioProgress(
   // Denominator is the top-down FORECAST, so this indicator answers a different
   // question: how much of what we predicted has landed. Falls back to the Preliminary
   // Estimate mapping when no refined forecast was supplied.
-  const pointsTarget = forecast.refinedPoints ?? forecast.preliminaryPoints;
-  const countTarget = forecast.refinedCount ?? forecast.preliminaryCount;
+  const pointsTarget = forecastTarget(forecast.refinedPoints, forecast.preliminaryPoints);
+  const countTarget = forecastTarget(forecast.refinedCount, forecast.preliminaryCount);
 
   return {
     percentDoneByPlanEstimate,
@@ -248,6 +252,28 @@ export function computeCutlineIndex(
     lastFitting = i;
   }
   return lastFitting;
+}
+
+/**
+ * Pick the forecast denominator: the refined number when it is a real forecast, else the
+ * Preliminary Estimate mapping.
+ *
+ * `refined > 0`, NOT `!== null`. The BA spec states the tier that way in three places —
+ * "Refined Estimate = Feature.refinedEstimate | refinedWorkItemCountEstimate -> if > 0"
+ * (Capacity Planning SRS, echoed in `PHASE5_DEV_HANDOFF` and the UI catalog) — and the
+ * mockup renders a stored 0 as an em-dash. Since migration 0081 the column is NOT NULL
+ * DEFAULT 0, so 0 IS the "not forecast" value and this comparison is what makes it fall
+ * through to the preliminary tier.
+ *
+ * The null branch is kept because the parameter is still typed nullable for callers that
+ * build this input themselves (the capacity plan read-model can carry an absent feature).
+ * It used to be `??`, which treated 0 as a real forecast and would have divided by it —
+ * disagreeing with `resolveEstimate` above, where 0 falls through. One stored 0 would have
+ * meant "blank progress meter" to the Portfolio page and "use the T-shirt size" to Capacity
+ * Planning. Both now agree.
+ */
+function forecastTarget(refined: number | null, preliminary: number): number {
+  return refined !== null && refined > 0 ? refined : preliminary;
 }
 
 /** `a / b` as a 0–1 fraction, or null when the denominator is not positive. */

@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DRIZZLE, NotFoundException, UnitOfWork } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
+import { ActivityLogger } from '@modules/activity';
 import { PortfolioItemsService } from './portfolio-items.service';
 import { PreliminaryEstimateMapService } from './preliminary-estimate-map.service';
 import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '../../../../../db/schema/enums';
@@ -24,10 +25,12 @@ const view = (over: Partial<PortfolioItemView> = {}): PortfolioItemView => ({
   type: 'feature',
   name: 'A feature',
   description: null,
+  notes: null,
+  releaseNotes: null,
   state: 'developing',
   preliminaryEstimate: 'm',
-  refinedEstimate: null,
-  refinedItemCountEstimate: null,
+  refinedEstimate: '0',
+  refinedItemCountEstimate: 0,
   parentId: null,
   teamId: null,
   releaseId: null,
@@ -67,10 +70,23 @@ describe('PortfolioItemsService', () => {
   let repo: Mocked<IPortfolioItemRepository>;
   let access: Mocked<AccessService>;
   let maps: Mocked<PreliminaryEstimateMapService>;
-  let settingsRows: Array<{ map: unknown }>;
+  let activity: Mocked<ActivityLogger>;
+  /**
+   * Rows returned to the Release/Team EXISTENCE checks in `assertReferences`.
+   *
+   * Defaults to one row so a reference resolves — tests about a MISSING reference set it
+   * to `[]` explicitly. (This used to be `settingsRows`, back when the service read the
+   * preliminary-estimate map straight from the database; `PreliminaryEstimateMapService`
+   * is its own mock now, so the only remaining consumer of this chain is the reference
+   * check.)
+   */
+  let referenceRows: Array<{ id: string }>;
+  /** Rows the destination-project team lookup in `applyProjectMove` should return. */
+  let projectTeamRows: Array<{ id: string }>;
 
   beforeEach(async () => {
-    settingsRows = [];
+    referenceRows = [{ id: 'ref-1' }];
+    projectTeamRows = [];
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PortfolioItemsService,
@@ -83,6 +99,7 @@ describe('PortfolioItemsService', () => {
             rollupsFor: vi.fn().mockResolvedValue([]),
             listChildren: vi.fn().mockResolvedValue(emptyPage([])),
             listChildFeatures: vi.fn().mockResolvedValue([]),
+            childRollupByType: vi.fn().mockResolvedValue([]),
             findByIds: vi.fn().mockResolvedValue([]),
             nextKeyNumber: vi.fn().mockResolvedValue(1),
             lockRankScope: vi.fn().mockResolvedValue(undefined),
@@ -102,6 +119,17 @@ describe('PortfolioItemsService', () => {
           },
         },
         {
+          provide: ActivityLogger,
+          // The Revision History feed is asserted in the activity module's own specs; here
+          // it only has to exist, and `logSafe` must be a no-op that cannot fail a write.
+          useValue: {
+            build: vi.fn().mockReturnValue({}),
+            buildDiff: vi.fn().mockReturnValue([]),
+            logSafe: vi.fn().mockResolvedValue(undefined),
+            listFor: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+          },
+        },
+        {
           provide: PreliminaryEstimateMapService,
           // The map's own fallback behaviour is covered by
           // `preliminary-estimate-map.service.spec.ts`; here it is a fixed input so these
@@ -118,9 +146,20 @@ describe('PortfolioItemsService', () => {
         },
         {
           provide: DRIZZLE,
+          // Two chains run through here: the Release/Team existence check in
+          // `assertReferences` (`select→from→where→limit`) and the destination-team lookup
+          // in `applyProjectMove` (`select→from→innerJoin→where→orderBy→limit`). The
+          // presence of `innerJoin` is what distinguishes them.
           useValue: {
             select: () => ({
-              from: () => ({ where: () => ({ limit: () => Promise.resolve(settingsRows) }) }),
+              from: () => ({
+                where: () => ({ limit: () => Promise.resolve(referenceRows) }),
+                innerJoin: () => ({
+                  where: () => ({
+                    orderBy: () => ({ limit: () => Promise.resolve(projectTeamRows) }),
+                  }),
+                }),
+              }),
             }),
           },
         },
@@ -131,6 +170,7 @@ describe('PortfolioItemsService', () => {
     repo = module.get(PORTFOLIO_ITEM_REPOSITORY);
     access = module.get(AccessService);
     maps = module.get(PreliminaryEstimateMapService);
+    activity = module.get(ActivityLogger);
   });
 
   describe('listItems — the authorization filter', () => {
@@ -546,6 +586,115 @@ describe('PortfolioItemsService', () => {
       await expect(service.updateItem(actor, 'missing', { name: 'x' })).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+
+    it('records the update in Revision History, diffed against the STORED row', async () => {
+      // Diffing against `existing` rather than the response is what makes the entry say
+      // what actually changed; diffing against the fresh read would show nothing.
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        workspaceId: 'ws-1',
+        projectId: 'proj-a',
+        type: 'feature',
+        state: 'intake',
+      } as never);
+      await service.updateItem(actor, 'pi-1', { state: 'developing' });
+      const [subject, , before, patch] = activity.buildDiff.mock.calls[0];
+      expect(subject).toMatchObject({ entityType: 'portfolio_item', entityId: 'pi-1' });
+      expect(before).toMatchObject({ state: 'intake' });
+      expect(patch).toMatchObject({ state: 'developing' });
+    });
+
+    it('never lets a history write fail the update', async () => {
+      // `logSafe`, not `log`: the feed is secondary to the mutation that produced it.
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        workspaceId: 'ws-1',
+        projectId: 'proj-a',
+        type: 'feature',
+      } as never);
+      await service.updateItem(actor, 'pi-1', { name: 'Renamed' });
+      expect(activity.logSafe).toHaveBeenCalled();
+      // The mock deliberately does not define `log`, proving the service never reaches for it.
+      expect((activity as unknown as Record<string, unknown>).log).toBeUndefined();
+    });
+
+    /**
+     * A project move (SRS §3.1 `Project | Yes`, FR-004).
+     *
+     * `project_id` is the scope for `team_id`, `release_id` and `parent_id`, so the risk
+     * here is not the column write — it is leaving those three pointing into the OLD
+     * project, which would render as another project's Release or an unlinked Team.
+     */
+    describe('moving to another project', () => {
+      const feature = {
+        id: 'pi-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        teamId: 'team-a',
+        releaseId: 'rel-a',
+        parentId: null,
+      };
+
+      it('requires edit permission on the DESTINATION as well as the source', async () => {
+        repo.findById.mockResolvedValue({ ...feature, teamId: null, releaseId: null } as never);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        const checked = access.assertProjectPermission.mock.calls.map((c) => c[1]);
+        expect(checked).toContain('proj-a');
+        expect(checked).toContain('proj-b');
+      });
+
+      it('resets Team to a team linked to the new project', async () => {
+        // Not merely cleared: the spec says the change "resets Team to a valid Team in
+        // the new Project".
+        repo.findById.mockResolvedValue(feature as never);
+        projectTeamRows = [{ id: 'team-b' }];
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.update.mock.calls[0][1]).toHaveProperty('teamId', 'team-b');
+      });
+
+      it('clears Team when the new project has no linked team', async () => {
+        repo.findById.mockResolvedValue(feature as never);
+        projectTeamRows = [];
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.update.mock.calls[0][1]).toHaveProperty('teamId', null);
+      });
+
+      it('clears the Release, because releases are per-project', async () => {
+        repo.findById.mockResolvedValue(feature as never);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.update.mock.calls[0][1]).toHaveProperty('releaseId', null);
+      });
+
+      it('clears a parent Epic that lives in a different project', async () => {
+        repo.findById.mockResolvedValue({ ...feature, parentId: 'ep-1' } as never);
+        repo.findByIds.mockResolvedValue([{ id: 'ep-1', projectId: 'proj-a' }] as never);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.update.mock.calls[0][1]).toHaveProperty('parentId', null);
+      });
+
+      it('keeps a parent Epic that already lives in the destination', async () => {
+        repo.findById.mockResolvedValue({ ...feature, parentId: 'ep-1' } as never);
+        repo.findByIds.mockResolvedValue([{ id: 'ep-1', projectId: 'proj-b' }] as never);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.update.mock.calls[0][1]).not.toHaveProperty('parentId');
+      });
+
+      it('lets an explicit value in the same request win over the reset', async () => {
+        // Moving a Feature and naming its new Team in one PATCH must honour the caller.
+        repo.findById.mockResolvedValue(feature as never);
+        projectTeamRows = [{ id: 'team-b' }];
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b', teamId: 'team-c' });
+        expect(repo.update.mock.calls[0][1]).toHaveProperty('teamId', 'team-c');
+      });
+
+      it('reconciles nothing when the project is unchanged', async () => {
+        repo.findById.mockResolvedValue(feature as never);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-a', name: 'Renamed' });
+        const patch = repo.update.mock.calls[0][1];
+        expect(patch).not.toHaveProperty('teamId');
+        expect(patch).not.toHaveProperty('releaseId');
+      });
     });
   });
 

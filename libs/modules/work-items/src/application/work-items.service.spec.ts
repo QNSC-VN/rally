@@ -5,7 +5,7 @@ import { WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
 import { ActivityLogger } from '@modules/activity';
 import { TIME_LOG_REPOSITORY } from '../domain/ports/time-log.repository';
 import { WATCHER_REPOSITORY } from '../domain/ports/watcher.repository';
-import { ATTACHMENT_REPOSITORY } from '../domain/ports/attachment.repository';
+import { ATTACHMENT_REPOSITORY, EntityAttachmentsService } from '@modules/attachments';
 import { WORK_ITEM_RELATION_REPOSITORY } from '../domain/ports/work-item-relation.repository';
 import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
 import { AttachmentsService } from '@modules/attachments';
@@ -224,10 +224,11 @@ const makeWatcherRepo = () => ({
 });
 
 // Link table only — blob metadata now lives in storage.files behind AttachmentsService.
+// Keyed by the entity pair since 0083.
 const makeAttachmentRepo = () => ({
-  listByWorkItem: vi.fn().mockResolvedValue([]),
-  countByWorkItem: vi.fn().mockResolvedValue(0),
-  findByWorkItemAndFile: vi.fn().mockResolvedValue(null),
+  listByEntity: vi.fn().mockResolvedValue([]),
+  countByEntity: vi.fn().mockResolvedValue(0),
+  findByEntityAndFile: vi.fn().mockResolvedValue(null),
   link: vi.fn().mockResolvedValue(undefined),
   unlink: vi.fn().mockResolvedValue(undefined),
 });
@@ -287,6 +288,7 @@ describe('WorkItemsService', () => {
         { provide: ActivityLogger, useValue: activityRepo },
         { provide: TIME_LOG_REPOSITORY, useValue: timeLogRepo },
         { provide: WATCHER_REPOSITORY, useValue: watcherRepo },
+        EntityAttachmentsService,
         { provide: ATTACHMENT_REPOSITORY, useValue: attachmentRepo },
         { provide: WORK_ITEM_RELATION_REPOSITORY, useValue: relationRepo },
         {

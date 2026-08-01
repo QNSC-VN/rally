@@ -135,7 +135,7 @@ export function AuditLogTab() {
         cellClassName: 'flex min-w-0 items-center',
         cell: (r, ctx) => (
           <span
-            className="truncate text-ui-md text-foreground"
+            className="text-ui-md break-words whitespace-normal text-foreground"
             title={r.actorEmail ?? r.actorId ?? undefined}
           >
             {r.actorName ?? r.actorEmail ?? ctx.systemLabel}
@@ -151,7 +151,7 @@ export function AuditLogTab() {
         cellClassName: 'flex min-w-0 items-center',
         cell: (r, ctx) => (
           <span
-            className="truncate text-ui-md text-foreground"
+            className="text-ui-md break-words whitespace-normal text-foreground"
             title={`${r.action} · ${r.resourceType} · ${r.resourceId}`}
           >
             {describeAuditEvent(r, ctx.resolver)}

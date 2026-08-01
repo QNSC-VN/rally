@@ -53,6 +53,15 @@ interface BaseProps {
    */
   variant?: 'cell' | 'field'
   /**
+   * Let the selected label WRAP instead of truncating.
+   *
+   * Off by default, because most cell selects hold a short bounded value (a state, a
+   * team, a person) where one line is the right answer and a growing row is noise. Opt in
+   * for a column whose value is a name that can genuinely be long — Project is the case
+   * this exists for, and Rally wraps that column too.
+   */
+  wrapLabel?: boolean
+  /**
    * Optional custom content for the trigger, rendered in place of the default
    * icon + label (the chevron and popover behaviour are preserved). Use for
    * fields that need a special at-rest display — e.g. Schedule State's
@@ -119,9 +128,10 @@ export function SearchableSelect(props: SearchableSelectProps) {
     options,
     readOnly = false,
     ariaLabel = 'Select',
-    placeholder = '—',
+    placeholder = '--',
     searchPlaceholder = 'Search',
     variant = 'cell',
+    wrapLabel = false,
     triggerContent,
     className,
   } = props
@@ -272,9 +282,16 @@ export function SearchableSelect(props: SearchableSelectProps) {
             ) : showChips ? (
               chips
             ) : (
-              <span className="flex min-w-0 items-center gap-1.5">
+              <span
+                className={cn('flex min-w-0 gap-1.5', wrapLabel ? 'items-start' : 'items-center')}
+              >
                 {first?.icon}
-                <span className={cn('truncate', !hasSelection && 'text-foreground-subtle')}>
+                <span
+                  className={cn(
+                    wrapLabel ? 'break-words whitespace-normal' : 'truncate',
+                    !hasSelection && 'text-foreground-subtle',
+                  )}
+                >
                   {display}
                 </span>
                 {extraCount > 0 && (

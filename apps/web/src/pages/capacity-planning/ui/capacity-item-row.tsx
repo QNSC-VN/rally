@@ -122,7 +122,7 @@ export function CapacityItemRow({
         ) : (
           <span className="w-4 shrink-0" />
         )}
-        <span className="truncate text-foreground" title={item.name}>
+        <span className="break-words whitespace-normal text-foreground" title={item.name}>
           {item.name}
         </span>
       </div>
@@ -131,8 +131,11 @@ export function CapacityItemRow({
           assignment beside it — a Story-to-Feature link may cross projects, so a plan can carry a
           Feature owned elsewhere, and a planner needs to see that before allocating to it. */}
       <div style={colStyleFor('project', { flexShrink: 0 })} className="min-w-0 px-2">
-        <span className="truncate text-muted-foreground" title={item.projectName ?? undefined}>
-          {item.projectName ?? '—'}
+        <span
+          className="break-words whitespace-normal text-muted-foreground"
+          title={item.projectName ?? undefined}
+        >
+          {item.projectName ?? '--'}
         </span>
       </div>
 
@@ -181,7 +184,7 @@ export function CapacityItemRow({
           </span>
         ) : (
           <span className="truncate text-foreground" title={primaryTeamName ?? undefined}>
-            {primaryTeamName ?? '—'}
+            {primaryTeamName ?? '--'}
           </span>
         )}
       </div>

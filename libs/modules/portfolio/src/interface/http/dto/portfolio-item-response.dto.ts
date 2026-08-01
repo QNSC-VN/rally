@@ -73,10 +73,16 @@ const PortfolioItemSchema = z.object({
   type: z.enum(TYPES),
   name: z.string(),
   description: z.string().nullable(),
+  notes: z.string().nullable(),
+  releaseNotes: z.string().nullable(),
   state: z.enum(STATES),
   preliminaryEstimate: z.enum(SIZES),
-  refinedEstimate: z.number().nullable().describe('Top-down points forecast'),
-  refinedItemCountEstimate: z.number().nullable().describe('Top-down child-count forecast'),
+  refinedEstimate: z
+    .number()
+    .describe('Top-down points forecast. 0 means not forecast — see migration 0081.'),
+  refinedItemCountEstimate: z
+    .number()
+    .describe('Top-down child-count forecast. 0 means not forecast.'),
   parentId: z.string().uuid().nullable().describe('Feature → Epic. Always null for an Epic.'),
   parentKey: z.string().nullable(),
   teamId: z.string().uuid().nullable().describe('Feature only'),
@@ -102,6 +108,40 @@ const PortfolioItemSchema = z.object({
 });
 export class PortfolioItemResponseDto extends createZodDto(PortfolioItemSchema) {}
 
+/**
+ * "Total Accepted Children" — the detail page's panel, which Rally shows where this app
+ * previously listed four bare progress meters.
+ *
+ * Both metrics travel together rather than the client picking one, because the panel's unit
+ * toggle switches between them without a refetch. `total` is the item's own rollup, so it is
+ * the same pair of numbers Percent Done is computed from.
+ */
+const AcceptedChildrenGroupSchema = z.object({
+  type: z.enum(['story', 'defect']),
+  points: z.number(),
+  count: z.number(),
+  acceptedPoints: z.number(),
+  acceptedCount: z.number(),
+});
+
+const AcceptedChildrenSchema = z.object({
+  total: z.object({
+    points: z.number(),
+    count: z.number(),
+    acceptedPoints: z.number(),
+    acceptedCount: z.number(),
+  }),
+  byType: z
+    .array(AcceptedChildrenGroupSchema)
+    .describe('Always one entry per child type, zero-filled when there are none.'),
+});
+
+/** The detail response: the grid row plus the accepted-children breakdown. */
+const PortfolioItemDetailSchema = PortfolioItemSchema.extend({
+  acceptedChildren: AcceptedChildrenSchema,
+});
+export class PortfolioItemDetailResponseDto extends createZodDto(PortfolioItemDetailSchema) {}
+
 /** A linked Story/Defect on the Children tab. */
 const PortfolioChildSchema = z.object({
   id: z.string().uuid(),
@@ -110,6 +150,11 @@ const PortfolioChildSchema = z.object({
   title: z.string(),
   scheduleState: z.string(),
   storyPoints: z.number().nullable(),
+  /** IDs alongside the names, so the disclosed child rows can edit in place. */
+  projectId: z.string().uuid(),
+  releaseId: z.string().uuid().nullable(),
+  teamId: z.string().uuid().nullable(),
+  assigneeId: z.string().uuid().nullable(),
   releaseName: z.string().nullable(),
   projectName: z.string().nullable(),
   teamName: z.string().nullable(),

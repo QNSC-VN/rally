@@ -274,7 +274,10 @@ export function HomePage() {
             myItems.map((item) => (
               <div
                 key={item.id}
-                className="flex h-8 items-center gap-2 border-b border-border-inner px-3 hover:bg-surface-hover"
+                // `min-h-8`, not `h-8`: a fixed height CLIPS a wrapped title instead of
+                // growing with it, so the row constraint has to be relaxed before the cell
+                // below is allowed to wrap.
+                className="flex min-h-8 items-center gap-2 border-b border-border-inner px-3 hover:bg-surface-hover"
               >
                 <div className="w-[120px] shrink-0">
                   <IdCell
@@ -286,7 +289,7 @@ export function HomePage() {
                   />
                 </div>
                 <div className="min-w-0 flex-1 pr-2">
-                  <span className="block truncate text-ui-md font-medium text-foreground">
+                  <span className="block text-ui-md font-medium break-words whitespace-normal text-foreground">
                     {item.title}
                   </span>
                 </div>

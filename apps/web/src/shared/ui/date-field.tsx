@@ -52,7 +52,7 @@ export function DateField({
   value,
   onChange,
   readOnly = false,
-  placeholder = '—',
+  placeholder = '--',
   ariaLabel = 'Date',
   variant = 'cell',
   className,

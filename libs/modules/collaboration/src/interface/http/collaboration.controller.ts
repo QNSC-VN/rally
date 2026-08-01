@@ -16,23 +16,18 @@ import { CurrentUser } from '@modules/identity';
 import { AuthPolicy, RequirePermission } from '@modules/access';
 import { CollaborationService } from '../../application/collaboration.service';
 import { CreateCommentDto, UpdateCommentDto } from './dto/collaboration-request.dto';
-import { CommentResponseDto } from './dto/collaboration-response.dto';
-import type { Comment } from '../../domain/collaboration.types';
+import { CommentResponseDto, toCommentDto } from './dto/collaboration-response.dto';
 
-function toCommentDto(c: Comment): CommentResponseDto {
-  return {
-    id: c.id,
-    workItemId: c.workItemId,
-    authorId: c.authorId,
-    body: c.body,
-    parentId: c.parentId,
-    isEdited: c.isEdited,
-    editedAt: c.editedAt?.toISOString() ?? null,
-    createdAt: c.createdAt.toISOString(),
-    updatedAt: c.updatedAt.toISOString(),
-  };
-}
-
+/**
+ * Comments and attachments on a WORK ITEM.
+ *
+ * The routes are per-entity rather than one generic `/comments?entityType=…` because
+ * `@RequirePermission` is resource-typed: a work-item comment is gated on
+ * `work_item:view`/`work_item:edit` against the work item's project, and a portfolio one on
+ * `portfolio:view`/`portfolio:edit` against the Feature's. A single route could not express
+ * both without moving authorization out of the guard, which is the one place this codebase
+ * keeps it. The SERVICE underneath is entity-generic; only the door is per-entity.
+ */
 @ApiTags('collaboration')
 @Controller('work-items/:workItemId')
 @AuthPolicy()
@@ -42,7 +37,11 @@ export class CollaborationController {
   // ── Comments ───────────────────────────────────────────────────────────────
 
   @Get('comments')
-  @RequirePermission('work_item:view', { resource: 'work_item', from: 'param', field: 'workItemId' })
+  @RequirePermission('work_item:view', {
+    resource: 'work_item',
+    from: 'param',
+    field: 'workItemId',
+  })
   @ApiOperation({ summary: 'List comments for a work item' })
   @ApiParam({ name: 'workItemId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: [CommentResponseDto] })
@@ -51,12 +50,19 @@ export class CollaborationController {
     @CurrentUser() user: JwtPayload,
     @Param('workItemId', ParseUUIDPipe) workItemId: string,
   ): Promise<CommentResponseDto[]> {
-    const comments = await this.collaborationService.listComments(user, workItemId);
+    const comments = await this.collaborationService.listComments(user, {
+      entityType: 'work_item',
+      entityId: workItemId,
+    });
     return comments.map(toCommentDto);
   }
 
   @Post('comments')
-  @RequirePermission('work_item:edit', { resource: 'work_item', from: 'param', field: 'workItemId' })
+  @RequirePermission('work_item:edit', {
+    resource: 'work_item',
+    from: 'param',
+    field: 'workItemId',
+  })
   @ApiOperation({ summary: 'Add a comment to a work item' })
   @ApiParam({ name: 'workItemId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: CommentResponseDto })
@@ -68,7 +74,7 @@ export class CollaborationController {
   ): Promise<CommentResponseDto> {
     const comment = await this.collaborationService.createComment(
       user,
-      workItemId,
+      { entityType: 'work_item', entityId: workItemId },
       dto.body,
       dto.parentId,
       dto.mentionedUserIds,

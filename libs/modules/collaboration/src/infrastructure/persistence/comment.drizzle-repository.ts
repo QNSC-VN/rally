@@ -3,7 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { comments } from '../../../../../../db/schema/work';
-import type { Comment, CreateCommentInput } from '../../domain/collaboration.types';
+import type { Comment, CommentRef, CreateCommentInput } from '../../domain/collaboration.types';
 import { ICommentRepository } from '../../domain/ports/comment.repository';
 
 @Injectable()
@@ -12,16 +12,17 @@ export class CommentDrizzleRepository implements ICommentRepository {
 
   async findById(id: string): Promise<Comment | null> {
     const rows = await this.db.select().from(comments).where(eq(comments.id, id)).limit(1);
-    return (rows[0]) ?? null;
+    return rows[0] ?? null;
   }
 
-  async listByWorkItem(workItemId: string, workspaceId: string): Promise<Comment[]> {
+  async listByEntity(ref: CommentRef, workspaceId: string): Promise<Comment[]> {
     const rows = await this.db
       .select()
       .from(comments)
       .where(
         and(
-          eq(comments.workItemId, workItemId),
+          eq(comments.entityType, ref.entityType),
+          eq(comments.entityId, ref.entityId),
           eq(comments.workspaceId, workspaceId),
           isNull(comments.deletedAt),
         ),
@@ -35,7 +36,8 @@ export class CommentDrizzleRepository implements ICommentRepository {
       .values({
         id: input.id,
         workspaceId: input.workspaceId,
-        workItemId: input.workItemId,
+        entityType: input.entityType,
+        entityId: input.entityId,
         authorId: input.authorId,
         body: input.body,
         parentId: input.parentId,

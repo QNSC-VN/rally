@@ -97,7 +97,7 @@ export function TasksProgress({ total, done }: { total: number; done: number }) 
   if (!total || total <= 0) {
     return (
       <span className="text-foreground-subtle" style={{ fontSize: 12 }}>
-        &mdash;
+        --
       </span>
     )
   }

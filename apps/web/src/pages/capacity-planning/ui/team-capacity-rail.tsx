@@ -52,7 +52,7 @@ export function TeamCapacityRail({
           return (
             <div key={team.id} className="flex items-center justify-between gap-2 text-ui-sm">
               <span className="min-w-0 truncate text-foreground" title={team.teamName ?? undefined}>
-                {team.teamName ?? '—'}
+                {team.teamName ?? '--'}
               </span>
               <span className="flex shrink-0 items-center gap-1 text-muted-foreground tabular-nums">
                 {team.metrics.estimated} /{' '}
