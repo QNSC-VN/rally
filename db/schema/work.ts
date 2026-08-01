@@ -369,6 +369,10 @@ export const portfolioItems = workSchema.table(
     type: portfolioItemTypeEnum('type').notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
+    // The same pair `work_items` carries, so the Detail page can offer the identical
+    // Notes / Release Notes editors (0078). Nullable: an empty rich-text field is absent.
+    notes: text('notes'),
+    releaseNotes: text('release_notes'),
     state: portfolioItemStateEnum('state').notNull().default('no_entry'),
     preliminaryEstimate: preliminaryEstimateSizeEnum('preliminary_estimate')
       .notNull()

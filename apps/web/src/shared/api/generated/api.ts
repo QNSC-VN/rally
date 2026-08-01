@@ -3795,6 +3795,8 @@ export interface components {
       type: 'epic' | 'feature'
       name: string
       description: string | null
+      notes: string | null
+      releaseNotes: string | null
       /** @enum {string} */
       state:
         | 'no_entry'
@@ -3893,6 +3895,8 @@ export interface components {
       type: 'epic' | 'feature'
       name: string
       description?: string | null
+      notes?: string | null
+      releaseNotes?: string | null
       /** @enum {string} */
       state?:
         | 'no_entry'
@@ -3921,6 +3925,8 @@ export interface components {
     UpdatePortfolioItemDto: {
       name?: string
       description?: string | null
+      notes?: string | null
+      releaseNotes?: string | null
       /** Format: uuid */
       projectId?: string
       /** @enum {string} */

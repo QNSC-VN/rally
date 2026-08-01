@@ -73,6 +73,8 @@ const PortfolioItemSchema = z.object({
   type: z.enum(TYPES),
   name: z.string(),
   description: z.string().nullable(),
+  notes: z.string().nullable(),
+  releaseNotes: z.string().nullable(),
   state: z.enum(STATES),
   preliminaryEstimate: z.enum(SIZES),
   refinedEstimate: z

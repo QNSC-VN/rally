@@ -51,6 +51,9 @@ export const PORTFOLIO_ENUMS = {
 const portfolioWritableFields = {
   name: z.string().min(1).max(255).trim(),
   description: z.string().max(20000).nullable(),
+  /** Rich text, same limit and nullability as a work item's (0078). */
+  notes: z.string().max(20000).nullable(),
+  releaseNotes: z.string().max(20000).nullable(),
   state: z.enum(PORTFOLIO_ITEM_STATES),
   preliminaryEstimate: z.enum(PRELIMINARY_SIZES),
   /**
@@ -82,6 +85,8 @@ export const CreatePortfolioItemSchema = z.object({
   type: z.enum(PORTFOLIO_ITEM_TYPES),
   name: portfolioWritableFields.name,
   description: portfolioWritableFields.description.optional(),
+  notes: portfolioWritableFields.notes.optional(),
+  releaseNotes: portfolioWritableFields.releaseNotes.optional(),
   state: portfolioWritableFields.state.optional(),
   preliminaryEstimate: portfolioWritableFields.preliminaryEstimate.optional(),
   refinedEstimate: portfolioWritableFields.refinedEstimate.optional(),
@@ -116,6 +121,8 @@ export const UpdatePortfolioItemSchema = z
   .object({
     name: portfolioWritableFields.name.optional(),
     description: portfolioWritableFields.description.optional(),
+    notes: portfolioWritableFields.notes.optional(),
+    releaseNotes: portfolioWritableFields.releaseNotes.optional(),
     /** Move the item to another project. Never nullable — an item always has a project. */
     projectId: z.string().uuid().optional(),
     state: portfolioWritableFields.state.optional(),

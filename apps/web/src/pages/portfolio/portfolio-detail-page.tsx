@@ -161,6 +161,22 @@ export function PortfolioDetailPage() {
                 onChange={(html) => setField({ description: html })}
               />
 
+              {/* Notes and Release Notes, the same editors in the same order as Work Item
+                  detail. `work_items` already carried this exact pair, so migration 0078
+                  added the same two columns here rather than inventing a concept. */}
+              <RichTextEditor
+                title={t('detail.fields.notes')}
+                value={item.notes}
+                readOnly={!canEdit}
+                onChange={(html) => setField({ notes: html })}
+              />
+              <RichTextEditor
+                title={t('detail.fields.releaseNotes')}
+                value={item.releaseNotes}
+                readOnly={!canEdit}
+                onChange={(html) => setField({ releaseNotes: html })}
+              />
+
               {/* Progress is the portfolio-specific block, standing where Work Item puts
                   its Task Roll-up: four read-only indicators derived server-side. */}
               <DetailSectionHeading>{t('detail.progress.heading')}</DetailSectionHeading>

@@ -369,6 +369,8 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
 
     assign('name');
     assign('description');
+    assign('notes');
+    assign('releaseNotes');
     // A project MOVE. Listed here because this `assign` list is explicit: a field absent
     // from it is silently dropped, so the PATCH would 200 with nothing changed.
     assign('projectId');
@@ -473,6 +475,8 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       type: row.type,
       name: row.name,
       description: row.description,
+      notes: row.notes,
+      releaseNotes: row.releaseNotes,
       state: row.state,
       preliminaryEstimate: row.preliminaryEstimate,
       refinedEstimate: row.refinedEstimate,

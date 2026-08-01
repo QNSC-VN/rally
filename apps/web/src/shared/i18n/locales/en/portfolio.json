@@ -94,7 +94,9 @@
       "plannedEndDate": "Planned End Date",
       "marketReleaseDate": "Market Release Date",
       "description": "Description",
-      "createdAt": "Creation Date"
+      "createdAt": "Creation Date",
+      "notes": "Notes",
+      "releaseNotes": "Release Notes"
     },
     "progress": {
       "heading": "Progress",

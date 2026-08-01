@@ -31,6 +31,8 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
     type: i.type,
     name: i.name,
     description: i.description,
+    notes: i.notes,
+    releaseNotes: i.releaseNotes,
     state: i.state,
     preliminaryEstimate: i.preliminaryEstimate,
     // numeric arrives as a string from Drizzle (precision preservation); the API
