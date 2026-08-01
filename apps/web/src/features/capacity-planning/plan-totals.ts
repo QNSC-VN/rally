@@ -61,8 +61,12 @@ export function planTotals(plan: CapacityPlan): PlanTotals {
  *
  * Rally shows these percentages against capacity, so a plan with no capacity entered shows the
  * numbers without percentages rather than dividing by zero and printing `Infinity%`.
+ *
+ * FLOOR, not round: "The percentages shown are rounded down to the nearest whole number", and Rally
+ * documents the case — 336 estimated / 624 capacity = 0.53846 reads as 53%, where rounding would
+ * claim 54%. Rounding up also lets a team that is one point short of its ceiling read as 100%.
  */
 export function pctOfCapacity(value: number, capacity: number | null): number | null {
   if (capacity === null || capacity <= 0) return null
-  return Math.round((value / capacity) * 100)
+  return Math.floor((value / capacity) * 100)
 }

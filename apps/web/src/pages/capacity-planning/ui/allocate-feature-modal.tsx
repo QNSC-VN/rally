@@ -1,14 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Loader2, Plus } from 'lucide-react'
+import { Loader2, Plus, X } from 'lucide-react'
 
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { notify } from '@/shared/lib/toast'
+import { IconButton } from '@/shared/ui/icon-button'
 import {
   useAllocate,
+  useRemoveAllocation,
   useUpdateAllocation,
   type CapacityPlan,
 } from '@/features/capacity-planning/api'
@@ -47,6 +49,7 @@ export function AllocateFeatureModal({
   const { t } = useTranslation('capacity')
   const allocate = useAllocate()
   const updateAllocation = useUpdateAllocation()
+  const removeAllocation = useRemoveAllocation()
 
   /** This Feature's allocations, in plan order — the rows the dialog opens with. */
   const existing = useMemo(
@@ -54,12 +57,25 @@ export function AllocateFeatureModal({
     [plan.allocations, portfolioItemId],
   )
 
+  const item = plan.items.find((i) => i.portfolioItemId === portfolioItemId)
   const featureLabel = useMemo(() => {
-    const item = plan.items.find((i) => i.portfolioItemId === portfolioItemId)
     const row = existing[0]
     if (item !== undefined) return `${item.itemKey} — ${item.name}`
     return row === undefined ? portfolioItemId : `${row.itemKey} — ${row.name}`
-  }, [plan.items, existing, portfolioItemId])
+  }, [item, existing, portfolioItemId])
+
+  /**
+   * The Feature's two top-down estimates, stated in the header.
+   *
+   * The BA's dialog identifies the item by `ID`, `Name`, `Prelim Estimate` and `Refined Estimate`,
+   * and it has to: a blank Estimate row commits `Refined ?? Preliminary`, so a planner deciding
+   * whether to leave one blank needs to see what that number IS without leaving the dialog.
+   *
+   * Read from an existing allocation's breakdown rather than fetched: the plan already carries both
+   * figures per row, and a second source could disagree with the grid behind the dialog.
+   */
+  const estimates = existing[0]?.estimateBreakdown ?? null
+  const topDown = estimates === null ? null : (estimates.refined ?? estimates.preliminary)
 
   /**
    * One row per allocation, plus whatever the planner adds.
@@ -81,8 +97,16 @@ export function AllocateFeatureModal({
         })),
   )
   const [error, setError] = useState<string | null>(null)
+  /**
+   * Allocations the planner has struck out but not yet applied.
+   *
+   * Deferred rather than deleted on click, because everything else in this dialog is: `Apply` is the
+   * commit, so a row that vanished from the server the moment its × was pressed would make Cancel a
+   * lie.
+   */
+  const [removedIds, setRemovedIds] = useState<string[]>([])
 
-  const pending = allocate.isPending || updateAllocation.isPending
+  const pending = allocate.isPending || updateAllocation.isPending || removeAllocation.isPending
 
   /**
    * Every team on the plan, minus the ones other rows already hold.
@@ -107,6 +131,28 @@ export function AllocateFeatureModal({
   }
 
   /**
+   * Drops a row from the table. An unsaved row simply disappears; a saved one is queued for deletion
+   * so `Apply` performs it, keeping Cancel honest.
+   */
+  function dropRow(key: string, allocationId: string | null) {
+    setRows((current) => current.filter((r) => r.key !== key))
+    if (allocationId !== null) setRemovedIds((current) => [...current, allocationId])
+  }
+
+  /**
+   * Rally's / the BA's `Total allocated`: what this Feature's Estimated becomes once applied.
+   *
+   * A blank row counts as the top-down estimate, because that is exactly what Apply will store for
+   * it — showing 0 there would understate the commitment the planner is about to make.
+   */
+  const totalAllocated = rows.reduce((sum, row) => {
+    const trimmed = row.value.trim()
+    if (trimmed === '') return sum + (topDown ?? 0)
+    const parsed = Number(trimmed)
+    return Number.isFinite(parsed) ? sum + parsed : sum
+  }, 0)
+
+  /**
    * Applies the rows as a diff: an edited allocation is PATCHed, a new row is POSTed, an untouched
    * row is left alone.
    *
@@ -117,6 +163,12 @@ export function AllocateFeatureModal({
   async function apply() {
     const before = new Map(existing.map((a) => [a.id, a]))
     const changes: (() => Promise<unknown>)[] = []
+
+    // Removals first: they free the (plan, item, team) slot a later row may be claiming, so doing
+    // them last could make an otherwise valid re-assignment collide with a row on its way out.
+    for (const allocationId of removedIds) {
+      changes.push(() => removeAllocation.mutateAsync({ id: plan.id, allocationId }))
+    }
 
     for (const row of rows) {
       const trimmed = row.value.trim()
@@ -196,11 +248,27 @@ export function AllocateFeatureModal({
           </p>
         )}
 
-        <div>
+        {/* The BA's read-only identity row: which Feature, and the two estimates a blank Estimate
+            falls back to. Without them "leave it blank" is a number the planner cannot see. */}
+        <div className="rounded-sm border border-border-inner bg-surface-subtle px-2 py-1.5">
           <p className="text-ui-xs font-semibold text-muted-foreground">
             {t('allocate.featureLabel')}
           </p>
           <p className="text-ui-md text-foreground">{featureLabel}</p>
+          <div className="mt-1 flex gap-4 text-ui-xs text-muted-foreground">
+            <span>
+              {t('allocate.prelimEstimate')}{' '}
+              <span className="font-medium text-foreground tabular-nums">
+                {estimates?.preliminary ?? '—'}
+              </span>
+            </span>
+            <span>
+              {t('allocate.refinedEstimate')}{' '}
+              <span className="font-medium text-foreground tabular-nums">
+                {estimates?.refined ?? '—'}
+              </span>
+            </span>
+          </div>
         </div>
 
         {/* Rally's two-column table, header included: the pair on each line is "this team, this
@@ -213,6 +281,8 @@ export function AllocateFeatureModal({
             <span className="w-28 text-ui-xs font-semibold text-muted-foreground">
               {t('allocate.valueLabel')}
             </span>
+            {/* Spacer over the per-row × so the two header labels stay above their own columns. */}
+            <span className="w-6 shrink-0" aria-hidden />
           </div>
 
           {rows.map((row) => (
@@ -235,6 +305,16 @@ export function AllocateFeatureModal({
                 inputMode="decimal"
                 className="w-28"
               />
+              {/* Each row removable, per the BA. Dropping the LAST row is allowed and means "this
+                  Feature keeps no team": Apply deletes the allocation and the Feature falls back to
+                  the plan's unassigned bucket, which is the same end state as `Remove All
+                  Assignments`. */}
+              <IconButton
+                aria-label={t('allocate.removeRow')}
+                onClick={() => dropRow(row.key, row.allocationId)}
+              >
+                <X size={12} />
+              </IconButton>
             </div>
           ))}
 
@@ -260,6 +340,18 @@ export function AllocateFeatureModal({
               <Plus size={13} /> {t('allocate.addRow')}
             </Button>
           )}
+        </div>
+
+        {/* The BA's live `Total allocated`: what the Feature's Estimated becomes once applied. It sits
+            below the rows because it is their sum, and it counts a blank row as the top-down
+            estimate — which is what Apply will store for it. */}
+        <div className="flex items-center justify-between border-t border-border-inner pt-1.5">
+          <span className="text-ui-sm font-semibold text-muted-foreground">
+            {t('allocate.totalAllocated')}
+          </span>
+          <span className="text-ui-md font-semibold text-foreground tabular-nums">
+            {totalAllocated}
+          </span>
         </div>
 
         <p className="text-ui-xs text-foreground-subtle">{t('allocate.defaultHint')}</p>

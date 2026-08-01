@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { ArrowRightLeft, Scale, Trash2, Undo2 } from 'lucide-react'
+import { ArrowDown, ArrowRightLeft, ArrowUp, Scale, Trash2, Undo2 } from 'lucide-react'
 
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 
@@ -18,6 +18,8 @@ import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 export function CapacityItemActions({
   itemKey,
   hasTeams,
+  onMoveUp,
+  onMoveDown,
   onAllocate,
   onMove,
   onUnassign,
@@ -27,6 +29,16 @@ export function CapacityItemActions({
   itemKey: string
   /** Whether this Feature holds any team, which is what makes `Remove All Assignments` meaningful. */
   hasTeams: boolean
+  /**
+   * The BA's `Move up` / `Move down`: reorder by one position instead of dragging.
+   *
+   * Both are omitted at the ends of the list rather than disabled — a menu item that cannot act is
+   * noise, and the row's position already says why it is absent. Rally ranks by dragging and offers
+   * no such items; these exist because the BA's catalog asks for them, and because a keyboard user
+   * has no drag.
+   */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
   /** Split this Feature across teams — Rally's `Allocate`. */
   onAllocate?: () => void
   /** Rally's `Move To Another Plan`: plan this Feature in a different plan of the same project. */
@@ -39,12 +51,29 @@ export function CapacityItemActions({
   const { t } = useTranslation('capacity')
 
   const showUnassign = onUnassign !== undefined && hasTeams
-  if (onAllocate === undefined && onMove === undefined && !showUnassign && onRemove === undefined) {
+  if (
+    onAllocate === undefined &&
+    onMove === undefined &&
+    onMoveUp === undefined &&
+    onMoveDown === undefined &&
+    !showUnassign &&
+    onRemove === undefined
+  ) {
     return null
   }
 
   return (
     <ActionMenu ariaLabel={t('items.actionsLabel', { item: itemKey })}>
+      {onMoveUp !== undefined && (
+        <ActionMenuItem icon={<ArrowUp size={13} />} label={t('items.moveUp')} onClick={onMoveUp} />
+      )}
+      {onMoveDown !== undefined && (
+        <ActionMenuItem
+          icon={<ArrowDown size={13} />}
+          label={t('items.moveDown')}
+          onClick={onMoveDown}
+        />
+      )}
       {onAllocate !== undefined && (
         <ActionMenuItem
           icon={<Scale size={13} />}

@@ -49,11 +49,11 @@ export function TeamAllocationsTable({
    */
   rankPositionOf: (portfolioItemId: string) => number | null
   /**
-   * Who else holds this Feature: its owning team when that is not this table's, and the other teams
-   * it was allocated to when this table's team owns it.
+   * Who else holds this Feature: the team carrying its PLAN assignment when that is not this table's,
+   * and the other teams it was allocated to when this table's team holds the assignment.
    *
-   * Resolved by the page from the plan's allocation list — a nested table only sees its own rows, so
-   * it cannot tell whether a Feature is shared.
+   * Resolved by the page — a nested table only sees its own rows, so it cannot tell whether a Feature
+   * is shared, and Rally's `Allocation` cell is entirely about that.
    */
   sharingOf: (portfolioItemId: string) => { owner: string | null; contributors: string[] }
   /**
@@ -78,6 +78,8 @@ export function TeamAllocationsTable({
     hasTeams: boolean
     onAllocate?: () => void
     onMove?: () => void
+    onMoveUp?: () => void
+    onMoveDown?: () => void
     onUnassign?: () => void
     onRemove?: () => void
   }
