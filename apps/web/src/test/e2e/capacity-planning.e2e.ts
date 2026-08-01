@@ -172,6 +172,23 @@ test.describe('Capacity Planning', () => {
       dialog.getByText(/Delivered 50% of the time|not finished an iteration|Less than 14 days/),
     ).toBeVisible()
 
+    // ── A velocity the PLANNER supplies ──────────────────────────────────────
+    // The BA's version of this dialog: it "proposes capacities from a supplied historic
+    // velocity" (SRS:142), so the number is an input and not a derivation. Unlike the sampled
+    // branch above this is NOT run-order dependent — the planner's own number does not depend
+    // on whether another spec mutated the seeded Story's schedule state.
+    await dialog.getByLabel(/Historic velocity per iteration/).fill('0')
+    await dialog.getByRole('button', { name: 'Calculate', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toBeVisible()
+
+    await dialog.getByLabel(/Historic velocity per iteration/).fill('30')
+    await dialog.getByRole('button', { name: 'Calculate', exact: true }).click()
+    // Either the proposal, or the one named reason a supplied velocity can still fail: with no
+    // iteration dates anywhere there is no cadence to spread it over.
+    await expect(
+      dialog.getByText(/From the velocity you supplied|cannot be spread over/),
+    ).toBeVisible()
+
     // Nothing was written: the capacity cell is still blank until a line is adopted.
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
     await expect(dialog).toBeHidden()

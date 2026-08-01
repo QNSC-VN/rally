@@ -217,6 +217,9 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         // Feature owned elsewhere, and the planner needs to see that before allocating to it.
         itemProjectId: portfolioItems.projectId,
         itemProjectName: projects.name,
+        // The Feature's OWN team, for the BA's `Team` column.
+        itemTeamId: portfolioItems.teamId,
+        itemTeamName: teams.name,
         itemArchivedAt: portfolioItems.archivedAt,
         itemReleaseId: portfolioItems.releaseId,
         itemState: portfolioItems.state,
@@ -268,6 +271,8 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       // LEFT, not INNER: the name is decoration on a row that must render regardless. An inner
       // join here would make a Feature disappear from the plan if its project row were missing.
       .leftJoin(projects, eq(projects.id, portfolioItems.projectId))
+      // LEFT, like `projects`: a Feature with no team still has to render.
+      .leftJoin(teams, eq(teams.id, portfolioItems.teamId))
       .where(eq(capacityPlanAllocations.planId, plan.id))
       // Unallocated last, then by the Feature's own RANK — not its key.
       //
@@ -287,6 +292,8 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       name: row.name,
       itemProjectId: row.itemProjectId,
       itemProjectName: row.itemProjectName,
+      itemTeamId: row.itemTeamId,
+      itemTeamName: row.itemTeamName,
       itemArchivedAt: row.itemArchivedAt,
       itemReleaseId: row.itemReleaseId,
       state: row.itemState,
@@ -315,10 +322,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       .select()
       .from(capacityPlanAllocations)
       .where(
-        and(
-          eq(capacityPlanAllocations.planId, planId),
-          eq(capacityPlanAllocations.teamId, teamId),
-        ),
+        and(eq(capacityPlanAllocations.planId, planId), eq(capacityPlanAllocations.teamId, teamId)),
       )
       // `id` last so the order is total: two rows written in one statement share a `created_at`.
       .orderBy(capacityPlanAllocations.createdAt, capacityPlanAllocations.id);
@@ -701,6 +705,34 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       // Inclusive of both endpoints: a Mon–Fri iteration is 5 days of delivery, not 4.
       days: daysInclusive(row.startDate, row.endDate),
     }));
+  }
+
+  async projectIterationCadenceDays(
+    projectId: string,
+    workspaceId: string,
+  ): Promise<number | null> {
+    const rows = await this.db
+      .select({
+        // Inclusive of both endpoints, matching `daysInclusive` on the velocity samples — a
+        // Mon–Fri iteration is 5 days of delivery, not 4.
+        days: sql<string | null>`avg(${iterations.endDate} - ${iterations.startDate} + 1)`,
+      })
+      .from(iterations)
+      .where(
+        and(
+          eq(iterations.workspaceId, workspaceId),
+          eq(iterations.projectId, projectId),
+          isNotNull(iterations.startDate),
+          isNotNull(iterations.endDate),
+        ),
+      );
+
+    // `avg` over no rows is NULL, which is the "this project runs no dated iterations" answer
+    // rather than a cadence of zero.
+    const days = rows[0]?.days;
+    if (days === null || days === undefined) return null;
+    const parsed = Number(days);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
 
   private mapAllocation(row: typeof capacityPlanAllocations.$inferSelect): CapacityAllocation {

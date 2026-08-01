@@ -14,7 +14,7 @@ export type CapacityItemSortField =
   | 'itemKey'
   | 'name'
   | 'assignment'
-  | 'project'
+  | 'team'
   | 'dependencies'
   | 'rollup'
   | 'estimated'
@@ -75,8 +75,8 @@ export function sortCapacityItems(
         return byText(a.name, b.name, direction)
       case 'assignment':
         return byText(teamNameOf(a.primaryTeamId), teamNameOf(b.primaryTeamId), direction)
-      case 'project':
-        return byText(a.projectName, b.projectName, direction)
+      case 'team':
+        return byText(a.teamName, b.teamName, direction)
       // Reserved alongside the column: every Feature reports zero dependencies until there is a
       // dependency model, so this is a stable no-op rather than a missing case.
       case 'dependencies':

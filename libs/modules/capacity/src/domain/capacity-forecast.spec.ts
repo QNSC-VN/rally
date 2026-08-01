@@ -186,6 +186,80 @@ describe('forecastCapacity', () => {
     expect(r.median).toBe(20);
   });
 
+  describe('a velocity the PLANNER supplied', () => {
+    // The BA's reading: "proposes capacities from a supplied historic velocity" (SRS:142), with
+    // velocity-driven AUTOMATIC capacity out of scope (SRS:418). So it is an input, not a
+    // derivation, and it replaces the sampled history rather than adjusting it.
+
+    it('multiplies the supplied velocity by the modelled iterations', () => {
+      // 30 per iteration over a 56-day window on the history's 14-day cadence = 4 × 30.
+      const r = forecastCapacity(input({ velocityPerIteration: 30 }));
+      expect(r.basis).toBe('supplied');
+      expect(r.iterationsModelled).toBe(4);
+      expect([r.min, r.median, r.max]).toEqual([120, 120, 120]);
+    });
+
+    it('reports NO spread, because one number carries none', () => {
+      // Against ERRATIC history, whose sampled forecast is deliberately wide — proving the
+      // supplied number replaced the samples instead of being blended with them.
+      const r = forecastCapacity(input({ samples: ERRATIC, velocityPerIteration: 20 }));
+      expect(r.min).toBe(r.max);
+      expect(forecastCapacity(input({ samples: ERRATIC })).min).toBeLessThan(
+        forecastCapacity(input({ samples: ERRATIC })).max,
+      );
+    });
+
+    it('forecasts for a team with NO history at all, on the project cadence', () => {
+      // The case a supplied velocity exists for: nothing to sample, so the history gates must
+      // not apply. 56-day window ÷ a 7-day cadence = 8 iterations of 10.
+      const r = forecastCapacity(
+        input({ samples: [], velocityPerIteration: 10, fallbackIterationDays: 7 }),
+      );
+      expect(r.insufficientData).toBeNull();
+      expect(r.iterationsModelled).toBe(8);
+      expect(r.median).toBe(80);
+    });
+
+    it('ignores the 14-day minimum, which is a statement about SAMPLING', () => {
+      const r = forecastCapacity(
+        input({ samples: [sample(20, { days: 3 })], velocityPerIteration: 25 }),
+      );
+      expect(r.insufficientData).toBeNull();
+      expect(r.basis).toBe('supplied');
+    });
+
+    it('still scales by availability and complexity', () => {
+      // Those describe the window being planned, not where the velocity came from.
+      const r = forecastCapacity(
+        input({ velocityPerIteration: 30, availabilityPct: 50, complexity: 'many_unknowns' }),
+      );
+      expect(r.median).toBe(30);
+    });
+
+    it('still needs a window', () => {
+      expect(
+        forecastCapacity(input({ velocityPerIteration: 30, windowDays: 0 })).insufficientData,
+      ).toBe('no_window');
+    });
+
+    it('reports no cadence rather than assuming a sprint length', () => {
+      // No history to average and no project cadence: "so many points per iteration" cannot be
+      // spread over a window until something says how long an iteration is. Guessing two weeks
+      // would put a number on screen that no data supports.
+      const r = forecastCapacity(input({ samples: [], velocityPerIteration: 30 }));
+      expect(r.insufficientData).toBe('no_cadence');
+      expect(r.median).toBe(0);
+    });
+
+    it('falls back to sampling when the supplied velocity is absent or not positive', () => {
+      for (const velocityPerIteration of [undefined, null, 0]) {
+        const r = forecastCapacity(input({ velocityPerIteration }));
+        expect(r.basis).toBe('history');
+        expect(r.median).toBe(80);
+      }
+    });
+  });
+
   it('tolerates a zero-length iteration in the history without dividing by it', () => {
     const r = forecastCapacity(input({ samples: [sample(20, { days: 0 }), sample(30)] }));
     expect(r.insufficientData).toBeNull();

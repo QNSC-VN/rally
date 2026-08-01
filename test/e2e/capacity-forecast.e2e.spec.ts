@@ -266,6 +266,49 @@ describe('capacity forecast (e2e)', () => {
     expect(halved.median).toBeGreaterThanOrEqual(0);
   });
 
+  it("uses a SUPPLIED velocity, and the project's real cadence for a team with no history", async () => {
+    /**
+     * The BA's reading of this dialog: it "proposes capacities from a supplied historic
+     * velocity" (`02_Capacity_Planning/SRS.md:142`). Driven against a team created HERE, which
+     * has finished nothing — the case the override exists for, and the one where the cadence has
+     * to come from the project's iterations rather than from history the team does not have.
+     * (Teams A and B both pick up history from the fixtures above, so neither can prove this.)
+     *
+     * The fixtures run 14-day iterations and the plan's window is 28 days, so 2 × 30 = 60. The
+     * cadence is read out of real SQL here, which is the half a pure test cannot cover.
+     */
+    const newcomer = await newTeam('Forecast newcomer');
+    await projects.linkTeam(WORKSPACE_ID, projectId, newcomer);
+    await capacity.addTeam(admin, planId, newcomer);
+
+    const result = await capacity.forecastTeamCapacity(admin, planId, newcomer, {
+      availabilityPct: 100,
+      complexity: 'typical',
+      velocityPerIteration: 30,
+    });
+
+    expect(result.insufficientData).toBeNull();
+    expect(result.basis).toBe('supplied');
+    expect(result.samplesUsed).toBe(0);
+    expect(result.iterationsModelled).toBe(2);
+    expect([result.min, result.median, result.max]).toEqual([60, 60, 60]);
+  });
+
+  it("prefers the TEAM's own cadence over the project's when it has history", async () => {
+    // Team A has finished iterations, so a supplied velocity is spread over ITS cadence — the
+    // project average is not consulted at all.
+    const sampled = await forecast(teamAId);
+    const result = await capacity.forecastTeamCapacity(admin, planId, teamAId, {
+      availabilityPct: 100,
+      complexity: 'typical',
+      velocityPerIteration: 30,
+    });
+
+    expect(result.basis).toBe('supplied');
+    expect(result.iterationsModelled).toBe(sampled.iterationsModelled);
+    expect(result.median).toBe(30 * sampled.iterationsModelled);
+  });
+
   it('refuses a team that is not on the plan', async () => {
     const stranger = await newTeam('Not on plan');
     await expect(forecast(stranger)).rejects.toMatchObject({ code: 'CAPACITY_TEAM_NOT_FOUND' });

@@ -197,15 +197,27 @@ export function useForecastCapacity() {
       teamId,
       availabilityPct,
       complexity,
+      velocityPerIteration,
     }: {
       id: string
       teamId: string
       availabilityPct: number
       complexity: CapacityForecastComplexity
+      /** The BA's supplied velocity per iteration. Omitted, the API samples history. */
+      velocityPerIteration?: number
     }) => {
       const { data, error, response } = await apiClient.POST(
         '/v1/capacity-plans/{id}/teams/{teamId}/forecast',
-        { params: { path: { id, teamId } }, body: { availabilityPct, complexity } },
+        {
+          params: { path: { id, teamId } },
+          // Omitted rather than sent as null when empty: the field is optional on the wire and
+          // absence is what selects Rally's history-sampled forecast.
+          body: {
+            availabilityPct,
+            complexity,
+            ...(velocityPerIteration !== undefined && { velocityPerIteration }),
+          },
+        },
       )
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as CapacityForecast

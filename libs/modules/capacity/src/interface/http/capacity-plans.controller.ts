@@ -70,6 +70,8 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       rank: item.rank,
       projectId: item.projectId,
       projectName: item.projectName,
+      teamId: item.teamId,
+      teamName: item.teamName,
       releaseId: item.releaseId,
       estimated: item.estimated,
       rollup: item.rollup,
@@ -294,6 +296,7 @@ export class CapacityPlansController {
     return this.service.forecastTeamCapacity(user, id, teamId, {
       availabilityPct: body.availabilityPct,
       complexity: body.complexity,
+      velocityPerIteration: body.velocityPerIteration ?? null,
     });
   }
 

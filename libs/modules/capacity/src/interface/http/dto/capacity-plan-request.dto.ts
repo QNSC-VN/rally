@@ -142,6 +142,18 @@ export const ForecastCapacitySchema = z.object({
   complexity: z
     .enum(['well_understood', 'typical', 'minor_concerns', 'major_concerns', 'many_unknowns'])
     .default('typical'),
+  /**
+   * A velocity the planner supplies, per iteration, in the plan's unit.
+   *
+   * The BA's version of this feature is a proposal "from a supplied historic velocity"
+   * (`02_Capacity_Planning/SRS.md:142`), so it is an INPUT here rather than something derived —
+   * "velocity-driven automatic capacity" is out of scope (SRS:418). Omitted, the forecast
+   * samples the team's own accepted history, which is what Rally does.
+   *
+   * Capped at 100000: past that it is a typo, and a proposal in the millions is worse than no
+   * proposal because a planner may adopt it with one click.
+   */
+  velocityPerIteration: z.coerce.number().positive().max(100_000).optional(),
 });
 export class ForecastCapacityDto extends createZodDto(ForecastCapacitySchema) {}
 

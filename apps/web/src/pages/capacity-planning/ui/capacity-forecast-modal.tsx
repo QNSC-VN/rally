@@ -57,6 +57,7 @@ export function CapacityForecastModal({
 
   const [availability, setAvailability] = useState('100')
   const [complexity, setComplexity] = useState<CapacityForecastComplexity>('typical')
+  const [velocity, setVelocity] = useState('')
   const [result, setResult] = useState<CapacityForecast | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -64,6 +65,14 @@ export function CapacityForecastModal({
     const parsed = Number(availability.trim())
     if (!Number.isFinite(parsed) || parsed < 1 || parsed > 500) {
       setError(t('forecast.availabilityInvalid'))
+      return
+    }
+    // Empty is the DEFAULT, not an error: with nothing supplied this is Rally's forecast,
+    // sampled from the team's history.
+    const typed = velocity.trim()
+    const supplied = typed === '' ? undefined : Number(typed)
+    if (supplied !== undefined && !(Number.isFinite(supplied) && supplied > 0)) {
+      setError(t('forecast.velocityInvalid'))
       return
     }
     setError(null)
@@ -74,6 +83,7 @@ export function CapacityForecastModal({
           teamId: team.teamId,
           availabilityPct: Math.round(parsed),
           complexity,
+          velocityPerIteration: supplied,
         }),
       )
     } catch (err) {
@@ -117,6 +127,20 @@ export function CapacityForecastModal({
         {/* Rally's own guidance: 100 for a stable team, 200 if it doubled, 50 if halved. */}
         <p className="text-ui-xs text-foreground-subtle">{t('forecast.availabilityHint')}</p>
 
+        {/* The BA's own reading of this dialog: it "proposes capacities from a SUPPLIED historic
+            velocity" (SRS:142), while Rally derives one. Optional, so both readings live in one
+            dialog rather than two — empty samples history, filled uses the planner's number. */}
+        <FormField label={t('forecast.velocityLabel')} htmlFor="forecast-velocity">
+          <Input
+            id="forecast-velocity"
+            value={velocity}
+            onChange={(e) => setVelocity(e.target.value)}
+            inputMode="decimal"
+            placeholder={unitLabel}
+          />
+        </FormField>
+        <p className="text-ui-xs text-foreground-subtle">{t('forecast.velocityHint')}</p>
+
         <FormField label={t('forecast.complexityLabel')}>
           <SearchableSelect
             variant="field"
@@ -153,12 +177,16 @@ export function CapacityForecastModal({
               </>
             ) : (
               <>
+                {/* Which basis produced the number, because three identical lines mean something
+                    different from three that happen to agree. */}
                 <p className="text-ui-xs text-foreground-subtle">
-                  {t('forecast.basis', {
-                    iterations: result.samplesUsed,
-                    days: result.historyDays,
-                    modelled: result.iterationsModelled,
-                  })}
+                  {result.basis === 'supplied'
+                    ? t('forecast.suppliedBasis', { modelled: result.iterationsModelled })
+                    : t('forecast.basis', {
+                        iterations: result.samplesUsed,
+                        days: result.historyDays,
+                        modelled: result.iterationsModelled,
+                      })}
                 </p>
                 <table className="mt-2 w-full text-ui-sm tabular-nums">
                   <tbody>

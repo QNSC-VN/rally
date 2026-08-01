@@ -4350,10 +4350,13 @@ export interface components {
         rank: string
         /**
          * Format: uuid
-         * @description The Feature's OWN project — Rally's Project column
+         * @description The Feature's OWN project. No column shows it — the eligibility rules and `Move To Another Plan` are expressed in it
          */
         projectId: string
         projectName: string | null
+        /** @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan */
+        teamId: string | null
+        teamName: string | null
         /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
         releaseId: string | null
         /** @description Committed demand summed over this Feature’s allocations */
@@ -4542,10 +4545,13 @@ export interface components {
           rank: string
           /**
            * Format: uuid
-           * @description The Feature's OWN project — Rally's Project column
+           * @description The Feature's OWN project. No column shows it — the eligibility rules and `Move To Another Plan` are expressed in it
            */
           projectId: string
           projectName: string | null
+          /** @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan */
+          teamId: string | null
+          teamName: string | null
           /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
           releaseId: string | null
           /** @description Committed demand summed over this Feature’s allocations */
@@ -4723,10 +4729,13 @@ export interface components {
           rank: string
           /**
            * Format: uuid
-           * @description The Feature's OWN project — Rally's Project column
+           * @description The Feature's OWN project. No column shows it — the eligibility rules and `Move To Another Plan` are expressed in it
            */
           projectId: string
           projectName: string | null
+          /** @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan */
+          teamId: string | null
+          teamName: string | null
           /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
           releaseId: string | null
           /** @description Committed demand summed over this Feature’s allocations */
@@ -4834,6 +4843,7 @@ export interface components {
        */
       complexity:
         'well_understood' | 'typical' | 'minor_concerns' | 'major_concerns' | 'many_unknowns'
+      velocityPerIteration?: number
     }
     CapacityForecastResponseDto: {
       /** @description Delivered 85% of the time — the conservative commitment */
@@ -4848,7 +4858,12 @@ export interface components {
       samplesUsed: number
       /** @description Calendar days of history behind the forecast */
       historyDays: number
-      insufficientData: ('no_history' | 'too_little_history' | 'no_window') | null
+      /**
+       * @description Whether the velocity was sampled from history or supplied by the planner
+       * @enum {string}
+       */
+      basis: 'history' | 'supplied'
+      insufficientData: ('no_history' | 'too_little_history' | 'no_window' | 'no_cadence') | null
     }
     SetCapacityDto: {
       capacity: number | null
@@ -4936,10 +4951,13 @@ export interface components {
           rank: string
           /**
            * Format: uuid
-           * @description The Feature's OWN project — Rally's Project column
+           * @description The Feature's OWN project. No column shows it — the eligibility rules and `Move To Another Plan` are expressed in it
            */
           projectId: string
           projectName: string | null
+          /** @description The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan */
+          teamId: string | null
+          teamName: string | null
           /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
           releaseId: string | null
           /** @description Committed demand summed over this Feature’s allocations */

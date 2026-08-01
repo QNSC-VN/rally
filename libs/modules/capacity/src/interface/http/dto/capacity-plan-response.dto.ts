@@ -112,8 +112,21 @@ const CapacityPlanItemSchema = z.object({
   itemKey: z.string(),
   name: z.string(),
   rank: z.string().describe('LexoRank — the order the cutline accumulates down'),
-  projectId: z.string().uuid().describe("The Feature's OWN project — Rally's Project column"),
+  projectId: z
+    .string()
+    .uuid()
+    .describe(
+      "The Feature's OWN project. No column shows it — the eligibility rules and `Move To Another Plan` are expressed in it",
+    ),
   projectName: z.string().nullable(),
+  teamId: z
+    .string()
+    .uuid()
+    .nullable()
+    .describe(
+      "The team that OWNS the Feature — the BA's `Team` column. Not `primaryTeamId`, which is ownership INSIDE this plan",
+    ),
+  teamName: z.string().nullable(),
   releaseId: z
     .string()
     .uuid()
@@ -128,7 +141,7 @@ const CapacityPlanItemSchema = z.object({
   warnings: z
     .array(CapacityWarningEnum)
     .describe(
-      "The Feature-level rules the BA specifies for this tab: rollup exceeds estimated, and no estimate at all. A Feature has no capacity of its own, so the capacity comparisons cannot fire here",
+      'The Feature-level rules the BA specifies for this tab: rollup exceeds estimated, and no estimate at all. A Feature has no capacity of its own, so the capacity comparisons cannot fire here',
     ),
   estimateBreakdown: z
     .object({
@@ -212,7 +225,12 @@ const ForecastSchema = z.object({
   iterationsModelled: z.number().int().describe("Plan window ÷ the team's average cadence"),
   samplesUsed: z.number().int().describe('Finished iterations that fed the sampler'),
   historyDays: z.number().int().describe('Calendar days of history behind the forecast'),
-  insufficientData: z.enum(['no_history', 'too_little_history', 'no_window']).nullable(),
+  basis: z
+    .enum(['history', 'supplied'])
+    .describe('Whether the velocity was sampled from history or supplied by the planner'),
+  insufficientData: z
+    .enum(['no_history', 'too_little_history', 'no_window', 'no_cadence'])
+    .nullable(),
 });
 export class CapacityForecastResponseDto extends createZodDto(ForecastSchema) {}
 
