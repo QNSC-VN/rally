@@ -213,6 +213,13 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         scheduleState: workItems.scheduleState,
         storyPoints: workItems.storyPoints,
         rank: workItems.rank,
+        // The IDs, not just the display names. Every one of these joins was already here;
+        // only the names were selected, which left the grid unable to bind a picker to
+        // anything and forced the disclosed Story/Defect rows to be read-only.
+        projectId: workItems.projectId,
+        releaseId: workItems.releaseId,
+        teamId: workItems.teamId,
+        assigneeId: workItems.assigneeId,
         releaseName: releases.name,
         projectName: projects.name,
         teamName: teams.name,
@@ -235,6 +242,10 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       title: r.title,
       scheduleState: r.scheduleState,
       storyPoints: r.storyPoints,
+      projectId: r.projectId,
+      releaseId: r.releaseId,
+      teamId: r.teamId,
+      assigneeId: r.assigneeId,
       releaseName: r.releaseName,
       projectName: r.projectName,
       teamName: r.teamName,
@@ -322,8 +333,10 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         description: input.description ?? null,
         ...(input.state ? { state: input.state } : {}),
         ...(input.preliminaryEstimate ? { preliminaryEstimate: input.preliminaryEstimate } : {}),
-        refinedEstimate: input.refinedEstimate ?? null,
-        refinedItemCountEstimate: input.refinedItemCountEstimate ?? null,
+        // NOT NULL DEFAULT 0 (0079): 0 is the "not forecast" value, so an omitted
+        // forecast is stored as 0 rather than null.
+        refinedEstimate: input.refinedEstimate ?? '0',
+        refinedItemCountEstimate: input.refinedItemCountEstimate ?? 0,
         parentId: input.parentId ?? null,
         teamId: input.teamId ?? null,
         releaseId: input.releaseId ?? null,
@@ -356,6 +369,9 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
 
     assign('name');
     assign('description');
+    // A project MOVE. Listed here because this `assign` list is explicit: a field absent
+    // from it is silently dropped, so the PATCH would 200 with nothing changed.
+    assign('projectId');
     assign('state');
     assign('preliminaryEstimate');
     assign('refinedEstimate');

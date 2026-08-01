@@ -96,7 +96,7 @@ export function CapacityForecastModal({
       open
       onClose={onClose}
       title={t('forecast.title')}
-      subtitle={t('forecast.subtitle', { team: team.teamName ?? '—' })}
+      subtitle={t('forecast.subtitle', { team: team.teamName ?? '--' })}
       width={520}
     >
       <ModalBody className="space-y-4">

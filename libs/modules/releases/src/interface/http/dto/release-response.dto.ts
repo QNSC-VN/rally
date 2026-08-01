@@ -11,7 +11,8 @@ const TaskRollupSchema = z.object({
   totalPoints: z.number(),
   completedPoints: z.number(),
   toDoPoints: z.number(),
-  progressPercent: z.number(),
+  /** Null when not computable: nothing linked, or nothing estimated and not all done. */
+  progressPercent: z.number().nullable(),
 });
 
 const ReleaseListItemSchema = z.object({

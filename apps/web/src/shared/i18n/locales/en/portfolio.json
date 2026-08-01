@@ -11,7 +11,10 @@
   "filters": {
     "type": "Type",
     "state": "State",
-    "allStates": "All states"
+    "allStates": "All states",
+    "project": "Project",
+    "allProjects": "All projects",
+    "currentProject": "Current project"
   },
   "metrics": {
     "total": "Total",
@@ -32,7 +35,7 @@
     "cancelled": "Cancelled"
   },
   "sizes": {
-    "no_entry": "—",
+    "no_entry": "--",
     "xs": "XS",
     "s": "S",
     "m": "M",
@@ -41,7 +44,18 @@
   },
   "row": {
     "nameUpdated": "Name updated",
-    "stateUpdated": "State updated"
+    "stateUpdated": "State updated",
+    "ownerUpdated": "Owner updated",
+    "releaseUpdated": "Release updated",
+    "teamUpdated": "Team updated",
+    "expandFeatures": "Expand child Features",
+    "collapseFeatures": "Collapse child Features",
+    "expandItems": "Expand linked Stories and Defects",
+    "collapseItems": "Collapse linked Stories and Defects",
+    "loadingChildren": "Loading…",
+    "noChildFeatures": "No child Features.",
+    "noChildItems": "No linked Stories or Defects.",
+    "projectMoved": "Moved to another project — Team and Release were reset"
   },
   "health": {
     "state": {

@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { workItemTypeEnum, workItemScheduleStateEnum } from '../../../../../../../db/schema/enums';
 
 export const IterationStatusMetricsSchema = z.object({
-  plannedVelocityPercent: z.number().int(),
+  /** Null when the iteration has NO velocity target — see the service. */
+  plannedVelocityPercent: z.number().int().nullable(),
   acceptedPoints: z.number(),
-  plannedVelocity: z.number().int(),
+  /** Null when no target was set. `iterations.planned_velocity` is nullable. */
+  plannedVelocity: z.number().int().nullable(),
   acceptedPercent: z.number().int(),
   totalPlanEstimate: z.number(),
   daysLeft: z.number().int().nullable(),

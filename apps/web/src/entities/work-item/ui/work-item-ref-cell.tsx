@@ -25,11 +25,15 @@ interface WorkItemRefCellProps {
 
 /**
  * `<WorkItemRefCell>` — the single source of truth for rendering a work-item
- * reference: the type glyph followed by `KEY: Title`, truncated with the full
- * text on hover (Broadcom Rally parity). Shared by every grid (inline variant)
- * and every detail sidebar (pill variant) so a work-item reference renders
- * identically everywhere. Stops click propagation so it opens the referenced
- * item, not the surrounding row.
+ * reference: the type glyph followed by `KEY: Title`. Shared by every grid (inline
+ * variant) and every detail sidebar (pill variant) so a work-item reference renders
+ * identically everywhere. Stops click propagation so it opens the referenced item, not
+ * the surrounding row.
+ *
+ * The two variants differ on long text, deliberately: `inline` WRAPS, because a grid row
+ * uses `min-h-*` and can grow, and the title is free text; `pill` still truncates,
+ * because it sits in a fixed-width detail sidebar where growth would push the rest of
+ * the panel around.
  */
 export function WorkItemRefCell({
   type,
@@ -63,7 +67,11 @@ export function WorkItemRefCell({
       type="button"
       onClick={open}
       title={label}
-      className="inline-flex max-w-full cursor-pointer items-center gap-1.5 border-none bg-transparent p-0"
+      // `items-start` + wrapping label: the reference carries a work-item TITLE, which is
+      // free text of unbounded length, and every grid that shows it uses `min-h-*` rows
+      // that can grow. `items-start` keeps the type glyph on the first line instead of
+      // floating to the vertical middle of a two-line title.
+      className="inline-flex max-w-full cursor-pointer items-start gap-1.5 border-none bg-transparent p-0"
       onMouseOver={(e) => {
         e.currentTarget.style.textDecoration = 'underline'
       }}
@@ -72,7 +80,7 @@ export function WorkItemRefCell({
       }}
     >
       <TypeBadge type={type} size={16} />
-      <span className="truncate text-ui-sm text-primary-light">{label}</span>
+      <span className="text-ui-sm break-words whitespace-normal text-primary-light">{label}</span>
     </button>
   )
 }

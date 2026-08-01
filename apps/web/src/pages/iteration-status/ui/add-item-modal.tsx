@@ -118,7 +118,7 @@ export function AddItemModal({
         {/* Project / Team / Iteration — read-only context (P2-IS-FR-044/045) */}
         <div className="grid grid-cols-2 gap-3">
           <FormField label={t('create.projectLabel', 'Project')}>
-            <div className={roBox}>{project?.projectName ?? '—'}</div>
+            <div className={roBox}>{project?.projectName ?? '--'}</div>
           </FormField>
           <FormField label={t('create.teamLabel', 'Team')}>
             <div className={roBox}>{teamName}</div>

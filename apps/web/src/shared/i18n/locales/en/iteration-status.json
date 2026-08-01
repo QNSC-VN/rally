@@ -19,7 +19,8 @@
     "defects": "Defects",
     "tasksActive": "{{value}} Active",
     "tasks": "Tasks",
-    "viewCharts": "View Charts"
+    "viewCharts": "View Charts",
+    "noVelocityTarget": "No velocity target set"
   },
   "toolbar": {
     "addNew": "Add New",
@@ -75,7 +76,7 @@
     "noMilestones": "No milestones in this project",
     "editMilestones": "Edit milestones",
     "searchMilestones": "Search milestones",
-    "milestoneNone": "—",
+    "milestoneNone": "--",
     "defectNone": "None",
     "defectClosed": "Closed",
     "defectOpen": "{{value}} Open"

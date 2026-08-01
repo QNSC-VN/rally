@@ -159,7 +159,7 @@ export function RepositoryList({ workspaceId }: RepositoryListProps) {
                         <td className="px-3 py-2 text-foreground-subtle">
                           {r.lastSync
                             ? `${t('integrations.repos.prs', { count: r.lastSync.prs })} · ${t('integrations.repos.commits', { count: r.lastSync.commits })}`
-                            : '—'}
+                            : '--'}
                         </td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">
                           <IconButton

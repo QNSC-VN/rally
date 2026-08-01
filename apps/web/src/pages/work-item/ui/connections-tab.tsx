@@ -53,7 +53,11 @@ function ExtLink({ href, children }: { href: string; children: React.ReactNode }
       href={href}
       target="_blank"
       rel="noreferrer noopener"
-      className="truncate text-primary hover:underline"
+      // `break-all`, not `break-words`: a URL or a file path has no spaces, so the normal
+      // word-breaking rules find nowhere to break and the text would overflow instead of
+      // wrapping. Breaking mid-token is the only way to show the whole value, and the tail
+      // (the filename, the query) is usually the part worth reading.
+      className="break-all text-primary hover:underline"
       onClick={(e) => e.stopPropagation()}
     >
       {children}
@@ -77,7 +81,7 @@ const CONNECTION_COLUMNS: ColumnSpec<ScmConnection, ScmCtx, ConnColKey>[] = [
     // Name is plain text; the Url column carries the link (matches Rally).
     cell: (c) => (
       <span className="flex min-w-0 items-center gap-1.5">
-        <span className="truncate text-foreground" title={c.name}>
+        <span className="break-words whitespace-normal text-foreground" title={c.name}>
           {c.name}
         </span>
         {c.state ? <span className="text-ui-xs text-foreground-subtle">({c.state})</span> : null}
@@ -122,9 +126,10 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     defaultWidth: 240,
     minWidth: 120,
     locked: true,
-    cellClassName: 'flex min-w-0 items-center px-2',
+    // `items-start` so a wrapped identifier stays aligned with the top of its row.
+    cellClassName: 'flex min-w-0 items-start px-2',
     cell: (c) => (
-      <span className="block truncate font-mono" title={c.name}>
+      <span className="block font-mono break-all" title={c.name}>
         {c.uri ? <ExtLink href={c.uri}>{c.name}</ExtLink> : c.name}
       </span>
     ),
@@ -138,8 +143,8 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     grow: true,
     cellClassName: 'flex min-w-0 items-center px-2',
     cell: (c) => (
-      <span className="block truncate" title={c.message ?? ''}>
-        {c.message ?? '—'}
+      <span className="block break-words whitespace-normal" title={c.message ?? ''}>
+        {c.message ?? '--'}
       </span>
     ),
   },
@@ -152,13 +157,13 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     cellClassName: 'flex min-w-0 flex-col justify-center gap-0.5 px-2 py-1',
     cell: (c) =>
       c.changes.length === 0 ? (
-        <span className="text-muted-foreground">—</span>
+        <span className="text-muted-foreground">--</span>
       ) : (
         <>
           {c.changes.map((x) => (
             <span
               key={x.path}
-              className="truncate font-mono text-ui-xs"
+              className="font-mono text-ui-xs break-all"
               title={`${x.action} ${x.path}`}
             >
               <span className="mr-1 text-foreground-subtle">{x.action}</span>
@@ -175,7 +180,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     defaultWidth: 160,
     minWidth: 100,
     cellClassName: 'flex items-center px-2',
-    accessor: (c) => c.authorName ?? '—',
+    accessor: (c) => c.authorName ?? '--',
     type: 'text',
   },
   {
@@ -193,7 +198,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
     defaultWidth: 280,
     minWidth: 140,
     cellClassName: 'flex min-w-0 items-center px-2',
-    cell: (c) => (c.uri ? <ExtLink href={c.uri}>{c.uri}</ExtLink> : <span>—</span>),
+    cell: (c) => (c.uri ? <ExtLink href={c.uri}>{c.uri}</ExtLink> : <span>--</span>),
   },
 ]
 

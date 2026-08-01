@@ -897,7 +897,7 @@ function BacklogRow({
             onChange={(v) => patch({ priority: v as UpdateWorkItemInput['priority'] })}
           />
         ) : (
-          <span className="font-mono text-ui-xs text-foreground-disabled">—</span>
+          <span className="font-mono text-ui-xs text-foreground-disabled">--</span>
         )}
       </div>
 
@@ -915,8 +915,11 @@ function BacklogRow({
             // that, and it corrupted task-hour roll-ups.)
             if (next !== (item.storyPoints ?? null)) patch({ storyPoints: next })
           }}
-          displayValue={item.storyPoints ?? '—'}
-          className="block text-center font-mono text-muted-foreground"
+          displayValue={item.storyPoints ?? '--'}
+          // `tabular-nums` so digits keep a constant width down the column. Alignment stays
+          // CENTERED here deliberately — that is this grid's existing layout, and the shared
+          // contract's right-alignment is not worth a visible shift on an unrelated page.
+          className="block text-center font-mono text-muted-foreground tabular-nums"
           style={{ fontSize: 12 }}
           inputClassName="w-full rounded border border-primary bg-transparent px-0.5 text-center font-mono text-ui-xs text-foreground focus:outline-none"
         />
@@ -947,9 +950,9 @@ function BacklogRow({
           value={item.releaseId ?? ''}
           readOnly={!canEdit}
           ariaLabel="Release"
-          placeholder="—"
+          placeholder="--"
           options={[
-            { value: '', label: '—' },
+            { value: '', label: '--' },
             ...releases.map((r) => ({
               value: r.id,
               label: r.releaseKey ? `${r.releaseKey}: ${r.name}` : r.name,
@@ -971,9 +974,9 @@ function BacklogRow({
           value={item.iterationId ?? ''}
           readOnly={!canEdit}
           ariaLabel="Iteration"
-          placeholder="—"
+          placeholder="--"
           options={[
-            { value: '', label: '—' },
+            { value: '', label: '--' },
             // Keep the current (possibly Accepted) iteration selectable even when
             // it's absent from the assignable `iterations` list.
             ...(item.iterationId && !iterations.some((it) => it.id === item.iterationId)
@@ -984,7 +987,7 @@ function BacklogRow({
                       value: item.iterationId,
                       label: cur?.iterationKey
                         ? `${cur.iterationKey}: ${cur.name}`
-                        : (cur?.name ?? '—'),
+                        : (cur?.name ?? '--'),
                       icon: <TypeBadge type="iteration" size={16} />,
                     }
                   })(),

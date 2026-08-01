@@ -152,7 +152,7 @@ export function AllocationRow({
         style={colStyleFor('rank', { flexShrink: 0 })}
         className="px-2 text-right text-muted-foreground tabular-nums"
       >
-        {rankPosition ?? '—'}
+        {rankPosition ?? '--'}
       </div>
 
       <div style={colStyleFor('id', { flexShrink: 0 })} className="min-w-0 px-2">
@@ -167,7 +167,7 @@ export function AllocationRow({
         style={colStyleFor('name', { flexShrink: 0 })}
         className="flex min-w-0 items-center gap-2 px-2"
       >
-        <span className="truncate text-foreground" title={allocation.name}>
+        <span className="break-words whitespace-normal text-foreground" title={allocation.name}>
           {allocation.name}
         </span>
         {/* Rally marks the primary assignment on the Features tab's `Planned Team Assignment`

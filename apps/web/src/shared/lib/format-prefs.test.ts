@@ -46,8 +46,8 @@ describe('date formatting honours resolved prefs', () => {
   })
 
   it('returns the fallback for empty input', () => {
-    expect(formatDate(null)).toBe('—')
-    expect(formatDateTime(undefined)).toBe('—')
+    expect(formatDate(null)).toBe('--')
+    expect(formatDateTime(undefined)).toBe('--')
   })
 
   it('getFormatPrefs reflects the last set value', () => {

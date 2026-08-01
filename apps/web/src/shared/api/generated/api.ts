@@ -3436,9 +3436,9 @@ export interface components {
         plannedVelocity: number | null
       }
       metrics: {
-        plannedVelocityPercent: number
+        plannedVelocityPercent: number | null
         acceptedPoints: number
-        plannedVelocity: number
+        plannedVelocity: number | null
         acceptedPercent: number
         totalPlanEstimate: number
         daysLeft: number | null
@@ -3535,7 +3535,7 @@ export interface components {
         totalPoints: number
         completedPoints: number
         toDoPoints: number
-        progressPercent: number
+        progressPercent: number | null
       }
     }
     CreateReleaseDto: {
@@ -3696,7 +3696,7 @@ export interface components {
         completedItems: number
         totalPoints: number
         completedPoints: number
-        progressPercent: number
+        progressPercent: number | null
       }
       /** Format: date-time */
       createdAt: string
@@ -3748,7 +3748,7 @@ export interface components {
         completedItems: number
         totalPoints: number
         completedPoints: number
-        progressPercent: number
+        progressPercent: number | null
       }
       /** Format: date-time */
       createdAt: string
@@ -3810,10 +3810,10 @@ export interface components {
         | 'cancelled'
       /** @enum {string} */
       preliminaryEstimate: 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
-      /** @description Top-down points forecast */
-      refinedEstimate: number | null
-      /** @description Top-down child-count forecast */
-      refinedItemCountEstimate: number | null
+      /** @description Top-down points forecast. 0 means not forecast — see migration 0079. */
+      refinedEstimate: number
+      /** @description Top-down child-count forecast. 0 means not forecast. */
+      refinedItemCountEstimate: number
       /** @description Feature → Epic. Always null for an Epic. */
       parentId: string | null
       parentKey: string | null
@@ -3876,6 +3876,11 @@ export interface components {
       title: string
       scheduleState: string
       storyPoints: number | null
+      /** Format: uuid */
+      projectId: string
+      releaseId: string | null
+      teamId: string | null
+      assigneeId: string | null
       releaseName: string | null
       projectName: string | null
       teamName: string | null
@@ -3903,8 +3908,8 @@ export interface components {
         | 'cancelled'
       /** @enum {string} */
       preliminaryEstimate?: 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
-      refinedEstimate?: number | null
-      refinedItemCountEstimate?: number | null
+      refinedEstimate?: number
+      refinedItemCountEstimate?: number
       parentId?: string | null
       teamId?: string | null
       releaseId?: string | null
@@ -3916,6 +3921,8 @@ export interface components {
     UpdatePortfolioItemDto: {
       name?: string
       description?: string | null
+      /** Format: uuid */
+      projectId?: string
       /** @enum {string} */
       state?:
         | 'no_entry'
@@ -3931,8 +3938,8 @@ export interface components {
         | 'cancelled'
       /** @enum {string} */
       preliminaryEstimate?: 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
-      refinedEstimate?: number | null
-      refinedItemCountEstimate?: number | null
+      refinedEstimate?: number
+      refinedItemCountEstimate?: number
       parentId?: string | null
       teamId?: string | null
       releaseId?: string | null

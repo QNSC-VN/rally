@@ -68,13 +68,17 @@ export function OwnerAvatar({
 
 export function OwnerCell({ name, className }: OwnerCellProps) {
   if (!name) {
-    return <span className="text-ui-xs text-foreground-disabled">—</span>
+    return <span className="text-ui-xs text-foreground-disabled">--</span>
   }
 
   return (
-    <div className={cn('flex items-center gap-1 overflow-hidden', className)}>
+    // `items-start` and no `overflow-hidden`: a person's name is user-supplied and so
+    // unbounded, and the initials chip must stay on the first line when it wraps. Safe to
+    // wrap here because this cell only appears in grid rows and detail fields — the
+    // pickers render `OwnerAvatar` plus a plain label, not this component.
+    <div className={cn('flex items-start gap-1', className)}>
       <OwnerAvatar name={name} />
-      <span className="truncate text-ui-xs text-muted-foreground">{name}</span>
+      <span className="text-ui-xs break-words whitespace-normal text-muted-foreground">{name}</span>
     </div>
   )
 }

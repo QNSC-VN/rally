@@ -26,8 +26,8 @@ const view = (over: Partial<PortfolioItemView> = {}): PortfolioItemView => ({
   description: null,
   state: 'developing',
   preliminaryEstimate: 'm',
-  refinedEstimate: null,
-  refinedItemCountEstimate: null,
+  refinedEstimate: '0',
+  refinedItemCountEstimate: 0,
   parentId: null,
   teamId: null,
   releaseId: null,
@@ -67,10 +67,22 @@ describe('PortfolioItemsService', () => {
   let repo: Mocked<IPortfolioItemRepository>;
   let access: Mocked<AccessService>;
   let maps: Mocked<PreliminaryEstimateMapService>;
-  let settingsRows: Array<{ map: unknown }>;
+  /**
+   * Rows returned to the Release/Team EXISTENCE checks in `assertReferences`.
+   *
+   * Defaults to one row so a reference resolves — tests about a MISSING reference set it
+   * to `[]` explicitly. (This used to be `settingsRows`, back when the service read the
+   * preliminary-estimate map straight from the database; `PreliminaryEstimateMapService`
+   * is its own mock now, so the only remaining consumer of this chain is the reference
+   * check.)
+   */
+  let referenceRows: Array<{ id: string }>;
+  /** Rows the destination-project team lookup in `applyProjectMove` should return. */
+  let projectTeamRows: Array<{ id: string }>;
 
   beforeEach(async () => {
-    settingsRows = [];
+    referenceRows = [{ id: 'ref-1' }];
+    projectTeamRows = [];
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PortfolioItemsService,
@@ -118,9 +130,20 @@ describe('PortfolioItemsService', () => {
         },
         {
           provide: DRIZZLE,
+          // Two chains run through here: the Release/Team existence check in
+          // `assertReferences` (`select→from→where→limit`) and the destination-team lookup
+          // in `applyProjectMove` (`select→from→innerJoin→where→orderBy→limit`). The
+          // presence of `innerJoin` is what distinguishes them.
           useValue: {
             select: () => ({
-              from: () => ({ where: () => ({ limit: () => Promise.resolve(settingsRows) }) }),
+              from: () => ({
+                where: () => ({ limit: () => Promise.resolve(referenceRows) }),
+                innerJoin: () => ({
+                  where: () => ({
+                    orderBy: () => ({ limit: () => Promise.resolve(projectTeamRows) }),
+                  }),
+                }),
+              }),
             }),
           },
         },
@@ -546,6 +569,84 @@ describe('PortfolioItemsService', () => {
       await expect(service.updateItem(actor, 'missing', { name: 'x' })).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+
+    /**
+     * A project move (SRS §3.1 `Project | Yes`, FR-004).
+     *
+     * `project_id` is the scope for `team_id`, `release_id` and `parent_id`, so the risk
+     * here is not the column write — it is leaving those three pointing into the OLD
+     * project, which would render as another project's Release or an unlinked Team.
+     */
+    describe('moving to another project', () => {
+      const feature = {
+        id: 'pi-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        teamId: 'team-a',
+        releaseId: 'rel-a',
+        parentId: null,
+      };
+
+      it('requires edit permission on the DESTINATION as well as the source', async () => {
+        repo.findById.mockResolvedValue({ ...feature, teamId: null, releaseId: null } as never);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        const checked = access.assertProjectPermission.mock.calls.map((c) => c[1]);
+        expect(checked).toContain('proj-a');
+        expect(checked).toContain('proj-b');
+      });
+
+      it('resets Team to a team linked to the new project', async () => {
+        // Not merely cleared: the spec says the change "resets Team to a valid Team in
+        // the new Project".
+        repo.findById.mockResolvedValue(feature as never);
+        projectTeamRows = [{ id: 'team-b' }];
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.update.mock.calls[0][1]).toHaveProperty('teamId', 'team-b');
+      });
+
+      it('clears Team when the new project has no linked team', async () => {
+        repo.findById.mockResolvedValue(feature as never);
+        projectTeamRows = [];
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.update.mock.calls[0][1]).toHaveProperty('teamId', null);
+      });
+
+      it('clears the Release, because releases are per-project', async () => {
+        repo.findById.mockResolvedValue(feature as never);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.update.mock.calls[0][1]).toHaveProperty('releaseId', null);
+      });
+
+      it('clears a parent Epic that lives in a different project', async () => {
+        repo.findById.mockResolvedValue({ ...feature, parentId: 'ep-1' } as never);
+        repo.findByIds.mockResolvedValue([{ id: 'ep-1', projectId: 'proj-a' }] as never);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.update.mock.calls[0][1]).toHaveProperty('parentId', null);
+      });
+
+      it('keeps a parent Epic that already lives in the destination', async () => {
+        repo.findById.mockResolvedValue({ ...feature, parentId: 'ep-1' } as never);
+        repo.findByIds.mockResolvedValue([{ id: 'ep-1', projectId: 'proj-b' }] as never);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.update.mock.calls[0][1]).not.toHaveProperty('parentId');
+      });
+
+      it('lets an explicit value in the same request win over the reset', async () => {
+        // Moving a Feature and naming its new Team in one PATCH must honour the caller.
+        repo.findById.mockResolvedValue(feature as never);
+        projectTeamRows = [{ id: 'team-b' }];
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b', teamId: 'team-c' });
+        expect(repo.update.mock.calls[0][1]).toHaveProperty('teamId', 'team-c');
+      });
+
+      it('reconciles nothing when the project is unchanged', async () => {
+        repo.findById.mockResolvedValue(feature as never);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-a', name: 'Renamed' });
+        const patch = repo.update.mock.calls[0][1];
+        expect(patch).not.toHaveProperty('teamId');
+        expect(patch).not.toHaveProperty('releaseId');
+      });
     });
   });
 

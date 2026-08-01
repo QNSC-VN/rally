@@ -51,7 +51,8 @@ function toReleaseDto(
       totalPoints: number;
       completedPoints: number;
       toDoPoints: number;
-      progressPercent: number;
+      /** Null when not computable — nothing linked, or nothing estimated. */
+      progressPercent: number | null;
     };
   },
 ): ReleaseResponseDto {
@@ -69,7 +70,10 @@ function toReleaseDto(
     startDate: r.startDate,
     releaseDate: r.releaseDate,
     plannedVelocity: r.plannedVelocity,
-    planEstimate: r.planEstimate ? Number(r.planEstimate) : null,
+    // `=== null`, not truthiness: a stored 0 is a real plan estimate. Drizzle hands back
+    // `"0.00"` for numeric columns so the truthy form happened to work, but it depended on
+    // the value arriving as a string while the declared type says number.
+    planEstimate: r.planEstimate === null ? null : Number(r.planEstimate),
     taskEstimate: r.taskEstimate ?? 0,
     version: r.version ?? null,
     releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,

@@ -112,7 +112,7 @@ export function PortfolioDetailPage() {
                 <OwnerCell name={item.ownerName} />
               </DetailField>
               <DetailField label={t('detail.fields.project')}>
-                {item.projectName ?? '—'}
+                {item.projectName ?? '--'}
               </DetailField>
               {/* Team, Release and the parent Epic are Feature-only — an Epic has
                   them all null by CHECK constraint, so showing empty rows would
@@ -120,31 +120,35 @@ export function PortfolioDetailPage() {
               {!isEpic && (
                 <>
                   <DetailField label={t('detail.fields.parent')}>
-                    {item.parentKey ?? '—'}
+                    {item.parentKey ?? '--'}
                   </DetailField>
-                  <DetailField label={t('detail.fields.team')}>{item.teamName ?? '—'}</DetailField>
+                  <DetailField label={t('detail.fields.team')}>{item.teamName ?? '--'}</DetailField>
                   <DetailField label={t('detail.fields.release')}>
-                    {item.releaseName ?? '—'}
+                    {item.releaseName ?? '--'}
                   </DetailField>
                 </>
               )}
               <DetailField label={t('detail.fields.preliminaryEstimate')}>
                 {t(`sizes.${item.preliminaryEstimate}`, { defaultValue: item.preliminaryEstimate })}
               </DetailField>
+              {/* 0, not an em-dash, when there is no forecast: the field is NOT NULL
+                  DEFAULT 0 (migration 0079), matching how real Rally shows it. 0 still
+                  means "not forecast" to the tier chain, so the Estimated Progress bars
+                  fall back to the Preliminary Estimate mapping exactly as before. */}
               <DetailField label={t('detail.fields.refinedEstimate')}>
-                {item.refinedEstimate ?? '—'}
+                {item.refinedEstimate}
               </DetailField>
               <DetailField label={t('detail.fields.refinedItemCountEstimate')}>
-                {item.refinedItemCountEstimate ?? '—'}
+                {item.refinedItemCountEstimate}
               </DetailField>
               <DetailField label={t('detail.fields.plannedStartDate')}>
-                {item.plannedStartDate ?? '—'}
+                {item.plannedStartDate ?? '--'}
               </DetailField>
               <DetailField label={t('detail.fields.plannedEndDate')}>
-                {item.plannedEndDate ?? '—'}
+                {item.plannedEndDate ?? '--'}
               </DetailField>
               <DetailField label={t('detail.fields.marketReleaseDate')}>
-                {item.marketReleaseDate ?? '—'}
+                {item.marketReleaseDate ?? '--'}
               </DetailField>
             </div>
           }
@@ -171,7 +175,7 @@ export function PortfolioDetailPage() {
                       void navigate({ to: '/portfolio/$itemId', params: { itemId: f.id } })
                     }
                   />
-                  <span className="min-w-0 flex-1 truncate text-ui-sm text-foreground">
+                  <span className="min-w-0 flex-1 text-ui-sm break-words whitespace-normal text-foreground">
                     {f.name}
                   </span>
                   <span className="text-ui-xs text-muted-foreground">
@@ -191,7 +195,7 @@ export function PortfolioDetailPage() {
                       void navigate({ to: '/item/$itemKey', params: { itemKey: c.itemKey } })
                     }
                   />
-                  <span className="min-w-0 flex-1 truncate text-ui-sm text-foreground">
+                  <span className="min-w-0 flex-1 text-ui-sm break-words whitespace-normal text-foreground">
                     {c.title}
                   </span>
                   <span className="text-ui-xs text-muted-foreground">{c.scheduleState}</span>

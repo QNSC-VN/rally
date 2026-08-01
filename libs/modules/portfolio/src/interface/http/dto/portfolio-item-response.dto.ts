@@ -75,8 +75,12 @@ const PortfolioItemSchema = z.object({
   description: z.string().nullable(),
   state: z.enum(STATES),
   preliminaryEstimate: z.enum(SIZES),
-  refinedEstimate: z.number().nullable().describe('Top-down points forecast'),
-  refinedItemCountEstimate: z.number().nullable().describe('Top-down child-count forecast'),
+  refinedEstimate: z
+    .number()
+    .describe('Top-down points forecast. 0 means not forecast — see migration 0079.'),
+  refinedItemCountEstimate: z
+    .number()
+    .describe('Top-down child-count forecast. 0 means not forecast.'),
   parentId: z.string().uuid().nullable().describe('Feature → Epic. Always null for an Epic.'),
   parentKey: z.string().nullable(),
   teamId: z.string().uuid().nullable().describe('Feature only'),
@@ -110,6 +114,11 @@ const PortfolioChildSchema = z.object({
   title: z.string(),
   scheduleState: z.string(),
   storyPoints: z.number().nullable(),
+  /** IDs alongside the names, so the disclosed child rows can edit in place. */
+  projectId: z.string().uuid(),
+  releaseId: z.string().uuid().nullable(),
+  teamId: z.string().uuid().nullable(),
+  assigneeId: z.string().uuid().nullable(),
   releaseName: z.string().nullable(),
   projectName: z.string().nullable(),
   teamName: z.string().nullable(),

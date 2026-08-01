@@ -373,12 +373,19 @@ export const portfolioItems = workSchema.table(
     preliminaryEstimate: preliminaryEstimateSizeEnum('preliminary_estimate')
       .notNull()
       .default('no_entry'),
-    // Optional TOP-DOWN forecasts. Feed only the two "Estimated Progress by…"
-    // indicators; when null the Preliminary Estimate mapping supplies the fallback.
+    // TOP-DOWN forecasts. Feed only the two "Estimated Progress by…" indicators.
     // Deliberately not a "Plan Estimate": a portfolio item never stores the sum of
     // its children, which is what makes the rollups authoritative.
-    refinedEstimate: numeric('refined_estimate', { precision: 8, scale: 2 }),
-    refinedItemCountEstimate: integer('refined_item_count_estimate'),
+    //
+    // NOT NULL DEFAULT 0, unlike every other typed estimate in this schema, and unlike
+    // what the general rule below would suggest. Real Rally shows these as 0 rather than
+    // blank and lets a planner type 0, so 0 — not NULL — is the absent state here (0079).
+    // Nothing downstream needed changing: the tier chain already selects the refined
+    // forecast only `if > 0`, so 0 falls through to the Preliminary Estimate mapping,
+    // which is the same fallback NULL used to trigger. One representation of "no
+    // forecast" instead of two.
+    refinedEstimate: numeric('refined_estimate', { precision: 8, scale: 2 }).notNull().default('0'),
+    refinedItemCountEstimate: integer('refined_item_count_estimate').notNull().default(0),
     // Feature → Epic. Null for an Epic (no deeper hierarchy: Theme is out of scope).
     parentId: uuid('parent_id'),
     // Feature only. Epic is project-level and has no Team (BA spec §11.1).

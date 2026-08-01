@@ -53,9 +53,20 @@ const portfolioWritableFields = {
   description: z.string().max(20000).nullable(),
   state: z.enum(PORTFOLIO_ITEM_STATES),
   preliminaryEstimate: z.enum(PRELIMINARY_SIZES),
-  /** Top-down points forecast. Non-negative — `ck_portfolio_refined_positive`. */
-  refinedEstimate: z.number().nonnegative().nullable(),
-  refinedItemCountEstimate: z.number().int().nonnegative().nullable(),
+  /**
+   * Top-down forecasts. NON-NEGATIVE and never null — 0 IS the "not forecast" value.
+   *
+   * Real Rally shows these as 0 rather than blank and accepts a typed 0; Broadcom
+   * documents no rule either way. So 0 is the absent state (migration 0079) and the tier
+   * chain already reads it that way: "Refined Estimate = Feature.refinedEstimate |
+   * refinedWorkItemCountEstimate -> if > 0" (Capacity Planning SRS), so 0 falls through to
+   * the Preliminary Estimate mapping exactly as a blank used to.
+   *
+   * Not `.nullable()`: with a NOT NULL column there is nothing for null to mean, and
+   * accepting it would just be a second spelling of 0. Send 0 to clear a forecast.
+   */
+  refinedEstimate: z.number().nonnegative(),
+  refinedItemCountEstimate: z.number().int().nonnegative(),
   parentId: z.string().uuid().nullable(),
   teamId: z.string().uuid().nullable(),
   releaseId: z.string().uuid().nullable(),
@@ -88,15 +99,25 @@ export class CreatePortfolioItemDto extends createZodDto(CreatePortfolioItemSche
 /**
  * Every field optional: omitted means "leave alone", explicit `null` means "clear".
  *
- * `type` and `projectId` are absent deliberately. Changing type would have to re-key the
- * item, move its child links and re-rank it into the other scope; moving project would
- * invalidate its Release (releases are per-project) and its rollup's project scope.
- * Rally offers neither.
+ * `type` is absent deliberately: changing it would have to re-key the item, move its
+ * child links and re-rank it into the other scope. Rally does not offer that.
+ *
+ * `projectId` IS writable, and used to be excluded on the incorrect grounds that "Rally
+ * offers neither". Rally offers this one — Broadcom's project-hierarchy guide says
+ * "Rally recommends you update the project field to reflect which team is handling the
+ * work", since a portfolio item starts in a strategy project and moves to an execution
+ * project once a team picks it up. The BA spec requires it too (SRS §3.1 `Project | Yes`,
+ * FR-004: Project is inline-editable for both Epic and Feature).
+ *
+ * The move is not a plain field write — see `applyProjectMove` in the service for the
+ * three cross-project references it has to reconcile.
  */
 export const UpdatePortfolioItemSchema = z
   .object({
     name: portfolioWritableFields.name.optional(),
     description: portfolioWritableFields.description.optional(),
+    /** Move the item to another project. Never nullable — an item always has a project. */
+    projectId: z.string().uuid().optional(),
     state: portfolioWritableFields.state.optional(),
     preliminaryEstimate: portfolioWritableFields.preliminaryEstimate.optional(),
     refinedEstimate: portfolioWritableFields.refinedEstimate.optional(),
