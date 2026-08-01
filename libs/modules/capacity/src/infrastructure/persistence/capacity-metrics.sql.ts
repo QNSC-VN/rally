@@ -1,5 +1,9 @@
 import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
-import { capacityPlanAllocations, workItems } from '../../../../../../db/schema/work';
+import {
+  capacityPlanAllocations,
+  portfolioItems,
+  workItems,
+} from '../../../../../../db/schema/work';
 import { completedScheduleStatesSql } from '../../../../../../db/schema/enums';
 import type { CapacityPlanUnit } from '../../../../../../db/schema/enums';
 
@@ -53,10 +57,15 @@ export function childWorkPredicate(args: {
       ? sql`and ${capacityPlanAllocations.teamId} = ${args.teamId}`
       : sql`and ${capacityPlanAllocations.teamId} is not null`;
     conditions.push(
+      // ARCHIVED Features are excluded: the BA is explicit that an archived item is not planning
+      // demand, and its children were still being counted into the team's Rollup and Complete — so a
+      // team's load, its warnings and the plan's cutline all moved on work nobody plans to do.
       sql`${workItems.featureId} in (
         select ${capacityPlanAllocations.portfolioItemId}
         from ${capacityPlanAllocations}
+        join ${portfolioItems} on ${portfolioItems.id} = ${capacityPlanAllocations.portfolioItemId}
         where ${capacityPlanAllocations.planId} = ${args.planId} ${teamFilter}
+          and ${portfolioItems.archivedAt} is null
       )`,
     );
   }

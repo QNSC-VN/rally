@@ -103,6 +103,7 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       state: a.state,
       projectId: a.projectId,
       projectName: a.projectName,
+      archived: a.archived,
       estimateBreakdown: a.estimateBreakdown,
       metrics: a.metrics,
     })),

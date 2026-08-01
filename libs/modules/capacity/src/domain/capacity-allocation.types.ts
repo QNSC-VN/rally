@@ -90,6 +90,8 @@ export interface CapacityAllocationRow extends CapacityAllocation {
   /** The project the Feature itself belongs to — Rally's "Project" column. */
   itemProjectId: string;
   itemProjectName: string | null;
+  /** Set when the Feature has been archived — an archived item is not planning demand. */
+  itemArchivedAt: Date | null;
   /**
    * The Feature's OWN release, which is not always the plan's.
    *
@@ -119,6 +121,14 @@ export interface CapacityAllocationView extends CapacityAllocation {
    */
   projectId: string;
   projectName: string | null;
+  /**
+   * The Feature is ARCHIVED, so this row contributes nothing to the plan's numbers.
+   *
+   * The row is still returned rather than hidden: it is the only way a planner can see the stale
+   * commitment and remove it. The BA says an archived item is not planning demand — which is about
+   * the arithmetic, not about concealing the row.
+   */
+  archived: boolean;
   /**
    * All THREE candidate estimates, so the row's trailing glyph can show Rally's `Estimate` tooltip:
    * Allocated / Refined / Preliminary, with the one in force ticked.

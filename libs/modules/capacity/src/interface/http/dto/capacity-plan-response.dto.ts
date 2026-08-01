@@ -70,6 +70,11 @@ const CapacityAllocationSchema = z.object({
     .describe(
       "The Feature's own project — Rally prints `← from <project>` when it is not the plan's",
     ),
+  archived: z
+    .boolean()
+    .describe(
+      'The Feature is archived: this row contributes nothing to any total, and is returned only so a planner can see the stale commitment and remove it',
+    ),
   estimateBreakdown: z
     .object({
       allocated: z.number().nullable(),

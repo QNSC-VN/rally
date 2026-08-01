@@ -237,6 +237,42 @@ export function CapacityPlanDetailPage() {
   } = usePlanLookups(plan)
 
   /**
+   * The plan's own rank position per Feature, and the Feature the cutline belongs above.
+   *
+   * Both are read from `plan.items` — the API's rank order — rather than from the rendered list. The
+   * rendered list is filtered and sortable, so an INDEX into it means something different: with a
+   * Project or Assignment filter active, `itemCutlineIndex + 1 === index` matched a different Feature
+   * entirely, and `index + 1` renumbered Rank 1..N as though the hidden rows did not exist.
+   */
+  const planRankOf = useMemo(() => {
+    const positions = new Map<string, number>()
+    ;(plan?.items ?? []).forEach((item, at) => positions.set(item.portfolioItemId, at + 1))
+    return positions
+  }, [plan?.items])
+
+  /**
+   * The Feature the cutline is drawn ABOVE, by id.
+   *
+   * `itemCutlineIndex` is the last item that FITS, so the line belongs above the next one. `-1` means
+   * even the first exceeds the plan, so it lands above the first; `null` (no capacity entered) draws
+   * nothing, because there is no number for a running total to exceed.
+   */
+  const cutlineBeforeId = useMemo(() => {
+    const items = plan?.items ?? []
+    const at = plan?.itemCutlineIndex
+    if (at === null || at === undefined || items.length === 0) return null
+    return items[at + 1]?.portfolioItemId ?? null
+  }, [plan?.items, plan?.itemCutlineIndex])
+
+  /** Features past the cutline in the PLAN's order — the ones that do not fit. */
+  const belowCutlineIds = useMemo(() => {
+    const items = plan?.items ?? []
+    const at = plan?.itemCutlineIndex
+    if (at === null || at === undefined) return new Set<string>()
+    return new Set(items.slice(at + 1).map((item) => item.portfolioItemId))
+  }, [plan?.items, plan?.itemCutlineIndex])
+
+  /**
    * The Features tab's own sort, independent of the Teams tab's.
    *
    * Rally sorts every column here, and the two tabs answer different questions, so a shared sort state
@@ -726,25 +762,22 @@ export function CapacityPlanDetailPage() {
                           >
                             {(dragHandle) => (
                               <div>
-                                {/* The line sits ABOVE the first item that does not fit. `-1` means even
-                          the first one exceeds the plan, so it lands at the very top; `null`
-                          (no capacity entered anywhere) draws nothing, because there is no
-                          number for the running total to exceed. */}
-                                {inRankOrder &&
-                                  plan.itemCutlineIndex !== null &&
-                                  plan.itemCutlineIndex + 1 === index && (
-                                    <CutlineDivider label={t('cutline.label')} />
-                                  )}
+                                {/* Matched by ID, not by position: the rendered list is filtered, so an
+                                    index into it can name a different Feature than the plan's own
+                                    order does. Rank order only, which is the sort the cutline is
+                                    defined in. */}
+                                {inRankOrder && cutlineBeforeId === item.portfolioItemId && (
+                                  <CutlineDivider label={t('cutline.label')} />
+                                )}
                                 <CapacityItemRow
                                   item={item}
-                                  position={index + 1}
+                                  // The plan's rank, never the row's position in a filtered list.
+                                  position={planRankOf.get(item.portfolioItemId) ?? index + 1}
                                   primaryTeamName={
                                     teamNameById.get(item.primaryTeamId ?? '') ?? null
                                   }
                                   belowCutline={
-                                    inRankOrder &&
-                                    plan.itemCutlineIndex !== null &&
-                                    index > plan.itemCutlineIndex
+                                    inRankOrder && belowCutlineIds.has(item.portfolioItemId)
                                   }
                                   expanded={expandedItems.has(item.portfolioItemId)}
                                   onToggleExpanded={() => toggleItem(item.portfolioItemId)}
