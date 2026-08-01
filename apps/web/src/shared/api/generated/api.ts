@@ -4024,6 +4024,14 @@ export interface components {
       title: string
       scheduleState: string
       storyPoints: number | null
+      /**
+       * @description The BA's `Priority` column on the Children tab
+       * @enum {string}
+       */
+      priority: 'none' | 'low' | 'normal' | 'high' | 'urgent'
+      iterationId: string | null
+      /** @description The BA's `Iteration` column */
+      iterationName: string | null
       /** Format: uuid */
       projectId: string
       releaseId: string | null
