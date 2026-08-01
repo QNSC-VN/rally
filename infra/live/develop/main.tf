@@ -130,7 +130,25 @@ module "stack" {
   // There is no matching START schedule on purpose. The deploy pipeline is the wake
   // signal, so develop is up exactly on the days it is being changed. Adding a morning
   // start would pay for the days nobody touches it — which is most of them.
-  idle_schedule = "cron(0 21 * * ? *)"
+  //
+  // TWO PASSES, 21:00 AND 03:00 — because ONE was not holding. Measured 2026-08-02:
+  // develop's RDS published CPU datapoints for every hour of every night across seven
+  // days, i.e. it was never actually down. CloudTrail shows why:
+  //
+  //   21:00:36  StopDBInstance   (this schedule — fires correctly, every night)
+  //   21:33:07  StartDBInstance  (GitHubActions — `ensure_rds` in the deploy reusable)
+  //
+  // A deploy landing after 21:00 wakes RDS and scales the services back up, and nothing
+  // stopped them again until 21:00 the FOLLOWING day. 6 of 40 sampled deploys ran at
+  // 21:00-02:00 local, so develop was billing ~24h/day for maybe 10h of use. This is a
+  // control-loop problem, not a sizing one: a once-daily stop cannot hold against a wake
+  // signal that fires at any hour.
+  //
+  // 03:00 is chosen to sit after the late-evening deploy window and before the working
+  // day. A deploy at 02:00 still gets its environment; one at 22:00 no longer leaves it
+  // running all night. If deploys routinely land between 03:00 and 09:00, add a third
+  // pass rather than moving this one.
+  idle_schedule = "cron(0 21,3 * * ? *)"
 
   // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
   // credential can be injected. This is a FIX, not hardening: the primary token
