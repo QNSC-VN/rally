@@ -14,16 +14,15 @@
  * bespoke pane would mean copying the deviation, so the parity here is in the COMPONENTS
  * and the interaction model, not in that one wrapper.
  *
- * What this page deliberately does NOT have, and why — every one is a missing BACKEND,
- * not a styling gap: Attachments, Linked Items and Comments are `/v1/work-items/{id}/…`
- * only (`comments.work_item_id` is a column, not an entity-type pair), there are no
- * portfolio watcher, label or activity endpoints, and Tasks / Defects / Connections have
- * no portfolio equivalent by design. The Children tab is the portfolio-specific tab that
- * replaces them.
+ * What this page deliberately does NOT have: Linked Items (`work_item_relations` is still
+ * keyed by a plain `work_item_id`), portfolio watchers and labels, and Tasks / Defects /
+ * Connections, which have no portfolio equivalent by design — the Children tab is the
+ * portfolio-specific tab standing in their place.
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
+import { FileText, History, ListTree } from 'lucide-react'
 
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
@@ -54,6 +53,7 @@ import {
   type PortfolioItem,
   type UpdatePortfolioItemBody,
 } from '@/features/portfolio/api'
+import { CommentThread } from '@/features/collaboration/ui/comment-thread'
 import { PortfolioDetailSidebar } from './ui/detail-sidebar'
 
 export function PortfolioDetailPage() {
@@ -118,9 +118,6 @@ export function PortfolioDetailPage() {
   )
 
   const back = () => void navigate({ to: '/portfolio' })
-  const openItem = (id: string) =>
-    void navigate({ to: '/portfolio/$itemId', params: { itemId: id } })
-
   if (isLoading) return <SkeletonList rows={6} />
   if (!server) return <EmptyState title={t('detail.notFound')} />
 
@@ -133,14 +130,25 @@ export function PortfolioDetailPage() {
       badge={<TypeBadge type={item.type} />}
       itemKey={item.itemKey}
       title={item.name}
+      /* Icons and the inline count, laid out exactly as Work Item detail builds its tabs:
+         the same `size={19}` lucide glyph, and a counted tab renders its number INSIDE the
+         icon slot rather than through `TabItem.count`, which is what makes the two tab bars
+         read identically. `ListTree` is the Children counterpart of Tasks' `ListChecks`. */
       tabs={[
-        { key: 'details', label: t('detail.tabs.details') },
+        { key: 'details', label: t('detail.tabs.details'), icon: <FileText size={19} /> },
         {
           key: 'children',
           label: t('detail.tabs.children'),
-          count: isEpic ? childFeatures.length : children.length,
+          icon: (
+            <span className="flex items-center gap-1.5">
+              <ListTree size={19} />
+              <span className="text-ui-xs font-semibold tabular-nums">
+                {isEpic ? childFeatures.length : children.length}
+              </span>
+            </span>
+          ),
         },
-        { key: 'history', label: t('detail.tabs.history') },
+        { key: 'history', label: t('detail.tabs.history'), icon: <History size={19} /> },
       ]}
       activeTab={tab}
       onTabChange={setTab}
@@ -207,6 +215,16 @@ export function PortfolioDetailPage() {
               <DetailField label={t('detail.progress.estimatedCount')}>
                 <ProgressBar ratio={progress.estimatedProgressByCount} />
               </DetailField>
+
+              {/* Comments — the SAME component Work Item detail renders, in the same place
+                  (last in the main pane). It takes an entity pair rather than a work-item
+                  id because migration 0080 made `comments` polymorphic; the thread itself,
+                  including @mentions and own-comment editing, is not duplicated. */}
+              <CommentThread
+                subject={{ entityType: 'portfolio_item', entityId: item.id }}
+                projectId={item.projectId}
+                readOnly={!canEdit}
+              />
             </div>
           }
           sidebar={
@@ -218,7 +236,6 @@ export function PortfolioDetailPage() {
               releases={releases}
               epics={epics}
               onUpdate={setField}
-              onOpenItem={openItem}
             />
           }
         />

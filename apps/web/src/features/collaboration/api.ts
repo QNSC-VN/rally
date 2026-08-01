@@ -134,7 +134,8 @@ export function useDeleteAttachment(workItemId: string | undefined) {
 
 export interface Comment {
   id: string
-  workItemId: string
+  entityType: CommentEntityType
+  entityId: string
   authorId: string
   body: string
   parentId: string | null
@@ -144,33 +145,58 @@ export interface Comment {
   updatedAt: string
 }
 
-const commentKeys = {
-  list: (workItemId: string) => ['comments', workItemId] as const,
+/**
+ * What a comment hangs off. Mirrors the `entity_ref_type` enum (migration 0080) — a
+ * comment lives on a work item or on a portfolio item, and the API has one route tree per
+ * entity so the permission check can differ (`work_item:edit` vs `portfolio:edit`).
+ */
+export type CommentEntityType = 'work_item' | 'portfolio_item'
+
+export interface CommentSubject {
+  entityType: CommentEntityType
+  entityId: string
 }
 
-export function useComments(workItemId: string | undefined) {
+const SUBJECT_PATH: Record<CommentEntityType, string> = {
+  work_item: 'work-items',
+  portfolio_item: 'portfolio-items',
+}
+
+/** `/v1/work-items/:id` or `/v1/portfolio-items/:id` — every comment call hangs off this. */
+function subjectBase(subject: CommentSubject): string {
+  return `/v1/${SUBJECT_PATH[subject.entityType]}/${subject.entityId}`
+}
+
+const commentKeys = {
+  // The entity type is part of the key: two entity types share an id space only by
+  // accident, but a cache collision there would show one item's thread on another.
+  list: (subject: CommentSubject | undefined) =>
+    ['comments', subject?.entityType ?? '', subject?.entityId ?? ''] as const,
+}
+
+export function useComments(subject: CommentSubject | undefined) {
   return useQuery({
-    queryKey: commentKeys.list(workItemId ?? ''),
+    queryKey: commentKeys.list(subject),
     queryFn: async (): Promise<Comment[]> => {
-      if (!workItemId) return []
-      const res = await fetch(`/v1/work-items/${workItemId}/comments`, { credentials: 'include' })
+      if (!subject) return []
+      const res = await fetch(`${subjectBase(subject)}/comments`, { credentials: 'include' })
       if (!res.ok) throw new Error(`Failed to load comments (${res.status})`)
       return (await res.json()) as Comment[]
     },
-    enabled: !!workItemId,
+    enabled: !!subject,
     staleTime: 10_000,
   })
 }
 
-export function useCreateComment(workItemId: string | undefined) {
+export function useCreateComment(subject: CommentSubject | undefined) {
   return useMutation({
     mutationFn: async (input: {
       body: string
       parentId?: string
       mentionedUserIds?: string[]
     }): Promise<Comment> => {
-      if (!workItemId) throw new Error('workItemId required')
-      const res = await fetch(`/v1/work-items/${workItemId}/comments`, {
+      if (!subject) throw new Error('comment subject required')
+      const res = await fetch(`${subjectBase(subject)}/comments`, {
         method: 'POST',
         headers: withCsrfHeader('POST', { 'Content-Type': 'application/json' }),
         credentials: 'include',
@@ -179,15 +205,15 @@ export function useCreateComment(workItemId: string | undefined) {
       if (!res.ok) throw new Error(`Failed to add comment (${res.status})`)
       return (await res.json()) as Comment
     },
-    meta: workItemId ? { invalidateKeys: [commentKeys.list(workItemId)] } : undefined,
+    meta: subject ? { invalidateKeys: [commentKeys.list(subject)] } : undefined,
   })
 }
 
-export function useUpdateComment(workItemId: string | undefined) {
+export function useUpdateComment(subject: CommentSubject | undefined) {
   return useMutation({
     mutationFn: async (input: { commentId: string; body: string }): Promise<Comment> => {
-      if (!workItemId) throw new Error('workItemId required')
-      const res = await fetch(`/v1/work-items/${workItemId}/comments/${input.commentId}`, {
+      if (!subject) throw new Error('comment subject required')
+      const res = await fetch(`${subjectBase(subject)}/comments/${input.commentId}`, {
         method: 'PATCH',
         headers: withCsrfHeader('PATCH', { 'Content-Type': 'application/json' }),
         credentials: 'include',
@@ -196,21 +222,21 @@ export function useUpdateComment(workItemId: string | undefined) {
       if (!res.ok) throw new Error(`Failed to edit comment (${res.status})`)
       return (await res.json()) as Comment
     },
-    meta: workItemId ? { invalidateKeys: [commentKeys.list(workItemId)] } : undefined,
+    meta: subject ? { invalidateKeys: [commentKeys.list(subject)] } : undefined,
   })
 }
 
-export function useDeleteComment(workItemId: string | undefined) {
+export function useDeleteComment(subject: CommentSubject | undefined) {
   return useMutation({
     mutationFn: async (commentId: string): Promise<void> => {
-      if (!workItemId) throw new Error('workItemId required')
-      const res = await fetch(`/v1/work-items/${workItemId}/comments/${commentId}`, {
+      if (!subject) throw new Error('comment subject required')
+      const res = await fetch(`${subjectBase(subject)}/comments/${commentId}`, {
         method: 'DELETE',
         credentials: 'include',
         headers: withCsrfHeader('DELETE'),
       })
       if (!res.ok) throw new Error(`Failed to delete comment (${res.status})`)
     },
-    meta: workItemId ? { invalidateKeys: [commentKeys.list(workItemId)] } : undefined,
+    meta: subject ? { invalidateKeys: [commentKeys.list(subject)] } : undefined,
   })
 }

@@ -139,6 +139,16 @@ export const activityEntityTypeEnum = pgEnum('activity_entity_type', [
   'portfolio_item',
 ]);
 
+/**
+ * What a child record hangs off — comments today, attachments / labels / watchers as they
+ * follow (0080).
+ *
+ * Deliberately NOT `activityEntityTypeEnum`, which answers a different question: activity
+ * is logged against tasks and attachments too, and neither of those can own a comment.
+ * This enum lists exactly the things that CAN own child records.
+ */
+export const entityRefTypeEnum = pgEnum('entity_ref_type', ['work_item', 'portfolio_item']);
+
 // ── messaging ──────────────────────────────────────────────────────────────
 
 export const outboxStatusEnum = pgEnum('outbox_status', ['pending', 'published', 'failed']);

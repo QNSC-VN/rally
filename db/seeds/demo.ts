@@ -1062,14 +1062,16 @@ async function seedFlow() {
       {
         id: '00000000-0000-7000-8000-0000000000e0',
         workspaceId: WORKSPACE_ID,
-        workItemId: NXP_STORY_1_ID,
+        entityType: 'work_item' as const,
+        entityId: NXP_STORY_1_ID,
         authorId: ADMIN_USER_ID,
         body: 'Kicking this off for the v2 milestone — aligning scope with the GA release.',
       },
       {
         id: '00000000-0000-7000-8000-0000000000e1',
         workspaceId: WORKSPACE_ID,
-        workItemId: NXP_STORY_1_ID,
+        entityType: 'work_item' as const,
+        entityId: NXP_STORY_1_ID,
         authorId: DEVELOPER_ID,
         body: 'Picking it up. Will break the API work into tasks.',
         parentId: '00000000-0000-7000-8000-0000000000e0',
@@ -1077,7 +1079,8 @@ async function seedFlow() {
       {
         id: '00000000-0000-7000-8000-0000000000e2',
         workspaceId: WORKSPACE_ID,
-        workItemId: NXP_DEFECT_1_ID,
+        entityType: 'work_item' as const,
+        entityId: NXP_DEFECT_1_ID,
         authorId: DEVELOPER_ID,
         body: 'Reproduced on the Windows build agent; looks like a flaky checkout step.',
       },

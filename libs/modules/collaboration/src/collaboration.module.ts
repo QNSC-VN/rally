@@ -5,10 +5,12 @@ import { CollaborationService } from './application/collaboration.service';
 import { CollaborationController } from './interface/http/collaboration.controller';
 import { CommentDrizzleRepository } from './infrastructure/persistence/comment.drizzle-repository';
 import { COMMENT_REPOSITORY } from './domain/ports/comment.repository';
+import { PortfolioModule } from '@modules/portfolio';
+import { PortfolioCollaborationController } from './interface/http/portfolio-collaboration.controller';
 
 @Module({
-  imports: [WorkItemsModule, AccessModule],
-  controllers: [CollaborationController],
+  imports: [WorkItemsModule, AccessModule, PortfolioModule],
+  controllers: [CollaborationController, PortfolioCollaborationController],
   providers: [
     CollaborationService,
     { provide: COMMENT_REPOSITORY, useClass: CommentDrizzleRepository },

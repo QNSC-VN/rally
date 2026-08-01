@@ -6,7 +6,8 @@ import { PERMISSION } from '@shared-kernel';
 import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
 import { ICommentRepository, COMMENT_REPOSITORY } from '../domain/ports/comment.repository';
-import type { Comment } from '../domain/collaboration.types';
+import type { Comment, CommentRef } from '../domain/collaboration.types';
+import { PortfolioItemsService } from '@modules/portfolio';
 
 @Injectable()
 export class CollaborationService {
@@ -16,32 +17,45 @@ export class CollaborationService {
     @Inject(COMMENT_REPOSITORY) private readonly commentRepo: ICommentRepository,
     private readonly workItemsService: WorkItemsService,
     private readonly accessService: AccessService,
+    private readonly portfolioItems: PortfolioItemsService,
   ) {}
 
   /**
-   * Authorize a collaboration write against the OWNING project of the target
-   * work item. Commenting is a work_item:edit action; resolving the item's
-   * project makes it project-scoped like every other write (a workspace-wide
-   * grant fast-paths; a project-scoped grant only applies to that project).
+   * Authorize a collaboration write against the OWNING project of the subject.
+   *
+   * Resolving the subject's project makes commenting project-scoped like every other
+   * write (a workspace-wide grant fast-paths; a project-scoped grant applies only to that
+   * project). The PERMISSION differs by entity type, and deliberately so: a comment on a
+   * story is a `work_item:edit` action, one on a Feature is `portfolio:edit`. Reusing a
+   * single code would let someone who can only edit work items comment on the portfolio.
    */
-  private async assertCanCollaborate(actor: JwtPayload, workItemId: string): Promise<void> {
-    const item = await this.workItemsService.getWorkItem(actor.workspaceId, workItemId);
+  private async assertCanCollaborate(actor: JwtPayload, ref: CommentRef): Promise<void> {
+    if (ref.entityType === 'work_item') {
+      const item = await this.workItemsService.getWorkItem(actor.workspaceId, ref.entityId);
+      await this.accessService.assertProjectPermission(
+        actor,
+        item.projectId,
+        PERMISSION.WORK_ITEM_EDIT,
+      );
+      return;
+    }
+    const item = await this.portfolioItems.getItem(actor, ref.entityId);
     await this.accessService.assertProjectPermission(
       actor,
       item.projectId,
-      PERMISSION.WORK_ITEM_EDIT,
+      PERMISSION.PORTFOLIO_EDIT,
     );
   }
 
   // ── Comments ──────────────────────────────────────────────────────────────
 
-  async listComments(actor: JwtPayload, workItemId: string): Promise<Comment[]> {
-    return this.commentRepo.listByWorkItem(workItemId, actor.workspaceId);
+  async listComments(actor: JwtPayload, ref: CommentRef): Promise<Comment[]> {
+    return this.commentRepo.listByEntity(ref, actor.workspaceId);
   }
 
   async createComment(
     actor: JwtPayload,
-    workItemId: string,
+    ref: CommentRef,
     body: string,
     parentId?: string,
     mentionedUserIds: string[] = [],
@@ -52,24 +66,33 @@ export class CollaborationService {
     const comment = await this.commentRepo.create({
       id: uuidv7(),
       workspaceId: actor.workspaceId,
-      workItemId,
+      entityType: ref.entityType,
+      entityId: ref.entityId,
       authorId: actor.sub,
       body,
       parentId,
     });
-    this.logger.log({ commentId: comment.id, workItemId }, 'Comment created');
+    this.logger.log(
+      { commentId: comment.id, entityType: ref.entityType, entityId: ref.entityId },
+      'Comment created',
+    );
     // F7 — notify watchers/assignee (comment) and any @mentioned users. Best-effort
     // and awaited (not fire-and-forget): a notification failure must never fail
     // the comment write, but it must be logged rather than silently discarded —
     // otherwise a broken notification path has no signal anywhere.
-    await this.workItemsService
-      .notifyCommentAdded(actor, workItemId, mentionedUserIds)
-      .catch((err: unknown) =>
-        this.logger.warn(
-          { err, commentId: comment.id, workItemId },
-          'Failed to enqueue comment notifications',
-        ),
-      );
+    // Work items only: the notification fans out to watchers and the assignee, and a
+    // portfolio item has neither yet. Silently skipping is right — the alternative is a
+    // notification path that resolves nobody and logs a warning on every comment.
+    if (ref.entityType === 'work_item') {
+      await this.workItemsService
+        .notifyCommentAdded(actor, ref.entityId, mentionedUserIds)
+        .catch((err: unknown) =>
+          this.logger.warn(
+            { err, commentId: comment.id, workItemId: ref.entityId },
+            'Failed to enqueue comment notifications',
+          ),
+        );
+    }
     return comment;
   }
 
@@ -84,7 +107,10 @@ export class CollaborationService {
         'You can only edit your own comments',
       );
     }
-    await this.assertCanCollaborate(actor, comment.workItemId);
+    await this.assertCanCollaborate(actor, {
+      entityType: comment.entityType,
+      entityId: comment.entityId,
+    });
     return this.commentRepo.update(commentId, body);
   }
 
@@ -99,7 +125,10 @@ export class CollaborationService {
         'You can only delete your own comments',
       );
     }
-    await this.assertCanCollaborate(actor, comment.workItemId);
+    await this.assertCanCollaborate(actor, {
+      entityType: comment.entityType,
+      entityId: comment.entityId,
+    });
     await this.commentRepo.softDelete(commentId);
   }
 }

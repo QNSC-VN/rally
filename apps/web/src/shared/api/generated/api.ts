@@ -1676,6 +1676,180 @@ export interface paths {
     patch: operations['CollaborationController_updateComment']
     trace?: never
   }
+  '/v1/portfolio-items/{id}/comments': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List comments on an Epic or Feature */
+    get: operations['PortfolioCollaborationController_listComments']
+    put?: never
+    /** Add a comment to an Epic or Feature */
+    post: operations['PortfolioCollaborationController_createComment']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/comments/{commentId}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Delete a comment on an Epic or Feature (soft delete) */
+    delete: operations['PortfolioCollaborationController_deleteComment']
+    options?: never
+    head?: never
+    /** Update a comment on an Epic or Feature */
+    patch: operations['PortfolioCollaborationController_updateComment']
+    trace?: never
+  }
+  '/v1/portfolio-items': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List Epics or Features */
+    get: operations['PortfolioItemsController_listItems']
+    put?: never
+    /** Create an Epic or Feature */
+    post: operations['PortfolioItemsController_createItem']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get an Epic or Feature with its rollups */
+    get: operations['PortfolioItemsController_getItem']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update an Epic or Feature */
+    patch: operations['PortfolioItemsController_updateItem']
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/activity': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List the revision history of an Epic or Feature */
+    get: operations['PortfolioItemsController_getActivity']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/children': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List the Story/Defect linked to a Feature */
+    get: operations['PortfolioItemsController_listChildren']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/rank': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Move an Epic or Feature between two neighbours */
+    patch: operations['PortfolioItemsController_rankItem']
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/archive': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Archive an Epic or Feature (soft delete) */
+    post: operations['PortfolioItemsController_archiveItem']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/unarchive': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Restore an archived Epic or Feature */
+    post: operations['PortfolioItemsController_unarchiveItem']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/{id}/features': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List an Epic's child Features */
+    get: operations['PortfolioItemsController_listChildFeatures']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/notifications/unread-count': {
     parameters: {
       query?: never
@@ -2046,144 +2220,6 @@ export interface paths {
     get: operations['MilestonesController_listMilestoneReleases']
     /** Set linked releases for a milestone (replace all) */
     put: operations['MilestonesController_setMilestoneReleases']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/portfolio-items': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List Epics or Features */
-    get: operations['PortfolioItemsController_listItems']
-    put?: never
-    /** Create an Epic or Feature */
-    post: operations['PortfolioItemsController_createItem']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/portfolio-items/{id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get an Epic or Feature with its rollups */
-    get: operations['PortfolioItemsController_getItem']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    /** Update an Epic or Feature */
-    patch: operations['PortfolioItemsController_updateItem']
-    trace?: never
-  }
-  '/v1/portfolio-items/{id}/activity': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List the revision history of an Epic or Feature */
-    get: operations['PortfolioItemsController_getActivity']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/portfolio-items/{id}/children': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List the Story/Defect linked to a Feature */
-    get: operations['PortfolioItemsController_listChildren']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/portfolio-items/{id}/rank': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    /** Move an Epic or Feature between two neighbours */
-    patch: operations['PortfolioItemsController_rankItem']
-    trace?: never
-  }
-  '/v1/portfolio-items/{id}/archive': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Archive an Epic or Feature (soft delete) */
-    post: operations['PortfolioItemsController_archiveItem']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/portfolio-items/{id}/unarchive': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Restore an archived Epic or Feature */
-    post: operations['PortfolioItemsController_unarchiveItem']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/portfolio-items/{id}/features': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List an Epic's child Features */
-    get: operations['PortfolioItemsController_listChildFeatures']
-    put?: never
     post?: never
     delete?: never
     options?: never
@@ -3604,8 +3640,10 @@ export interface components {
     CommentResponseDto: {
       /** Format: uuid */
       id: string
+      /** @enum {string} */
+      entityType: 'work_item' | 'portfolio_item'
       /** Format: uuid */
-      workItemId: string
+      entityId: string
       /** Format: uuid */
       authorId: string
       body: string
@@ -3625,177 +3663,6 @@ export interface components {
     }
     UpdateCommentDto: {
       body: string
-    }
-    NotificationResponseDto: {
-      /** Format: uuid */
-      id: string
-      type: string
-      title: string
-      body: string | null
-      resourceType: string | null
-      resourceId: string | null
-      metadata: {
-        [key: string]: unknown
-      }
-      isRead: boolean
-      readAt: string | null
-      actorId: string | null
-      /** Format: date-time */
-      createdAt: string
-    }
-    UpsertPreferenceDto: {
-      inApp?: boolean
-      email?: boolean
-    }
-    AuditLogResponseDto: {
-      /** Format: uuid */
-      id: string
-      actorId: string | null
-      actorName: string | null
-      actorEmail: string | null
-      action: string
-      resourceType: string
-      resourceId: string
-      projectId: string | null
-      changes: {
-        [key: string]: unknown
-      } | null
-      metadata: {
-        [key: string]: unknown
-      }
-      /** Format: date-time */
-      occurredAt: string
-    }
-    UpdateCapacityDto: {
-      /** Format: uuid */
-      projectId: string
-      /** Format: uuid */
-      teamId?: string
-      /** Format: uuid */
-      iterationId: string
-      /** Format: uuid */
-      userId: string
-      capacityHours: number
-    }
-    UpdateTeamTaskDto: {
-      title?: string
-      /** @enum {string} */
-      state?: 'Defined' | 'In-Progress' | 'Completed'
-      estimateHours?: number | null
-      todoHours?: number | null
-      actualHours?: number | null
-      assigneeId?: string | null
-    }
-    MilestoneListItemDto: {
-      /** Format: uuid */
-      id: string
-      /** Format: uuid */
-      workspaceId: string
-      /** Format: uuid */
-      projectId: string
-      milestoneKey: string | null
-      name: string
-      description: string | null
-      notes: string | null
-      /** @enum {string} */
-      status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
-      ownerId: string | null
-      /** @description YYYY-MM-DD, manually set or derived from linked releases */
-      targetStartDate: string | null
-      /** @description YYYY-MM-DD, manually set or derived from linked releases */
-      targetEndDate: string | null
-      releaseIds: string[]
-      projectIds?: string[]
-      teamIds?: string[]
-      /** @description Work-item completion across linked releases */
-      progress?: {
-        totalItems: number
-        completedItems: number
-        totalPoints: number
-        completedPoints: number
-        progressPercent: number | null
-      }
-      /** Format: date-time */
-      createdAt: string
-      /** Format: date-time */
-      updatedAt: string
-    }
-    CreateMilestoneDto: {
-      /** Format: uuid */
-      projectId: string
-      name: string
-      description?: string
-      notes?: string
-      /** @enum {string} */
-      status?: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
-      /** Format: uuid */
-      ownerId?: string
-      /** Format: date */
-      targetStartDate?: string
-      /** Format: date */
-      targetEndDate?: string
-      releaseIds: string[]
-      projectIds?: string[]
-      teamIds?: string[]
-    }
-    MilestoneResponseDto: {
-      /** Format: uuid */
-      id: string
-      /** Format: uuid */
-      workspaceId: string
-      /** Format: uuid */
-      projectId: string
-      milestoneKey: string | null
-      name: string
-      description: string | null
-      notes: string | null
-      /** @enum {string} */
-      status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
-      ownerId: string | null
-      /** @description YYYY-MM-DD, manually set or derived from linked releases */
-      targetStartDate: string | null
-      /** @description YYYY-MM-DD, manually set or derived from linked releases */
-      targetEndDate: string | null
-      releaseIds: string[]
-      projectIds?: string[]
-      teamIds?: string[]
-      /** @description Work-item completion across linked releases */
-      progress?: {
-        totalItems: number
-        completedItems: number
-        totalPoints: number
-        completedPoints: number
-        progressPercent: number | null
-      }
-      /** Format: date-time */
-      createdAt: string
-      /** Format: date-time */
-      updatedAt: string
-    }
-    UpdateMilestoneDto: {
-      name?: string
-      description?: string | null
-      notes?: string | null
-      /** @enum {string} */
-      status?: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
-      ownerId?: string | null
-      targetStartDate?: string | null
-      targetEndDate?: string | null
-      releaseIds?: string[]
-      projectIds?: string[]
-      teamIds?: string[]
-    }
-    SetMilestoneArtifactsDto: {
-      workItemIds: string[]
-    }
-    SetMilestoneProjectsDto: {
-      projectIds: string[]
-    }
-    SetMilestoneTeamsDto: {
-      teamIds: string[]
-    }
-    SetMilestoneReleasesDto: {
-      releaseIds: string[]
     }
     PortfolioItemResponseDto: {
       /** Format: uuid */
@@ -3974,6 +3841,177 @@ export interface components {
     RankPortfolioItemDto: {
       beforeId?: string | null
       afterId?: string | null
+    }
+    NotificationResponseDto: {
+      /** Format: uuid */
+      id: string
+      type: string
+      title: string
+      body: string | null
+      resourceType: string | null
+      resourceId: string | null
+      metadata: {
+        [key: string]: unknown
+      }
+      isRead: boolean
+      readAt: string | null
+      actorId: string | null
+      /** Format: date-time */
+      createdAt: string
+    }
+    UpsertPreferenceDto: {
+      inApp?: boolean
+      email?: boolean
+    }
+    AuditLogResponseDto: {
+      /** Format: uuid */
+      id: string
+      actorId: string | null
+      actorName: string | null
+      actorEmail: string | null
+      action: string
+      resourceType: string
+      resourceId: string
+      projectId: string | null
+      changes: {
+        [key: string]: unknown
+      } | null
+      metadata: {
+        [key: string]: unknown
+      }
+      /** Format: date-time */
+      occurredAt: string
+    }
+    UpdateCapacityDto: {
+      /** Format: uuid */
+      projectId: string
+      /** Format: uuid */
+      teamId?: string
+      /** Format: uuid */
+      iterationId: string
+      /** Format: uuid */
+      userId: string
+      capacityHours: number
+    }
+    UpdateTeamTaskDto: {
+      title?: string
+      /** @enum {string} */
+      state?: 'Defined' | 'In-Progress' | 'Completed'
+      estimateHours?: number | null
+      todoHours?: number | null
+      actualHours?: number | null
+      assigneeId?: string | null
+    }
+    MilestoneListItemDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      milestoneKey: string | null
+      name: string
+      description: string | null
+      notes: string | null
+      /** @enum {string} */
+      status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      ownerId: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetStartDate: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetEndDate: string | null
+      releaseIds: string[]
+      projectIds?: string[]
+      teamIds?: string[]
+      /** @description Work-item completion across linked releases */
+      progress?: {
+        totalItems: number
+        completedItems: number
+        totalPoints: number
+        completedPoints: number
+        progressPercent: number | null
+      }
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+    }
+    CreateMilestoneDto: {
+      /** Format: uuid */
+      projectId: string
+      name: string
+      description?: string
+      notes?: string
+      /** @enum {string} */
+      status?: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      /** Format: uuid */
+      ownerId?: string
+      /** Format: date */
+      targetStartDate?: string
+      /** Format: date */
+      targetEndDate?: string
+      releaseIds: string[]
+      projectIds?: string[]
+      teamIds?: string[]
+    }
+    MilestoneResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      milestoneKey: string | null
+      name: string
+      description: string | null
+      notes: string | null
+      /** @enum {string} */
+      status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      ownerId: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetStartDate: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetEndDate: string | null
+      releaseIds: string[]
+      projectIds?: string[]
+      teamIds?: string[]
+      /** @description Work-item completion across linked releases */
+      progress?: {
+        totalItems: number
+        completedItems: number
+        totalPoints: number
+        completedPoints: number
+        progressPercent: number | null
+      }
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+    }
+    UpdateMilestoneDto: {
+      name?: string
+      description?: string | null
+      notes?: string | null
+      /** @enum {string} */
+      status?: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      ownerId?: string | null
+      targetStartDate?: string | null
+      targetEndDate?: string | null
+      releaseIds?: string[]
+      projectIds?: string[]
+      teamIds?: string[]
+    }
+    SetMilestoneArtifactsDto: {
+      workItemIds: string[]
+    }
+    SetMilestoneProjectsDto: {
+      projectIds: string[]
+    }
+    SetMilestoneTeamsDto: {
+      teamIds: string[]
+    }
+    SetMilestoneReleasesDto: {
+      releaseIds: string[]
     }
     CapacityPlanResponseDto: {
       /** Format: uuid */
@@ -10543,6 +10581,659 @@ export interface operations {
       }
     }
   }
+  PortfolioCollaborationController_listComments: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CommentResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioCollaborationController_createComment: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateCommentDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CommentResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioCollaborationController_deleteComment: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        commentId: string
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Comment deleted */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioCollaborationController_updateComment: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        commentId: string
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateCommentDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CommentResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_listItems: {
+    parameters: {
+      query: {
+        limit?: number
+        cursor?: string
+        sort?: string
+        type: 'epic' | 'feature'
+        projectId?: string
+        teamId?: string
+        search?: string
+        includeArchived?: boolean
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['PortfolioItemResponseDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
+              total?: number
+            }
+          }
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_createItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreatePortfolioItemDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_getItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_updateItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdatePortfolioItemDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_getActivity: {
+    parameters: {
+      query?: {
+        page?: number
+        pageSize?: number
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ActivityPageDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_listChildren: {
+    parameters: {
+      query?: {
+        limit?: number
+        cursor?: string
+        sort?: string
+        search?: string
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['PortfolioChildResponseDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
+              total?: number
+            }
+          }
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_rankItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RankPortfolioItemDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_archiveItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_unarchiveItem: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_listChildFeatures: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioItemResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   NotificationsController_unreadCount: {
     parameters: {
       query?: never
@@ -11747,489 +12438,6 @@ export interface operations {
       }
       /** @description Forbidden — insufficient permissions */
       403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  PortfolioItemsController_listItems: {
-    parameters: {
-      query: {
-        limit?: number
-        cursor?: string
-        sort?: string
-        type: 'epic' | 'feature'
-        projectId?: string
-        teamId?: string
-        search?: string
-        includeArchived?: boolean
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Paginated list */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': {
-            data?: components['schemas']['PortfolioItemResponseDto'][]
-            pageInfo?: {
-              /** @description Opaque cursor token for the next page */
-              nextCursor: string | null
-              hasNextPage: boolean
-              /** @description Number of items returned per page */
-              limit: number
-              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
-              total?: number
-            }
-          }
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  PortfolioItemsController_createItem: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreatePortfolioItemDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PortfolioItemResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  PortfolioItemsController_getItem: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PortfolioItemResponseDto']
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  PortfolioItemsController_updateItem: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdatePortfolioItemDto']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PortfolioItemResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  PortfolioItemsController_getActivity: {
-    parameters: {
-      query?: {
-        page?: number
-        pageSize?: number
-      }
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ActivityPageDto']
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  PortfolioItemsController_listChildren: {
-    parameters: {
-      query?: {
-        limit?: number
-        cursor?: string
-        sort?: string
-        search?: string
-      }
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Paginated list */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': {
-            data?: components['schemas']['PortfolioChildResponseDto'][]
-            pageInfo?: {
-              /** @description Opaque cursor token for the next page */
-              nextCursor: string | null
-              hasNextPage: boolean
-              /** @description Number of items returned per page */
-              limit: number
-              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
-              total?: number
-            }
-          }
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  PortfolioItemsController_rankItem: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['RankPortfolioItemDto']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PortfolioItemResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  PortfolioItemsController_archiveItem: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PortfolioItemResponseDto']
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  PortfolioItemsController_unarchiveItem: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PortfolioItemResponseDto']
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  PortfolioItemsController_listChildFeatures: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PortfolioItemResponseDto'][]
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
         headers: {
           [name: string]: unknown
         }

@@ -53,7 +53,6 @@ export function PortfolioDetailSidebar({
   releases,
   epics,
   onUpdate,
-  onOpenItem,
 }: {
   /** The item MERGED with pending edits — render this, never the raw server value. */
   item: PortfolioItem
@@ -64,7 +63,6 @@ export function PortfolioDetailSidebar({
   /** Candidate parents. Empty for an Epic, which has no parent. */
   epics: { id: string; itemKey: string; name: string }[]
   onUpdate: (patch: UpdatePortfolioItemBody) => void
-  onOpenItem: (id: string) => void
 }) {
   const { t } = useTranslation('portfolio')
   const isEpic = item.type === PortfolioItemType.Epic
@@ -239,16 +237,6 @@ export function PortfolioDetailSidebar({
         <DetailField label={t('detail.children.featuresHeading')}>
           <DetailReadonlyValue mono>{item.childFeatureCount}</DetailReadonlyValue>
         </DetailField>
-      )}
-
-      {item.parentId && item.parentKey && !isEpic && (
-        <button
-          type="button"
-          onClick={() => onOpenItem(item.parentId as string)}
-          className="self-start text-ui-xs text-primary-light underline-offset-2 hover:underline"
-        >
-          {t('detail.openEpic', { key: item.parentKey })}
-        </button>
       )}
     </div>
   )

@@ -117,7 +117,11 @@ function DetailsTab({
         />
       )}
 
-      <CommentThread workItemId={item.id} projectId={item.projectId} readOnly={readOnly} />
+      <CommentThread
+        subject={{ entityType: 'work_item', entityId: item.id }}
+        projectId={item.projectId}
+        readOnly={readOnly}
+      />
     </div>
   )
 }

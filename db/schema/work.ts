@@ -51,6 +51,7 @@ import {
   portfolioItemTypeEnum,
   portfolioItemStateEnum,
   preliminaryEstimateSizeEnum,
+  entityRefTypeEnum,
   capacityPlanStatusEnum,
   capacityPlanUnitEnum,
 } from './enums';
@@ -574,7 +575,10 @@ export const comments = workSchema.table(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id').notNull(),
-    workItemId: uuid('work_item_id').notNull(),
+    // Polymorphic subject (0080), the same shape `activity_logs` uses. Replaced a plain
+    // `work_item_id`, which was the only reason a portfolio item could not be discussed.
+    entityType: entityRefTypeEnum('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
     authorId: uuid('author_id').notNull(),
     body: text('body').notNull(),
     parentId: uuid('parent_id'), // NULL = top-level, non-null = threaded reply
@@ -586,7 +590,8 @@ export const comments = workSchema.table(
   },
   (t) => ({
     workspaceIdx: index('ix_comments_workspace').on(t.workspaceId),
-    workItemIdx: index('ix_comments_work_item').on(t.workItemId),
+    // Every read is "the comments on THIS subject", so the pair is the access path.
+    entityIdx: index('ix_comments_entity').on(t.entityType, t.entityId),
     authorIdx: index('ix_comments_author').on(t.authorId),
     parentIdx: index('ix_comments_parent').on(t.parentId),
   }),

@@ -17,6 +17,7 @@ import {
   useUpdateComment,
   useDeleteComment,
   type Comment,
+  type CommentSubject,
 } from '@/features/collaboration/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -37,18 +38,23 @@ function relativeTime(iso: string): string {
 }
 
 interface CommentThreadProps {
-  workItemId: string | undefined
+  /**
+   * The entity the thread hangs off — a work item or a portfolio item. Passed as a pair
+   * rather than a bare id because the two live at different API paths and carry different
+   * edit permissions; the component itself is identical for both.
+   */
+  subject: CommentSubject | undefined
   projectId: string | undefined
   readOnly?: boolean
 }
 
-export function CommentThread({ workItemId, projectId, readOnly = false }: CommentThreadProps) {
+export function CommentThread({ subject, projectId, readOnly = false }: CommentThreadProps) {
   const { t } = useTranslation('work-items')
-  const { data: comments = [], isLoading } = useComments(workItemId)
+  const { data: comments = [], isLoading } = useComments(subject)
   const { data: members = [] } = useProjectMembers(projectId)
-  const createMutation = useCreateComment(workItemId)
-  const updateMutation = useUpdateComment(workItemId)
-  const deleteMutation = useDeleteComment(workItemId)
+  const createMutation = useCreateComment(subject)
+  const updateMutation = useUpdateComment(subject)
+  const deleteMutation = useDeleteComment(subject)
   const currentUserId = useAuthStore((s) => s.user?.id)
 
   const [draft, setDraft] = useState('')
@@ -238,7 +244,9 @@ export function CommentThread({ workItemId, projectId, readOnly = false }: Comme
                     onClick={() => pickMention(m.userId, m.displayName ?? m.userId.slice(0, 8))}
                     className={cn(
                       'flex w-full items-center gap-2 px-2 py-1.5 text-left text-ui-md',
-                      i === activeIdx ? 'bg-primary-lighter text-primary-light' : 'hover:bg-surface-hover',
+                      i === activeIdx
+                        ? 'bg-primary-lighter text-primary-light'
+                        : 'hover:bg-surface-hover',
                     )}
                   >
                     {m.displayName ?? m.userId.slice(0, 8)}

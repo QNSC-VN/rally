@@ -113,7 +113,6 @@
       "epicNote": "An Epic rolls up through its child Features."
     },
     "notFound": "Portfolio item not found.",
-    "openEpic": "Open {{key}}",
     "history": {
       "title": "Revision History",
       "subtitle": "Every change to this portfolio item, newest first."
