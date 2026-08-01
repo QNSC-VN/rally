@@ -376,6 +376,23 @@ export class CapacityPlansController {
     return toDto(await this.service.setPrimaryAllocation(user, id, allocationId));
   }
 
+  @Delete(':id/items/:portfolioItemId')
+  @RequirePermission('capacity:manage', { resource: 'capacity_plan', from: 'param', field: 'id' })
+  @ApiOperation({
+    summary: "Remove a Feature from the plan — every team's allocation of it, in one transaction",
+  })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'portfolioItemId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: CapacityPlanResponseDto })
+  @ApiCommonErrors(401, 403, 404, 422)
+  async removeItemFromPlan(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('portfolioItemId', ParseUUIDPipe) portfolioItemId: string,
+  ): Promise<CapacityPlanResponseDto> {
+    return toDto(await this.service.removeItemFromPlan(user, id, portfolioItemId));
+  }
+
   @Delete(':id/allocations/:allocationId')
   @RequirePermission('capacity:manage', { resource: 'capacity_plan', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Remove an allocation' })

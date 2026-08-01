@@ -11,6 +11,7 @@ import {
   projects,
   milestones,
   milestoneArtifacts,
+  iterations,
 } from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
 import {
@@ -374,6 +375,12 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         releaseId: workItems.releaseId,
         teamId: workItems.teamId,
         assigneeId: workItems.assigneeId,
+        // `priority` and the ITERATION are columns the BA's Children tab lists ("Type, ID, Name,
+        // Priority, Est, Owner, Schedule State, Iteration, Release"); the child rows could not show
+        // them because the query never read them.
+        priority: workItems.priority,
+        iterationId: workItems.iterationId,
+        iterationName: iterations.name,
         releaseName: releases.name,
         projectName: projects.name,
         teamName: teams.name,
@@ -383,6 +390,8 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       .leftJoin(releases, eq(releases.id, workItems.releaseId))
       .leftJoin(projects, eq(projects.id, workItems.projectId))
       .leftJoin(teams, eq(teams.id, workItems.teamId))
+      // LEFT, like the others: a child in no iteration still has to render.
+      .leftJoin(iterations, eq(iterations.id, workItems.iterationId))
       .leftJoin(owner, eq(owner.id, workItems.assigneeId))
       .where(and(...conditions))
       .orderBy(asc(workItems.rank), asc(workItems.id))
@@ -396,6 +405,9 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       title: r.title,
       scheduleState: r.scheduleState,
       storyPoints: r.storyPoints,
+      priority: r.priority,
+      iterationId: r.iterationId,
+      iterationName: r.iterationName,
       projectId: r.projectId,
       releaseId: r.releaseId,
       teamId: r.teamId,

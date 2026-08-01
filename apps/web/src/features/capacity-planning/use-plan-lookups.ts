@@ -8,6 +8,12 @@ export interface PlanLookups {
   teamNameById: Map<string, string | null>
   /** A Feature's 1-based position in the PLAN's rank order. */
   rankPositionOf: (portfolioItemId: string) => number | null
+  /** The same positions as a map, for a grid that renders a filtered subset of the plan. */
+  planRankOf: Map<string, number>
+  /** The Feature the capacity cutline is drawn ABOVE, by id. Null when there is no line to draw. */
+  cutlineBeforeId: string | null
+  /** Features past the cutline in the PLAN's order — the ones that do not fit. */
+  belowCutlineIds: Set<string>
   /** Who else holds a Feature — the input to Rally's `Allocation` cell. */
   sharingOf: (portfolioItemId: string) => { owner: string | null; contributors: string[] }
   /** A team's demand split into Rally's two kinds, for the `Project Capacity` rail. */
@@ -89,6 +95,39 @@ export function usePlanLookups(plan: CapacityPlan | undefined): PlanLookups {
     [plan?.allocations],
   )
 
+  /**
+   * Rank positions and the cutline, keyed by ID rather than by list position.
+   *
+   * The Features tab renders a FILTERED, sortable list, so an index into it means something different
+   * from an index into the plan: `itemCutlineIndex + 1 === index` matched a different Feature once a
+   * filter was active, and `index + 1` renumbered Rank 1..N as though the hidden rows did not exist.
+   * Everything here is therefore expressed as an id, which survives both.
+   */
+  const planRankOf = useMemo(() => {
+    const positions = new Map<string, number>()
+    ;(plan?.items ?? []).forEach((item, at) => positions.set(item.portfolioItemId, at + 1))
+    return positions
+  }, [plan?.items])
+
+  /**
+   * `itemCutlineIndex` is the last item that FITS, so the line belongs above the NEXT one. `-1` means
+   * even the first exceeds the plan, so it lands above the first; `null` (no capacity entered
+   * anywhere) draws nothing, because there is no number for a running total to exceed.
+   */
+  const cutlineBeforeId = useMemo(() => {
+    const items = plan?.items ?? []
+    const at = plan?.itemCutlineIndex
+    if (at === null || at === undefined || items.length === 0) return null
+    return items[at + 1]?.portfolioItemId ?? null
+  }, [plan?.items, plan?.itemCutlineIndex])
+
+  const belowCutlineIds = useMemo(() => {
+    const items = plan?.items ?? []
+    const at = plan?.itemCutlineIndex
+    if (at === null || at === undefined) return new Set<string>()
+    return new Set(items.slice(at + 1).map((item) => item.portfolioItemId))
+  }, [plan?.items, plan?.itemCutlineIndex])
+
   const allocationsByItem = useMemo(() => {
     const map = new Map<string, CapacityAllocation[]>()
     for (const a of plan?.allocations ?? []) {
@@ -118,6 +157,9 @@ export function usePlanLookups(plan: CapacityPlan | undefined): PlanLookups {
   return {
     teamNameById,
     rankPositionOf,
+    planRankOf,
+    cutlineBeforeId,
+    belowCutlineIds,
     sharingOf,
     demandOf,
     allocationsByItem,

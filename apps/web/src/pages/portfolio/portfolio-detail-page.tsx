@@ -25,8 +25,9 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { FileText, History, ListTree } from 'lucide-react'
 
 import { TypeBadge } from '@/entities/work-item/ui/badges'
-import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { AcceptedChildrenBlock } from '@/features/portfolio/ui/accepted-children-block'
+import { EpicChildrenTable } from './ui/epic-children-table'
+import { FeatureChildrenTable } from './ui/feature-children-table'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
@@ -288,7 +289,7 @@ export function PortfolioDetailPage() {
           />
         </div>
       ) : (
-        <div className="flex flex-col gap-2 overflow-auto p-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 p-4">
           <DetailSectionHeading>
             {isEpic ? t('detail.children.featuresHeading') : t('detail.children.itemsHeading')}
           </DetailSectionHeading>
@@ -296,48 +297,15 @@ export function PortfolioDetailPage() {
             <p className="text-ui-xs text-foreground-subtle">{t('detail.children.epicNote')}</p>
           )}
 
-          {isEpic
-            ? childFeatures.map((f) => (
-                <div
-                  key={f.id}
-                  className="flex items-center gap-3 border-b border-border-inner py-1.5"
-                >
-                  <IdCell
-                    type={f.type}
-                    itemKey={f.itemKey}
-                    onOpen={() =>
-                      void navigate({ to: '/portfolio/$itemId', params: { itemId: f.id } })
-                    }
-                  />
-                  <span className="min-w-0 flex-1 text-ui-sm break-words whitespace-normal text-foreground">
-                    {f.name}
-                  </span>
-                  <span className="text-ui-xs text-muted-foreground">
-                    {t(`states.${f.state}`, { defaultValue: f.state })}
-                  </span>
-                </div>
-              ))
-            : children.map((c) => (
-                <div
-                  key={c.id}
-                  className="flex items-center gap-3 border-b border-border-inner py-1.5"
-                >
-                  <IdCell
-                    type={c.type}
-                    itemKey={c.itemKey}
-                    onOpen={() =>
-                      void navigate({ to: '/item/$itemKey', params: { itemKey: c.itemKey } })
-                    }
-                  />
-                  <span className="min-w-0 flex-1 text-ui-sm break-words whitespace-normal text-foreground">
-                    {c.title}
-                  </span>
-                  <span className="text-ui-xs text-muted-foreground">{c.scheduleState}</span>
-                </div>
-              ))}
-
-          {(isEpic ? childFeatures.length : children.length) === 0 && (
-            <p className="text-ui-sm text-foreground-subtle">{t('detail.children.empty')}</p>
+          {/* A real grid, per the BA's "full Backlog-style table" — the same `useDataTable` +
+              `DataTableFrame` + `TableTotalsRow` every other grid uses. Two components rather than one
+              parameterised table: an Epic's children are FEATURES with roll-ups, a Feature's are
+              Stories and Defects with priority and iteration, and one table taking a `kind` flag would
+              be a switch statement in every cell. */}
+          {isEpic ? (
+            <EpicChildrenTable features={childFeatures} />
+          ) : (
+            <FeatureChildrenTable children={children} />
           )}
         </div>
       )}

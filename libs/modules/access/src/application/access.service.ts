@@ -765,16 +765,34 @@ export class AccessService {
     projectId: string,
     required: ProjectPermission,
   ): Promise<void> {
-    // No token fast path: `getProjectPermissions` already unions the workspace
-    // baseline, and it reads through the cache, so the old shortcut only added a
-    // way to answer from a stale snapshot.
-    const effective = await this.getProjectPermissions(user.sub, user.workspaceId, projectId);
-    if (permissionGrants(effective, required)) return;
+    if (await this.hasProjectPermission(user, projectId, required)) return;
 
     throw new PermissionDeniedException(
       'PROJECT_PERMISSION_DENIED',
       'You do not have permission to perform this action on this project',
     );
+  }
+
+  /**
+   * The same check as `assertProjectPermission`, as a QUESTION rather than a demand.
+   *
+   * Some rules branch on a permission instead of refusing without it: a capacity plan in Draft is
+   * hidden from a reader who cannot plan, which means the list has to ASK whether this caller is a
+   * planner and filter — throwing there would deny the whole list over one row.
+   *
+   * Deliberately not a second implementation: catching the exception from the assert would work and
+   * would also make an ordinary branch look like an error path in every log and trace.
+   */
+  async hasProjectPermission(
+    user: JwtPayload,
+    projectId: string,
+    required: ProjectPermission,
+  ): Promise<boolean> {
+    // No token fast path: `getProjectPermissions` already unions the workspace
+    // baseline, and it reads through the cache, so the old shortcut only added a
+    // way to answer from a stale snapshot.
+    const effective = await this.getProjectPermissions(user.sub, user.workspaceId, projectId);
+    return permissionGrants(effective, required);
   }
 
   /** Wildcard-aware membership check: workspace:* / ns:* / exact match. */

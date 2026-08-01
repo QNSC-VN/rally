@@ -80,6 +80,7 @@ describe('CapacityPlansService', () => {
             setTeamCapacity: vi.fn(),
             removeTeam: vi.fn(),
             countTeamAllocations: vi.fn().mockResolvedValue(0),
+            listAllocationsForTeam: vi.fn().mockResolvedValue([]),
             listAllocations: vi.fn().mockResolvedValue([]),
             findAllocation: vi.fn().mockResolvedValue(null),
             findAllocationFor: vi.fn().mockResolvedValue(null),
@@ -112,7 +113,12 @@ describe('CapacityPlansService', () => {
         },
         {
           provide: AccessService,
-          useValue: { assertProjectPermission: vi.fn().mockResolvedValue(undefined) },
+          useValue: {
+            assertProjectPermission: vi.fn().mockResolvedValue(undefined),
+            // TRUE by default: `actor` is an admin here, and draft visibility keys off being a
+            // PLANNER. The specs that are about a reader flip this deliberately.
+            hasProjectPermission: vi.fn().mockResolvedValue(true),
+          },
         },
         {
           provide: PreliminaryEstimateMapService,
@@ -142,8 +148,15 @@ describe('CapacityPlansService', () => {
           useValue: {
             // `innerJoin` is part of the chain because the team guard now joins `project_teams`: a
             // plan's team must be linked to the plan's PROJECT, not merely present in the workspace.
+            // `where()` is BOTH awaitable and `.limit()`-able: the existence guards end in `.limit(1)`,
+            // while the team-membership read awaits the where directly. A stub that supported only one
+            // shape made the other look like a service bug.
             select: () => {
-              const tail = { where: () => ({ limit: () => Promise.resolve(lookupRows) }) };
+              const terminal = {
+                limit: () => Promise.resolve(lookupRows),
+                then: (resolve: (v: unknown) => void) => resolve(lookupRows),
+              };
+              const tail = { where: () => terminal };
               return { from: () => ({ ...tail, innerJoin: () => tail }) };
             },
           },
@@ -340,22 +353,71 @@ describe('CapacityPlansService', () => {
       expect(repo.setTeamCapacity).toHaveBeenCalledWith('plan-1', 'team-1', null);
     });
 
-    it('refuses to remove a team that still holds allocations', async () => {
-      // Cascading would silently delete demand a planner committed, with no undo.
-      repo.findTeam.mockResolvedValue({
-        id: 'pt-1',
+    /** A plan_team row for `team-1`, which `requirePlanTeam` needs before any removal. */
+    const onPlan = {
+      id: 'pt-1',
+      planId: 'plan-1',
+      teamId: 'team-1',
+      capacity: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const alloc = (over: Record<string, unknown> = {}) =>
+      ({
+        id: 'al-1',
         planId: 'plan-1',
+        portfolioItemId: 'fe-1',
         teamId: 'team-1',
-        capacity: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      repo.countTeamAllocations.mockResolvedValue(3);
+        isPrimary: false,
+        value: '5',
+        ...over,
+      }) as never;
 
-      await expect(service.removeTeam(actor, 'plan-1', 'team-1')).rejects.toMatchObject({
-        code: 'CAPACITY_TEAM_HAS_ALLOCATIONS',
-      });
-      expect(repo.removeTeam).not.toHaveBeenCalled();
+    it('RE-PARKS a removed team’s rows as unassigned instead of refusing', async () => {
+      // AC-005: "removed Teams move their allocation rows back to Unallocated", and the flow catalog
+      // adds "so the demand can be reassigned". This used to throw `CAPACITY_TEAM_HAS_ALLOCATIONS`,
+      // which left a planner with no way forward — the demand could only be moved row by row, and a
+      // team missing its project link had no row in the picker to move anything from.
+      repo.findTeam.mockResolvedValue(onPlan);
+      repo.listAllocationsForTeam.mockResolvedValue([alloc()]);
+      repo.findAllocationFor.mockResolvedValue(null);
+
+      await service.removeTeam(actor, 'plan-1', 'team-1');
+
+      expect(repo.updateAllocation).toHaveBeenCalledWith(
+        'al-1',
+        { teamId: null, isPrimary: false },
+        TX,
+      );
+      expect(repo.deleteAllocation).not.toHaveBeenCalled();
+      // Same transaction as the re-parking: a plan that dropped the team but kept team-owned rows
+      // would violate its own model.
+      expect(repo.removeTeam).toHaveBeenCalledWith('plan-1', 'team-1', TX);
+    });
+
+    it('MERGES into a Feature that is already parked, because only one parked row may exist', async () => {
+      // `uq_capacity_allocation_unassigned` allows one unassigned row per (plan, Feature), so a second
+      // cannot simply be created. The values are summed: both were real demand.
+      repo.findTeam.mockResolvedValue(onPlan);
+      repo.listAllocationsForTeam.mockResolvedValue([alloc({ value: '5' })]);
+      repo.findAllocationFor.mockResolvedValue(alloc({ id: 'parked-1', teamId: null, value: '3' }));
+
+      await service.removeTeam(actor, 'plan-1', 'team-1');
+
+      expect(repo.updateAllocation).toHaveBeenCalledWith('parked-1', { value: '8' }, TX);
+      expect(repo.deleteAllocation).toHaveBeenCalledWith('al-1', TX);
+    });
+
+    it('hands the assignment to a surviving team when the OWNER is removed', async () => {
+      // Otherwise the Feature keeps team rows with no primary — the state `removeAllocation` guards
+      // against, reading "as unassigned while teams are demonstrably working on it".
+      repo.findTeam.mockResolvedValue(onPlan);
+      repo.listAllocationsForTeam.mockResolvedValue([alloc({ isPrimary: true })]);
+      repo.findAllocationFor.mockResolvedValue(null);
+      repo.oldestTeamAllocation.mockResolvedValue(alloc({ id: 'other-1', teamId: 'team-2' }));
+
+      await service.removeTeam(actor, 'plan-1', 'team-1');
+      expect(repo.updateAllocation).toHaveBeenCalledWith('other-1', { isPrimary: true }, TX);
     });
 
     it('removes a team once nothing is allocated to it', async () => {
@@ -369,7 +431,9 @@ describe('CapacityPlansService', () => {
       });
       repo.countTeamAllocations.mockResolvedValue(0);
       await service.removeTeam(actor, 'plan-1', 'team-1');
-      expect(repo.removeTeam).toHaveBeenCalledWith('plan-1', 'team-1');
+      // Inside the re-parking transaction now, even with nothing to re-park: the team's removal and
+      // whatever its rows became have to commit together.
+      expect(repo.removeTeam).toHaveBeenCalledWith('plan-1', 'team-1', TX);
     });
   });
 
@@ -1696,6 +1760,176 @@ describe('CapacityPlansService', () => {
         }),
       ).rejects.toThrow('denied');
       expect(repo.createAllocation).not.toHaveBeenCalled();
+      expect(repo.deleteAllocation).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('draft visibility (AC-013)', () => {
+    /** A reader: `capacity:view` only, so neither write grant marks them a planner. */
+    const asReader = () => access.hasProjectPermission.mockResolvedValue(false);
+
+    it('hides DRAFT plans from the list for a reader', async () => {
+      repo.listByProject.mockResolvedValue([
+        view({ id: 'p-draft', status: 'draft' }),
+        view({ id: 'p-pub', status: 'published' }),
+      ]);
+      asReader();
+
+      const plans = await service.listPlans(actor, 'proj-a');
+      expect(plans.map((p) => p.id)).toEqual(['p-pub']);
+    });
+
+    it('shows a planner everything, drafts included', async () => {
+      repo.listByProject.mockResolvedValue([
+        view({ id: 'p-draft', status: 'draft' }),
+        view({ id: 'p-pub', status: 'published' }),
+      ]);
+      const plans = await service.listPlans(actor, 'proj-a');
+      expect(plans).toHaveLength(2);
+    });
+
+    it('answers NOT FOUND — not 403 — when a reader opens a draft', async () => {
+      // 403 would confirm the plan exists, which is what hiding it is meant to avoid. The BA's wording
+      // is about visibility ("cannot be opened"), not about a refused action.
+      repo.findViewById.mockResolvedValue(view({ status: 'draft' }));
+      asReader();
+
+      await expect(service.getPlan(actor, 'plan-1')).rejects.toMatchObject({
+        code: 'CAPACITY_PLAN_NOT_FOUND',
+      });
+    });
+
+    it('lets a reader open a PUBLISHED plan', async () => {
+      repo.findViewById.mockResolvedValue(view({ status: 'published' }));
+      asReader();
+      await expect(service.getPlan(actor, 'plan-1')).resolves.toMatchObject({ id: 'plan-1' });
+    });
+
+    it("narrows a reader's TEAM rows to the teams they belong to (AC-010)", async () => {
+      // The stubbed Drizzle resolves `select().from().where()` to `lookupRows`, which is what the
+      // membership query reads — so one team is "mine" and the other is not.
+      lookupRows = [{ teamId: 'team-1' }];
+      repo.findViewById.mockResolvedValue(
+        view({
+          status: 'published',
+          teams: [
+            { id: 'pt-1', teamId: 'team-1', teamName: 'Mine', capacity: null },
+            { id: 'pt-2', teamId: 'team-2', teamName: 'Theirs', capacity: null },
+          ] as never,
+        }),
+      );
+      asReader();
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.teams.map((t) => t.teamId)).toEqual(['team-1']);
+    });
+
+    it("does NOT hide the plan's own totals, items or cutline from a reader", async () => {
+      // Their team's numbers would be unreadable without them — "18 of what?" — and the header, bar and
+      // cutline describe a whole a plan member is entitled to understand. The BA's rule is about whose
+      // ROWS a reader may open.
+      lookupRows = [{ teamId: 'team-1' }];
+      repo.findViewById.mockResolvedValue(view({ status: 'published' }));
+      const slice = (id: string, teamId: string, value: string, isPrimary: boolean) =>
+        ({
+          id,
+          planId: 'plan-1',
+          portfolioItemId: 'fe-1',
+          teamId,
+          isPrimary,
+          value,
+          itemKey: 'FE-1',
+          name: 'Guest checkout',
+          refined: null,
+          preliminarySize: 'no_entry',
+          totalAllocated: 12,
+          rollup: 0,
+          complete: 0,
+          rank: 'a',
+          state: 'developing',
+          itemRollup: 0,
+          itemComplete: 0,
+          itemProjectId: 'proj-a',
+          itemProjectName: 'Project A',
+          itemArchivedAt: null,
+          itemReleaseId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }) as never;
+      repo.listAllocations.mockResolvedValue([
+        slice('mine', 'team-1', '5', true),
+        slice('theirs', 'team-2', '7', false),
+      ]);
+      asReader();
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      // One Feature, both teams' slices summed: the item is a plan-level fact.
+      expect(detail.items).toHaveLength(1);
+      expect(detail.items[0].estimated).toBe(12);
+      // …but only their own allocation row came back.
+      expect(detail.allocations.map((a) => a.teamId)).toEqual(['team-1']);
+    });
+
+    it('shows a planner every team', async () => {
+      lookupRows = [];
+      repo.findViewById.mockResolvedValue(
+        view({
+          status: 'published',
+          teams: [
+            { id: 'pt-1', teamId: 'team-1', teamName: 'A', capacity: null },
+            { id: 'pt-2', teamId: 'team-2', teamName: 'B', capacity: null },
+          ] as never,
+        }),
+      );
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.teams).toHaveLength(2);
+    });
+
+    it('counts `capacity:publish` alone as a planner', async () => {
+      // Our three codes where the BA has one: publish-without-manage is a state its model cannot
+      // express, and someone trusted to publish a plan is certainly meant to see it first.
+      repo.findViewById.mockResolvedValue(view({ status: 'draft' }));
+      access.hasProjectPermission.mockImplementation((_a, _p, code: string) =>
+        Promise.resolve(code === 'capacity:publish'),
+      );
+      await expect(service.getPlan(actor, 'plan-1')).resolves.toMatchObject({ id: 'plan-1' });
+    });
+  });
+
+  describe('removeItemFromPlan', () => {
+    it('removes EVERY row for a Feature in ONE transaction', async () => {
+      // The client used to loop a DELETE per allocation, so a split Feature meant one request per team
+      // and a failure midway left it half-removed: still on the plan, still counted, minus the teams
+      // the earlier calls had already dropped. There was no request that said "remove this Feature".
+      repo.listAllocationsForItem.mockResolvedValue([
+        { id: 'al-1', planId: 'plan-1', portfolioItemId: 'fe-1', teamId: 'team-1' },
+        { id: 'al-2', planId: 'plan-1', portfolioItemId: 'fe-1', teamId: 'team-2' },
+        { id: 'al-3', planId: 'plan-1', portfolioItemId: 'fe-1', teamId: null },
+      ] as never);
+
+      await service.removeItemFromPlan(actor, 'plan-1', 'fe-1');
+
+      expect(repo.deleteAllocation).toHaveBeenCalledTimes(3);
+      for (const id of ['al-1', 'al-2', 'al-3']) {
+        expect(repo.deleteAllocation).toHaveBeenCalledWith(id, TX);
+      }
+      // No primary promotion: every row is going, so nothing is left to own the Feature.
+      expect(repo.updateAllocation).not.toHaveBeenCalled();
+    });
+
+    it('reports a Feature that is not on the plan rather than succeeding silently', async () => {
+      repo.listAllocationsForItem.mockResolvedValue([]);
+      await expect(service.removeItemFromPlan(actor, 'plan-1', 'fe-9')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(repo.deleteAllocation).not.toHaveBeenCalled();
+    });
+
+    it('refuses on a PUBLISHED plan, like every other write', async () => {
+      repo.findById.mockResolvedValue(plan({ status: 'published' }));
+      await expect(service.removeItemFromPlan(actor, 'plan-1', 'fe-1')).rejects.toMatchObject({
+        code: 'CAPACITY_PLAN_NOT_DRAFT',
+      });
       expect(repo.deleteAllocation).not.toHaveBeenCalled();
     });
   });

@@ -4,11 +4,13 @@ import {
   portfolioItemTypeEnum,
   portfolioItemStateEnum,
   preliminaryEstimateSizeEnum,
+  workItemPriorityEnum,
 } from '../../../../../../../db/schema/enums';
 
 const TYPES = portfolioItemTypeEnum.enumValues;
 const STATES = portfolioItemStateEnum.enumValues;
 const SIZES = preliminaryEstimateSizeEnum.enumValues;
+const PRIORITIES = workItemPriorityEnum.enumValues;
 
 /**
  * The four read-only indicators.
@@ -153,6 +155,9 @@ const PortfolioChildSchema = z.object({
   title: z.string(),
   scheduleState: z.string(),
   storyPoints: z.number().nullable(),
+  priority: z.enum(PRIORITIES).describe("The BA's `Priority` column on the Children tab"),
+  iterationId: z.string().uuid().nullable(),
+  iterationName: z.string().nullable().describe("The BA's `Iteration` column"),
   /** IDs alongside the names, so the disclosed child rows can edit in place. */
   projectId: z.string().uuid(),
   releaseId: z.string().uuid().nullable(),

@@ -19,7 +19,7 @@ import {
   type EstimateTier,
   resolveEstimate,
 } from '@modules/portfolio';
-import { projectTeams, releases, teams } from '../../../../../db/schema/work';
+import { projectTeams, releases, teamMembers, teams } from '../../../../../db/schema/work';
 import {
   FORECAST_HISTORY_DAYS,
   forecastCapacity,
@@ -207,13 +207,42 @@ export class CapacityPlansService {
    * the caller against it and there is no cross-project filtering to do.
    */
   async listPlans(actor: JwtPayload, projectId: string): Promise<CapacityPlanView[]> {
-    return this.repo.listByProject(projectId, actor.workspaceId);
+    const plans = await this.repo.listByProject(projectId, actor.workspaceId);
+    if (await this.isPlanner(actor, projectId)) return plans;
+    // AC-013: "Draft plans do not appear in the Capacity Plan list" for a reader who cannot plan.
+    return plans.filter((plan) => plan.status === 'published');
   }
 
   async getPlan(actor: JwtPayload, id: string): Promise<CapacityPlanView> {
     const plan = await this.repo.findViewById(id, actor.workspaceId);
     if (!plan) throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
+    /**
+     * A DRAFT is invisible to a non-planner, and `not found` is the honest answer.
+     *
+     * AC-013: a draft "does not appear in the list and cannot be opened". 403 would be the wrong
+     * shape — it confirms the plan exists and even leaks its id as meaningful, which is exactly what
+     * hiding it is meant to avoid. The BA's wording is about visibility, not about a refused action.
+     *
+     * Read paths only. Every write already calls `requireDraft`, which loads the plan itself and is
+     * gated on `capacity:manage` — so a non-planner cannot reach one by writing either.
+     */
+    if (plan.status !== 'published' && !(await this.isPlanner(actor, plan.projectId))) {
+      throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
+    }
     return plan;
+  }
+
+  /**
+   * Whether this caller is a PLANNER on the project — the role the BA gates draft visibility on.
+   *
+   * The BA has one permission (`capacity_planning:manage`) where we have three, so either of the two
+   * write grants marks a planner: `capacity:publish` without `capacity:manage` is a state our split
+   * allows and the BA's model cannot express, and someone trusted to publish a plan is certainly meant
+   * to see it beforehand. `capacity:view` alone is a reader, and readers see published plans only.
+   */
+  private async isPlanner(actor: JwtPayload, projectId: string): Promise<boolean> {
+    if (await this.access.hasProjectPermission(actor, projectId, 'capacity:manage')) return true;
+    return this.access.hasProjectPermission(actor, projectId, 'capacity:publish');
   }
 
   async createPlan(
@@ -537,18 +566,58 @@ export class CapacityPlansService {
     await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
     await this.requirePlanTeam(id, teamId);
 
-    // Refuse rather than cascade: the allocations are committed demand a planner entered,
-    // and silently deleting them would lose work with no undo. Allocations land in the
-    // next slice; the guard exists now so it cannot be forgotten then.
-    const allocated = await this.repo.countTeamAllocations(id, teamId);
-    if (allocated > 0) {
-      throw new PreconditionFailedException(
-        'CAPACITY_TEAM_HAS_ALLOCATIONS',
-        `Move or remove the ${allocated} allocation(s) for this team first`,
-      );
-    }
+    /**
+     * The team's rows go back to UNALLOCATED — they are not deleted, and the removal is not refused.
+     *
+     * The BA states it twice: "removed Teams move their allocation rows back to Unallocated" (AC-005)
+     * and "its allocation rows become unassigned so the demand can be reassigned". This used to throw
+     * `CAPACITY_TEAM_HAS_ALLOCATIONS`, which left a planner with no way forward at all: the demand
+     * could only be moved by hand, row by row, and a team whose project link was missing had no row in
+     * the picker to move anything from.
+     *
+     * The demand SURVIVES because that is the point — a plan that forgets what it was committed to
+     * when a team leaves is worse than one that refuses to let the team leave.
+     */
+    const rows = await this.repo.listAllocationsForTeam(id, teamId);
 
-    await this.repo.removeTeam(id, teamId);
+    await this.uow.run(async (tx) => {
+      for (const row of rows) {
+        /**
+         * At most ONE unassigned row may exist per (plan, Feature) — `uq_capacity_allocation_unassigned`
+         * — so a Feature that is ALREADY parked cannot simply take a second one. Its demand is merged
+         * into the row that is there and this one is deleted.
+         */
+        const parked = await this.repo.findAllocationFor(id, row.portfolioItemId, null);
+        if (parked) {
+          const merged = mergeParkedValue(parked.value, row.value);
+          if (merged !== parked.value) {
+            await this.repo.updateAllocation(parked.id, { value: merged }, tx);
+          }
+          await this.repo.deleteAllocation(row.id, tx);
+          continue;
+        }
+        /**
+         * Otherwise the row itself becomes the parked one. `isPrimary` is cleared because
+         * `ck_capacity_primary_has_team` forbids a primary with no team — and because an unassigned
+         * row names nobody to own the work.
+         */
+        await this.repo.updateAllocation(row.id, { teamId: null, isPrimary: false }, tx);
+      }
+
+      /**
+       * A Feature that LOST its owner but still has other teams gets one back.
+       *
+       * Same rule `removeAllocation` applies: team rows with no primary read "as unassigned while
+       * teams are demonstrably working on it", and a unique index cannot catch an absence.
+       */
+      for (const row of rows.filter((r) => r.isPrimary)) {
+        const next = await this.repo.oldestTeamAllocation(id, row.portfolioItemId, tx);
+        if (next) await this.repo.updateAllocation(next.id, { isPrimary: true }, tx);
+      }
+
+      await this.repo.removeTeam(id, teamId, tx);
+    });
+
     return this.getPlan(actor, id);
   }
 
@@ -765,6 +834,43 @@ export class CapacityPlansService {
       await this.repo.clearPrimaryAllocations(planId, allocation.portfolioItemId, tx);
       await this.repo.updateAllocation(allocationId, { isPrimary: true }, tx);
     });
+    return this.getPlanDetail(actor, planId);
+  }
+
+  /**
+   * Rally's `Remove From Plan`: take a Feature off the plan entirely.
+   *
+   * ONE call, ONE transaction. The client used to do this by looping a DELETE per allocation — a split
+   * Feature meant one request per team — so a failure midway left the Feature half-removed: still on
+   * the plan, still counted, but missing the teams the earlier calls had already dropped. There was no
+   * request that expressed "remove this Feature", which is the decision a planner actually makes.
+   *
+   * The BA says the same thing: "removes every allocation row for that Feature across all Teams in the
+   * Plan". The Feature itself is untouched — this is a planning decision, not a portfolio one.
+   *
+   * No primary promotion here, unlike `removeAllocation`: every row for this Feature is going, so there
+   * is nothing left to own it.
+   */
+  async removeItemFromPlan(
+    actor: JwtPayload,
+    planId: string,
+    portfolioItemId: string,
+  ): Promise<CapacityPlanDetail> {
+    const plan = await this.requireDraft(actor, planId);
+    await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
+
+    const rows = await this.repo.listAllocationsForItem(planId, portfolioItemId);
+    if (rows.length === 0) {
+      throw new NotFoundException(
+        'CAPACITY_ALLOCATION_NOT_FOUND',
+        'That Feature is not on this plan',
+      );
+    }
+
+    await this.uow.run(async (tx) => {
+      for (const row of rows) await this.repo.deleteAllocation(row.id, tx);
+    });
+
     return this.getPlanDetail(actor, planId);
   }
 
@@ -1224,6 +1330,34 @@ export class CapacityPlansService {
       totalEnteredCapacity(teams),
     );
 
+    /**
+     * AC-010: a reader "sees only its assigned Team" inside a published plan.
+     *
+     * The TEAM rows and their allocations are narrowed to the teams this caller belongs to. What is
+     * deliberately NOT narrowed: the plan's own totals, its item list and its cutline. Those are facts
+     * about the PLAN, and a reader who could not see them would have their own team's numbers with
+     * nothing to read them against — "18 of what?" — while the header, the bar and the cutline all
+     * describe a whole a plan member is entitled to understand. The BA's rule is about whose ROWS a
+     * reader may open, not about hiding the plan's size from someone who was shown the plan.
+     *
+     * A planner sees everything. A reader who belongs to no team on the plan sees no team rows, which
+     * is the honest answer rather than an empty-looking error.
+     */
+    if (!(await this.isPlanner(actor, plan.projectId))) {
+      const mine = await this.teamIdsFor(actor);
+      const visibleTeams = teams.filter((team) => mine.has(team.teamId));
+      return {
+        ...plan,
+        teams: visibleTeams,
+        items,
+        itemCutlineIndex,
+        allocations: allocations.filter((a) => a.teamId !== null && mine.has(a.teamId)),
+        unallocated: allocations
+          .filter((a) => a.teamId === null)
+          .reduce((sum, a) => sum + a.metrics.estimated, 0),
+      };
+    }
+
     return {
       ...plan,
       teams,
@@ -1235,6 +1369,27 @@ export class CapacityPlansService {
         .filter((a) => a.teamId === null)
         .reduce((sum, a) => sum + a.metrics.estimated, 0),
     };
+  }
+
+  /**
+   * The teams this caller is an ACTIVE member of, workspace-wide.
+   *
+   * Not narrowed to the plan's project: the caller's memberships are a property of the person, and the
+   * only use is intersecting them with a plan's own teams — which are already project-scoped by
+   * `assertTeamInProject`. Filtering twice would just be a longer way to the same set.
+   */
+  private async teamIdsFor(actor: JwtPayload): Promise<Set<string>> {
+    const rows = await this.db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.workspaceId, actor.workspaceId),
+          eq(teamMembers.userId, actor.sub),
+          eq(teamMembers.status, 'active'),
+        ),
+      );
+    return new Set(rows.map((row) => row.teamId));
   }
 
   /**
@@ -1393,6 +1548,21 @@ export class CapacityPlansService {
       );
     }
   }
+}
+
+/**
+ * The value a merged unassigned row should carry when a removed team's row folds into it.
+ *
+ * `null` means "charge the Feature's own estimate", so it is not zero and cannot be added to:
+ *
+ *  - both null  → still null: nothing was ever stated, and the Feature's estimate still answers.
+ *  - one stated → that number, because a figure a planner typed must not be discarded by a removal.
+ *  - both stated → their sum, which is the demand the two rows represented together.
+ */
+export function mergeParkedValue(parked: string | null, removed: string | null): string | null {
+  if (parked === null) return removed;
+  if (removed === null) return parked;
+  return String(Number(parked) + Number(removed));
 }
 
 /**

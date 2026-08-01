@@ -2521,6 +2521,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/capacity-plans/{id}/items/{portfolioItemId}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Remove a Feature from the plan — every team's allocation of it, in one transaction */
+    delete: operations['CapacityPlansController_removeItemFromPlan']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/quality/defects': {
     parameters: {
       query?: never
@@ -4007,6 +4024,14 @@ export interface components {
       title: string
       scheduleState: string
       storyPoints: number | null
+      /**
+       * @description The BA's `Priority` column on the Children tab
+       * @enum {string}
+       */
+      priority: 'none' | 'low' | 'normal' | 'high' | 'urgent'
+      iterationId: string | null
+      /** @description The BA's `Iteration` column */
+      iterationName: string | null
       /** Format: uuid */
       projectId: string
       releaseId: string | null
@@ -14032,6 +14057,56 @@ export interface operations {
       path: {
         id: string
         allocationId: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_removeItemFromPlan: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        portfolioItemId: string
       }
       cookie?: never
     }

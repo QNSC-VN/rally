@@ -379,17 +379,83 @@ describe('capacity allocation (e2e)', () => {
     expect(Number(rows[0].value)).toBe(4);
   });
 
-  it('refuses to remove a team that still holds demand', async () => {
-    const featureId = await newFeature(`Guard ${uniqueKey()}`);
+  it('removes a SPLIT Feature from the plan in one call, leaving no row behind', async () => {
+    // Against the real database because the point is atomicity: the client used to loop a DELETE per
+    // allocation, so a three-way split was three requests and a failure on the second left the Feature
+    // on the plan minus the team the first had already dropped.
+    const featureId = await newFeature(`Remove split ${uniqueKey()}`);
+    await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: teamAId, value: 4 });
+    await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: teamBId, value: 6 });
+    await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: null, value: 2 });
+
+    const before = (await capacity.getPlanDetail(admin, planId)).allocations.filter(
+      (a) => a.portfolioItemId === featureId,
+    );
+    expect(before).toHaveLength(3);
+
+    const after = await capacity.removeItemFromPlan(admin, planId, featureId);
+    expect(after.allocations.filter((a) => a.portfolioItemId === featureId)).toHaveLength(0);
+    // The Feature itself survives: removal is a planning decision, not a portfolio one.
+    expect(await portfolio.getItem(admin, featureId)).toMatchObject({ id: featureId });
+  });
+
+  it('reports a Feature that is not on the plan instead of succeeding silently', async () => {
+    const featureId = await newFeature(`Never added ${uniqueKey()}`);
+    await expect(capacity.removeItemFromPlan(admin, planId, featureId)).rejects.toMatchObject({
+      code: 'CAPACITY_ALLOCATION_NOT_FOUND',
+    });
+  });
+
+  it("RE-PARKS a removed team's demand as unassigned, against the real unique index", async () => {
+    // AC-005: "removed Teams move their allocation rows back to Unallocated." Against the real
+    // database because the rule is bounded by a constraint — `uq_capacity_allocation_unassigned`
+    // permits ONE unassigned row per (plan, Feature), so re-parking cannot simply insert.
+    const featureId = await newFeature(`Repark ${uniqueKey()}`);
     await capacity.allocate(admin, planId, {
       portfolioItemId: featureId,
       teamId: teamBId,
       value: 3,
     });
 
-    await expect(capacity.removeTeam(admin, planId, teamBId)).rejects.toMatchObject({
-      code: 'CAPACITY_TEAM_HAS_ALLOCATIONS',
+    const after = await capacity.removeTeam(admin, planId, teamBId);
+    expect(after.teams.map((t) => t.teamId)).not.toContain(teamBId);
+
+    const rows = (await capacity.getPlanDetail(admin, planId)).allocations.filter(
+      (a) => a.portfolioItemId === featureId,
+    );
+    // The demand survived, with nobody holding it — which is what makes it reassignable.
+    expect(rows).toHaveLength(1);
+    expect(rows[0].teamId).toBeNull();
+    expect(Number(rows[0].value)).toBe(3);
+    expect(rows[0].isPrimary).toBe(false);
+
+    // Put the team back for the specs that follow.
+    await capacity.addTeam(admin, planId, teamBId);
+  });
+
+  it('MERGES into an existing unassigned row rather than violating the index', async () => {
+    // The Feature is parked AND allocated: `Add Features` at plan level leaves an unassigned row, and
+    // allocating a team afterwards consumes it — so the pair is built here deliberately, with the
+    // parked row created after the team row.
+    const featureId = await newFeature(`Merge park ${uniqueKey()}`);
+    await capacity.allocate(admin, planId, {
+      portfolioItemId: featureId,
+      teamId: teamBId,
+      value: 5,
     });
+    await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: null, value: 2 });
+
+    await capacity.removeTeam(admin, planId, teamBId);
+
+    const rows = (await capacity.getPlanDetail(admin, planId)).allocations.filter(
+      (a) => a.portfolioItemId === featureId,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].teamId).toBeNull();
+    // 5 + 2: both rows were real demand, and a removal must not quietly drop either.
+    expect(Number(rows[0].value)).toBe(7);
+
+    await capacity.addTeam(admin, planId, teamBId);
   });
 
   it('refuses to allocate an Epic', async () => {

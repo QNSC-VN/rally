@@ -162,6 +162,14 @@ export interface ICapacityPlanRepository {
   countTeamAllocations(planId: string, teamId: string): Promise<number>;
 
   /**
+   * The rows one team holds on a plan — what `removeTeam` has to re-park.
+   *
+   * A count is not enough: each row has to be moved or merged individually, because at most ONE
+   * unassigned row may exist per (plan, Feature) and some of these Features may already have one.
+   */
+  listAllocationsForTeam(planId: string, teamId: string): Promise<CapacityAllocation[]>;
+
+  /**
    * Accepted totals per FINISHED iteration for one team — the sample set the capacity
    * forecast draws from.
    *
