@@ -185,7 +185,8 @@
     "skippedHeading": "Not fully updated:",
     "skipReason": {
       "unallocated": "no team assigned, so there was no plan for it to take",
-      "release_span_mismatch": "the plan’s window reaches outside its release, so the dates were written but the Release was not"
+      "release_span_mismatch": "the plan’s window reaches outside its release, so the dates were written but the Release was not",
+      "archived": "it is archived, so the plan had nothing to write to — remove it from the plan or unarchive it"
     },
     "acknowledge": "Done",
     "failed": "Could not publish the plan",

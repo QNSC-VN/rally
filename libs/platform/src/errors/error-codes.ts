@@ -134,6 +134,11 @@ export const ErrorCodes = {
   CAPACITY_MOVE_OTHER_PROJECT: 'CAPACITY_MOVE_OTHER_PROJECT',
   CAPACITY_MOVE_ALREADY_ON_TARGET: 'CAPACITY_MOVE_ALREADY_ON_TARGET',
   CAPACITY_MOVE_RELEASE_MISMATCH: 'CAPACITY_MOVE_RELEASE_MISMATCH',
+  /** The (plan, item, team) slot an allocation is being moved onto is already occupied. */
+  CAPACITY_ALLOCATION_TEAM_TAKEN: 'CAPACITY_ALLOCATION_TEAM_TAKEN',
+  CAPACITY_ALLOCATION_ALREADY_UNASSIGNED: 'CAPACITY_ALLOCATION_ALREADY_UNASSIGNED',
+  /** A release cannot be deleted while a capacity plan is built on it. */
+  RELEASE_HAS_CAPACITY_PLAN: 'RELEASE_HAS_CAPACITY_PLAN',
   /**
    * An Unallocated row cannot be a Feature's primary team assignment.
    *

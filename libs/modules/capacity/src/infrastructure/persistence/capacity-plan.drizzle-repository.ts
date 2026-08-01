@@ -13,11 +13,13 @@ import {
   teams,
   workItems,
 } from '../../../../../../db/schema/work';
-import { childWorkPredicate, metricSubqueries } from './capacity-metrics.sql';
 import {
-  acceptedScheduleStatesSql,
-  completedScheduleStatesSql,
-} from '../../../../../../db/schema/enums';
+  childWorkPredicate,
+  completedMeasureSql,
+  measureSql,
+  metricSubqueries,
+} from './capacity-metrics.sql';
+import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
 import type { VelocitySample } from '../../domain/capacity-forecast';
 import type {
   CapacityAllocation,
@@ -219,14 +221,14 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         itemState: portfolioItems.state,
         refinedEstimate: portfolioItems.refinedEstimate,
         preliminaryEstimate: portfolioItems.preliminaryEstimate,
+        // Measured in the PLAN's unit: points, or the COUNT of child items. Everything these feed —
+        // bars, warnings, the cutline — is compared against a Capacity entered in that same unit.
         rollup: sql<string>`(
-          select coalesce(sum(${workItems.storyPoints}), 0)
+          select ${measureSql(plan.unit)}
           from ${workItems} where ${childScope}
         )`,
         complete: sql<string>`(
-          select coalesce(sum(${workItems.storyPoints}) filter (
-            where ${workItems.scheduleState} in (${completedScheduleStatesSql()})
-          ), 0)
+          select ${completedMeasureSql(plan.unit)}
           from ${workItems} where ${childScope}
         )`,
         rank: portfolioItems.rank,
@@ -235,7 +237,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         // summing the per-team numbers would miss children whose team is not on the plan (or is
         // not set at all) while double-counting nothing back.
         itemRollup: sql<string>`(
-          select coalesce(sum(${workItems.storyPoints}), 0)
+          select ${measureSql(plan.unit)}
           from ${workItems}
           where ${workItems.projectId} = ${plan.projectId}
             and ${workItems.releaseId} = ${plan.releaseId}
@@ -243,9 +245,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
             and ${workItems.featureId} = ${capacityPlanAllocations.portfolioItemId}
         )`,
         itemComplete: sql<string>`(
-          select coalesce(sum(${workItems.storyPoints}) filter (
-            where ${workItems.scheduleState} in (${completedScheduleStatesSql()})
-          ), 0)
+          select ${completedMeasureSql(plan.unit)}
           from ${workItems}
           where ${workItems.projectId} = ${plan.projectId}
             and ${workItems.releaseId} = ${plan.releaseId}
@@ -421,7 +421,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       teamId,
       planId: plan.id,
     });
-    const m = metricSubqueries(where);
+    const m = metricSubqueries(where, plan.unit);
     const [row] = await this.db
       .select({ rollup: m.rollup, complete: m.complete })
       .from(capacityPlans)
@@ -560,7 +560,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       releaseId?: string;
     },
     executor?: DbExecutor,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const exec = executor ?? this.db;
     const set: Record<string, unknown> = {
       plannedStartDate: fields.plannedStartDate,
@@ -569,7 +569,9 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
     };
     if (fields.releaseId !== undefined) set.releaseId = fields.releaseId;
 
-    await exec
+    // `returning` so the caller can tell a WRITE from a no-op: the `archivedAt` filter means an
+    // archived Feature matches nothing, and publish used to count that as updated.
+    const written = await exec
       .update(portfolioItems)
       .set(set)
       .where(
@@ -578,7 +580,9 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
           eq(portfolioItems.workspaceId, workspaceId),
           isNull(portfolioItems.archivedAt),
         ),
-      );
+      )
+      .returning({ id: portfolioItems.id });
+    return written.length > 0;
   }
 
   /**

@@ -211,7 +211,7 @@ const PublishResultSchema = z.object({
       portfolioItemId: z.string().uuid(),
       itemKey: z.string(),
       reason: z
-        .enum(['unallocated', 'release_span_mismatch'])
+        .enum(['unallocated', 'release_span_mismatch', 'archived'])
         .describe(
           'unallocated: no team, so no plan to inherit. release_span_mismatch: the plan window reaches outside its release, so Rally writes the dates but not the Release.',
         ),

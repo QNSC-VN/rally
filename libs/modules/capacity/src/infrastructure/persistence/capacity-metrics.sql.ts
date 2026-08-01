@@ -1,6 +1,7 @@
 import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import { capacityPlanAllocations, workItems } from '../../../../../../db/schema/work';
 import { completedScheduleStatesSql } from '../../../../../../db/schema/enums';
+import type { CapacityPlanUnit } from '../../../../../../db/schema/enums';
 
 /**
  * The child-work predicate that every capacity number is built from.
@@ -64,24 +65,45 @@ export function childWorkPredicate(args: {
 }
 
 /**
- * `complete` and `rollup` for one scope, as scalar subqueries.
+ * The measure a plan is counted in — POINTS or the number of child items.
+ *
+ * Rally plans in one of two units ("View Work Items by Points or Count") and the BA states the
+ * arithmetic for both: `SUM(child.planEstimate)` for points, `COUNT(child)` for count. Everything
+ * downstream — Rollup, Complete, the bars, every warning, the cutline — has to be expressed in the
+ * SAME unit as the team's Capacity, or a count-unit plan compares points against a headcount.
+ *
+ * `count(*)` rather than `sum(1)` so a child with no estimate still counts: in count mode the item
+ * IS the unit, and an unestimated story is still one story.
+ */
+export function measureSql(unit: CapacityPlanUnit) {
+  return unit === 'count' ? sql`count(*)` : sql`coalesce(sum(${workItems.storyPoints}), 0)`;
+}
+
+/** The same measure, restricted to finished children — the `filter` clause differs by unit. */
+export function completedMeasureSql(unit: CapacityPlanUnit) {
+  const finished = sql`filter (where ${workItems.scheduleState} in (${completedScheduleStatesSql()}))`;
+  return unit === 'count'
+    ? sql`count(*) ${finished}`
+    : sql`coalesce(sum(${workItems.storyPoints}) ${finished}, 0)`;
+}
+
+/**
+ * `complete` and `rollup` for one scope, as scalar subqueries, in the PLAN's unit.
  *
  * Complete uses COMPLETED_SCHEDULE_STATES (completed, accepted, release) while the
  * Portfolio's Percent Done uses ACCEPTED_SCHEDULE_STATES. That difference is deliberate and
  * documented as the D1 distinction in `db/schema/enums.ts`: a capacity plan reports what a
  * team has FINISHED, the portfolio reports what the business has SIGNED OFF.
  */
-export function metricSubqueries(where: SQL) {
+export function metricSubqueries(where: SQL, unit: CapacityPlanUnit) {
   return {
     rollup: sql<string>`(
-      select coalesce(sum(${workItems.storyPoints}), 0)
+      select ${measureSql(unit)}
       from ${workItems}
       where ${where}
     )`,
     complete: sql<string>`(
-      select coalesce(sum(${workItems.storyPoints}) filter (
-        where ${workItems.scheduleState} in (${completedScheduleStatesSql()})
-      ), 0)
+      select ${completedMeasureSql(unit)}
       from ${workItems}
       where ${where}
     )`,

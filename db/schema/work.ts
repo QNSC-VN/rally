@@ -436,11 +436,20 @@ export const capacityPlans = workSchema.table(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id').notNull(),
-    projectId: uuid('project_id').notNull(),
-    releaseId: uuid('release_id').notNull(),
-    // `CP-<n>`, minted per project like `iterations.iteration_key`. Nullable because rows
-    // created before 0076 are backfilled rather than rewritten by the app.
-    planKey: varchar('plan_key', { length: 30 }),
+    // RESTRICT on both: a plan is a commitment, so a release or project that is going away is exactly
+    // what an operator needs to be told about. Cascading would delete planning history silently, and
+    // before 0085 there was no constraint at all — deleting a release left the plan pointing at a
+    // missing row, unable to publish its Release field and unable to be repaired.
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'restrict' }),
+    releaseId: uuid('release_id')
+      .notNull()
+      .references(() => releases.id, { onDelete: 'restrict' }),
+    // `CP-<n>`, minted per project like `iterations.iteration_key`. NOT NULL since 0085: the unique
+    // index is (project_id, plan_key) and NULLs are distinct in a btree, so it never constrained a
+    // missing key — three live plans had none, and the ID is the list's only way in.
+    planKey: varchar('plan_key', { length: 30 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     status: capacityPlanStatusEnum('status').notNull().default('draft'),
     // Chosen at creation, FIXED afterwards. Every number on the plan is in this
@@ -480,7 +489,11 @@ export const capacityPlanTeams = workSchema.table(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     planId: uuid('plan_id').notNull(),
-    teamId: uuid('team_id').notNull(),
+    // RESTRICT, as on the plan's project and release: a team that still carries committed demand must
+    // not vanish from under it. Before 0085 this column referenced nothing.
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'restrict' }),
     // In the plan's unit. Null = capacity not yet entered, which is different from
     // zero capacity and must render as blank rather than 0.
     capacity: numeric('capacity', { precision: 10, scale: 2 }),
@@ -515,7 +528,9 @@ export const capacityPlanAllocations = workSchema.table(
     id: uuid('id').primaryKey().defaultRandom(),
     planId: uuid('plan_id').notNull(),
     portfolioItemId: uuid('portfolio_item_id').notNull(),
-    teamId: uuid('team_id'),
+    // Nullable: NULL is the Unallocated bucket. A real team still cannot be deleted while it holds a
+    // slice of a Feature, which is what RESTRICT says.
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'restrict' }),
     /**
      * Rally's PRIMARY team assignment for this Feature in this plan.
      *

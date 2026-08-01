@@ -18,7 +18,7 @@ import {
   type EstimateTier,
   resolveEstimate,
 } from '@modules/portfolio';
-import { releases, teams } from '../../../../../db/schema/work';
+import { projectTeams, releases, teams } from '../../../../../db/schema/work';
 import {
   FORECAST_HISTORY_DAYS,
   forecastCapacity,
@@ -113,8 +113,11 @@ export interface PublishSkip {
    * `unallocated` — the allocation names no team, so there is no plan to inherit.
    * `release_span_mismatch` — the plan's window reaches outside its release, so Rally writes
    * the dates but not the Release field.
+   * `archived` — the Feature is archived, so the write matched no row. Reported rather than counted:
+   * the plan still holds the allocation, and a planner who sees "3 Features updated" for two writes
+   * has no way to find the third.
    */
-  reason: 'unallocated' | 'release_span_mismatch';
+  reason: 'unallocated' | 'release_span_mismatch' | 'archived';
 }
 
 export interface PublishResult {
@@ -282,7 +285,7 @@ export class CapacityPlansService {
   async addTeam(actor: JwtPayload, id: string, teamId: string): Promise<CapacityPlanView> {
     const plan = await this.requireDraft(actor, id);
     await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
-    await this.assertTeamInWorkspace(actor.workspaceId, teamId);
+    await this.assertTeamInProject(actor.workspaceId, plan.projectId, teamId);
 
     // `uq_capacity_plan_team` would also catch this; the named error says which team.
     if (await this.repo.findTeam(id, teamId)) {
@@ -384,7 +387,7 @@ export class CapacityPlansService {
             continue;
           }
 
-          await this.repo.applyPlanToFeature(
+          const written = await this.repo.applyPlanToFeature(
             row.portfolioItemId,
             actor.workspaceId,
             {
@@ -394,6 +397,14 @@ export class CapacityPlansService {
             },
             tx,
           );
+          if (!written) {
+            skipped.push({
+              portfolioItemId: row.portfolioItemId,
+              itemKey: row.itemKey,
+              reason: 'archived',
+            });
+            continue;
+          }
           featuresUpdated += 1;
 
           if (spansReleases) {
@@ -634,6 +645,32 @@ export class CapacityPlansService {
     // Unallocated bucket, which needs no membership.
     if (input.teamId) await this.requirePlanTeam(planId, input.teamId);
 
+    /**
+     * The destination slot must be free, because the database says so.
+     *
+     * `uq_capacity_allocation_team` allows one row per (plan, item, team) and
+     * `uq_capacity_allocation_unassigned` one parked row per (plan, item). Moving onto an occupied
+     * slot used to reach Postgres and surface as `INTERNAL_ERROR` 500 — a planner's ordinary mistake
+     * reported as a server fault. Named codes let the client say what happened instead.
+     */
+    if (input.teamId !== undefined && input.teamId !== allocation.teamId) {
+      const occupied = await this.repo.findAllocationFor(
+        planId,
+        allocation.portfolioItemId,
+        input.teamId,
+      );
+      if (occupied) {
+        throw new ConflictException(
+          input.teamId === null
+            ? 'CAPACITY_ALLOCATION_ALREADY_UNASSIGNED'
+            : 'CAPACITY_ALLOCATION_TEAM_TAKEN',
+          input.teamId === null
+            ? 'That Feature already has an unassigned row on this plan'
+            : 'That team already holds an allocation of this Feature',
+        );
+      }
+    }
+
     await this.uow.run(async (tx) => {
       // Parking a row in the Unallocated bucket strips its primary flag: the check constraint
       // forbids a primary with no team, so this is the difference between a clear rule and a
@@ -837,19 +874,31 @@ export class CapacityPlansService {
     const parkable = rows.length - carriable.length;
     const targetUnpublished = target.status === 'published';
 
+    /**
+     * The Feature must arrive with an OWNER if it arrives with a team at all.
+     *
+     * A carried row keeps its own primary flag. But when the owner's team is ABSENT from the target,
+     * nothing there would be primary — the state `removeAllocation` guards against, described there as
+     * reading "as unassigned while teams are demonstrably working on it". A unique index cannot catch
+     * an absence, so the first carried row takes the assignment. Decided before the loop because it is
+     * a property of the whole move, not of one row.
+     */
+    const ownerSurvives = carriable.some((row) => row.isPrimary);
+
     await this.uow.run(async (tx) => {
-      for (const row of carriable) {
+      for (const [at, row] of carriable.entries()) {
         await this.repo.createAllocation(
           {
             planId: input.targetPlanId,
             portfolioItemId: input.portfolioItemId,
             teamId: row.teamId,
             value: row.value,
-            isPrimary: row.isPrimary,
+            isPrimary: ownerSurvives ? row.isPrimary : at === 0,
           },
           tx,
         );
       }
+
       // Everything that could not keep its team becomes ONE unassigned row, not one per lost team:
       // the target has no way to tell those rows apart, so N of them would read as N commitments.
       if (parkable > 0) {
@@ -1030,11 +1079,21 @@ export class CapacityPlansService {
           projectId: row.itemProjectId,
           projectName: row.itemProjectName,
           releaseId: row.itemReleaseId,
-          // Sums the RESOLVED charge across this Feature's team rows — an explicit allocation
-          // where there is one, the Feature's own estimate where the team was merely assigned.
-          // Same figure the sub-table shows per row, so the item total is the sum of what the
-          // reader can see.
-          estimated: allocations[index].metrics.estimated,
+          /**
+           * A TEAM row's charge counts; an unallocated placeholder's does not.
+           *
+           * The BA is explicit (AC-014, §11): "Unallocated rows do not count toward Total
+           * Allocated. An Unallocated placeholder does not override Refined or Preliminary." A
+           * Feature holding both a team row and a parked row was reporting the sum of the two —
+           * live proof was `CP-8`/`FE-640729683` showing 8 for a 3-point commitment beside a
+           * 5-point placeholder — and that inflated number then fed the cutline while the plan
+           * header (which sums team rows only) disagreed with it.
+           *
+           * A Feature with ONLY a parked row still shows its own estimate: the placeholder is
+           * skipped here and `parkedEstimate` supplies the fallback below, so "planned but not yet
+           * assigned" reads as the Feature's size rather than as zero.
+           */
+          estimated: row.teamId === null ? 0 : allocations[index].metrics.estimated,
           rollup: row.itemRollup,
           complete: row.itemComplete,
           tier: allocations[index].tier,
@@ -1045,7 +1104,7 @@ export class CapacityPlansService {
         });
       } else {
         const item = items[at];
-        item.estimated += allocations[index].metrics.estimated;
+        if (row.teamId !== null) item.estimated += allocations[index].metrics.estimated;
         if (row.teamId === null) item.unallocated = true;
         else item.teamIds.push(row.teamId);
         if (row.isPrimary) item.primaryTeamId = row.teamId;
@@ -1054,6 +1113,22 @@ export class CapacityPlansService {
         if (allocations[index].tier === 'allocated') item.tier = 'allocated';
       }
     }
+    /**
+     * A Feature with no team at all still carries its own estimate.
+     *
+     * Its parked row was skipped above so it could not be added to a team's commitment; here the
+     * resolved figure comes back for the rows where it is the ONLY thing there is. Read from the
+     * parked allocation's own resolved metrics, so it follows the same Refined → Preliminary
+     * precedence as every other row rather than re-deriving it.
+     */
+    for (const [index, row] of rows.entries()) {
+      if (row.teamId !== null) continue;
+      const at = seen.get(row.portfolioItemId);
+      if (at === undefined) continue;
+      const item = items[at];
+      if (item.teamIds.length === 0) item.estimated = allocations[index].metrics.estimated;
+    }
+
     // Ordered by the repository's rank ordering, EXCEPT that it puts unallocated rows last.
     // The cutline accumulates strictly down rank, so this restores it.
     items.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
@@ -1205,14 +1280,38 @@ export class CapacityPlansService {
     }
   }
 
-  private async assertTeamInWorkspace(workspaceId: string, teamId: string): Promise<void> {
+  /**
+   * A plan's team must be linked to the plan's PROJECT, not merely present in the workspace.
+   *
+   * This checked the workspace only, and the consequence was live: 11 `capacity_plan_teams` rows and
+   * 12 allocations referenced teams with no link to their plan's project — including the seeded
+   * `Team Beta`, which contributed demand to two plans while the Add/Remove Teams picker (which lists
+   * `project_teams`) had no row for it, so it could not be removed through the UI at all.
+   *
+   * The BA states the source directly: "Teams are added through Project Breakdown."
+   */
+  private async assertTeamInProject(
+    workspaceId: string,
+    projectId: string,
+    teamId: string,
+  ): Promise<void> {
     const rows = await this.db
       .select({ id: teams.id })
       .from(teams)
-      .where(and(eq(teams.id, teamId), eq(teams.workspaceId, workspaceId)))
+      .innerJoin(projectTeams, eq(projectTeams.teamId, teams.id))
+      .where(
+        and(
+          eq(teams.id, teamId),
+          eq(teams.workspaceId, workspaceId),
+          eq(projectTeams.projectId, projectId),
+        ),
+      )
       .limit(1);
     if (rows.length === 0) {
-      throw new NotFoundException('CAPACITY_TEAM_NOT_FOUND', 'Team not found');
+      throw new NotFoundException(
+        'CAPACITY_TEAM_NOT_FOUND',
+        "Team not found in this plan's project",
+      );
     }
   }
 }

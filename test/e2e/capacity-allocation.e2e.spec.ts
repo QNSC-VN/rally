@@ -29,7 +29,7 @@ import { ProjectsService } from '@modules/projects';
 import { ReleasesService } from '@modules/releases';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { teams, workItems, workflowStatuses } from '@db/schema/work';
+import { projectTeams, teams, workItems, workflowStatuses } from '@db/schema/work';
 import { eq } from 'drizzle-orm';
 
 import { WORKSPACE_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
@@ -128,6 +128,12 @@ describe('capacity allocation (e2e)', () => {
       .returning({ id: teams.id });
     teamAId = made[0].id;
     teamBId = made[1].id;
+    // Both LINKED to the project: `addTeam` requires a plan's team to be one of the project's own
+    // (the BA's "Project Breakdown"), which the guard reads from `project_teams`.
+    await db.insert(projectTeams).values([
+      { workspaceId: WORKSPACE_ID, projectId, teamId: teamAId },
+      { workspaceId: WORKSPACE_ID, projectId, teamId: teamBId },
+    ]);
 
     const plan = await capacity.createPlan(admin, {
       projectId,

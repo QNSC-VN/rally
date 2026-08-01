@@ -96,7 +96,9 @@ describe('CapacityPlansService', () => {
               startDate: '2026-07-01',
               endDate: '2026-07-31',
             }),
-            applyPlanToFeature: vi.fn(),
+            // TRUE = a row was written. False now means "archived, matched nothing", which publish
+            // reports as a skip rather than counting.
+            applyPlanToFeature: vi.fn().mockResolvedValue(true),
             listAllocationsForItem: vi.fn().mockResolvedValue([]),
             setFeatureRelease: vi.fn(),
             setStatus: vi.fn().mockResolvedValue(plan({ status: 'published' })),
@@ -138,9 +140,12 @@ describe('CapacityPlansService', () => {
         {
           provide: DRIZZLE,
           useValue: {
-            select: () => ({
-              from: () => ({ where: () => ({ limit: () => Promise.resolve(lookupRows) }) }),
-            }),
+            // `innerJoin` is part of the chain because the team guard now joins `project_teams`: a
+            // plan's team must be linked to the plan's PROJECT, not merely present in the workspace.
+            select: () => {
+              const tail = { where: () => ({ limit: () => Promise.resolve(lookupRows) }) };
+              return { from: () => ({ ...tail, innerJoin: () => tail }) };
+            },
           },
         },
       ],
@@ -284,7 +289,11 @@ describe('CapacityPlansService', () => {
   });
 
   describe('teams', () => {
-    it('refuses a team that is not in the workspace', async () => {
+    it("refuses a team that is not linked to the plan's PROJECT", async () => {
+      // The guard used to check the workspace only, and the consequence was live data: 11
+      // `capacity_plan_teams` rows referenced teams with no link to their plan's project, including a
+      // seeded team that contributed demand while being absent from the Add/Remove Teams picker — so
+      // it could not be removed through the UI at all. The BA's source is "Project Breakdown".
       lookupRows = [];
       await expect(service.addTeam(actor, 'plan-1', 'team-x')).rejects.toMatchObject({
         code: 'CAPACITY_TEAM_NOT_FOUND',
@@ -1637,6 +1646,107 @@ describe('CapacityPlansService', () => {
       ).rejects.toThrow('denied');
       expect(repo.createAllocation).not.toHaveBeenCalled();
       expect(repo.deleteAllocation).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('data-integrity rules', () => {
+    const row = (over: Partial<CapacityAllocationRow> = {}): CapacityAllocationRow => ({
+      id: 'alloc-1',
+      planId: 'plan-1',
+      portfolioItemId: 'fe-1',
+      teamId: 'team-1',
+      isPrimary: true,
+      value: '3',
+      itemKey: 'FE-1',
+      name: 'Guest checkout',
+      refined: 13,
+      preliminarySize: 'm',
+      totalAllocated: 3,
+      rollup: 0,
+      complete: 0,
+      rank: 'a',
+      state: 'developing',
+      itemRollup: 0,
+      itemComplete: 0,
+      itemProjectId: 'proj-a',
+      itemProjectName: 'Project A',
+      itemReleaseId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...over,
+    });
+
+    it('does NOT let an unallocated placeholder inflate a Feature’s Estimated', async () => {
+      // AC-014 / §11: "Unallocated rows do not count toward Total Allocated." The live breach was
+      // `CP-8`/`FE-640729683` — a 3-point team commitment beside a 5-point parked row reporting 8,
+      // which then fed the cutline while the plan header (team rows only) reported 3.
+      repo.listAllocations.mockResolvedValue([
+        row({ id: 'a-team', teamId: 'team-1', value: '3', isPrimary: true }),
+        row({ id: 'a-parked', teamId: null, value: '5', isPrimary: false }),
+      ]);
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      const item = detail.items.find((i) => i.portfolioItemId === 'fe-1');
+      expect(item?.estimated).toBe(3);
+      expect(item?.unallocated).toBe(true);
+    });
+
+    it('still charges a Feature that has ONLY a parked row', async () => {
+      // Skipping the placeholder must not make "planned but not yet assigned" read as zero: with no
+      // team row there is nothing else to report, so the Feature's own estimate stands.
+      repo.listAllocations.mockResolvedValue([
+        row({ id: 'a-parked', teamId: null, value: null, isPrimary: false }),
+      ]);
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.items[0]?.estimated).toBe(13);
+    });
+
+    it('reports a taken (plan, item, team) slot as a CONFLICT, not a 500', async () => {
+      // `uq_capacity_allocation_team` allows one row per team per Feature. This used to reach Postgres
+      // and surface as INTERNAL_ERROR — an ordinary planner mistake reported as a server fault.
+      repo.findAllocation.mockResolvedValue({
+        id: 'alloc-1',
+        planId: 'plan-1',
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        isPrimary: false,
+        value: '3',
+      } as never);
+      repo.findTeam.mockResolvedValue({ planId: 'plan-1', teamId: 'team-2' } as never);
+      repo.findAllocationFor.mockResolvedValue({ id: 'other' } as never);
+
+      await expect(
+        service.updateAllocation(actor, 'plan-1', 'alloc-1', { teamId: 'team-2' }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_ALLOCATION_TEAM_TAKEN' });
+      expect(repo.updateAllocation).not.toHaveBeenCalled();
+    });
+
+    it('names the parked slot separately when one is already there', async () => {
+      repo.findAllocation.mockResolvedValue({
+        id: 'alloc-1',
+        planId: 'plan-1',
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        isPrimary: false,
+        value: '3',
+      } as never);
+      repo.findAllocationFor.mockResolvedValue({ id: 'parked' } as never);
+
+      await expect(
+        service.updateAllocation(actor, 'plan-1', 'alloc-1', { teamId: null }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_ALLOCATION_ALREADY_UNASSIGNED' });
+    });
+
+    it('reports an archived Feature as SKIPPED on publish rather than counting it', async () => {
+      // The write filters `archivedAt`, so it matches nothing; publish used to increment anyway and a
+      // planner reading "2 Features updated" had no way to find the one that was not.
+      repo.listAllocations.mockResolvedValue([row({ teamId: 'team-1' })]);
+      repo.applyPlanToFeature.mockResolvedValue(false);
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+      expect(result.featuresUpdated).toBe(0);
+      expect(result.skipped).toEqual([
+        { portfolioItemId: 'fe-1', itemKey: 'FE-1', reason: 'archived' },
+      ]);
     });
   });
 });
