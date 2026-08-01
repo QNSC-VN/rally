@@ -18,6 +18,7 @@ import { notify } from '@/shared/lib/toast'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { type AllocColKey } from '../model/columns'
 import { EstimateTierIcon } from './estimate-tier-badge'
+import { CapacityItemActions } from './capacity-item-actions'
 
 /**
  * One allocated Feature inside its team's sub-table (or the Unallocated bucket's).
@@ -40,6 +41,10 @@ export function AllocationRow({
   rankPosition,
   ownerTeamName,
   contributorTeamNames,
+  hasTeams,
+  onAllocate,
+  onUnassign,
+  onRemove,
 }: {
   planId: string
   allocation: CapacityAllocation
@@ -62,6 +67,15 @@ export function AllocationRow({
    * back into the plan to translate.
    */
   contributorTeamNames: string[]
+  /** Whether the Feature holds any team at all — gates `Remove All Assignments`. */
+  hasTeams: boolean
+  /**
+   * The same three verbs the Features tab offers, so Rally's gear reads the same next to a Feature
+   * wherever it is seen. Omitted (and the gear then hidden) on a published plan.
+   */
+  onAllocate?: () => void
+  onUnassign?: () => void
+  onRemove?: () => void
 }) {
   const { t } = useTranslation('capacity')
   /**
@@ -199,7 +213,10 @@ export function AllocationRow({
       {/* Rally's `Allocation`: the Feature's SHARING, not a number — `← from <team>` when another
           team owns it, `→ to <team>` when this team owns it and part of the work went elsewhere. The
           allocated points live in the trailing `Estimate` tooltip and are edited in `Estimated`. */}
-      <div style={colStyleFor('allocation', { flexShrink: 0 })} className="min-w-0 px-2">
+      <div
+        style={colStyleFor('allocation', { flexShrink: 0 })}
+        className="flex min-w-0 items-center overflow-hidden px-2"
+      >
         {sharing !== null && (
           <span className="truncate text-ui-sm text-muted-foreground italic" title={sharing.title}>
             {sharing.arrow} {sharing.preposition}{' '}
@@ -210,7 +227,10 @@ export function AllocationRow({
 
       {/* The FEATURE's own state — Rally's `State` column on this table. Read-only here: the state
           belongs to the Feature and is edited on the Portfolio page, not inside a plan. */}
-      <div style={colStyleFor('state', { flexShrink: 0 })} className="min-w-0 px-2">
+      <div
+        style={colStyleFor('state', { flexShrink: 0 })}
+        className="flex min-w-0 items-center overflow-hidden px-2"
+      >
         <span className="truncate text-muted-foreground">
           {tPortfolio(`states.${allocation.state}`)}
         </span>
@@ -273,6 +293,22 @@ export function AllocationRow({
         className="flex items-center justify-center px-1"
       >
         <EstimateTierIcon tier={allocation.tier} breakdown={allocation.estimateBreakdown} />
+      </div>
+
+      {/* Rally's per-item gear, at the row's end exactly as on the Features tab — the same component,
+          so the two tabs cannot come to offer different verbs for the same Feature. */}
+      <div
+        style={colStyleFor('actions', { flexShrink: 0 })}
+        className="flex items-center justify-center px-1"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <CapacityItemActions
+          itemKey={allocation.itemKey}
+          hasTeams={hasTeams}
+          onAllocate={onAllocate}
+          onUnassign={onUnassign}
+          onRemove={onRemove}
+        />
       </div>
     </div>
   )

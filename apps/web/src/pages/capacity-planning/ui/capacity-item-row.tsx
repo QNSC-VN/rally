@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Scale, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { MetricValue } from '@/shared/ui/metric-value'
@@ -10,7 +10,7 @@ import { BRAND } from '@/shared/config/brand'
 import { cn } from '@/shared/lib/utils'
 import type { CapacityPlanItem } from '@/features/capacity-planning/api'
 import { EstimateTierIcon } from './estimate-tier-badge'
-import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
+import { CapacityItemActions } from './capacity-item-actions'
 import { type ItemColKey } from '../model/columns'
 
 /**
@@ -199,44 +199,22 @@ export function CapacityItemRow({
         <span className="tabular-nums">{item.estimated}</span>
       </div>
 
-      {/* Rally's per-item menu: `Remove Only` takes the Feature off the plan, dropping every team's
-          allocation of it. The only removal surface for a Feature — a trash can in a team's
-          sub-table would remove it from that team while leaving it on the plan, which is a
-          different decision and one Rally makes through the assignment field instead. */}
+      {/* Rally's per-item menu. `Remove From Plan` drops every team's allocation of the Feature; a
+          trash can in a team's sub-table would instead remove it from ONE team while leaving it on
+          the plan, which is a different decision and one Rally makes through the assignment
+          field. */}
       <div
         style={colStyleFor('actions', { flexShrink: 0 })}
         className="flex items-center justify-center px-1"
       >
-        {onRemove !== undefined && (
-          <ActionMenu ariaLabel={t('items.actionsLabel', { item: item.itemKey })}>
-            {/* Rally's two removal verbs, and they answer different questions. `Remove All
-                Assignments` keeps the Feature in the plan and empties its teams, which is what a
-                planner wants when a Feature is still in scope but its split was wrong. */}
-            {/* Rally's per-item `Allocate`, and the BA's Feature menu lists it too: split ONE Feature
-                across teams. Adding a Feature to the plan is a different act with its own dialog —
-                this one only distributes what is already there. */}
-            {onAllocate !== undefined && (
-              <ActionMenuItem
-                icon={<Scale size={13} />}
-                label={t('items.allocate')}
-                onClick={onAllocate}
-              />
-            )}
-            {onUnassign !== undefined && item.teamIds.length > 0 && (
-              <ActionMenuItem
-                icon={<Undo2 size={13} />}
-                label={t('items.removeAllAssignments')}
-                onClick={onUnassign}
-              />
-            )}
-            <ActionMenuItem
-              icon={<Trash2 size={13} />}
-              label={t('items.removeFromPlan')}
-              destructive
-              onClick={onRemove}
-            />
-          </ActionMenu>
-        )}
+        {/* The shared gear, rendered identically in a team's sub-table on the Teams tab. */}
+        <CapacityItemActions
+          itemKey={item.itemKey}
+          hasTeams={item.teamIds.length > 0}
+          onAllocate={onAllocate}
+          onUnassign={onUnassign}
+          onRemove={onRemove}
+        />
       </div>
     </div>
   )

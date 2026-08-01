@@ -37,6 +37,7 @@ import {
   useDeleteCapacityPlan,
   usePublishPlan,
   useRevertPlan,
+  type CapacityAllocation,
   type CapacityPlanItem,
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
@@ -459,6 +460,27 @@ export function CapacityPlanDetailPage() {
   }
 
   /**
+   * Rally's per-item gear for a nested row, built from the SAME handlers the Features tab uses.
+   *
+   * Defined once here rather than per sub-table so `Remove From Plan` cannot come to mean one thing
+   * under a team and another on the Features tab. `undefined` on a published plan, which is what
+   * hides the gear rather than letting it offer verbs the API refuses.
+   */
+  const itemActionsFor = canManage
+    ? (allocation: CapacityAllocation) => {
+        const item = { portfolioItemId: allocation.portfolioItemId, itemKey: allocation.itemKey }
+        return {
+          hasTeams: (plan?.allocations ?? []).some(
+            (a) => a.portfolioItemId === allocation.portfolioItemId && a.teamId !== null,
+          ),
+          onAllocate: () => setAllocateFor(allocation.portfolioItemId),
+          onUnassign: () => void unassignFeature(item),
+          onRemove: () => void removeFeature(item),
+        }
+      }
+    : undefined
+
+  /**
    * Applies the dialog's selection as a DIFF against the plan's current teams.
    *
    * Removals first: a plan cannot hold a team twice, and doing them in one pass keeps the
@@ -481,24 +503,6 @@ export function CapacityPlanDetailPage() {
 
   const unitLabel = t(`units.${plan.unit}`)
 
-  /**
-   * Publish, or Revert once published — one control, rendered by whichever toolbar the active tab
-   * uses. Plan-level, so it belongs on both; defined once so the two tabs cannot drift.
-   */
-  const publishControl = !canPublish ? null : plan.status === 'draft' ? (
-    <Button size="sm" onClick={() => setShowPublish(true)} disabled={publish.isPending}>
-      <Send size={13} /> {t('publish.action')}
-    </Button>
-  ) : (
-    <Button
-      size="sm"
-      variant="secondary"
-      onClick={() => setConfirmRevert(true)}
-      disabled={revert.isPending}
-    >
-      <Undo2 size={13} /> {t('publish.revert.action')}
-    </Button>
-  )
   // The same totals the summary panel and the Breakdown overlay read, so the header bar cannot
   // disagree with the numbers printed beside it.
   const planWide = planTotals(plan)
@@ -583,10 +587,13 @@ export function CapacityPlanDetailPage() {
           // surface its cutline belongs on.
           { key: 'items', label: t('detail.tabs.items') },
         ]}
-        /* Rally's Actions menu holds exactly two of ours: Edit Plan Details and Delete Plan. The
-           verbs that change what the plan CONTAINS — Add / Remove Teams, Add Feature — and Publish
-           itself are page actions, because Rally puts them there and a planner reaches for them
-           repeatedly while building a plan. A menu is for what you do to a plan once. */
+        /* Rally's Actions menu, in Rally's order: `Edit Plan Details`, `Publish`/`Unpublish`,
+           `Delete Plan`. Publishing lived on the toolbar here until this slice, which is
+           not where Rally keeps it ("Select the Actions menu and select Publish") — and a plan is
+           published once, so a permanent button spent the primary slot on a verb used at the very
+           end. The verbs that change what the plan CONTAINS stay on the tab toolbars, because a
+           planner reaches for those repeatedly while building it.
+           Rally's `Export` is deliberately NOT here: it is out of scope for now. */
         actions={
           canPublish || can('capacity:manage') ? (
             <ActionMenu ariaLabel={t('detail.actionsLabel')} onDark>
@@ -599,6 +606,24 @@ export function CapacityPlanDetailPage() {
                   onClick={() => setShowEdit(true)}
                 />
               )}
+              {canPublish &&
+                (plan.status === 'draft' ? (
+                  <ActionMenuItem
+                    icon={<Send size={13} />}
+                    label={t('publish.action')}
+                    disabled={publish.isPending}
+                    onClick={() => setShowPublish(true)}
+                  />
+                ) : (
+                  /* Rally's word is `Unpublish`, and it is the gate on every other edit: a
+                     published plan is read-only until this runs. */
+                  <ActionMenuItem
+                    icon={<Undo2 size={13} />}
+                    label={t('publish.revert.action')}
+                    disabled={revert.isPending}
+                    onClick={() => setConfirmRevert(true)}
+                  />
+                ))}
               {can('capacity:manage') && (
                 <ActionMenuItem
                   icon={<Trash2 size={13} />}
@@ -695,7 +720,6 @@ export function CapacityPlanDetailPage() {
                   </div>
                 }
                 fields={<ColumnFieldsMenu {...itemTable.fieldsMenuProps} />}
-                trailing={publishControl}
               />
             ) : (
               <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
@@ -704,7 +728,6 @@ export function CapacityPlanDetailPage() {
                     <Users size={13} /> {t('teams.action')}
                   </Button>
                 )}
-                <span className="ml-auto">{publishControl}</span>
               </div>
             )}
 
@@ -857,6 +880,7 @@ export function CapacityPlanDetailPage() {
                                 })
                             : undefined
                         }
+                        itemActions={itemActionsFor}
                       />
                     )}
                   </div>
@@ -888,6 +912,7 @@ export function CapacityPlanDetailPage() {
                       onOpenFeature={openFeature}
                       rankPositionOf={rankPositionOf}
                       sharingOf={sharingOf}
+                      itemActions={itemActionsFor}
                     />
                   </div>
                 )}
