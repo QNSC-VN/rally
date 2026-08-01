@@ -332,13 +332,6 @@ export const iterationDailySnapshots = workSchema.table(
     workspaceId: uuid('workspace_id').notNull(),
     iterationId: uuid('iteration_id').notNull(),
     snapshotDate: date('snapshot_date').notNull(),
-    // numeric(8,2) mirrors release_daily_snapshots so fractional story points
-    // survive the burndown read model (matches work_items.story_points).
-    totalPoints: numeric('total_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    completedPoints: numeric('completed_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    remainingPoints: numeric('remaining_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    totalItems: integer('total_items').notNull().default(0),
-    completedItems: integer('completed_items').notNull().default(0),
     // ── Phase 6 Burndown (migration 0088) ─────────────────────────────────
     // The two series the approved chart actually plots. They are NOT the legacy
     // point columns above renamed: Remaining To Do is SUM(task.todo) in HOURS on
@@ -970,11 +963,6 @@ export const releaseDailySnapshots = workSchema.table(
     // NULL = the All Teams aggregate row for this release and date.
     teamId: uuid('team_id'),
     snapshotDate: date('snapshot_date').notNull(),
-    totalPoints: numeric('total_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    completedPoints: numeric('completed_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    remainingPoints: numeric('remaining_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    totalItems: integer('total_items').notNull().default(0),
-    completedItems: integer('completed_items').notNull().default(0),
     // ── Phase 6 Release Tracking burnup (migration 0089) ──────────────────
     // Accepted is {Accepted, Release} ONLY (RT-AC-08). The legacy columns above were
     // written from COMPLETED_SCHEDULE_STATES, which includes `Completed` and is

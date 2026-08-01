@@ -645,6 +645,13 @@
       "when": 1786864703004,
       "tag": "0090_phase6_working_days",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1786864703005,
+      "tag": "0091_phase6_drop_legacy_snapshot_columns",
+      "breakpoints": true
     }
   ]
 }
