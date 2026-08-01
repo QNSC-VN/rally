@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DRIZZLE, NotFoundException, UnitOfWork } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
+import { ActivityLogger } from '@modules/activity';
 import { PortfolioItemsService } from './portfolio-items.service';
 import { PreliminaryEstimateMapService } from './preliminary-estimate-map.service';
 import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '../../../../../db/schema/enums';
@@ -69,6 +70,7 @@ describe('PortfolioItemsService', () => {
   let repo: Mocked<IPortfolioItemRepository>;
   let access: Mocked<AccessService>;
   let maps: Mocked<PreliminaryEstimateMapService>;
+  let activity: Mocked<ActivityLogger>;
   /**
    * Rows returned to the Release/Team EXISTENCE checks in `assertReferences`.
    *
@@ -116,6 +118,17 @@ describe('PortfolioItemsService', () => {
           },
         },
         {
+          provide: ActivityLogger,
+          // The Revision History feed is asserted in the activity module's own specs; here
+          // it only has to exist, and `logSafe` must be a no-op that cannot fail a write.
+          useValue: {
+            build: vi.fn().mockReturnValue({}),
+            buildDiff: vi.fn().mockReturnValue([]),
+            logSafe: vi.fn().mockResolvedValue(undefined),
+            listFor: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+          },
+        },
+        {
           provide: PreliminaryEstimateMapService,
           // The map's own fallback behaviour is covered by
           // `preliminary-estimate-map.service.spec.ts`; here it is a fixed input so these
@@ -156,6 +169,7 @@ describe('PortfolioItemsService', () => {
     repo = module.get(PORTFOLIO_ITEM_REPOSITORY);
     access = module.get(AccessService);
     maps = module.get(PreliminaryEstimateMapService);
+    activity = module.get(ActivityLogger);
   });
 
   describe('listItems — the authorization filter', () => {
@@ -571,6 +585,37 @@ describe('PortfolioItemsService', () => {
       await expect(service.updateItem(actor, 'missing', { name: 'x' })).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+
+    it('records the update in Revision History, diffed against the STORED row', async () => {
+      // Diffing against `existing` rather than the response is what makes the entry say
+      // what actually changed; diffing against the fresh read would show nothing.
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        workspaceId: 'ws-1',
+        projectId: 'proj-a',
+        type: 'feature',
+        state: 'intake',
+      } as never);
+      await service.updateItem(actor, 'pi-1', { state: 'developing' });
+      const [subject, , before, patch] = activity.buildDiff.mock.calls[0];
+      expect(subject).toMatchObject({ entityType: 'portfolio_item', entityId: 'pi-1' });
+      expect(before).toMatchObject({ state: 'intake' });
+      expect(patch).toMatchObject({ state: 'developing' });
+    });
+
+    it('never lets a history write fail the update', async () => {
+      // `logSafe`, not `log`: the feed is secondary to the mutation that produced it.
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        workspaceId: 'ws-1',
+        projectId: 'proj-a',
+        type: 'feature',
+      } as never);
+      await service.updateItem(actor, 'pi-1', { name: 'Renamed' });
+      expect(activity.logSafe).toHaveBeenCalled();
+      // The mock deliberately does not define `log`, proving the service never reaches for it.
+      expect((activity as unknown as Record<string, unknown>).log).toBeUndefined();
     });
 
     /**

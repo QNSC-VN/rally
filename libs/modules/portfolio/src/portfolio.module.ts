@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AccessModule } from '@modules/access';
+import { ActivityModule } from '@modules/activity';
 import { ProjectsModule } from '@modules/projects';
 import { PortfolioItemsService } from './application/portfolio-items.service';
 import { PreliminaryEstimateMapService } from './application/preliminary-estimate-map.service';
@@ -15,7 +16,7 @@ import { PORTFOLIO_ITEM_REPOSITORY } from './domain/ports/portfolio-item.reposit
  * module rather than the reverse.
  */
 @Module({
-  imports: [AccessModule, ProjectsModule],
+  imports: [AccessModule, ProjectsModule, ActivityModule],
   controllers: [PortfolioItemsController],
   providers: [
     PortfolioItemsService,

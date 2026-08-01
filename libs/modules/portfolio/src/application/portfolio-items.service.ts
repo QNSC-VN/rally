@@ -8,6 +8,8 @@ import {
   between,
 } from '@platform';
 import { AccessService } from '@modules/access';
+import { ActivityLogger, type ActivityLog } from '@modules/activity';
+import { PORTFOLIO_ACTIVITY_CONFIG } from './portfolio-activity-diff';
 import { PORTFOLIO_HEALTH_THRESHOLDS, computeHealth, type HealthResult } from '@shared-kernel';
 import type { CursorPayload, JwtPayload, PagedResult } from '@platform';
 import { projectTeams, releases, teams } from '../../../../../db/schema/work';
@@ -70,7 +72,34 @@ export class PortfolioItemsService {
     private readonly access: AccessService,
     private readonly uow: UnitOfWork,
     private readonly estimateMaps: PreliminaryEstimateMapService,
+    private readonly activity: ActivityLogger,
   ) {}
+
+  /**
+   * The activity subject for one item. `entity_type: 'portfolio_item'` was added to the
+   * shared enum by 0079; `activity_logs` needed nothing else, being polymorphic already.
+   */
+  private subject(item: Pick<PortfolioItem, 'id' | 'workspaceId' | 'projectId'>) {
+    return {
+      workspaceId: item.workspaceId,
+      projectId: item.projectId,
+      entityType: 'portfolio_item' as const,
+      entityId: item.id,
+    };
+  }
+
+  /** Revision History for one item, paged. Mirrors the milestone/release endpoints. */
+  async getActivity(
+    actor: JwtPayload,
+    id: string,
+    args: { limit: number; offset: number },
+  ): Promise<{ items: ActivityLog[]; total: number }> {
+    // Existence + permission first, so a bad id is a 404 rather than an empty feed.
+    await this.requireItem(actor, id);
+    const page = Math.floor(args.offset / args.limit) + 1;
+    const res = await this.activity.listFor(id, actor.workspaceId, page, args.limit);
+    return { items: res.data, total: res.total };
+  }
 
   async listItems(
     actor: JwtPayload,
@@ -225,6 +254,10 @@ export class PortfolioItemsService {
     }
 
     if (!created) throw lastErr;
+    // `logSafe`: a history entry must never fail the write that produced it.
+    await this.activity.logSafe([
+      this.activity.build(this.subject(created), actor.sub, 'portfolio_item.created', null),
+    ]);
     return this.getItem(actor, created.id);
   }
 
@@ -259,6 +292,16 @@ export class PortfolioItemsService {
     );
 
     await this.repo.update(id, patch, actor.workspaceId);
+    await this.activity.logSafe(
+      this.activity.buildDiff(
+        this.subject(existing),
+        actor.sub,
+        existing as unknown as Record<string, unknown>,
+        patch as Record<string, unknown>,
+        PORTFOLIO_ACTIVITY_CONFIG,
+        'portfolio_item.updated',
+      ),
+    );
     return this.getItem(actor, id);
   }
 

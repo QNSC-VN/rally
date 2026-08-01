@@ -137,6 +137,33 @@ export function usePortfolioItems(filter: PortfolioListFilter) {
   }
 }
 
+/**
+ * Revision History for one Epic or Feature — newest first.
+ *
+ * Same shape as `useReleaseActivityLog` / the milestone and project equivalents, because
+ * `activity_logs` is one shared polymorphic store: adding `portfolio_item` to its entity
+ * enum (migration 0079) was the entire backend change, so the client side is the same
+ * three lines every other subject uses.
+ */
+export function usePortfolioItemActivityLog(id: string | undefined) {
+  return useQuery({
+    queryKey: ['portfolio', id ?? '', 'activity'] as const,
+    queryFn: async () => {
+      if (!id) return []
+      const { data, error, response } = await apiClient.GET('/v1/portfolio-items/{id}/activity', {
+        params: { path: { id }, query: { page: 1, pageSize: 100 } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as { data?: PortfolioActivityLog[] } | undefined)?.data ?? []
+    },
+    enabled: !!id,
+    staleTime: 15_000,
+  })
+}
+
+/** One Revision History row, as the shared `ActivityHistoryTab` consumes it. */
+export type PortfolioActivityLog = components['schemas']['ActivityPageDto']['data'][number]
+
 // ── Single item ──────────────────────────────────────────────────────────────
 
 export function usePortfolioItem(id: string | undefined) {

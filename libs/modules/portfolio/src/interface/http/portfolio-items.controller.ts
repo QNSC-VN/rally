@@ -10,6 +10,26 @@ import {
 } from '../../application/portfolio-items.service';
 import type { PortfolioChildItem } from '../../domain/ports/portfolio-item.repository';
 import {
+  ActivityQueryDto,
+  ActivityResponseDto,
+  ActivityPageDto,
+  type ActivityLog,
+} from '@modules/activity';
+
+function toActivityDto(a: ActivityLog): ActivityResponseDto {
+  return {
+    id: a.id,
+    createdAt: a.createdAt,
+    actorId: a.actorId,
+    actorName: a.actorName,
+    action: a.action,
+    entityType: a.entityType,
+    entityId: a.entityId,
+    changes: a.changes,
+    metadata: a.metadata ?? {},
+  };
+}
+import {
   CreatePortfolioItemDto,
   PortfolioChildrenQueryDto,
   PortfolioListQueryDto,
@@ -154,6 +174,25 @@ export class PortfolioItemsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<PortfolioItemResponseDto> {
     return toDto(await this.service.getItem(user, id));
+  }
+
+  @Get(':id/activity')
+  @RequirePermission('portfolio:view', { resource: 'portfolio_item', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'List the revision history of an Epic or Feature' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ActivityPageDto })
+  @ApiCommonErrors(401, 404)
+  async getActivity(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ActivityQueryDto,
+  ): Promise<ActivityPageDto> {
+    const { page, pageSize } = query;
+    const result = await this.service.getActivity(user, id, {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+    return { data: result.items.map(toActivityDto), total: result.total, page, pageSize };
   }
 
   @Get(':id/children')

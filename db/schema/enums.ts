@@ -134,6 +134,9 @@ export const activityEntityTypeEnum = pgEnum('activity_entity_type', [
   'project',
   'milestone',
   'release',
+  // Epics and Features. Added by 0079 — `activity_logs` was already polymorphic, so a new
+  // Revision History subject costs one enum member and nothing else.
+  'portfolio_item',
 ]);
 
 // ── messaging ──────────────────────────────────────────────────────────────

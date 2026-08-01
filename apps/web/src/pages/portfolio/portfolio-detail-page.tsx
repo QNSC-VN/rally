@@ -31,6 +31,7 @@ import { ProgressBar } from '@/shared/ui/progress-bar'
 import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { SkeletonList } from '@/shared/ui/skeleton'
+import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
 import { SaveIndicator } from '@/shared/ui/save-indicator'
@@ -47,6 +48,7 @@ import {
   usePortfolioChildFeatures,
   usePortfolioChildren,
   usePortfolioItem,
+  usePortfolioItemActivityLog,
   usePortfolioItems,
   useUpdatePortfolioItem,
   type PortfolioItem,
@@ -66,6 +68,8 @@ export function PortfolioDetailPage() {
   // work items. `enabled` is driven by passing undefined for the wrong shape.
   const { data: childFeatures = [] } = usePortfolioChildFeatures(isEpic ? itemId : undefined)
   const { data: children = [] } = usePortfolioChildren(isEpic ? undefined : itemId)
+  const { data: activityLogs = [], isLoading: activityLoading } =
+    usePortfolioItemActivityLog(itemId)
 
   // Edit rights follow the ITEM's project, not the selected one: this page is reachable
   // from a cross-project grid, so the two are frequently different.
@@ -136,6 +140,7 @@ export function PortfolioDetailPage() {
           label: t('detail.tabs.children'),
           count: isEpic ? childFeatures.length : children.length,
         },
+        { key: 'history', label: t('detail.tabs.history') },
       ]}
       activeTab={tab}
       onTabChange={setTab}
@@ -217,6 +222,17 @@ export function PortfolioDetailPage() {
             />
           }
         />
+      ) : tab === 'history' ? (
+        /* The SAME shared tab Release, Milestone and Project detail render — one
+           polymorphic activity store means one component, not one per entity. */
+        <div className="flex-1 overflow-y-auto bg-card p-6">
+          <ActivityHistoryTab
+            logs={activityLogs}
+            isLoading={activityLoading}
+            title={t('detail.history.title')}
+            subtitle={t('detail.history.subtitle')}
+          />
+        </div>
       ) : (
         <div className="flex flex-col gap-2 overflow-auto p-4">
           <DetailSectionHeading>
