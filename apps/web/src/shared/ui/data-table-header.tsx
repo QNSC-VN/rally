@@ -223,13 +223,14 @@ function SortHeader({ label, col, activeCol, dir, onSort, rightAlign }: SortHead
       style={{ justifyContent: rightAlign ? 'flex-end' : 'flex-start', width: '100%' }}
       onClick={() => onSort(col)}
     >
+      {/* TRUNCATES, like the non-sortable branch above. Without `min-w-0` + `truncate` a long label
+          (`Planned Team Assignment` at 160px) overflowed its own column and printed on top of the
+          next header — a flex item will not shrink below its content width unless told it may. The
+          sort caret keeps `shrink-0`, so the label yields first and the affordance never disappears. */}
       <span
-        style={{
-          color: isActive ? BRAND.primaryLight : HEADER_TEXT,
-          fontWeight: 700,
-          whiteSpace: 'nowrap',
-        }}
-        className="transition-colors duration-150 group-hover/sort:text-slate-800"
+        title={label}
+        style={{ color: isActive ? BRAND.primaryLight : HEADER_TEXT, fontWeight: 700 }}
+        className="min-w-0 truncate transition-colors duration-150 group-hover/sort:text-slate-800"
       >
         {label}
       </span>

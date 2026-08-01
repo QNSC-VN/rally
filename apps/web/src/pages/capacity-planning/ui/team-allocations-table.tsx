@@ -97,7 +97,11 @@ export function TeamAllocationsTable({
   return (
     // Indented and rule-bounded so the nesting is visible without a connector line: the left
     // border reads as "everything to the right of this belongs to the row above".
-    <div className="border-b border-border-inner bg-surface-subtle/40 py-1 pl-8">
+    // The right padding RESERVES the Team row's last two columns — `Capacity` (100) and its actions
+    // lane (48) — because the BA requires this child table to end before Capacity: team-level capacity
+    // has to stay visually separate from Feature-level progress. Without it the child ran to the
+    // grid's outer edge and its `Estimated` sat under the parent's `Capacity` heading.
+    <div className="border-b border-border-inner bg-surface-subtle/40 py-1 pr-[148px] pl-8">
       <div className="border-l-2 border-border-subtle pl-2">
         <DataTableFrame
           header={table.headerProps}
