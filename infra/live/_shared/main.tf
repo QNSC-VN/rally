@@ -119,12 +119,19 @@ module "iam_oidc" {
 # migrations. Scoped to develop only, and deliberately absent from the production
 # deploy role.
 #
-# NOTE: nothing currently stops develop's RDS. There is no scheduler — no EventBridge
-# rule, no Lambda, no scheduled action — anywhere in qnsc-infra or this repo. Only the
-# waking half was built. This grant exists so that stopping develop BY HAND is safe,
-# and so an off-hours scheduler can be added later without a permissions change.
-# Do not read it as evidence one is running: an earlier comment claiming a
-# "cost-saver" was cited to justify disabling a real outage alarm.
+# The STOPPING half exists too, which this comment used to deny. `idle_schedule` in
+# infra/live/develop/main.tf creates three EventBridge schedules — rds-stop,
+# api-scale-down, worker-scale-down — and CloudTrail confirms them firing nightly.
+#
+# So the two halves are a LOOP, and this grant is what closes it: the schedule stops
+# develop at 21:00 and 03:00, and the next deploy's `ensure_rds` starts it again. That
+# pairing is the whole cost posture, not a safety net for manual teardown.
+#
+# It also has to be understood as a loop to be reasoned about. The schedule ran nightly
+# for weeks while develop stayed up 24/7, because a single 21:00 stop could not hold
+# against a wake signal that fires whenever a deploy lands — measured 2026-08-02, fixed
+# by adding a second 03:00 pass. Removing this grant does not save money; it breaks
+# waking and leaves deploys failing against a stopped database.
 #
 # The ARN is constructed directly (account_id + region + fixed identifier)
 # instead of via a `data "aws_db_instance"` lookup. A data-source lookup
