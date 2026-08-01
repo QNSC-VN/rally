@@ -76,7 +76,8 @@
     "from": "from",
     "allocatedFrom": "Owned by {{team}}, allocated to this team",
     "to": "to",
-    "allocatedTo": "Owned here, also allocated to {{team}}"
+    "allocatedTo": "Owned here, also allocated to {{team}}",
+    "allocatedCount": "{{count}} teams"
   },
   "tiers": {
     "allocated": "Alloc",
@@ -106,7 +107,11 @@
     "addRow": "Add team",
     "selectTeam": "Select team",
     "teamRequired": "Choose a team for each allocation",
-    "applied": "Allocations updated"
+    "applied": "Allocations updated",
+    "prelimEstimate": "Prelim Estimate",
+    "refinedEstimate": "Refined Estimate",
+    "removeRow": "Remove this team from the allocation",
+    "totalAllocated": "Total allocated"
   },
   "warnings": {
     "feature_missing_estimate": "This Feature has no estimate — no allocation, refined forecast or preliminary size to plan against",
@@ -217,7 +222,6 @@
     "removeFromPlan": "Remove from plan",
     "removed": "{{item}} removed from the plan",
     "railName": "Name",
-    "railRatio": "{{unit}} / Capacity",
     "allocationRow": "Allocation",
     "removeAllAssignments": "Remove all assignments",
     "assignmentsCleared": "{{item}} is unassigned but still on the plan",
@@ -227,7 +231,12 @@
     "assignFailed": "Could not change the planned team",
     "dragLabel": "Drag to rank {{item}}",
     "assignmentColumn": "Planned Team Assignment",
-    "projectColumn": "Project"
+    "projectColumn": "Project",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "railAssigned": "Assigned",
+    "railAllocated": "Alloc.",
+    "railCapacity": "Capacity"
   },
   "filters": {
     "oldestRelease": "Oldest Release",

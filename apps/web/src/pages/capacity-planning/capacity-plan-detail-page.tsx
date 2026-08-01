@@ -20,6 +20,11 @@ import { SortableContext } from '@dnd-kit/sortable'
 
 import { useDataTable, useRowRerank } from '@/shared/ui/table'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
+import {
+  isRankOrder,
+  sortCapacityItems,
+  type CapacityItemSortField,
+} from '@/features/capacity-planning/sort-items'
 import { DetailLayout } from '@/shared/ui/detail'
 import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -34,11 +39,13 @@ import {
   useDeleteCapacityPlan,
   usePublishPlan,
   useRevertPlan,
+  type CapacityAllocation,
   type CapacityPlanItem,
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
 import { CAPACITY_STATUS_STYLE } from '@/features/capacity-planning/status-colors'
 import { usePlanItemActions } from '@/features/capacity-planning/use-plan-item-actions'
+import { usePlanLookups } from '@/features/capacity-planning/use-plan-lookups'
 import {
   sortCapacityTeams,
   type CapacityTeamSortField,
@@ -214,17 +221,91 @@ export function CapacityPlanDetailPage() {
     [plan?.items, itemTeamFilter, itemProjectFilter],
   )
 
+  /**
+   * Every derived view over the plan — names by id, rank positions, sharing, per-team demand and the
+   * three allocation buckets. One hook because both grids read the same lookups and none of them is
+   * fetched: they are all views over the single payload the detail endpoint returns.
+   */
+  const {
+    teamNameById,
+    rankPositionOf,
+    sharingOf,
+    demandOf,
+    allocationsByItem,
+    allocationsByTeam,
+    unallocated,
+  } = usePlanLookups(plan)
+
+  /**
+   * The Features tab's own sort, independent of the Teams tab's.
+   *
+   * Rally sorts every column here, and the two tabs answer different questions, so a shared sort state
+   * would make switching tabs reorder the other one.
+   */
+  const {
+    sortField: itemSortField,
+    sortDir: itemSortDir,
+    toggle: toggleItemSort,
+  } = useTableSort<CapacityItemSortField>()
+
+  /** Rank ascending is the ONLY order the cutline and the drag grip are defined in. */
+  const inRankOrder = isRankOrder(itemSortField, itemSortDir)
+
+  const sortedItems = useMemo(
+    () =>
+      sortCapacityItems(visibleItems, itemSortField, itemSortDir, (teamId) =>
+        teamId === null ? null : (teamNameById.get(teamId) ?? null),
+      ),
+    [visibleItems, itemSortField, itemSortDir, teamNameById],
+  )
+
   const rankableItems = useMemo(
-    () => visibleItems.map((i) => ({ ...i, id: i.portfolioItemId })),
-    [visibleItems],
+    () => sortedItems.map((i) => ({ ...i, id: i.portfolioItemId })),
+    [sortedItems],
   )
 
   const rerank = useRowRerank({
     items: rankableItems,
-    disabled: !canManage,
+    // Rally ranks by dragging only "when the grid is set to the default sort order": under any other
+    // sort the row's neighbours are not its rank neighbours, so a drop would rank it against rows it
+    // does not sit between. The grip disappears rather than lying about what it will do.
+    disabled: !canManage || !inRankOrder,
     onReorder: ({ id, beforeId, afterId }) =>
       rankItem.mutate({ id, beforeId, afterId }, { onError: (err) => notify.error(err.message) }),
   })
+
+  /**
+   * The BA's `Move up` / `Move down`, for either scope.
+   *
+   * `order` is the list the move happens INSIDE: the plan's rank order on the Features tab, and one
+   * team's rows in its sub-table — the BA is explicit that a nested move swaps "with the adjacent row
+   * inside the same Team only". Both persist through the SAME portfolio rank endpoint the drag uses,
+   * because a plan's Feature order IS the portfolio rank; a plan-local order would disagree with the
+   * Backlog the moment either changed.
+   *
+   * Returns `undefined` at the ends of the list, which is what removes the menu item rather than
+   * offering one that cannot act. `beforeId`/`afterId` are the rows the item lands BETWEEN, so a move
+   * up targets the pair one position higher.
+   */
+  const moveHandlers = useCallback(
+    (portfolioItemId: string, order: readonly string[]) => {
+      if (!canManage) return {}
+      const at = order.indexOf(portfolioItemId)
+      if (at === -1) return {}
+      const run = (beforeId: string | null, afterId: string | null) => () =>
+        rankItem.mutate(
+          { id: portfolioItemId, beforeId, afterId },
+          { onError: (err) => notify.error(err.message) },
+        )
+      return {
+        ...(at > 0 ? { onMoveUp: run(at >= 2 ? order[at - 2] : null, order[at - 1]) } : {}),
+        ...(at < order.length - 1
+          ? { onMoveDown: run(order[at + 1], at + 2 < order.length ? order[at + 2] : null) }
+          : {}),
+      }
+    },
+    [canManage, rankItem],
+  )
 
   /** The plan's teams as picker options, with Rally's/BA's `Unassign` first. */
   const assignOptions = useMemo(
@@ -266,77 +347,16 @@ export function CapacityPlanDetailPage() {
   // key would let one tab's resize silently rearrange the other.
   const itemTable = useDataTable<CapacityPlanItem, unknown, ItemColKey>(CAPACITY_ITEM_COLUMNS, {
     storageKey: 'rally-capacity-item-columns',
+    sort: {
+      col: itemSortField ?? '',
+      dir: itemSortDir ?? 'asc',
+      onSort: (c) => toggleItemSort(c as CapacityItemSortField),
+    },
   })
   const itemColStyleFor = useCallback(
     (key: ItemColKey, base?: React.CSSProperties) => itemTable.styleFor(key, base),
     [itemTable],
   )
-
-  /** Allocations bucketed by team, so each team's Features render beneath it. */
-  // Names live on the plan's team rows; the item row carries only the id, so resolve once here
-  // rather than searching the team list per row.
-  const teamNameById = useMemo(
-    () => new Map(plan?.teams.map((team) => [team.teamId, team.teamName]) ?? []),
-    [plan?.teams],
-  )
-
-  /**
-   * A Feature's 1-based position in the plan's rank order, for the sub-table's `Rank` column.
-   *
-   * Built from `plan.items`, which the API already returns in rank order — the same numbering the
-   * Features tab shows, so one Feature cannot be #3 on one tab and #1 on another.
-   */
-  const rankPositionOf = useCallback(
-    (portfolioItemId: string) => {
-      const index = (plan?.items ?? []).findIndex((i) => i.portfolioItemId === portfolioItemId)
-      return index === -1 ? null : index + 1
-    },
-    [plan?.items],
-  )
-
-  /**
-   * Who else holds a Feature — the input to Rally's `Allocation` cell.
-   *
-   * `owner` is the team whose allocation is primary; `contributors` are the rest. Both are NAMES,
-   * resolved here because only the page has the plan's team list.
-   */
-  const sharingOf = useCallback(
-    (portfolioItemId: string) => {
-      const rows = (plan?.allocations ?? []).filter(
-        (a) => a.portfolioItemId === portfolioItemId && a.teamId !== null,
-      )
-      const owner = rows.find((a) => a.isPrimary)?.teamId ?? null
-      return {
-        owner: owner === null ? null : (teamNameById.get(owner) ?? null),
-        contributors: rows
-          .filter((a) => !a.isPrimary && a.teamId !== null)
-          .map((a) => teamNameById.get(a.teamId as string) ?? '--'),
-      }
-    },
-    [plan?.allocations, teamNameById],
-  )
-
-  /** The same allocations bucketed by FEATURE, for the Features tab's nested rows. */
-  const allocationsByItem = useMemo(() => {
-    const map = new Map<string, NonNullable<typeof plan>['allocations']>()
-    for (const a of plan?.allocations ?? []) {
-      const list = map.get(a.portfolioItemId) ?? []
-      list.push(a)
-      map.set(a.portfolioItemId, list)
-    }
-    return map
-  }, [plan?.allocations])
-
-  const allocationsByTeam = useMemo(() => {
-    const map = new Map<string, NonNullable<typeof plan>['allocations']>()
-    for (const a of plan?.allocations ?? []) {
-      if (a.teamId === null) continue
-      const list = map.get(a.teamId) ?? []
-      list.push(a)
-      map.set(a.teamId, list)
-    }
-    return map
-  }, [plan?.allocations])
 
   const sortedTeams = useMemo(
     () =>
@@ -344,12 +364,6 @@ export function CapacityPlanDetailPage() {
         (plan?.allocations ?? []).reduce((n, a) => (a.teamId === teamId ? n + 1 : n), 0),
       ),
     [plan?.teams, plan?.allocations, sortField, sortDir],
-  )
-
-  /** Demand parked without a team. */
-  const unallocated = useMemo(
-    () => (plan?.allocations ?? []).filter((a) => a.teamId === null),
-    [plan?.allocations],
   )
 
   const openFeature = useCallback(
@@ -405,6 +419,26 @@ export function CapacityPlanDetailPage() {
     onAllocate: setAllocateFor,
     onMove: setMoveFor,
   })
+
+  /**
+   * The nested table's gear props: the shared verbs, plus a reorder scoped to THAT table's rows.
+   *
+   * A factory per sub-table rather than one resolver, because the scope is the argument — the BA's
+   * nested move swaps "inside the same Team only", so each table has to pass its own row order.
+   */
+  const subTableActions = useCallback(
+    (rows: readonly { portfolioItemId: string }[]) =>
+      itemActionsFor === undefined
+        ? undefined
+        : (allocation: CapacityAllocation) => ({
+            ...itemActionsFor(allocation),
+            ...moveHandlers(
+              allocation.portfolioItemId,
+              rows.map((r) => r.portfolioItemId),
+            ),
+          }),
+    [itemActionsFor, moveHandlers],
+  )
 
   /**
    * Applies the dialog's selection as a DIFF against the plan's current teams.
@@ -696,7 +730,8 @@ export function CapacityPlanDetailPage() {
                           the first one exceeds the plan, so it lands at the very top; `null`
                           (no capacity entered anywhere) draws nothing, because there is no
                           number for the running total to exceed. */}
-                                {plan.itemCutlineIndex !== null &&
+                                {inRankOrder &&
+                                  plan.itemCutlineIndex !== null &&
                                   plan.itemCutlineIndex + 1 === index && (
                                     <CutlineDivider label={t('cutline.label')} />
                                   )}
@@ -707,7 +742,9 @@ export function CapacityPlanDetailPage() {
                                     teamNameById.get(item.primaryTeamId ?? '') ?? null
                                   }
                                   belowCutline={
-                                    plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex
+                                    inRankOrder &&
+                                    plan.itemCutlineIndex !== null &&
+                                    index > plan.itemCutlineIndex
                                   }
                                   expanded={expandedItems.has(item.portfolioItemId)}
                                   onToggleExpanded={() => toggleItem(item.portfolioItemId)}
@@ -723,6 +760,11 @@ export function CapacityPlanDetailPage() {
                                   onMove={
                                     canManage ? () => setMoveFor(item.portfolioItemId) : undefined
                                   }
+                                  // Plan-wide scope here: the Features tab IS the plan's rank order.
+                                  {...moveHandlers(
+                                    item.portfolioItemId,
+                                    plan.items.map((i) => i.portfolioItemId),
+                                  )}
                                   onAssign={
                                     canManage
                                       ? (teamId) => void assignFeature(item, teamId)
@@ -757,7 +799,7 @@ export function CapacityPlanDetailPage() {
                     </DndContext>
                   </DataTableFrame>
                 </div>
-                <TeamCapacityRail teams={sortedTeams} unitLabel={unitLabel} />
+                <TeamCapacityRail teams={sortedTeams} unitLabel={unitLabel} demandOf={demandOf} />
               </div>
             ) : (
               <DataTableFrame
@@ -799,7 +841,6 @@ export function CapacityPlanDetailPage() {
                         canManage={canManage}
                         onOpenFeature={openFeature}
                         rankPositionOf={rankPositionOf}
-                        sharingOf={sharingOf}
                         onAddFeatures={
                           canManage
                             ? () =>
@@ -809,7 +850,8 @@ export function CapacityPlanDetailPage() {
                                 })
                             : undefined
                         }
-                        itemActions={itemActionsFor}
+                        sharingOf={sharingOf}
+                        itemActions={subTableActions(allocationsByTeam.get(team.teamId) ?? [])}
                       />
                     )}
                   </div>
@@ -841,7 +883,7 @@ export function CapacityPlanDetailPage() {
                       onOpenFeature={openFeature}
                       rankPositionOf={rankPositionOf}
                       sharingOf={sharingOf}
-                      itemActions={itemActionsFor}
+                      itemActions={subTableActions(unallocated)}
                     />
                   </div>
                 )}
