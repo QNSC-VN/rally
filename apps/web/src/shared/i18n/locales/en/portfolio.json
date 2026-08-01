@@ -93,7 +93,8 @@
       "plannedStartDate": "Planned Start Date",
       "plannedEndDate": "Planned End Date",
       "marketReleaseDate": "Market Release Date",
-      "description": "Description"
+      "description": "Description",
+      "createdAt": "Creation Date"
     },
     "progress": {
       "heading": "Progress",
@@ -108,7 +109,8 @@
       "empty": "Nothing linked yet.",
       "epicNote": "An Epic rolls up through its child Features."
     },
-    "notFound": "Portfolio item not found."
+    "notFound": "Portfolio item not found.",
+    "openEpic": "Open {{key}}"
   },
   "create": {
     "titleEpic": "New Epic",

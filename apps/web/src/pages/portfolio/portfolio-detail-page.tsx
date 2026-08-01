@@ -1,31 +1,58 @@
 /**
  * Portfolio item detail — Epic or Feature (BA spec §5).
  *
- * Reuses the shared detail shell (`DetailLayout` + `DetailTwoPane` + `DetailField`)
- * so the header bar, tab strip and sidebar chrome match Work Item, Release and
- * Milestone detail exactly.
+ * Composed from the same shared pieces as Work Item detail, field for field:
+ * `DetailLayout` + `DetailTabBar` for the chrome, `DetailTwoPane` for the body,
+ * `RichTextEditor` for the Description, and the shared form controls in the sidebar
+ * (see `ui/detail-sidebar.tsx`). Editing is buffered through `usePendingPatch` and
+ * committed by a `SaveCancelBar`, with a `SaveIndicator` in the sidebar header — the
+ * identical save model, so the two pages behave the same under a slow network.
  *
- * Read-only in this slice: editing lands with the portfolio write paths. The
- * Children tab shows child Features for an Epic and linked Stories/Defects for a
- * Feature, because only the lowest portfolio level attaches to the story hierarchy.
+ * NOTE Work Item detail hand-rolls its two-pane body and its own sidebar shell rather
+ * than using `DetailTwoPane`; it is the only detail page that does. This page uses the
+ * shared one, like Release, Milestone, Project and Iteration detail. Matching Work Item's
+ * bespoke pane would mean copying the deviation, so the parity here is in the COMPONENTS
+ * and the interaction model, not in that one wrapper.
+ *
+ * What this page deliberately does NOT have, and why — every one is a missing BACKEND,
+ * not a styling gap: Attachments, Linked Items and Comments are `/v1/work-items/{id}/…`
+ * only (`comments.work_item_id` is a column, not an entity-type pair), there are no
+ * portfolio watcher, label or activity endpoints, and Tasks / Defects / Connections have
+ * no portfolio equivalent by design. The Children tab is the portfolio-specific tab that
+ * replaces them.
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
 
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { OwnerCell } from '@/shared/ui/owner-cell'
 import { ProgressBar } from '@/shared/ui/progress-bar'
 import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { SkeletonList } from '@/shared/ui/skeleton'
+import { RichTextEditor } from '@/shared/ui/rich-text-editor'
+import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
+import { SaveIndicator } from '@/shared/ui/save-indicator'
+import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
+import { useSaveState } from '@/shared/lib/hooks/use-save-state'
+import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useProjectPermissions } from '@/features/access/api'
+import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useProjectTeams } from '@/features/teams/api'
+import { useReleases } from '@/features/releases/api'
+import { PortfolioItemType } from '@/entities/work-item/model/types'
 import { DetailField, DetailLayout, DetailSectionHeading, DetailTwoPane } from '@/shared/ui/detail'
 import {
   usePortfolioChildFeatures,
   usePortfolioChildren,
   usePortfolioItem,
+  usePortfolioItems,
+  useUpdatePortfolioItem,
+  type PortfolioItem,
+  type UpdatePortfolioItemBody,
 } from '@/features/portfolio/api'
+import { PortfolioDetailSidebar } from './ui/detail-sidebar'
 
 export function PortfolioDetailPage() {
   const { t } = useTranslation('portfolio')
@@ -33,17 +60,65 @@ export function PortfolioDetailPage() {
   const { itemId } = useParams({ from: '/auth/portfolio/$itemId' })
   const [tab, setTab] = useState('details')
 
-  const { data: item, isLoading } = usePortfolioItem(itemId)
-  const isEpic = item?.type === 'epic'
+  const { data: server, isLoading } = usePortfolioItem(itemId)
+  const isEpic = server?.type === 'epic'
   // Only one of these fires — an Epic has child Features, a Feature has linked
   // work items. `enabled` is driven by passing undefined for the wrong shape.
   const { data: childFeatures = [] } = usePortfolioChildFeatures(isEpic ? itemId : undefined)
   const { data: children = [] } = usePortfolioChildren(isEpic ? undefined : itemId)
 
+  // Edit rights follow the ITEM's project, not the selected one: this page is reachable
+  // from a cross-project grid, so the two are frequently different.
+  const { can } = useProjectPermissions(server?.projectId)
+  const canEdit = can('portfolio:edit')
+
+  const { workspace } = useAppContext()
+  const { data: members = [] } = useWorkspaceMembers(workspace?.workspaceId)
+  const { data: projectTeams = [] } = useProjectTeams(server?.projectId)
+  const { data: projectReleases = [] } = useReleases(server?.projectId)
+  // Candidate parents: this project's Epics. Skipped entirely for an Epic, which has none.
+  const epicList = usePortfolioItems({
+    type: PortfolioItemType.Epic,
+    projectId: server?.projectId,
+  })
+  const epics = useMemo(
+    () =>
+      isEpic ? [] : epicList.items.map((e) => ({ id: e.id, itemKey: e.itemKey, name: e.name })),
+    [isEpic, epicList.items],
+  )
+  const releases = useMemo(
+    () => projectReleases.map((r) => ({ id: r.id, releaseKey: r.releaseKey, name: r.name })),
+    [projectReleases],
+  )
+
+  // Buffered editing, exactly as Work Item detail does it: controls mutate a pending
+  // patch, the SaveCancelBar commits, the SaveIndicator reports. `value` is the server
+  // item merged with the pending edits, so the form always renders what the user typed.
+  const update = useUpdatePortfolioItem()
+  const { status: saveStatus, errorMsg, wrap: wrapSave } = useSaveState()
+  const {
+    value: item,
+    isDirty,
+    saving,
+    setField,
+    save,
+    cancel,
+  } = usePendingPatch<PortfolioItem, UpdatePortfolioItemBody>(
+    server ?? ({} as PortfolioItem),
+    server?.id,
+    async (patch) => {
+      await wrapSave(async () => {
+        await update.mutateAsync({ id: itemId, patch })
+      })
+    },
+  )
+
   const back = () => void navigate({ to: '/portfolio' })
+  const openItem = (id: string) =>
+    void navigate({ to: '/portfolio/$itemId', params: { itemId: id } })
 
   if (isLoading) return <SkeletonList rows={6} />
-  if (!item) return <EmptyState title={t('detail.notFound')} />
+  if (!server) return <EmptyState title={t('detail.notFound')} />
 
   const { progress, rollup } = item
 
@@ -67,8 +142,27 @@ export function PortfolioDetailPage() {
     >
       {tab === 'details' ? (
         <DetailTwoPane
+          sidebarTitle={
+            <span className="flex items-center gap-2">
+              {t('detail.tabs.details')}
+              <SaveIndicator status={saveStatus} errorMsg={errorMsg} />
+            </span>
+          }
           main={
-            <div className="flex flex-col gap-4 p-4">
+            <div className="flex flex-col gap-4">
+              {/* Description first, matching Work Item detail — the same
+                  `RichTextEditor`, so the toolbar, the expand affordance and the
+                  paste-an-image behaviour are identical. It reports every keystroke
+                  into the pending patch; the Save bar decides when it persists. */}
+              <RichTextEditor
+                title={t('detail.fields.description')}
+                value={item.description}
+                readOnly={!canEdit}
+                onChange={(html) => setField({ description: html })}
+              />
+
+              {/* Progress is the portfolio-specific block, standing where Work Item puts
+                  its Task Roll-up: four read-only indicators derived server-side. */}
               <DetailSectionHeading>{t('detail.progress.heading')}</DetailSectionHeading>
               <DetailField label={t('detail.progress.percentDonePoints')}>
                 <PercentDoneBar
@@ -92,65 +186,19 @@ export function PortfolioDetailPage() {
               <DetailField label={t('detail.progress.estimatedCount')}>
                 <ProgressBar ratio={progress.estimatedProgressByCount} />
               </DetailField>
-
-              {item.description && (
-                <>
-                  <DetailSectionHeading>{t('detail.fields.description')}</DetailSectionHeading>
-                  <p className="text-ui-sm whitespace-pre-wrap text-foreground">
-                    {item.description}
-                  </p>
-                </>
-              )}
             </div>
           }
           sidebar={
-            <div className="flex flex-col gap-3">
-              <DetailField label={t('detail.fields.state')}>
-                {t(`states.${item.state}`, { defaultValue: item.state })}
-              </DetailField>
-              <DetailField label={t('detail.fields.owner')}>
-                <OwnerCell name={item.ownerName} />
-              </DetailField>
-              <DetailField label={t('detail.fields.project')}>
-                {item.projectName ?? '--'}
-              </DetailField>
-              {/* Team, Release and the parent Epic are Feature-only — an Epic has
-                  them all null by CHECK constraint, so showing empty rows would
-                  imply they are simply unset. */}
-              {!isEpic && (
-                <>
-                  <DetailField label={t('detail.fields.parent')}>
-                    {item.parentKey ?? '--'}
-                  </DetailField>
-                  <DetailField label={t('detail.fields.team')}>{item.teamName ?? '--'}</DetailField>
-                  <DetailField label={t('detail.fields.release')}>
-                    {item.releaseName ?? '--'}
-                  </DetailField>
-                </>
-              )}
-              <DetailField label={t('detail.fields.preliminaryEstimate')}>
-                {t(`sizes.${item.preliminaryEstimate}`, { defaultValue: item.preliminaryEstimate })}
-              </DetailField>
-              {/* 0, not an em-dash, when there is no forecast: the field is NOT NULL
-                  DEFAULT 0 (migration 0079), matching how real Rally shows it. 0 still
-                  means "not forecast" to the tier chain, so the Estimated Progress bars
-                  fall back to the Preliminary Estimate mapping exactly as before. */}
-              <DetailField label={t('detail.fields.refinedEstimate')}>
-                {item.refinedEstimate}
-              </DetailField>
-              <DetailField label={t('detail.fields.refinedItemCountEstimate')}>
-                {item.refinedItemCountEstimate}
-              </DetailField>
-              <DetailField label={t('detail.fields.plannedStartDate')}>
-                {item.plannedStartDate ?? '--'}
-              </DetailField>
-              <DetailField label={t('detail.fields.plannedEndDate')}>
-                {item.plannedEndDate ?? '--'}
-              </DetailField>
-              <DetailField label={t('detail.fields.marketReleaseDate')}>
-                {item.marketReleaseDate ?? '--'}
-              </DetailField>
-            </div>
+            <PortfolioDetailSidebar
+              item={item}
+              canEdit={canEdit}
+              members={members}
+              teams={projectTeams}
+              releases={releases}
+              epics={epics}
+              onUpdate={setField}
+              onOpenItem={openItem}
+            />
           }
         />
       ) : (
@@ -207,6 +255,16 @@ export function PortfolioDetailPage() {
           )}
         </div>
       )}
+
+      {/* Same commit control as Work Item detail: it appears only when there is something
+          to commit, so a read-only visit never shows it. */}
+      <SaveCancelBar
+        visible={isDirty}
+        saving={saving}
+        errorMsg={errorMsg}
+        onSave={() => void save()}
+        onCancel={cancel}
+      />
     </DetailLayout>
   )
 }
