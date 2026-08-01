@@ -179,6 +179,7 @@ export type AllocColKey =
   | 'rollup'
   | 'estimated'
   | 'tier'
+  | 'actions'
 
 /**
  * The SUB-TABLE under an expanded team: the Features allocated to it, with its own header row.
@@ -204,7 +205,7 @@ export type AllocColKey =
 export const CAPACITY_ALLOCATION_COLUMNS: ColumnSpec<CapacityAllocation, unknown, AllocColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 52, align: 'right' },
   { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 80, locked: true },
-  { key: 'name', label: 'Name', defaultWidth: 220, minWidth: 130, locked: true, grow: true },
+  { key: 'name', label: 'Name', defaultWidth: 176, minWidth: 130, locked: true, grow: true },
   // Rally's own column name for a team's promised slice of a Feature. Editable in place.
   { key: 'allocation', label: 'Allocation', defaultWidth: 92, minWidth: 80, align: 'right' },
   { key: 'state', label: 'State', defaultWidth: 130, minWidth: 90 },
@@ -212,8 +213,11 @@ export const CAPACITY_ALLOCATION_COLUMNS: ColumnSpec<CapacityAllocation, unknown
   { key: 'complete', label: 'Complete', defaultWidth: 86, minWidth: 72, align: 'right' },
   { key: 'rollup', label: 'Rollup', defaultWidth: 80, minWidth: 68, align: 'right' },
   { key: 'estimated', label: 'Estimated', defaultWidth: 86, minWidth: 72, align: 'right' },
-  // Rally ends the row with the ESTIMATE glyph — which tier the Estimated figure came from. There
-  // is no delete here: Rally removes a Feature from a plan through the item's own menu on the
-  // Features tab ("Remove Only"), not with a trash can inside a team's list.
+  // The ESTIMATE glyph — which tier the Estimated figure came from.
   { key: 'tier', label: '', defaultWidth: 40, minWidth: 40, align: 'center' },
+  // Rally's per-item gear, which it shows "next to portfolio items in Projects By Total, Projects By
+  // Release, or Items tabs" — the same three verbs as the Features tab, so a planner reading a team's
+  // list does not have to leave it to fix the split. Still no bare trash can: `Remove From Plan`
+  // takes the Feature off the PLAN, which the menu says in words.
+  { key: 'actions', label: '', defaultWidth: 44, minWidth: 44, align: 'center' },
 ]

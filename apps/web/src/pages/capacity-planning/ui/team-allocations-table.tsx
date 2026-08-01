@@ -32,6 +32,7 @@ export function TeamAllocationsTable({
   rankPositionOf,
   sharingOf,
   onAddFeatures,
+  itemActions,
 }: {
   planId: string
   allocations: CapacityAllocation[]
@@ -65,6 +66,20 @@ export function TeamAllocationsTable({
    * Omitted for a reader who cannot manage the plan, which is also how the row hides its editors.
    */
   onAddFeatures?: () => void
+  /**
+   * Rally's per-item gear for these rows, resolved by the page.
+   *
+   * A resolver rather than three callbacks: the verbs act on a Feature, and the page already owns
+   * the handlers the Features tab uses — passing them per row here keeps ONE definition of what
+   * `Remove From Plan` does instead of a second copy for the nested table. Undefined means the plan
+   * is read-only and no gear is drawn.
+   */
+  itemActions?: (allocation: CapacityAllocation) => {
+    hasTeams: boolean
+    onAllocate?: () => void
+    onUnassign?: () => void
+    onRemove?: () => void
+  }
 }) {
   const { t } = useTranslation('capacity')
   const table = useDataTable<CapacityAllocation, unknown, AllocColKey>(
@@ -100,6 +115,7 @@ export function TeamAllocationsTable({
               rankPosition={rankPositionOf(allocation.portfolioItemId)}
               ownerTeamName={sharingOf(allocation.portfolioItemId).owner}
               contributorTeamNames={sharingOf(allocation.portfolioItemId).contributors}
+              {...(itemActions?.(allocation) ?? { hasTeams: false })}
             />
           ))}
         </DataTableFrame>

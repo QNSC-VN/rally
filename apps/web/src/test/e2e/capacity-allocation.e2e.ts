@@ -81,6 +81,18 @@ test.describe('Capacity allocation', () => {
    * Not the header menu — that holds only Edit Plan Details and Delete Plan, the things you do to a
    * plan once. `expandTeam` switches back when a test needs the team view again.
    */
+  /**
+   * Opens the plan's `Actions` menu, where Rally keeps `Publish` and `Unpublish`.
+   *
+   * A helper because every publish step in this file starts with it: the menu is the only route to
+   * those two verbs, so a spec that clicked a toolbar button was asserting a layout Rally does not
+   * have.
+   */
+  async function planAction(page: import('@playwright/test').Page, name: RegExp) {
+    await page.getByRole('button', { name: 'Plan actions' }).click()
+    await page.getByRole('button', { name }).click()
+  }
+
   async function allocateFeature(
     page: import('@playwright/test').Page,
     feature: RegExp,
@@ -112,11 +124,20 @@ test.describe('Capacity allocation', () => {
       .first()
       .click()
     await page.getByRole('button', { name: 'Allocate to teams' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Allocate a Feature' })
-    await dialog.getByLabel('Team').click()
+    const dialog = page.getByRole('dialog', { name: 'Allocate to Teams' })
+    // Rally's table dialog: it opens on the Feature's CURRENT split, so allocating to a NEW team
+    // means adding a row rather than overwriting the one already there.
+    const rows = dialog.getByRole('button', { name: 'Team' })
+    const unset = dialog.getByRole('button', { name: 'Team' }).filter({ hasText: 'Select team' })
+    if ((await unset.count()) === 0 && (await rows.count()) > 0) {
+      const addRow = dialog.getByRole('button', { name: 'Add team' })
+      if (await addRow.count()) await addRow.click()
+    }
+    const targetRow = (await unset.count()) > 0 ? unset.first() : rows.last()
+    await targetRow.click()
     await pickOption(page, team)
-    if (estimate !== undefined) await dialog.getByLabel('Estimate').fill(estimate)
-    await dialog.getByRole('button', { name: 'Allocate', exact: true }).click()
+    if (estimate !== undefined) await dialog.getByLabel('Estimate').last().fill(estimate)
+    await dialog.getByRole('button', { name: 'Apply', exact: true }).click()
     await expect(dialog).toBeHidden()
   }
 
@@ -160,11 +181,13 @@ test.describe('Capacity allocation', () => {
    * removes that entire class of failure.
    */
   async function resetPlan(page: import('@playwright/test').Page) {
-    const revert = page.getByRole('button', { name: 'Revert to draft' })
-    if (await revert.count()) {
-      await revert.click()
-      await page.getByRole('dialog').getByRole('button', { name: 'Revert to draft' }).click()
-      await expect(page.getByRole('button', { name: /^Publish$/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Plan actions' }).click()
+    const unpublish = page.getByRole('button', { name: /^Unpublish$/ })
+    if (await unpublish.count()) {
+      await unpublish.click()
+      await page.getByRole('dialog').getByRole('button', { name: 'Unpublish' }).click()
+    } else {
+      await page.keyboard.press('Escape')
     }
 
     await page.getByRole('tab', { name: /Features/ }).click()
@@ -285,7 +308,8 @@ test.describe('Capacity allocation', () => {
     await allocateFeature(page, /FE-1/, /Team Alpha/)
 
     // ── Publish ──────────────────────────────────────────────────────────────
-    await page.getByRole('button', { name: /^Publish$/ }).click()
+    // From the Actions menu, which is where Rally puts it.
+    await planAction(page, /^Publish$/)
     const dialog = page.getByRole('dialog', { name: /Publish this plan/i })
     // The three things a planner has to know BEFORE the write: what lands, when the Release
     // lands, and that reverting will not undo it.
@@ -302,10 +326,12 @@ test.describe('Capacity allocation', () => {
     // Published plans are read-only, so the editing affordances go away.
     // A published plan offers no Allocate: the action row drops it rather than failing the request.
     await page.getByRole('tab', { name: /Features/ }).click()
-    await expect(page.getByRole('button', { name: /^Allocate a Feature$/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Allocate to teams$/ })).toHaveCount(0)
     await page.getByRole('tab', { name: /Teams/ }).click()
-    // …and offers Revert instead, in the same place Publish was.
-    await expect(page.getByRole('button', { name: 'Revert to draft' })).toBeVisible()
+    // …and the Actions menu offers `Unpublish` where `Publish` was.
+    await page.getByRole('button', { name: 'Plan actions' }).click()
+    await expect(page.getByRole('button', { name: /^Unpublish$/ })).toBeVisible()
+    await page.keyboard.press('Escape')
 
     // ── The Feature really took the plan's window ────────────────────────────
     // Read from the Portfolio detail rather than the plan, which is the whole point: the
@@ -317,7 +343,7 @@ test.describe('Capacity allocation', () => {
     await expect(page.getByText('2026-07-01')).toBeVisible()
     await expect(page.getByText('v2.0 — NX Platform Upgrade')).toBeVisible()
 
-    // ── Revert, which does NOT roll the fields back ──────────────────────────
+    // ── Unpublish, which does NOT roll the fields back ───────────────────────
     await page.goBack()
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
     // The ID cell is the link: the row does not navigate and the NAME cell edits in place,
@@ -326,10 +352,10 @@ test.describe('Capacity allocation', () => {
     // is newest-first — so `.first()` opened the read-only one and every draft-only control was
     // missing.
     await page.getByRole('button', { name: /^CP-1$/ }).click()
-    await page.getByRole('button', { name: /^Revert to draft$/ }).click()
+    await planAction(page, /^Unpublish$/)
     const confirm = page.getByRole('dialog')
     await expect(confirm.getByText(/are NOT undone/)).toBeVisible()
-    await confirm.getByRole('button', { name: 'Revert to draft' }).click()
+    await confirm.getByRole('button', { name: 'Unpublish' }).click()
 
     // Editable again.
     await page.getByRole('button', { name: 'Plan actions' }).click()
