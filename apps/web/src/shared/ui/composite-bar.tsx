@@ -34,6 +34,9 @@ export const CAPACITY_SEGMENTS = {
     border: BRAND.capacityEstimatedBorder,
     label: 'estimated',
   },
+  // Rally's own green: a light hatch over a pale mint, not a hatch over white. Sampled from its
+  // legend — the tint under the strokes is what stops the band reading as "empty".
+
   /**
    * Remaining capacity — a GREEN hatch, not empty space.
    *
@@ -42,8 +45,8 @@ export const CAPACITY_SEGMENTS = {
    * is "how much room is left". Hatched, not solid, because headroom is not work.
    */
   capacity: {
-    fill: `repeating-linear-gradient(-45deg, ${BRAND.successBorder} 0, ${BRAND.successBorder} 3px, ${BRAND.successBg} 3px, ${BRAND.successBg} 6px)`,
-    border: BRAND.success,
+    fill: `repeating-linear-gradient(-45deg, ${BRAND.capacityHeadroom} 0, ${BRAND.capacityHeadroom} 3px, ${BRAND.capacityHeadroomBg} 3px, ${BRAND.capacityHeadroomBg} 6px)`,
+    border: BRAND.capacityHeadroomBorder,
     label: 'capacity',
   },
 } as const
