@@ -439,7 +439,10 @@ function TaskRow({
         />
       </div>
       {/* Project */}
-      <div className="shrink-0 truncate px-2 text-muted-foreground" style={colStyles.project}>
+      <div
+        className="shrink-0 px-2 break-words whitespace-normal text-muted-foreground"
+        style={colStyles.project}
+      >
         {projectLabel}
       </div>
       {/* Teams */}

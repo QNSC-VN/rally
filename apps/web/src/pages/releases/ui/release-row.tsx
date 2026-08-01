@@ -233,7 +233,9 @@ export function ReleaseRow({
         className="min-w-0 px-2"
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="block truncate text-muted-foreground">{project?.projectName ?? '--'}</span>
+        <span className="block break-words whitespace-normal text-muted-foreground">
+          {project?.projectName ?? '--'}
+        </span>
       </div>
 
       {/* Planned Velocity — shared InlineEditableCell */}

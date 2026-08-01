@@ -139,7 +139,11 @@ export function ProjectSelectCell({
   onChange: (projectId: string) => void
 }) {
   if (!canEdit) {
-    return <span className="truncate px-2 text-muted-foreground">{projectName ?? '--'}</span>
+    return (
+      <span className="px-2 break-words whitespace-normal text-muted-foreground">
+        {projectName ?? '--'}
+      </span>
+    )
   }
 
   // No clear option: an item ALWAYS belongs to a project, unlike every other reference
@@ -163,6 +167,8 @@ export function ProjectSelectCell({
     <SearchableSelect
       variant="cell"
       value={projectId}
+      // A project name is long enough to matter, and Rally wraps this column.
+      wrapLabel
       ariaLabel={ariaLabel}
       searchPlaceholder="Search"
       options={options}

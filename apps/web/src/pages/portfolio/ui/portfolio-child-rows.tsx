@@ -351,7 +351,7 @@ function ChildWorkItemRow({
       <div className="px-2" style={colStyleFor('percentDonePoints')} />
       <div className="px-2" style={colStyleFor('percentDoneCount')} />
 
-      <div className="min-w-0 truncate px-2" style={colStyleFor('project')}>
+      <div className="min-w-0 px-2 break-words whitespace-normal" style={colStyleFor('project')}>
         {child.projectName ?? '--'}
       </div>
 

@@ -504,7 +504,9 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     cellClassName: 'overflow-hidden px-0',
     cell: (p, ctx) =>
       p.status === 'archived' ? (
-        <div className="truncate px-2 py-1.5 text-ui-md text-foreground">{p.name}</div>
+        <div className="px-2 py-1.5 text-ui-md break-words whitespace-normal text-foreground">
+          {p.name}
+        </div>
       ) : (
         <InlineEditableCell
           value={p.name}
@@ -512,7 +514,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
           fullCell
           ariaLabel="Name"
           title={p.name}
-          className="truncate text-ui-md text-foreground"
+          className="text-ui-md break-words whitespace-normal text-foreground"
           inputClassName="text-ui-md text-foreground"
           onCommit={(v) => {
             const n = v.trim()

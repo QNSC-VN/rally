@@ -29,10 +29,12 @@ export function IdCell({ type, itemKey, onOpen }: IdCellProps) {
         onOpen()
       }}
       title={itemKey}
-      className="group flex min-w-0 cursor-pointer items-center gap-1 overflow-hidden border-none bg-transparent p-0 text-left"
+      // `items-start` + no `overflow-hidden`: the key wraps, so the type glyph must stay
+      // on its first line and the button must be allowed to grow.
+      className="group flex min-w-0 cursor-pointer items-start gap-1 border-none bg-transparent p-0 text-left"
     >
       <TypeBadge type={type} />
-      <span className="min-w-0 truncate font-mono text-ui-md text-primary-light underline-offset-2 group-hover:underline">
+      <span className="min-w-0 font-mono text-ui-md break-words whitespace-normal text-primary-light underline-offset-2 group-hover:underline">
         {itemKey}
       </span>
     </button>
