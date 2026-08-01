@@ -41,6 +41,8 @@ export const PERMISSION = {
   MILESTONE_EDIT: 'milestone:edit',
   MILESTONE_DELETE: 'milestone:delete',
   QUALITY_VIEW: 'quality:view',
+  // Reports (Iteration Burndown / Velocity / Team Capacity) and Release Tracking.
+  REPORT_VIEW: 'report:view',
 } as const
 
 export type Permission = (typeof PERMISSION)[keyof typeof PERMISSION]

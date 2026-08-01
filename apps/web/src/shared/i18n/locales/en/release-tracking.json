@@ -1,0 +1,110 @@
+{
+  "title": "Release Tracking",
+  "selectProject": "Select a project to track a release.",
+  "chartUnit": "Chart Unit",
+  "searchPlaceholder": "Search this list...",
+  "unit": {
+    "points": "Points",
+    "count": "Count"
+  },
+  "picker": {
+    "empty": "No release",
+    "none": "No releases",
+    "prev": "Previous release",
+    "next": "Next release"
+  },
+  "views": {
+    "dependencies": "Dependencies · Future",
+    "dependenciesHint": "Release dependency analysis is future work and is not available yet."
+  },
+  "summary": {
+    "title": "Features",
+    "direct": "Features in Release",
+    "derived": "Derived Features",
+    "unparented": "Unparented Stories & Defects"
+  },
+  "columns": {
+    "rank": "Rank",
+    "id": "ID",
+    "team": "Team",
+    "issue": "Issue",
+    "name": "Name",
+    "status": "Status"
+  },
+  "type": {
+    "feature": "Feature",
+    "story": "Story",
+    "defect": "Defect"
+  },
+  "subtitle": {
+    "direct": "Direct - {{count}} total child item(s) - {{state}}",
+    "derived": "Derived - {{count}} matching child item(s) - {{state}}",
+    "unparented": "{{type}} - no parent Feature - {{state}}"
+  },
+  "status": {
+    "points": "{{accepted}}/{{total}} points accepted",
+    "count": "{{accepted}}/{{total}} items accepted"
+  },
+  "totals": {
+    "accepted": "Accepted",
+    "planned": "Planned in Release",
+    "preliminary": "Preliminary Feature Estimate"
+  },
+  "burnup": {
+    "title": "Burnup {{release}} - {{from}} - {{to}}",
+    "partialHistory": "Some days have no recorded snapshot and are shown as gaps rather than as zero.",
+    "noBaseline": "No approved release target is recorded, so no Ideal trajectory is drawn.",
+    "axis": {
+      "points": "Work Items Total Points",
+      "count": "Work Items Total Count"
+    },
+    "series": {
+      "accepted": "Accepted {{unit}}",
+      "planned": "Planned {{unit}}",
+      "preliminary": "Preliminary Estimate",
+      "ideal": "Ideal"
+    },
+    "empty": {
+      "title": "No burnup history",
+      "description": "The burnup is built from daily snapshots of this release. None have been recorded for this window yet, so no history can be shown."
+    }
+  },
+  "issues": {
+    "badgeLabel": "Children assigned to a different release",
+    "badgeHeading_one": "{{count}} child item points at another release",
+    "badgeHeading_other": "{{count}} child items point at another release",
+    "comparison": "Comparing against {{release}} ({{from}} - {{to}})",
+    "plannedStart": "Planned Start:",
+    "plannedEnd": "Planned Completion:",
+    "teams": "Teams Involved:",
+    "count_one": "Issue ({{count}})",
+    "count_other": "Issues ({{count}})",
+    "typeReleaseMismatch": "Release mismatch",
+    "itemRelease": "Item release: {{release}}",
+    "fullMismatch": "All release-assigned child items mismatch this selected Release. Check whether the Feature release is stale or assigned to the wrong Release.",
+    "progress": {
+      "points": "total points",
+      "stories": "stories",
+      "defects": "defects",
+      "ratio": "{{accepted}}/{{total}} {{label}} complete"
+    }
+  },
+  "empty": {
+    "noRelease": {
+      "title": "No releases in this project",
+      "description": "Release Tracking follows a release. Create one under Plan > Timeboxes to track it here."
+    },
+    "direct": {
+      "title": "No Features in this release",
+      "description": "No Feature is assigned directly to the selected release in this scope."
+    },
+    "derived": {
+      "title": "No derived Features",
+      "description": "No Feature outside this release has a child story or defect assigned to it in this scope."
+    },
+    "unparented": {
+      "title": "No unparented items",
+      "description": "Every story and defect in this release belongs to a Feature."
+    }
+  }
+}

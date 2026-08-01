@@ -1,51 +1,91 @@
 {
   "title": "Reports",
-  "selectProject": "Select a project to view its reports.",
-  "subtitleWindow": "Last 6 iterations",
-  "export": "Export",
-  "exported": "Report exported",
-  "units": {
-    "pts": "pts"
-  },
-  "metrics": {
-    "committed": "Committed",
-    "accepted": "Accepted",
-    "remaining": "Remaining",
-    "daysLeft": "Days Left",
-    "completion": "Completion"
-  },
-  "widgets": {
-    "iterationProgress": "Current Iteration Progress",
+  "type": "Type",
+  "iteration": "Iteration",
+  "selectProject": "Select a project to see its reports.",
+  "types": {
     "burndown": "Iteration Burndown",
     "velocity": "Velocity",
-    "statusDistribution": "Status Distribution",
-    "defectSummary": "Defect Summary",
-    "workload": "Workload by Owner",
-    "plannedVsCompleted": "Planned vs Completed",
-    "releaseProgress": "Release Progress",
-    "blocked": "Blocked Items",
-    "recentActivity": "Recent Activity"
+    "capacity": "Team Capacity"
   },
-  "empty": {
-    "burndown": "No burndown data for this iteration.",
-    "velocity": "No completed iterations yet.",
-    "statusDistribution": "No items in this iteration.",
-    "workload": "No assigned work.",
-    "plannedVsCompleted": "No iteration history yet.",
-    "releases": "No releases in this project.",
-    "blocked": "No blocked items.",
-    "recentActivity": "No recent activity."
+  "units": {
+    "points": "Points",
+    "hours": "Hours"
   },
-  "defects": {
-    "open": "Open",
-    "critical": "Critical",
-    "inProgress": "In Progress",
-    "resolved": "Resolved",
-    "blockers": "Blockers"
+  "burndown": {
+    "title": "Iteration Burndown",
+    "onTrack": "On track",
+    "behindPlan": "Behind plan",
+    "partialHistory": "Some days have no recorded snapshot and are shown as gaps rather than as zero.",
+    "axis": {
+      "date": "Date",
+      "hours": "Task To Do (Hours)",
+      "points": "Accepted (Points)"
+    },
+    "series": {
+      "todo": "Task To Do (Hours)",
+      "ideal": "Ideal",
+      "accepted": "Accepted (Points)"
+    },
+    "empty": {
+      "title": "No burndown to show",
+      "noIteration": "Select an iteration to see its burndown.",
+      "noScheduledWork": "No stories or defects are scheduled in this iteration yet.",
+      "noBaseline": "This iteration has no recorded start baseline, so the Ideal line cannot be drawn.",
+      "noHistory": "No daily history has been recorded for this iteration yet. Burndown is built from end-of-day snapshots and is never reconstructed from today's values."
+    }
   },
-  "legend": {
-    "define": "Define",
-    "inProgress": "In Progress",
-    "complete": "Complete"
+  "velocity": {
+    "title": "Velocity - Accepted Iterations",
+    "teamContext": "Team: {{team}}",
+    "window": "Window",
+    "windowLast": "Last {{count}} sprints",
+    "averagesOver": "Averages over Last {{count}} Iterations",
+    "sampleSize_one": "{{count}} iteration available",
+    "sampleSize_other": "{{count}} iterations available",
+    "last3": "Last 3",
+    "best3": "Best 3",
+    "worst3": "Worst 3",
+    "unclassified_one": "{{count}} accepted item has no acceptance date, so its points are in no segment and in no average.",
+    "unclassified_other": "{{count}} accepted items have no acceptance date, so their points are in no segment and in no average.",
+    "axis": {
+      "points": "Velocity (Points)"
+    },
+    "series": {
+      "during": "Accepted During Iteration",
+      "after": "Accepted After Iteration",
+      "notAccepted": "Not Accepted",
+      "trend": "Trend: {{value}}"
+    },
+    "empty": {
+      "title": "No completed iterations",
+      "description": "No completed iteration with scheduled work exists in this project and team scope."
+    }
+  },
+  "capacity": {
+    "title": "Team Capacity - {{scope}}",
+    "source": "Team Status hours",
+    "totals": "Totals",
+    "expandTeam": "Expand {{team}}",
+    "columns": {
+      "member": "Team / Member",
+      "capacity": "Capacity",
+      "estimate": "Estimate",
+      "todo": "ToDo",
+      "actual": "Actual"
+    },
+    "indicators": {
+      "capacity": "Capacity Hours",
+      "estimate": "Estimate Hours",
+      "todo": "ToDo Hours",
+      "actual": "Actual Hours"
+    },
+    "empty": {
+      "title": "Nothing to show for this iteration",
+      "noIteration": "Select an iteration to see its capacity.",
+      "noCapacity": "No member capacity has been planned for this iteration. Capacity is entered on Track > Team Status.",
+      "noTasks": "Capacity is planned, but no tasks are scoped to this iteration yet.",
+      "neither": "No planned capacity and no scoped task hours for this iteration."
+    }
   }
 }
