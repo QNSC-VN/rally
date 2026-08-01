@@ -97,7 +97,9 @@
       "description": "Description",
       "createdAt": "Creation Date",
       "notes": "Notes",
-      "releaseNotes": "Release Notes"
+      "releaseNotes": "Release Notes",
+      "milestones": "Milestone",
+      "noMilestones": "No Milestone"
     },
     "progress": {
       "percentDonePoints": "% Done by Plan Estimate",
@@ -134,6 +136,12 @@
     "history": {
       "title": "Revision History",
       "subtitle": "Every change to this portfolio item, newest first."
+    },
+    "actions": {
+      "menu": "Item actions",
+      "restore": "Restore",
+      "restored": "Item restored",
+      "archiveOne": "Archive \"{{name}}\"? It stays recoverable."
     }
   },
   "create": {

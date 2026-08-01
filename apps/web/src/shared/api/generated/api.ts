@@ -3979,6 +3979,12 @@ export interface components {
           acceptedCount: number
         }[]
       }
+      /** @description Assigned Milestones, name-ordered. Detail only — the grid does not show them. */
+      milestones: {
+        /** Format: uuid */
+        id: string
+        name: string
+      }[]
     }
     PortfolioChildResponseDto: {
       /** Format: uuid */
@@ -4061,6 +4067,7 @@ export interface components {
       teamId?: string | null
       releaseId?: string | null
       ownerId?: string | null
+      milestoneIds?: string[]
       plannedStartDate?: string | null
       plannedEndDate?: string | null
       marketReleaseDate?: string | null

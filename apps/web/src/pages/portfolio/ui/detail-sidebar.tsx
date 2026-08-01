@@ -66,6 +66,7 @@ export function PortfolioDetailSidebar({
   members,
   releases,
   epics,
+  milestones,
   onUpdate,
 }: {
   /** The item MERGED with pending edits — render this, never the raw server value. */
@@ -75,6 +76,8 @@ export function PortfolioDetailSidebar({
   releases: { id: string; releaseKey: string | null; name: string }[]
   /** Candidate parents. Empty for an Epic, which has no parent. */
   epics: { id: string; itemKey: string; name: string }[]
+  /** Milestones in this item's project — the selector's scope per SRS §5.1. */
+  milestones: { id: string; milestoneKey?: string | null; name: string }[]
   onUpdate: (patch: UpdatePortfolioItemBody) => void
 }) {
   const { t } = useTranslation('portfolio')
@@ -192,6 +195,35 @@ export function PortfolioDetailSidebar({
           />
         </DetailField>
       )}
+
+      {/* Milestone — many-to-many, and the ONE rail field that is not a column: it lives in
+          `milestone_artifacts`, which migration 0084 made polymorphic so a portfolio item can
+          own assignments at all.
+
+          Scoped to this item's Project, plus any ALREADY-SELECTED milestone even if it falls
+          outside that scope (SRS §5.1). Without that union, opening an item whose assignment
+          predates a Project move would silently drop it on the next save — the selector would
+          not list it, so the buffered patch would send a set that excludes it. */}
+      <DetailField label={t('detail.fields.milestones')}>
+        <SearchableSelect
+          variant="field"
+          multiple
+          value={item.milestones.map((m) => m.id)}
+          readOnly={readOnly}
+          ariaLabel={t('detail.fields.milestones')}
+          placeholder={t('detail.fields.noMilestones')}
+          options={[
+            ...milestones,
+            ...item.milestones.filter((sel) => !milestones.some((m) => m.id === sel.id)),
+          ].map((m) => ({
+            value: m.id,
+            label: 'milestoneKey' in m && m.milestoneKey ? `${m.milestoneKey}: ${m.name}` : m.name,
+            searchText: `${('milestoneKey' in m && m.milestoneKey) || ''} ${m.name}`,
+            icon: <TypeBadge type="milestone" size={16} />,
+          }))}
+          onChange={(ids) => onUpdate({ milestoneIds: ids as string[] })}
+        />
+      </DetailField>
 
       {/* Full date AND time, "matching the Audit Log" (SRS.md:105) — the same `formatDateTime`
           the Revision History tab renders, so the two cannot drift. */}

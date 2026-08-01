@@ -184,7 +184,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       select json_agg(json_build_object('id', m.id, 'name', m.name) order by m.name)
       from ${milestoneArtifacts} ma
       join ${milestones} m on m.id = ma.milestone_id
-      where ma.work_item_id = ${workItems.id}
+      where ma.entity_type = 'work_item' and ma.entity_id = ${workItems.id}
     ), '[]'::json)`;
 
     // Keyset pagination on (rank, id) — the pair the ORDER BY below uses.

@@ -100,6 +100,9 @@ describe('PortfolioItemsService', () => {
             listChildren: vi.fn().mockResolvedValue(emptyPage([])),
             listChildFeatures: vi.fn().mockResolvedValue([]),
             childRollupByType: vi.fn().mockResolvedValue([]),
+            listMilestones: vi.fn().mockResolvedValue([]),
+            setMilestones: vi.fn().mockResolvedValue(undefined),
+            countMilestonesInProject: vi.fn().mockResolvedValue(0),
             findByIds: vi.fn().mockResolvedValue([]),
             nextKeyNumber: vi.fn().mockResolvedValue(1),
             lockRankScope: vi.fn().mockResolvedValue(undefined),
@@ -544,6 +547,40 @@ describe('PortfolioItemsService', () => {
     beforeEach(() => {
       repo.findViewById.mockResolvedValue(view());
       repo.update.mockResolvedValue(view());
+    });
+
+    // SRS §5.1 scopes the Milestone selector to the item's own Project. These two pin that
+    // the scope check runs BEFORE the write, so a cross-project id cannot land and then be
+    // "cleaned up" later.
+    it('refuses a Milestone that does not belong to the item\u2019s project', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        type: 'feature',
+        projectId: 'proj-a',
+      } as never);
+      repo.countMilestonesInProject.mockResolvedValue(1); // only one of the two is in-project
+      await expect(
+        service.updateItem(actor, 'pi-1', { milestoneIds: ['ms-1', 'ms-2'] }),
+      ).rejects.toMatchObject({ code: 'MILESTONE_PROJECT_MISMATCH' });
+      expect(repo.setMilestones).not.toHaveBeenCalled();
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('writes Milestones through setMilestones, not as a column patch', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        type: 'feature',
+        projectId: 'proj-a',
+      } as never);
+      repo.countMilestonesInProject.mockResolvedValue(2);
+      await service.updateItem(actor, 'pi-1', { milestoneIds: ['ms-1', 'ms-2'], name: 'Renamed' });
+      expect(repo.setMilestones).toHaveBeenCalledWith('pi-1', ['ms-1', 'ms-2']);
+      // The link ids must NOT reach the column update — there is no such column.
+      expect(repo.update).toHaveBeenCalledWith(
+        'pi-1',
+        expect.not.objectContaining({ milestoneIds: expect.anything() }),
+        WORKSPACE,
+      );
     });
 
     it('validates the shape against the STORED type, so an Epic cannot gain a Team', async () => {

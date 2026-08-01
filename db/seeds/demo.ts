@@ -789,7 +789,11 @@ async function seedFlow() {
   // Assign the Story to the milestone (Iteration Status "Milestones" column).
   await db
     .insert(milestoneArtifacts)
-    .values({ milestoneId: NXP_MILESTONE_1_ID, workItemId: NXP_STORY_1_ID })
+    .values({
+      milestoneId: NXP_MILESTONE_1_ID,
+      entityType: 'work_item' as const,
+      entityId: NXP_STORY_1_ID,
+    })
     .onConflictDoNothing();
 
   // Work-item relation — populates the "Linked Items" block on Work Item Detail
