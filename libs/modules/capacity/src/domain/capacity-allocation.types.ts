@@ -90,6 +90,13 @@ export interface CapacityAllocationRow extends CapacityAllocation {
   /** The project the Feature itself belongs to — Rally's "Project" column. */
   itemProjectId: string;
   itemProjectName: string | null;
+  /**
+   * The Feature's OWN release, which is not always the plan's.
+   *
+   * Read by `Move To Another Plan`: a Feature committed to another release cannot be planned
+   * against this one, so the dialog has to know before it offers the move.
+   */
+  itemReleaseId: string | null;
 }
 
 /** An allocated Feature as it appears under a team (or in the Unallocated bucket). */

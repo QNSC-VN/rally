@@ -39,7 +39,10 @@ test.describe('Portfolio', () => {
     await page.getByText('FE-1', { exact: true }).click()
     await expect(page).toHaveURL(/\/portfolio\/[0-9a-f-]{36}/)
     await expect(page.getByText('Guest checkout flow').first()).toBeVisible()
-    await expect(page.getByText('% Done by Plan Estimate')).toBeVisible()
+    // `Total Accepted Children`, which is what Rally shows on a portfolio item's detail page — it
+    // replaced the four progress meters this line used to assert (`% Done by Plan Estimate` and
+    // friends), same arithmetic framed as the question a reader of this page is asking.
+    await expect(page.getByText('Total Accepted Children')).toBeVisible()
   })
 
   test('the Type switcher swaps between Features and Epics', async ({ page }) => {
@@ -183,11 +186,19 @@ test.describe('Portfolio', () => {
 
     await search.fill('')
 
-    // The detail page reads the same field, so the two surfaces cannot disagree.
+    /**
+     * The DETAIL page no longer carries these bars, and deliberately so: Rally shows
+     * `Total Accepted Children` there instead, which is the block this asserts reached the page.
+     *
+     * This used to compare the detail tooltip against the grid's, character for character. That
+     * cross-check cannot survive the two surfaces answering different questions — the grid reports a
+     * percentage verdict per Feature, the detail block reports accepted child work in the unit the
+     * reader picks. `Total Accepted Children` is covered as a component elsewhere; what belongs here
+     * is that the grid's tooltip and the detail page both come up populated for the same Feature.
+     */
     await page.getByText('FE-1', { exact: true }).click()
     await expect(page).toHaveURL(/\/portfolio\/[0-9a-f-]{36}/)
-    const detailTip = await page.locator('[title*="Accepted points"]').first().getAttribute('title')
-    expect(detailTip).toBe(fe1Tip)
+    await expect(page.getByText('Total Accepted Children')).toBeVisible()
   })
 
   test('drag reorders rows, and the grip disappears under a column sort', async ({ page }) => {

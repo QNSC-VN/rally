@@ -34,6 +34,9 @@ export function CapacityItemRow({
   onRemove,
   onUnassign,
   onAllocate,
+  onMove,
+  onMoveUp,
+  onMoveDown,
   onAssign,
   assignOptions = [],
   dragHandle,
@@ -57,6 +60,11 @@ export function CapacityItemRow({
   onUnassign?: () => void
   /** Opens the Allocate dialog for THIS Feature — splitting it across teams. */
   onAllocate?: () => void
+  /** Opens Rally's `Move To Another Plan` for THIS Feature. */
+  onMove?: () => void
+  /** The BA's one-position reorder, within the PLAN's rank list. Absent at the ends. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
   /**
    * Assigns the Feature to one team, or to none. Omitted where the reader cannot manage the plan,
    * which turns the cell back into text.
@@ -81,6 +89,12 @@ export function CapacityItemRow({
       )}
       data-below-cutline={belowCutline || undefined}
     >
+      {/* Rally's `+/-`. Empty on every row today: it reports what changed since the plan was
+          PUBLISHED, and nothing holds a published snapshot yet, so the BA keeps it "neutral before
+          Publish". Present rather than added later, because a column that appears shifts every
+          other one. */}
+      <div style={colStyleFor('marker', { flexShrink: 0 })} className="px-0" aria-hidden />
+
       {/* Rank + grip. Rally ranks by dragging the row and only "when the grid is set to the default
           sort order", which is the plan's own rank order — the same rule `useRowRerank` enforces on
           the Backlog, so the grip simply disappears under any other sort. */}
@@ -121,18 +135,6 @@ export function CapacityItemRow({
         )}
         <span className="break-words whitespace-normal text-foreground" title={item.name}>
           {item.name}
-        </span>
-      </div>
-
-      {/* Rally's `Project`: where this Feature lives OUTSIDE the plan. Distinct from the planned
-          assignment beside it — a Story-to-Feature link may cross projects, so a plan can carry a
-          Feature owned elsewhere, and a planner needs to see that before allocating to it. */}
-      <div style={colStyleFor('project', { flexShrink: 0 })} className="min-w-0 px-2">
-        <span
-          className="break-words whitespace-normal text-muted-foreground"
-          title={item.projectName ?? undefined}
-        >
-          {item.projectName ?? '--'}
         </span>
       </div>
 
@@ -180,17 +182,41 @@ export function CapacityItemRow({
             {item.teamIds.length}
           </span>
         ) : (
-          <span className="truncate text-foreground" title={primaryTeamName ?? undefined}>
+          <span
+            className="break-words whitespace-normal text-foreground"
+            title={primaryTeamName ?? undefined}
+          >
             {primaryTeamName ?? '--'}
           </span>
         )}
       </div>
 
-      {/* Three numeric columns, no bar: Rally draws none on this tab, and it is right not to —
-          a Feature has no capacity, so a bar here would imply a ceiling that does not exist. */}
-      <div style={colStyleFor('complete', { flexShrink: 0 })} className="px-2 text-right">
-        <MetricValue value={item.complete} pct={null} />
+      {/* Rally's `Project`: where this Feature lives OUTSIDE the plan. Distinct from the planned
+          assignment beside it — a Story-to-Feature link may cross projects, so a plan can carry a
+          Feature owned elsewhere, and a planner needs to see that before allocating to it. */}
+      <div style={colStyleFor('project', { flexShrink: 0 })} className="min-w-0 px-2">
+        <span
+          className="break-words whitespace-normal text-muted-foreground"
+          title={item.projectName ?? undefined}
+        >
+          {item.projectName ?? '--'}
+        </span>
       </div>
+
+      {/* Rally's `Dependencies` count. `0`, not a dash: the BA's catalog says "it shows `0` until
+          dependency modelling is added", and zero is the truthful count for a domain that models
+          none — a dash would read as "unknown". */}
+      <div
+        style={colStyleFor('dependencies', { flexShrink: 0 })}
+        className="px-2 text-right text-muted-foreground tabular-nums"
+      >
+        0
+      </div>
+
+      {/* Three numeric columns, no bar: Rally draws none on this tab, and it is right not to —
+          a Feature has no capacity, so a bar here would imply a ceiling that does not exist.
+          Rollup → Estimated → Complete, which is Rally's order: the total, then what is planned
+          against it, then what is done. */}
       <div style={colStyleFor('rollup', { flexShrink: 0 })} className="px-2 text-right">
         <MetricValue value={item.rollup} pct={null} />
       </div>
@@ -200,6 +226,9 @@ export function CapacityItemRow({
       >
         <EstimateTierIcon tier={item.tier} />
         <span className="tabular-nums">{item.estimated}</span>
+      </div>
+      <div style={colStyleFor('complete', { flexShrink: 0 })} className="px-2 text-right">
+        <MetricValue value={item.complete} pct={null} />
       </div>
 
       {/* Rally's per-item menu. `Remove From Plan` drops every team's allocation of the Feature; a
@@ -214,7 +243,10 @@ export function CapacityItemRow({
         <CapacityItemActions
           itemKey={item.itemKey}
           hasTeams={item.teamIds.length > 0}
+          onMoveUp={onMoveUp}
+          onMoveDown={onMoveDown}
           onAllocate={onAllocate}
+          onMove={onMove}
           onUnassign={onUnassign}
           onRemove={onRemove}
         />

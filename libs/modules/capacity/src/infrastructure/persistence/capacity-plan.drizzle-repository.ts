@@ -215,6 +215,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         // Feature owned elsewhere, and the planner needs to see that before allocating to it.
         itemProjectId: portfolioItems.projectId,
         itemProjectName: projects.name,
+        itemReleaseId: portfolioItems.releaseId,
         itemState: portfolioItems.state,
         refinedEstimate: portfolioItems.refinedEstimate,
         preliminaryEstimate: portfolioItems.preliminaryEstimate,
@@ -285,6 +286,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       name: row.name,
       itemProjectId: row.itemProjectId,
       itemProjectName: row.itemProjectName,
+      itemReleaseId: row.itemReleaseId,
       state: row.itemState,
       refined: row.refinedEstimate === null ? null : Number(row.refinedEstimate),
       preliminarySize: row.preliminaryEstimate,
@@ -304,6 +306,31 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       .where(and(eq(capacityPlanAllocations.id, id), eq(capacityPlanAllocations.planId, planId)))
       .limit(1);
     return rows[0] ? this.mapAllocation(rows[0]) : null;
+  }
+
+  async listAllocationsForItem(
+    planId: string,
+    portfolioItemId: string,
+  ): Promise<CapacityAllocation[]> {
+    const rows = await this.db
+      .select()
+      .from(capacityPlanAllocations)
+      .where(
+        and(
+          eq(capacityPlanAllocations.planId, planId),
+          eq(capacityPlanAllocations.portfolioItemId, portfolioItemId),
+        ),
+      )
+      // Primary first: a move recreates the rows on the target, and the Feature's owning team
+      // should land as the owner there too rather than by whichever row the database returned first.
+      // `id` last: two rows written in the same statement share a `created_at`, and a tie then
+      // resolves to physical-tuple order, which the next UPDATE changes.
+      .orderBy(
+        desc(capacityPlanAllocations.isPrimary),
+        capacityPlanAllocations.createdAt,
+        capacityPlanAllocations.id,
+      );
+    return rows.map((row) => this.mapAllocation(row));
   }
 
   async findAllocationFor(
@@ -505,6 +532,25 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
    * planned dates are written either way. Passing `undefined` leaves the column alone,
    * which is different from `null` (clear it) and is why this is not a spread.
    */
+  async setFeatureRelease(
+    portfolioItemId: string,
+    workspaceId: string,
+    releaseId: string,
+    executor?: DbExecutor,
+  ): Promise<void> {
+    const exec = executor ?? this.db;
+    await exec
+      .update(portfolioItems)
+      .set({ releaseId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(portfolioItems.id, portfolioItemId),
+          eq(portfolioItems.workspaceId, workspaceId),
+          isNull(portfolioItems.archivedAt),
+        ),
+      );
+  }
+
   async applyPlanToFeature(
     portfolioItemId: string,
     workspaceId: string,

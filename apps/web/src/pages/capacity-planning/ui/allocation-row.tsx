@@ -43,6 +43,9 @@ export function AllocationRow({
   contributorTeamNames,
   hasTeams,
   onAllocate,
+  onMove,
+  onMoveUp,
+  onMoveDown,
   onUnassign,
   onRemove,
 }: {
@@ -56,16 +59,10 @@ export function AllocationRow({
   /** The Feature's 1-based position in the plan's rank order, resolved by the table. */
   rankPosition: number | null
   /**
-   * The team that OWNS this Feature on the plan (its primary assignment), when that is not this
-   * row's team. Drives `← from`.
+   * The team holding this Feature's PLAN assignment, when it is not this row's team. Drives `from`.
    */
   ownerTeamName: string | null
-  /**
-   * The OTHER teams this Feature is allocated to, when this row IS the owner. Drives `→ to`.
-   *
-   * Names rather than ids, resolved by the page: this cell prints them, and ids would make it reach
-   * back into the plan to translate.
-   */
+  /** The other teams this Feature is allocated to, when this row IS the assignment. Drives `to`. */
   contributorTeamNames: string[]
   /** Whether the Feature holds any team at all — gates `Remove All Assignments`. */
   hasTeams: boolean
@@ -74,37 +71,53 @@ export function AllocationRow({
    * wherever it is seen. Omitted (and the gear then hidden) on a published plan.
    */
   onAllocate?: () => void
+  onMove?: () => void
+  /** The BA's one-position reorder, swapping with the adjacent row INSIDE this team only. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
   onUnassign?: () => void
   onRemove?: () => void
 }) {
   const { t } = useTranslation('capacity')
   /**
-   * Rally's `Allocation` cell: how this Feature is SHARED, not a number.
+   * Rally's `Allocation` cell, to its documented rules:
    *
-   * `← from <team>` when another team owns it and the work was allocated into this one; `→ to <team>`
-   * when this team owns it and part of the work went elsewhere. Null when the Feature lives entirely
-   * inside this team — most rows — because "from this team" on every row is noise.
+   *   • "assigned to the current project with no other point/count allocations to other projects" —
+   *     the field is BLANK.
+   *   • "assigned to the current project, but have point/count allocations to another project" — the
+   *     other project's name "displays with a prefix of `to`".
+   *   • "assigned to a different project, but have point/count allocations for the current project" —
+   *     the assigned project's name "displays with a prefix of `from`".
+   *   • "If the portfolio item is allocated to multiple projects, the number of allocated projects
+   *     display."
+   *
+   * "Assigned" is the PLAN's assignment — Planned Team Assignment, our primary allocation — not the
+   * Feature's team outside the plan. Those two disagree as soon as a planner changes the assignment
+   * inside a plan, and Rally's cell follows the plan.
    */
   const sharing = useMemo(() => {
-    if (!allocation.isPrimary && ownerTeamName !== null) {
-      return {
-        arrow: '←',
-        preposition: t('row.from'),
-        teamNames: ownerTeamName,
-        title: t('row.allocatedFrom', { team: ownerTeamName }),
-      }
+    if (allocation.teamId === null) return null
+    // This row IS the assignment: report what was allocated AWAY, or nothing.
+    if (allocation.isPrimary) {
+      if (contributorTeamNames.length === 0) return null
+      return contributorTeamNames.length === 1
+        ? {
+            text: `${t('row.to')} ${contributorTeamNames[0]}`,
+            title: t('row.allocatedTo', { team: contributorTeamNames[0] }),
+          }
+        : {
+            // Rally prints the COUNT rather than a list once there is more than one.
+            text: t('row.allocatedCount', { count: contributorTeamNames.length }),
+            title: t('row.allocatedTo', { team: contributorTeamNames.join(', ') }),
+          }
     }
-    if (allocation.isPrimary && contributorTeamNames.length > 0) {
-      const names = contributorTeamNames.join(', ')
-      return {
-        arrow: '→',
-        preposition: t('row.to'),
-        teamNames: names,
-        title: t('row.allocatedTo', { team: names }),
-      }
+    // This row is a contributor: report who the work came FROM.
+    if (ownerTeamName === null) return null
+    return {
+      text: `${t('row.from')} ${ownerTeamName}`,
+      title: t('row.allocatedFrom', { team: ownerTeamName }),
     }
-    return null
-  }, [allocation.isPrimary, ownerTeamName, contributorTeamNames, t])
+  }, [allocation.teamId, allocation.isPrimary, contributorTeamNames, ownerTeamName, t])
 
   // The Feature state vocabulary lives in the portfolio namespace — the same labels the Portfolio
   // page shows, so a state cannot read one way there and another way inside a plan.
@@ -145,7 +158,27 @@ export function AllocationRow({
   }
 
   return (
-    <div className="group flex min-h-[30px] items-center border-b border-border-inner px-2 text-ui-md transition-colors hover:bg-primary-lighter">
+    <div className="group flex min-h-[30px] items-center border-b border-border-inner px-2 py-0.5 text-ui-md transition-colors hover:bg-primary-lighter">
+      {/* The gear LEADS here, which is the BA's placement for this table and the one table where it
+          does: "the only place this row's allocation is changed" is the row's subject, not a trailing
+          afterthought. Same component the Features tab renders, so the verbs cannot diverge. */}
+      <div
+        style={colStyleFor('actions', { flexShrink: 0 })}
+        className="flex items-center justify-center px-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <CapacityItemActions
+          itemKey={allocation.itemKey}
+          hasTeams={hasTeams}
+          onMoveUp={onMoveUp}
+          onMoveDown={onMoveDown}
+          onAllocate={onAllocate}
+          onMove={onMove}
+          onUnassign={onUnassign}
+          onRemove={onRemove}
+        />
+      </div>
+
       {/* The FEATURE's plan-wide rank, not a position in this team's list: a planner reading one
           team still wants to know where each Feature sits in the plan's priority order. */}
       <div
@@ -210,30 +243,44 @@ export function AllocationRow({
         )}
       </div>
 
-      {/* Rally's `Allocation`: the Feature's SHARING, not a number — `← from <team>` when another
-          team owns it, `→ to <team>` when this team owns it and part of the work went elsewhere. The
-          allocated points live in the trailing `Estimate` tooltip and are edited in `Estimated`. */}
-      <div
-        style={colStyleFor('allocation', { flexShrink: 0 })}
-        className="flex min-w-0 items-center overflow-hidden px-2"
-      >
-        {sharing !== null && (
-          <span className="truncate text-ui-sm text-muted-foreground italic" title={sharing.title}>
-            {sharing.arrow} {sharing.preposition}{' '}
-            <span className="font-medium">{sharing.teamNames}</span>
-          </span>
-        )}
-      </div>
-
       {/* The FEATURE's own state — Rally's `State` column on this table. Read-only here: the state
           belongs to the Feature and is edited on the Portfolio page, not inside a plan. */}
       <div
         style={colStyleFor('state', { flexShrink: 0 })}
-        className="flex min-w-0 items-center overflow-hidden px-2"
+        className="flex min-w-0 items-center px-2"
       >
-        <span className="truncate text-muted-foreground">
+        <span className="break-words whitespace-normal text-muted-foreground">
           {tPortfolio(`states.${allocation.state}`)}
         </span>
+      </div>
+
+      {/* The `Allocation` column: where this row's work came FROM. The allocated points live in the
+          trailing `Estimate` tooltip and are edited in `Estimated`. */}
+      <div
+        style={colStyleFor('allocation', { flexShrink: 0 })}
+        className="flex min-w-0 items-center px-2"
+      >
+        {/* BLANK when the Feature is assigned here and allocated nowhere else — Rally leaves the
+            field empty rather than printing a dash, because the cell reports a relationship and
+            there is none. */}
+        {sharing !== null && (
+          <span
+            className="text-ui-sm break-words whitespace-normal text-muted-foreground italic"
+            title={sharing.title}
+          >
+            {sharing.text}
+          </span>
+        )}
+      </div>
+
+      {/* `Dependencies`. Rally's column "shows the number of dependencies that are assigned to each
+          portfolio item", so it is a COUNT — `0` here as on the Features tab, not the dash the BA's
+          catalog suggests for this table: a dash reads as "unknown" where Rally reads "none". */}
+      <div
+        style={colStyleFor('dependencies', { flexShrink: 0 })}
+        className="px-2 text-right text-muted-foreground tabular-nums"
+      >
+        0
       </div>
 
       <div style={colStyleFor('progress', { flexShrink: 0 })} className="min-w-0 px-2">
@@ -293,22 +340,6 @@ export function AllocationRow({
         className="flex items-center justify-center px-1"
       >
         <EstimateTierIcon tier={allocation.tier} breakdown={allocation.estimateBreakdown} />
-      </div>
-
-      {/* Rally's per-item gear, at the row's end exactly as on the Features tab — the same component,
-          so the two tabs cannot come to offer different verbs for the same Feature. */}
-      <div
-        style={colStyleFor('actions', { flexShrink: 0 })}
-        className="flex items-center justify-center px-1"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <CapacityItemActions
-          itemKey={allocation.itemKey}
-          hasTeams={hasTeams}
-          onAllocate={onAllocate}
-          onUnassign={onUnassign}
-          onRemove={onRemove}
-        />
       </div>
     </div>
   )

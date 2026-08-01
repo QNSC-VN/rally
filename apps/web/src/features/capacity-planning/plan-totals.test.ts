@@ -137,6 +137,14 @@ describe('pctOfCapacity', () => {
     expect(pctOfCapacity(1, 3)).toBe(33)
   })
 
+  it('rounds DOWN, as Rally does', () => {
+    // Rally's own worked example: "336 points estimated / 624 capacity points = 0.53846, which
+    // would round to 53%". Rounding gives 54, and a team one point short of its ceiling would read
+    // as a full 100%.
+    expect(pctOfCapacity(336, 624)).toBe(53)
+    expect(pctOfCapacity(99.6, 100)).toBe(99)
+  })
+
   it('exceeds 100 rather than clamping, because being over is the point', () => {
     expect(pctOfCapacity(150, 100)).toBe(150)
   })
