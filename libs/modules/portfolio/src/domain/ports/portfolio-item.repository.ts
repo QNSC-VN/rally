@@ -1,4 +1,5 @@
 import type { CursorPayload, DbExecutor, PagedResult } from '@platform';
+import type { WorkItemPriority } from '../../../../../../db/schema/enums';
 import type {
   CreatePortfolioItemInput,
   PortfolioItem,
@@ -143,6 +144,10 @@ export interface PortfolioChildItem {
   title: string;
   scheduleState: string;
   storyPoints: string | null;
+  /** The BA's `Priority` and `Iteration` columns on the Children tab. */
+  priority: WorkItemPriority;
+  iterationId: string | null;
+  iterationName: string | null;
   /** IDs as well as names, so a grid can bind an editable picker to the child. */
   projectId: string;
   releaseId: string | null;

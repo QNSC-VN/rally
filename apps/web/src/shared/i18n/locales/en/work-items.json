@@ -17,7 +17,9 @@
     "critical": "Critical",
     "high": "High",
     "normal": "Normal",
-    "low": "Low"
+    "low": "Low",
+    "none": "None",
+    "urgent": "Urgent"
   },
   "create": {
     "title": "New Work Item",
