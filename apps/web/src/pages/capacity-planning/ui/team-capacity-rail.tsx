@@ -41,8 +41,12 @@ export function TeamCapacityRail({
   const warningText = useCapacityWarningText()
 
   return (
-    <aside className="w-72 shrink-0 overflow-y-auto border-l border-border-inner bg-card px-3 py-2">
-      <p className="mb-2 text-ui-md font-semibold text-foreground">{t('items.sidebarHeading')}</p>
+    <aside className="w-80 shrink-0 overflow-y-auto border-l border-border-inner bg-card px-3 py-2">
+      {/* The unit is named ONCE, here: all three figures share it, and repeating it in a column
+          heading stole the width the team names need. */}
+      <p className="mb-2 text-ui-md font-semibold text-foreground capitalize">
+        {t('items.sidebarHeading', { unit: unitLabel })}
+      </p>
 
       {/* Rally's own three headings, so each number is read against its own label rather than as one
           ratio. The unit is named once, on the heading row, because all three figures share it. */}
@@ -51,9 +55,7 @@ export function TeamCapacityRail({
         <span className="w-12 shrink-0 text-right">{t('items.railAssigned')}</span>
         <span className="w-12 shrink-0 text-right">{t('items.railAllocated')}</span>
         {/* `capitalize` rather than a second key: the unit label is a noun the plan already owns. */}
-        <span className="w-16 shrink-0 text-right capitalize">
-          {t('items.railCapacity', { unit: unitLabel })}
-        </span>
+        <span className="w-20 shrink-0 text-right">{t('items.railCapacity')}</span>
       </div>
 
       {teams.length === 0 && (
@@ -74,13 +76,15 @@ export function TeamCapacityRail({
               >
                 {team.teamName ?? '--'}
               </span>
-              <span className="w-12 shrink-0 text-right text-muted-foreground tabular-nums">
+              <span className="w-10 shrink-0 text-right text-muted-foreground tabular-nums">
                 {demand.assigned}
               </span>
-              <span className="w-12 shrink-0 text-right text-muted-foreground tabular-nums">
+              <span className="w-10 shrink-0 text-right text-muted-foreground tabular-nums">
                 {demand.allocated}
               </span>
-              <span className="flex w-16 shrink-0 items-center justify-end gap-1 text-muted-foreground tabular-nums">
+              {/* `w-24` + `whitespace-nowrap`: at 64px "Not entered" wrapped onto a second line and
+                  pushed the warning glyph past the column's right edge, flush to the window. */}
+              <span className="flex w-24 shrink-0 items-center justify-end gap-1 whitespace-nowrap text-muted-foreground tabular-nums">
                 {team.metrics.capacity === null ? (
                   <span className="text-foreground-subtle">{t('row.notEntered')}</span>
                 ) : (

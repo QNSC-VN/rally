@@ -174,15 +174,15 @@ export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemCo
   // until a plan carries a published snapshot to diff against — the BA calls it "neutral before
   // Publish", which is every plan today.
   { key: 'marker', label: '', defaultWidth: 24, minWidth: 24, align: 'center' },
-  { key: 'rank', label: 'Rank', defaultWidth: 58, minWidth: 52, align: 'right', sortCol: 'rank' },
+  { key: 'rank', label: 'Rank', defaultWidth: 66, minWidth: 56, align: 'right', sortCol: 'rank' },
   { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 84, locked: true, sortCol: 'itemKey' },
   // Sized for the ~1010px this tab has once the Team Capacity rail takes its 256: `grow` spends
   // surplus but never claws width back, so defaults that overflow simply hide the last column.
   {
     key: 'name',
     label: 'Name',
-    defaultWidth: 180,
-    minWidth: 140,
+    defaultWidth: 150,
+    minWidth: 130,
     locked: true,
     grow: true,
     sortCol: 'name',
@@ -190,17 +190,17 @@ export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemCo
   {
     key: 'assignment',
     label: 'Planned Team Assignment',
-    defaultWidth: 160,
+    defaultWidth: 150,
     minWidth: 130,
     sortCol: 'assignment',
   },
-  { key: 'project', label: 'Project', defaultWidth: 110, minWidth: 90, sortCol: 'project' },
+  { key: 'project', label: 'Project', defaultWidth: 96, minWidth: 84, sortCol: 'project' },
   // Placeholder, per the BA: "It shows `0` until dependency modelling is added."
   {
     key: 'dependencies',
     label: 'Dependencies',
-    defaultWidth: 96,
-    minWidth: 80,
+    defaultWidth: 118,
+    minWidth: 100,
     align: 'right',
     sortCol: 'dependencies',
   },
@@ -277,11 +277,12 @@ export const CAPACITY_ALLOCATION_COLUMNS: ColumnSpec<CapacityAllocation, unknown
   { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 52, align: 'right' },
   { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 80, locked: true },
   { key: 'name', label: 'Name', defaultWidth: 176, minWidth: 130, locked: true, grow: true },
-  { key: 'state', label: 'State', defaultWidth: 120, minWidth: 90 },
+  { key: 'state', label: 'State', defaultWidth: 112, minWidth: 90 },
   // Where this row's work came FROM: `—` on the Feature's owning team, `From {owner}` on any other.
-  { key: 'allocation', label: 'Allocation', defaultWidth: 130, minWidth: 90 },
+  { key: 'allocation', label: 'Allocation', defaultWidth: 124, minWidth: 90 },
   // Placeholder, per the BA: "every row shows `—`" until there is a dependency model.
-  { key: 'dependencies', label: 'Dependencies', defaultWidth: 92, minWidth: 80, align: 'right' },
+  // The label is the widest thing in this column, so the width is set by it, not by the `—`/`0`.
+  { key: 'dependencies', label: 'Dependencies', defaultWidth: 124, minWidth: 104, align: 'right' },
   { key: 'progress', label: '', defaultWidth: 130, minWidth: 100 },
   { key: 'complete', label: 'Complete', defaultWidth: 86, minWidth: 72, align: 'right' },
   { key: 'rollup', label: 'Rollup', defaultWidth: 80, minWidth: 68, align: 'right' },

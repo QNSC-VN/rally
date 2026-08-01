@@ -212,7 +212,7 @@
     "tab": "Items",
     "notAssigned": "Not assigned",
     "empty": "Add a Feature to see it here.",
-    "sidebarHeading": "Team Capacity",
+    "sidebarHeading": "Team Capacity ({{unit}})",
     "plusContributors": "+{{count}}",
     "featureType": "Feature",
     "teamCount": "{{count}} teams",
