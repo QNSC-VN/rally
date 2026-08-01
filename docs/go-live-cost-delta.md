@@ -1,12 +1,12 @@
 # Go-live cost delta — what launch does to the AWS bill
 
-**Bottom line: the bill roughly triples at go-live, from ~$140/mo to ~$305/mo, and none
+**Bottom line: the bill roughly doubles at go-live, from ~$140/mo to ~$253/mo, and none
 of that increase is waste.** It is the price of the durability and observability that
 production is deliberately running without while it has no users.
 
 This exists because the go-live checklist in `infra/live/prod/main.tf` has never been
 costed. Every item in it is correct; the total was simply never added up. A CEO
-optimising a $140 bill should know it is about to become $305+ regardless of what is
+optimising a $140 bill should know it is about to become $253+ regardless of what is
 trimmed today.
 
 Prices are ap-southeast-1 (Singapore), on-demand, as of 2026-08. Monthly figures assume
@@ -20,23 +20,23 @@ defined end date, and `infra/live/prod/main.tf` names every flag that flips.
 
 | | today (idle) | at go-live | delta |
 |---|---|---|---|
-| RDS instance | t4g.micro, **stopped** (bills $0) | t4g.small Multi-AZ | **+$96.36** |
-| RDS storage | 30 GB gp3 | 30 GB gp3 Multi-AZ (×2) | **+$4.14** |
+| RDS instance | t4g.micro, **stopped** (bills $0) | t4g.small single-AZ | **+$48.18** |
+| RDS storage | 30 GB gp3 | 30 GB gp3 (unchanged) | **$0** |
 | RDS Enhanced Monitoring | off | 60s interval | **+$2.10** |
 | Fargate api | 0 tasks | 1× 1024/2048 on-demand | **+$41.45** |
 | Fargate worker | 0 tasks | 1× 512/1024 Spot | **+$6.22** |
 | ElastiCache | none | cache.t4g.micro | **+$12.41** |
 | CloudWatch alarms | 12 | 21 (autoscaling + target health) | **+$0.90** |
-| **total** | | | **+$164/mo** |
+| **total** | | | **+$112/mo** |
 
 Add the dev environment and shared platform layer, which do not change at go-live:
 
 | | $/mo |
 |---|---|
 | current run-rate (both environments bundled, 2026-08-02) | ~140 |
-| go-live delta | +164 |
-| **projected at launch (1 task per service)** | **~305** |
-| with realistic autoscaling headroom (see below) | **~345** |
+| go-live delta | +112 |
+| **projected at launch (1 task per service)** | **~253** |
+| with realistic autoscaling headroom (see below) | **~294** |
 
 The ~$140 baseline is a projection from the last complete billing day, not a settled
 month. July's actual bill was $264.72, but most of that was costs that no longer exist
@@ -45,36 +45,49 @@ Insights). August is the first clean read.
 
 ## Line by line
 
-### RDS: +$102.60 — the single biggest item, and more than half the total delta
+### RDS: +$50.28 — still the single biggest item
 
-The checklist flips three things together:
+The checklist flips two things:
 
 ```hcl
 instance_class      = "db.t4g.small"   # 2 GB rather than 1 GB
-multi_az            = true             # AZ failure becomes a failover, not an outage
 monitoring_interval = 60               # per-process and per-device visibility
 ```
 
-These compound. Multi-AZ doubles the instance rate **and** bills the mirrored volume,
-and the class change doubles the base rate before that:
-
 | | rate | $/mo |
 |---|---|---|
-| t4g.micro single-AZ | $0.033/hr | 24.09 |
-| t4g.small single-AZ | $0.066/hr | 48.18 |
-| **t4g.small Multi-AZ** | **$0.132/hr** | **96.36** |
+| t4g.micro single-AZ (today, stopped) | $0.033/hr | 24.09 |
+| **t4g.small single-AZ (go-live)** | **$0.066/hr** | **48.18** |
+| t4g.small Multi-AZ (declined) | $0.132/hr | 96.36 |
 
-The instance is **stopped today**, billing storage only — so the delta against the live
-bill is the full $96.36, not the difference between two running instances. That is the
-single most important number in this document and the easiest one to underestimate.
+The instance is **stopped today**, billing storage only — so the delta is the full
+$48.18, not the difference between two running instances. Plus Enhanced Monitoring at
+60s ≈ **+$2.10/mo**.
 
-Plus:
+#### Multi-AZ was considered and declined (2026-08-02)
 
-- storage mirror: 30 GB × $0.138 = **+$4.14**
-- Enhanced Monitoring at 60s ≈ **+$2.10/mo** in CloudWatch metrics
+It would have added **$52.32/mo** ($48.18 doubled instance rate + $4.14 mirrored
+volume), a third of the original delta and more than every other line combined. That is
+what makes the go-live number ~$253 rather than ~$305.
 
-`prod/main.tf` already argues this correctly: every dollar currently buys durability for
-a database with no users. That reverses the moment there are users.
+This is the one decision here that trades **availability**, not deferred spend:
+
+| | AZ failure |
+|---|---|
+| Multi-AZ | automatic failover, ~60–120s, no data loss |
+| **single-AZ** | **database down** until AWS restores the AZ, or a manual snapshot restore into another AZ — hours |
+
+The exposure is an outage measured in hours, **not** permanent data loss — provided
+`backup_retention_days = 30` stays, because PITR narrows the loss window to ~5 minutes.
+Those two settings are now coupled: **do not lower retention while single-AZ.**
+
+Revisit when the product carries paying users, an availability commitment (SLA,
+contract, SOC 2 CC7.x continuity), or a workload where hours of downtime costs more than
+$52/mo. **Not a one-way door** — RDS converts single-AZ to Multi-AZ in place: one flag,
+one apply, a brief failover, no data migration and no endpoint change.
+
+`prod/main.tf` already argues the general case correctly: every dollar currently buys
+durability for a database with no users. That reverses the moment there are users.
 
 ### Fargate: +$47.67
 
@@ -125,7 +138,7 @@ state and the alarm treats missing data as breaching.
 **Autoscaling headroom.** The figures above price *one* task per service — the floor,
 not the steady state. `max_count = 10` for the api. Real traffic at
 `cpu_target_pct = 60` will hold more than one task during business hours. A realistic
-2-task average on the api adds **~$41/mo**, which is where the ~$345 figure comes from.
+2-task average on the api adds **~$41/mo**, which is where the ~$294 figure comes from.
 This is the number most likely to be wrong, in either direction, and only real traffic
 will settle it.
 
@@ -167,13 +180,13 @@ opshub#85. That is documented in `runtime-dev/main.tf`.
 
 ## Recommendations
 
-**1. Set the budget expectation at ~$305–345/mo, not $100.** The current <$100 target is
+**1. Set the budget expectation at ~$253–294/mo, not $100.** The current <$100 target is
 unreachable while both environments exist, and it does not survive launch under any
-configuration. A production environment with Multi-AZ durability and one task per
-service has a floor, and this is close to it.
+configuration. A production environment with one task per service and a running database
+has a floor, and this is close to it — even with Multi-AZ declined.
 
 **2. Do not pre-provision.** Every item above should flip **at** go-live, not before.
-The current idle posture is correct and is saving roughly $164/mo right now.
+The current idle posture is correct and is saving roughly $112/mo right now.
 
 **3. Watch these three after launch,** in order of how wrong the estimate could be:
 
@@ -183,15 +196,48 @@ The current idle posture is correct and is saving roughly $164/mo right now.
   shrink a volume**. Treat any increase as permanent; coming back down needs the
   instance replaced (`docs/runbooks/rds-storage-shrink.md`).
 
-**4. If the number is genuinely unaffordable, the lever is Multi-AZ, not trimming.**
-Staying single-AZ on t4g.small saves **$52.32/mo** ($48.18 instance + $4.14 storage
-mirror) — a third of the entire delta, and more than every other candidate combined. It
-converts an AZ failure from a transparent failover into an outage plus a restore from
-backup.
+**4. Multi-AZ is already declined — that lever is spent.** It was the one item large
+enough to matter ($52.32/mo) and it is why this document says ~$253 rather than ~$305.
+There is no comparable saving left in the go-live delta: the next largest items are the
+api task ($41.45) and the cache node ($12.41), and both are load-bearing.
 
-That is a business risk decision, not an engineering one. Make it deliberately, in the
-open, rather than by leaving the flag unflipped and discovering the posture during an
-incident.
+If the number still has to come down, the honest options are architectural rather than
+configurational — collapse dev into an ephemeral environment, or delay restoring the
+api floor until there is real traffic. Neither is a settings change.
+
+Because Multi-AZ is off, **the recovery path is load-bearing** — so it was rehearsed
+rather than assumed.
+
+**Drill run 2026-08-02 against develop.** Restored the latest automated snapshot
+(`rds:rally-develop-2026-08-01-03-13`) into a NEW availability zone — source in
+`ap-southeast-1b`, restore into `1c`, which is the AZ-failure scenario:
+
+| | result |
+|---|---|
+| time to `available` | **5 min 4 s** |
+| engine / storage / IOPS / DBName / master user | identical to source |
+| encryption + KMS CMK | preserved, same key |
+| instance class, single-AZ | identical |
+
+The drill instance was deleted immediately after.
+
+**So the "hours" figure above is conservative for the restore itself** — the RDS
+operation is minutes. The hours come from what surrounds it: noticing the outage,
+deciding to restore, repointing the application at a new endpoint (a restore issues a
+NEW hostname, so this is a Terraform change plus a deploy, not a DNS flip), and
+verifying data before reopening. Budget for the human path, not the AWS one.
+
+**Two limits of this drill, stated so nobody over-reads it:**
+
+- **Data integrity was not verified.** Both RDS instances sit in private data subnets
+  and ECS exec is disabled on develop, so no query could be run against the restored
+  database from outside the VPC. What was verified is that AWS reports the instance as
+  `available` with matching configuration — not that table contents are correct. A full
+  drill needs a one-off ECS task in the VPC running `SELECT count(*)` against a few
+  tables and comparing to source.
+- **It was develop, not production.** Same engine and class, but 20 GB rather than 30 GB
+  and 3-day rather than 30-day retention. Restore time scales with volume size, so
+  production will be somewhat slower.
 
 **5. Revisit Fargate Spot for the api only if the budget forces it.** It saves ~$29/mo
 and costs dropped requests and broken SSE streams on interruption. The worker is already

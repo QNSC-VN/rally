@@ -205,21 +205,42 @@ module "stack" {
   // and the app holds no state tied to the role it connected as.
   db_least_privilege = true
 
-  // PRE-LAUNCH sizing. Multi-AZ t4g.small with Enhanced Monitoring is the right
-  // production posture and it is what this becomes at go-live — but it costs about
-  // $101/mo, and every dollar of it currently buys durability for a database with no
-  // users. Multi-AZ doubles the instance rate AND bills the mirrored volume, so 100 GB
-  // allocated meant paying for 200 GB nothing had written to.
+  // PRE-LAUNCH sizing. Every dollar here currently buys durability for a database with
+  // no users, so the instance is stopped and single-AZ until launch.
   //
-  // GO-LIVE CHECKLIST — flip all four together, before the first real user:
+  // GO-LIVE CHECKLIST — flip these together, before the first real user:
   //     instance_class      = "db.t4g.small"  # 2 GB rather than 1 GB
-  //     multi_az            = true            # AZ failure becomes a failover,
-  //                                           # not an outage plus restore
   //     monitoring_interval = 60              # per-process and per-device visibility
   //                                           # CloudWatch metrics alone do not give
   //     allocated_storage_gb: raise on evidence, never speculatively (see below)
   //
-  // Reverting Multi-AZ does NOT break the deploy pipeline: the `ensure_rds` step in
+  // MULTI-AZ IS DELIBERATELY NOT ON THAT LIST — decided 2026-08-02, and it is the one
+  // item here that trades availability for cost rather than deferring spend.
+  //
+  // What it costs: $52.32/mo ($48.18 doubled instance rate + $4.14 mirrored volume at
+  // 30 GB), a third of the entire go-live delta and more than every other candidate
+  // combined. See docs/go-live-cost-delta.md.
+  //
+  // What single-AZ means when an AZ fails, stated plainly so nobody rediscovers it
+  // during an incident:
+  //   - Multi-AZ: AWS fails over to the standby, typically 60-120s, no data loss.
+  //   - Single-AZ: the database is DOWN until AWS restores the AZ, or until someone
+  //     restores from a snapshot into another AZ. Restore is a manual, multi-hour
+  //     operation, and it loses everything written since the last backup — up to 24h
+  //     with the current daily automated snapshot, though PITR narrows that to ~5min
+  //     within the 30-day backup_retention_days window below.
+  //
+  // So the exposure is an outage of hours, not a permanent data loss, provided the
+  // 30-day retention stays. Do not lower backup_retention_days while single-AZ: PITR is
+  // what keeps this a recoverable outage rather than a real loss event.
+  //
+  // REVISIT WHEN: the product carries paying users, an availability commitment (SLA,
+  // contract, SOC 2 CC7.x continuity), or a workload where hours of downtime costs more
+  // than $52/mo. Turning it on later is a single flag plus an apply — RDS converts a
+  // single-AZ instance to Multi-AZ in place, with a brief failover, no data migration
+  // and no endpoint change. Nothing about this decision is one-way.
+  //
+  // Multi-AZ does NOT affect the deploy pipeline either way: the `ensure_rds` step in
   // qnsc-ci's backend-deploy reusable checks status and starts a stopped instance
   // regardless of AZ topology, so it is a no-op on an always-available database.
   //
