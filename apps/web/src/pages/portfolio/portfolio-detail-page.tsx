@@ -38,7 +38,6 @@ import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
-import { useProjectTeams } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
 import { PortfolioItemType } from '@/entities/work-item/model/types'
 import { DetailLayout, DetailSectionHeading, DetailTwoPane } from '@/shared/ui/detail'
@@ -79,7 +78,6 @@ export function PortfolioDetailPage() {
 
   const { workspace } = useAppContext()
   const { data: members = [] } = useWorkspaceMembers(workspace?.workspaceId)
-  const { data: projectTeams = [] } = useProjectTeams(server?.projectId)
   const { data: projectReleases = [] } = useReleases(server?.projectId)
   // Candidate parents: this project's Epics. Skipped entirely for an Epic, which has none.
   const epicList = usePortfolioItems({
@@ -180,7 +178,12 @@ export function PortfolioDetailPage() {
           }
           main={
             <div className="flex flex-col gap-4">
-              {/* Description first, matching Work Item detail — the same
+              {/* Total Accepted Children sits FIRST, above the Description — that is where
+                  real Rally puts it. The rollup is the headline for a portfolio item, so it
+                  reads before the prose rather than after three editors. */}
+              <AcceptedChildrenBlock data={item.acceptedChildren} />
+
+              {/* Description next, matching Work Item detail — the same
                   `RichTextEditor`, so the toolbar, the expand affordance and the
                   paste-an-image behaviour are identical. It reports every keystroke
                   into the pending patch; the Save bar decides when it persists. */}
@@ -189,6 +192,15 @@ export function PortfolioDetailPage() {
                 value={item.description}
                 readOnly={!canEdit}
                 onChange={(html) => setField({ description: html })}
+              />
+
+              {/* Attachments — the same table Work Item detail renders (Name / Description /
+                  When / Size), from the same component. Migration 0083 made the link table
+                  polymorphic, so this is one route tree per entity over one code path, not a
+                  second uploader. */}
+              <AttachmentBlock
+                subject={{ entityType: 'portfolio_item', entityId: item.id }}
+                readOnly={!canEdit}
               />
 
               {/* Notes and Release Notes, the same editors in the same order as Work Item
@@ -207,21 +219,6 @@ export function PortfolioDetailPage() {
                 onChange={(html) => setField({ releaseNotes: html })}
               />
 
-              {/* Total Accepted Children — what real Rally shows here, standing where Work
-                  Item detail puts its Task Roll-up. It replaced four separate progress
-                  meters: same arithmetic, but framed as the one question a reader of this
-                  page is asking, with the unit toggle Rally gives it. */}
-              <AcceptedChildrenBlock data={item.acceptedChildren} />
-
-              {/* Attachments — the same table Work Item detail renders (Name / Description /
-                  When / Size), from the same component. Migration 0083 made the link table
-                  polymorphic, so this is one route tree per entity over one code path, not a
-                  second uploader. */}
-              <AttachmentBlock
-                subject={{ entityType: 'portfolio_item', entityId: item.id }}
-                readOnly={!canEdit}
-              />
-
               {/* Comments — the SAME component Work Item detail renders, in the same place
                   (last in the main pane). It takes an entity pair rather than a work-item
                   id because migration 0082 made `comments` polymorphic; the thread itself,
@@ -238,7 +235,6 @@ export function PortfolioDetailPage() {
               item={item}
               canEdit={canEdit}
               members={members}
-              teams={projectTeams}
               releases={releases}
               epics={epics}
               onUpdate={setField}

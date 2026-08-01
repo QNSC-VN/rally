@@ -1,20 +1,23 @@
 import { BRAND } from '@/shared/config/brand'
 
 /**
- * A framed ratio meter with the percentage and the raw ratio INSIDE the track.
+ * A labelled ratio meter: the percentage and the raw `accepted/total` pair on one line, with a
+ * thin progress bar UNDER them.
  *
- * Rally's "Total Accepted Children" bar, and the shape it needs is genuinely different from
- * `ProgressBar`: that one is a 6px hairline with the percentage outside, sized to sit in a
- * grid cell. This is a bordered, text-height track carrying two labels over the fill — the
- * percentage left-aligned inside, the `accepted/total` pair right-aligned inside. Trying to
- * make one component do both would mean a variant that changes the height, the border, the
- * label count AND the label placement, which is two components wearing one name.
+ * Rally's "Total Accepted Children" meter, and the shape is genuinely different from
+ * `ProgressBar`. That one is a single hairline row with the percentage beside it, sized for a
+ * grid cell. This is two stacked rows, and the percentage takes the BAR's colour so the number
+ * and the fill read as one object.
+ *
+ * The colour is threshold-based, matching Rally: amber while there is work outstanding, and the
+ * brand blue once everything is accepted. Rally reserves the blue for "done" — an amber 100%
+ * would read as a warning about a finished item.
  *
  * Lives in `shared/ui` because the fill needs a computed `width`, and
  * `apps/web/src/test/fe-consistency.ratchet.test.ts` only permits an inline style here.
  *
- * `ratio` is null when there is no denominator — nothing linked — and renders as an empty
- * track rather than 0%: "no children" is a different fact from "no children accepted".
+ * `ratio` is null when there is no denominator — nothing linked — and renders as `--` with an
+ * empty track rather than 0%: "no children" is a different fact from "no children accepted".
  */
 export function RatioMeter({
   ratio,
@@ -30,26 +33,25 @@ export function RatioMeter({
 }) {
   const pct = ratio === null ? null : Math.round(ratio * 100)
   // The FILL clamps, the LABEL does not — over-delivery against a forecast is real and the
-  // number is the point, but a fill wider than its track would break the frame.
+  // number is the point, but a fill wider than its track would break the layout.
   const fill = pct === null ? 0 : Math.max(0, Math.min(100, pct))
+  const color = pct !== null && pct >= 100 ? BRAND.primaryLight : BRAND.warning
 
   return (
-    <div
-      className="relative h-5 min-w-0 flex-1 overflow-hidden rounded-sm border border-border bg-card"
-      title={title}
-    >
-      <div
-        className="absolute inset-y-0 left-0"
-        style={{ width: `${fill}%`, backgroundColor: BRAND.primaryLight }}
-      />
-      {/* Both labels sit ABOVE the fill and are painted in the same colour regardless of how
-          far the fill has travelled. Rally does the same; switching to white-on-fill at some
-          threshold makes the number flicker as the value crosses it. */}
-      <div className="relative flex h-full items-center justify-between px-1.5 text-ui-xs font-medium text-foreground">
-        <span>{pct === null ? '--' : `${pct}%`}</span>
-        <span className="font-mono tabular-nums">
+    <div className="min-w-0 flex-1" title={title}>
+      <div className="flex items-baseline justify-between gap-2 text-ui-xs">
+        <span className="font-semibold tabular-nums" style={{ color }}>
+          {pct === null ? '--' : `${pct}%`}
+        </span>
+        <span className="font-mono text-foreground-subtle tabular-nums">
           {accepted}/{total}
         </span>
+      </div>
+      <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-border-subtle">
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${fill}%`, backgroundColor: color }}
+        />
       </div>
     </div>
   )

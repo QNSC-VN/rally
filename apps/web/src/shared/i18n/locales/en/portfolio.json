@@ -99,6 +99,12 @@
       "notes": "Notes",
       "releaseNotes": "Release Notes"
     },
+    "progress": {
+      "percentDonePoints": "% Done by Plan Estimate",
+      "percentDoneCount": "% Done by Count",
+      "estimatedPoints": "Estimated Progress (points)",
+      "estimatedCount": "Estimated Progress (count)"
+    },
     "acceptedChildren": {
       "heading": "Total Accepted Children",
       "unit": "Unit",
@@ -111,7 +117,12 @@
       },
       "help": "Accepted child work against everything linked to this item, in points or item count.",
       "collapse": "Hide the breakdown by child type",
-      "expand": "Show the breakdown by child type"
+      "expand": "Show the breakdown by child type",
+      "settings": "Accepted-children display settings",
+      "defaultUnit": {
+        "points": "Open in Points",
+        "count": "Open in Count"
+      }
     },
     "children": {
       "featuresHeading": "Child Features",
