@@ -355,7 +355,11 @@ describe('capacity allocation (e2e)', () => {
     expect(over?.metrics.warnings).not.toContain('load_above_target');
   });
 
-  it('merges a second allocation for the same Feature and team', async () => {
+  it('SETS a second allocation for the same Feature and team rather than adding to it', async () => {
+    // The BA: "Re-applying allocation replaces the Feature's Team allocation rows." Adding meant
+    // applying the same dialog twice doubled committed demand, and a slice could never be corrected
+    // downwards through this path. Still ONE row for the pair — a second would double-count in every
+    // total, which is what the length assertion guards.
     const featureId = await newFeature(`Merge ${uniqueKey()}`);
     await capacity.allocate(admin, planId, {
       portfolioItemId: featureId,
@@ -372,7 +376,7 @@ describe('capacity allocation (e2e)', () => {
       (a) => a.portfolioItemId === featureId && a.teamId === teamAId,
     );
     expect(rows).toHaveLength(1);
-    expect(Number(rows[0].value)).toBe(10);
+    expect(Number(rows[0].value)).toBe(4);
   });
 
   it('refuses to remove a team that still holds demand', async () => {

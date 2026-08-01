@@ -15,6 +15,7 @@ import {
   PreliminaryEstimateMapService,
   computeCapacityWarnings,
   computeCutlineIndex,
+  type CapacityWarning,
   type EstimateTier,
   resolveEstimate,
 } from '@modules/portfolio';
@@ -87,6 +88,23 @@ export interface CapacityPlanItem {
    * Null when only unallocated rows exist, which is Rally's unassigned state.
    */
   primaryTeamId: string | null;
+  /**
+   * The Feature-level warnings the BA specifies for this tab: `Rollup exceeds Estimated`, and
+   * `Point Estimated missing` when no tier produced a number.
+   *
+   * Computed here rather than in the client: they are the same rules, from the same function, that the
+   * team grid and each allocation row already use. The Features tab could not show them at all before
+   * — it had no `warnings`, no `metrics` and no `estimateBreakdown` to reason from, which is why the
+   * triangles the BA asks for were absent rather than merely mis-styled.
+   */
+  warnings: CapacityWarning[];
+  /**
+   * All three estimate candidates behind `estimated`, for the tier tooltip.
+   *
+   * `allocated` is the SUM over this Feature's team rows — the item-level equivalent of a single
+   * allocation's explicit value — and null when no team carries an explicit slice.
+   */
+  estimateBreakdown: { allocated: number | null; refined: number | null; preliminary: number | null };
   /** True when any of its allocations has no team — Rally's unassigned warning. */
   unallocated: boolean;
 }
@@ -539,9 +557,10 @@ export class CapacityPlansService {
   /**
    * Commit demand: this much of this Feature, to this Team (or to the Unallocated bucket).
    *
-   * Merges into an existing row for the same (plan, Feature, team) triple rather than
-   * creating a second one. Rally models sharing as one row PER TEAM under a Feature, so two
-   * rows for the same pair would double-count that team's demand in every total.
+   * SETS the row for an existing (plan, Feature, team) triple rather than creating a second one, and
+   * rather than adding to it: Rally models sharing as one row PER TEAM under a Feature, so two rows
+   * for the same pair would double-count that team's demand, and adding meant re-applying the same
+   * dialog doubled it instead.
    */
   async allocate(
     actor: JwtPayload,
@@ -583,9 +602,16 @@ export class CapacityPlansService {
           planId,
           input.portfolioItemId,
         );
+        /**
+         * The parked row's own value SURVIVES an assignment that does not supply one.
+         *
+         * The BA states it directly: "If an existing Unassigned allocation already has a value, keep
+         * that value." This used to write `null` over it, so choosing a team from the assignment cell
+         * silently discarded a number a planner had entered while the Feature was still parked.
+         */
         await this.repo.updateAllocation(parked.id, {
           teamId,
-          value: value === null ? null : String(value),
+          ...(value === null ? {} : { value: String(value) }),
           isPrimary: !alreadyHasPrimary,
         });
         return this.getPlanDetail(actor, planId);
@@ -594,12 +620,20 @@ export class CapacityPlansService {
 
     const existing = await this.repo.findAllocationFor(planId, input.portfolioItemId, teamId);
     if (existing) {
-      // Adding to what is already committed, not replacing it: the planner asked to allocate more
-      // of this Feature to this team. A merge into a row that had no explicit value starts from the
-      // supplied number alone — there was no committed slice to add to, only a fallback.
-      const merged =
-        value === null ? existing.value : String(Number(existing.value ?? 0) + Number(value));
-      await this.repo.updateAllocation(existing.id, { value: merged });
+      /**
+       * SETS this team's slice, it does not add to it.
+       *
+       * The BA is explicit — "Re-applying allocation replaces the Feature's Team allocation rows" —
+       * and so is Rally's dialog, which asks for "the number of story points or count to allocate for
+       * this team". Adding meant applying the same dialog twice doubled committed demand, and there
+       * was no way to correct a slice downwards through this path at all.
+       *
+       * A blank value leaves the existing slice alone rather than clearing it: clearing is
+       * `updateAllocation` with an explicit null, which is a different request.
+       */
+      if (value !== null) {
+        await this.repo.updateAllocation(existing.id, { value: String(value) });
+      }
     } else {
       /**
        * The FIRST team to receive work on a Feature becomes its primary.
@@ -983,6 +1017,15 @@ export class CapacityPlansService {
         refined: row.refined,
         preliminary: inUnit(row.preliminarySize),
       });
+      /**
+       * An ARCHIVED Feature is charged NOTHING.
+       *
+       * The BA: an archived item "is not actionable planning demand". Its row stays visible so the
+       * planner can see the stale commitment and remove it, but it contributes zero to the team's
+       * load, to the plan totals and to the cutline. The tier still reports where the number WOULD
+       * have come from, so the row explains itself rather than looking empty.
+       */
+      const archived = row.itemArchivedAt !== null;
       return {
         id: row.id,
         planId: row.planId,
@@ -999,6 +1042,7 @@ export class CapacityPlansService {
         state: row.state,
         projectId: row.itemProjectId,
         projectName: row.itemProjectName,
+        archived,
         estimateBreakdown: {
           allocated: explicit,
           refined: row.refined,
@@ -1007,9 +1051,11 @@ export class CapacityPlansService {
           preliminary: inUnit(row.preliminarySize) || null,
         },
         metrics: {
-          complete: row.complete,
-          rollup: row.rollup,
-          estimated: resolved.value,
+          // Zeroed for an archived Feature, so the row reads as the nothing it now contributes — and
+          // so the sums below, which add these up, cannot pick it back up.
+          complete: archived ? 0 : row.complete,
+          rollup: archived ? 0 : row.rollup,
+          estimated: archived ? 0 : resolved.value,
           // A Feature row has no capacity of its own — the ceiling belongs to the team.
           capacity: null,
           warnings: computeCapacityWarnings({
@@ -1097,6 +1143,16 @@ export class CapacityPlansService {
           rollup: row.itemRollup,
           complete: row.itemComplete,
           tier: allocations[index].tier,
+          // Filled in after the loop: both depend on the FINAL aggregate, so computing them per row
+          // would report the first allocation's view of a Feature that has several.
+          warnings: [],
+          estimateBreakdown: {
+            allocated: row.teamId !== null && row.value !== null ? Number(row.value) : null,
+            refined: row.refined,
+            // 0 means the workspace maps this size to nothing, which reads as "no estimate" rather
+            // than as a real zero — the same treatment the allocation row's tooltip gets.
+            preliminary: inUnit(row.preliminarySize) || null,
+          },
           teamIds: row.teamId === null ? [] : [row.teamId],
           // Rally's Planned Team Assignment shows the team that OWNS the Feature, not a count.
           primaryTeamId: row.isPrimary ? row.teamId : null,
@@ -1105,6 +1161,10 @@ export class CapacityPlansService {
       } else {
         const item = items[at];
         if (row.teamId !== null) item.estimated += allocations[index].metrics.estimated;
+        if (row.teamId !== null && row.value !== null) {
+          item.estimateBreakdown.allocated =
+            (item.estimateBreakdown.allocated ?? 0) + Number(row.value);
+        }
         if (row.teamId === null) item.unallocated = true;
         else item.teamIds.push(row.teamId);
         if (row.isPrimary) item.primaryTeamId = row.teamId;
@@ -1127,6 +1187,25 @@ export class CapacityPlansService {
       if (at === undefined) continue;
       const item = items[at];
       if (item.teamIds.length === 0) item.estimated = allocations[index].metrics.estimated;
+    }
+
+    /**
+     * The Feature-level warnings, from the SAME rule function every other row uses.
+     *
+     * Computed here because both inputs are aggregates: `estimated` is summed over the Feature's team
+     * rows above, and the tier is the strongest any row reported. `kind: 'feature'` restricts the rules
+     * to the two the BA specifies for this tab — a Feature has no capacity of its own, so the
+     * capacity comparisons cannot fire.
+     */
+    for (const item of items) {
+      item.warnings = computeCapacityWarnings({
+        kind: 'feature',
+        rollup: item.rollup,
+        estimated: item.estimated,
+        capacity: null,
+        tier: item.tier,
+        targetLoadPct: null,
+      });
     }
 
     // Ordered by the repository's rank ordering, EXCEPT that it puts unallocated rows last.

@@ -20,6 +20,19 @@ const PORTFOLIO_ITEM_STATES = portfolioItemStateEnum.enumValues;
  * Rollup/Complete follow Rally: a child story counts only when its project AND release match
  * the plan, attributed to a team by the story's own team.
  */
+/**
+ * Every warning code, in one place: the team metrics and the Features tab's item rows report from the
+ * SAME rule function, so a second literal list would be free to drift from it.
+ */
+const CapacityWarningEnum = z.enum([
+  'feature_missing_estimate',
+  'team_missing_capacity',
+  'rollup_exceeds_estimated',
+  'rollup_exceeds_capacity',
+  'estimated_exceeds_capacity',
+  'load_above_target',
+]);
+
 const CapacityMetricsSchema = z.object({
   complete: z.number(),
   rollup: z.number(),
@@ -28,16 +41,7 @@ const CapacityMetricsSchema = z.object({
   // Ordered CAUSE-FIRST, and the client renders them in the order it receives: a missing
   // estimate or a missing capacity is why the comparison rules fired, so leading with the
   // consequence would send a planner to fix the wrong thing.
-  warnings: z.array(
-    z.enum([
-      'feature_missing_estimate',
-      'team_missing_capacity',
-      'rollup_exceeds_estimated',
-      'rollup_exceeds_capacity',
-      'estimated_exceeds_capacity',
-      'load_above_target',
-    ]),
-  ),
+  warnings: z.array(CapacityWarningEnum),
 });
 
 const CapacityAllocationSchema = z.object({
@@ -69,6 +73,11 @@ const CapacityAllocationSchema = z.object({
     .nullable()
     .describe(
       "The Feature's own project — Rally prints `← from <project>` when it is not the plan's",
+    ),
+  archived: z
+    .boolean()
+    .describe(
+      'The Feature is archived: this row contributes nothing to any total, and is returned only so a planner can see the stale commitment and remove it',
     ),
   estimateBreakdown: z
     .object({
@@ -116,6 +125,18 @@ const CapacityPlanItemSchema = z.object({
   rollup: z.number().describe('The Feature’s OWN rollup, across every team'),
   complete: z.number(),
   tier: z.enum(['allocated', 'refined', 'preliminary', 'none']),
+  warnings: z
+    .array(CapacityWarningEnum)
+    .describe(
+      "The Feature-level rules the BA specifies for this tab: rollup exceeds estimated, and no estimate at all. A Feature has no capacity of its own, so the capacity comparisons cannot fire here",
+    ),
+  estimateBreakdown: z
+    .object({
+      allocated: z.number().nullable(),
+      refined: z.number().nullable(),
+      preliminary: z.number().nullable(),
+    })
+    .describe('All three candidates behind Estimated, for the estimate-source tooltip'),
   teamIds: z.array(z.string().uuid()),
   primaryTeamId: z
     .string()
