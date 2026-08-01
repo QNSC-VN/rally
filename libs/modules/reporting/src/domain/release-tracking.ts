@@ -65,9 +65,9 @@ export function inScope(teamId: string | null, scope: TeamScope): boolean {
 
 // ── Buckets ─────────────────────────────────────────────────────────────────
 
-export interface FeatureBuckets {
-  direct: ReleaseFeature[];
-  derived: ReleaseFeature[];
+export interface FeatureBuckets<F extends ReleaseFeature = ReleaseFeature> {
+  direct: F[];
+  derived: F[];
   /** For a Derived Feature: the scoped children that caused its inclusion. */
   derivedCause: Map<string, ReleaseChild[]>;
 }
@@ -84,12 +84,12 @@ export interface FeatureBuckets {
  * Feature can still be Direct for Release A and Derived for Release B, which is the SRS's
  * own worked example.
  */
-export function bucketFeatures(
-  features: readonly ReleaseFeature[],
+export function bucketFeatures<F extends ReleaseFeature>(
+  features: readonly F[],
   children: readonly ReleaseChild[],
   releaseId: string,
   scope: TeamScope,
-): FeatureBuckets {
+): FeatureBuckets<F> {
   const scopedChildrenByFeature = new Map<string, ReleaseChild[]>();
   for (const child of children) {
     if (child.featureId === null) continue;
@@ -100,8 +100,8 @@ export function bucketFeatures(
     else scopedChildrenByFeature.set(child.featureId, [child]);
   }
 
-  const direct: ReleaseFeature[] = [];
-  const derived: ReleaseFeature[] = [];
+  const direct: F[] = [];
+  const derived: F[] = [];
   const derivedCause = new Map<string, ReleaseChild[]>();
 
   for (const feature of features) {

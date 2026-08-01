@@ -25,8 +25,11 @@ export interface BurndownPoint {
   remainingToDo: number | null;
   /** Cumulative accepted points as of end of day, right axis. `null` = no snapshot. */
   acceptedPoints: number | null;
-  /** The frozen reference line, HOURS, left axis. Always present. */
-  ideal: number;
+  /**
+   * The frozen reference line, HOURS, left axis. `null` when no baseline was ever captured —
+   * a zero line would be plotted and read as "the plan was to do nothing".
+   */
+  ideal: number | null;
 }
 
 /** Why a burndown has no usable curve — the SRS demands these be distinguishable. */
@@ -96,7 +99,7 @@ export function buildBurndownSeries(input: {
   const axis = workingDaysBetween(input.startDate, input.endDate, input.workingDays);
   const byDate = new Map(input.snapshots.map((s) => [s.date, s]));
   const baseline = input.totalTaskEstimateAtStart;
-  const ideal = idealLine(baseline ?? 0, axis.length);
+  const ideal = baseline === null ? null : idealLine(baseline, axis.length);
 
   const points: BurndownPoint[] = axis.map((date, i) => {
     const snap = byDate.get(date);
@@ -104,7 +107,7 @@ export function buildBurndownSeries(input: {
       date,
       remainingToDo: snap ? roundForDisplay(snap.remainingToDo) : null,
       acceptedPoints: snap ? roundForDisplay(snap.acceptedPoints) : null,
-      ideal: ideal[i] ?? 0,
+      ideal: ideal === null ? null : (ideal[i] ?? null),
     };
   });
 
@@ -131,7 +134,7 @@ export function buildBurndownSeries(input: {
     status:
       latest === null || baseline === null
         ? 'unknown'
-        : (latest.remainingToDo ?? 0) > latest.ideal
+        : (latest.remainingToDo ?? 0) > (latest.ideal ?? 0)
           ? 'behind-plan'
           : 'on-track',
     totalTaskEstimateAtStart: baseline,

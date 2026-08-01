@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  NO_TEAM_LABEL,
   UNASSIGNED_LABEL,
   describeEmptiness,
   rollUpTeamCapacity,
@@ -127,6 +128,22 @@ describe('rollUpTeamCapacity (Team Capacity §3, §4)', () => {
     expect(unassigned?.hours.estimateHours).toBe(4);
     // Unassigned sorts last so it cannot be mistaken for a person.
     expect(r.teams[0].members.at(-1)?.id).toBeNull();
+  });
+
+  it('groups work with no resolvable Team under No Team rather than dropping its hours', () => {
+    // Team Capacity must add up to the same totals Team Status shows for the iteration, and
+    // Team Status groups by member without needing a Team at all. Dropping these rows made the
+    // two screens disagree; an honest heading does not.
+    const r = rollUpTeamCapacity({
+      capacities: [capacity()],
+      tasks: [task({ taskId: 't9', teamId: null, teamName: null, estimateHours: 3 })],
+    });
+    const noTeam = r.teams.find((t) => t.id === null);
+    expect(noTeam?.name).toBe(NO_TEAM_LABEL);
+    expect(noTeam?.totals.estimateHours).toBe(3);
+    // Sorts last, so it never reads as the first real Team.
+    expect(r.teams.at(-1)?.id).toBeNull();
+    expect(r.totals.estimateHours).toBe(3);
   });
 
   it('reports the values as-is: Actual is not capped and ToDo is not derived (example 6)', () => {

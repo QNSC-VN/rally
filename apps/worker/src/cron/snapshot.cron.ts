@@ -1,26 +1,22 @@
 /**
- * SnapshotCronService — daily cron that materialises sprint burndown data.
+ * SnapshotCronService — the frozen daily history behind Iteration Burndown and the Release
+ * Tracking burnup.
  *
- * Runs at midnight UTC every day. Finds all active sprints across all workspaces
- * and upserts a sprint_daily_snapshots row so burndown charts always have
- * today's data point even if no HTTP request is made.
+ * Runs HOURLY, not once at UTC midnight. Date cutoffs are per workspace
+ * (`workspace_settings.timezone`), so a single UTC-midnight tick captured the wrong moment
+ * for every workspace not on UTC — which is exactly what the previous implementation did.
+ * Each tick writes the workspace's CURRENT local date, so the value that survives a day is
+ * the one from the last tick before that workspace's midnight, and the moment the local date
+ * rolls over the previous day stops being addressed by any write and is frozen.
  *
- * Design:
- * - Injects DrizzleDB directly to query cross-workspace active sprints without
- *   needing a JwtPayload actor (this is an internal scheduled operation).
- * - Aggregates work item counts using a single JOIN query per sprint.
- * - Delegates the upsert to ReportingService.upsertSnapshot() which reuses
- *   the repository SQL (no duplication).
+ * All measurement and persistence live in `ReportSnapshotService` inside the reporting
+ * module, which owns the same rules the read path serves. This class is only the schedule:
+ * the cross-pod lock, the job context, and the duration/outcome metrics.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { and, eq, isNull } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
-import { InjectDrizzle, CacheService } from '@platform';
-import type { DrizzleDB } from '@platform';
-import { ReportingService } from '@modules/reporting';
-import { iterations, workItems, workflowStatuses } from '../../../../db/schema/work';
-import { WORKFLOW_DONE_CATEGORY } from '../../../../db/schema/enums';
+import { CacheService } from '@platform';
+import { ReportSnapshotService } from '@modules/reporting';
 import { JobMetrics, withJobContext } from '@qnsc-vn/observability';
 
 @Injectable()
@@ -30,128 +26,40 @@ export class SnapshotCronService {
   private readonly LOCK_TTL_MS = 55 * 60 * 1_000;
 
   constructor(
-    @InjectDrizzle() private readonly db: DrizzleDB,
-    private readonly reportingService: ReportingService,
+    private readonly snapshots: ReportSnapshotService,
     private readonly cache: CacheService,
     private readonly jobMetrics: JobMetrics,
   ) {}
 
-  /** Runs at midnight UTC every day. */
-  @Cron('0 0 * * *', { name: 'daily-sprint-snapshot', timeZone: 'UTC' })
-  async takeDailySnapshots(): Promise<void> {
-    // Job context so every line this run logs carries a correlationId (cron work
-    // previously logged with no context at all), and duration/outcome metrics so a
-    // job that starts failing or slowing is visible without reading logs.
-    await withJobContext('daily-sprint-snapshot', () =>
-      this.jobMetrics.time('daily-sprint-snapshot', () => this.takeDailySnapshotsBody()),
+  /**
+   * Hourly, five past — offset from the hour so it does not contend with every other
+   * on-the-hour job for the same connections.
+   */
+  @Cron('5 * * * *', { name: 'report-snapshot', timeZone: 'UTC' })
+  async takeSnapshots(): Promise<void> {
+    // Job context so every line this run logs carries a correlationId (cron work otherwise
+    // has none at all), plus duration/outcome metrics so a job that starts failing or slowing
+    // is visible without reading logs.
+    await withJobContext('report-snapshot', () =>
+      this.jobMetrics.time('report-snapshot', () => this.runLocked()),
     );
   }
 
-  private async takeDailySnapshotsBody(): Promise<void> {
-    const acquired = await this.cache.acquireLock('cron:daily-snapshot', this.LOCK_TTL_MS);
+  private async runLocked(): Promise<void> {
+    const acquired = await this.cache.acquireLock('cron:report-snapshot', this.LOCK_TTL_MS);
     if (!acquired) {
-      this.logger.warn('Snapshot cron lock held by another pod — skipping this tick');
+      this.logger.warn('Report snapshot lock held by another pod — skipping this tick');
       return;
     }
     try {
-      await this.runSnapshots();
-    } finally {
-      await this.cache.releaseLock('cron:daily-snapshot');
-    }
-  }
-
-  private async runSnapshots(): Promise<void> {
-    // Use the server date in UTC (cron is anchored to UTC via timeZone option)
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    this.logger.log(`Taking daily sprint snapshots for ${today}`);
-
-    const activeSprints = await this.db
-      .select({ id: iterations.id, workspaceId: iterations.workspaceId })
-      .from(iterations)
-      .where(eq(iterations.state, 'committed'));
-
-    if (!activeSprints.length) {
-      this.logger.debug('No committed iterations — nothing to snapshot');
-      return;
-    }
-
-    let snapped = 0;
-    let failed = 0;
-
-    for (const sprint of activeSprints) {
-      try {
-        const stats = await this.aggregateSprintStats(sprint.workspaceId, sprint.id);
-        await this.reportingService.upsertSnapshot({
-          workspaceId: sprint.workspaceId,
-          sprintId: sprint.id,
-          snapshotDate: today,
-          totalPoints: stats.totalPoints,
-          completedPoints: stats.completedPoints,
-          remainingPoints: stats.remainingPoints,
-          totalItems: stats.totalItems,
-          completedItems: stats.completedItems,
-        });
-        snapped++;
-      } catch (err) {
-        failed++;
-        this.logger.error(
-          { err, sprintId: sprint.id, workspaceId: sprint.workspaceId },
-          'Failed to take sprint snapshot',
-        );
-      }
-    }
-
-    this.logger.log(`Daily snapshots complete — ${snapped} ok, ${failed} failed`);
-  }
-
-  private async aggregateSprintStats(
-    workspaceId: string,
-    sprintId: string,
-  ): Promise<{
-    totalPoints: number;
-    completedPoints: number;
-    remainingPoints: number;
-    totalItems: number;
-    completedItems: number;
-  }> {
-    const result = await this.db
-      .select({
-        totalItems: sql<number>`count(*)::int`,
-        // Burndown/velocity "done" is the D2 workflow-board dimension
-        // (workflow_statuses.category = 'done') per DATABASE_SCHEMA.md — this is
-        // intentionally distinct from D1 schedule_state acceptance. story_points
-        // is numeric (fractional points), so point sums cast to float8.
-        completedItems: sql<number>`count(*) filter (where ${workflowStatuses.category} = ${WORKFLOW_DONE_CATEGORY})::int`,
-        totalPoints: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::float8`,
-        completedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workflowStatuses.category} = ${WORKFLOW_DONE_CATEGORY}), 0)::float8`,
-      })
-      .from(workItems)
-      .innerJoin(
-        workflowStatuses,
-        and(
-          eq(workItems.statusId, workflowStatuses.id),
-          // Ensure we join the status belonging to the same project
-          eq(workflowStatuses.projectId, workItems.projectId),
-        ),
-      )
-      .where(
-        and(
-          eq(workItems.workspaceId, workspaceId),
-          eq(workItems.iterationId, sprintId),
-          isNull(workItems.deletedAt),
-        ),
+      const result = await this.snapshots.takeSnapshots();
+      this.logger.log(
+        `Report snapshots complete — ${result.iterationsSnapshotted} iterations, ` +
+          `${result.releasesSnapshotted} release rows, ${result.baselinesCaptured} baselines, ` +
+          `${result.failures} failed`,
       );
-
-    const row = result[0];
-    const totalPoints = row?.totalPoints ?? 0;
-    const completedPoints = row?.completedPoints ?? 0;
-
-    return {
-      totalPoints,
-      completedPoints,
-      remainingPoints: totalPoints - completedPoints,
-      totalItems: row?.totalItems ?? 0,
-      completedItems: row?.completedItems ?? 0,
-    };
+    } finally {
+      await this.cache.releaseLock('cron:report-snapshot');
+    }
   }
 }

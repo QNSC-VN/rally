@@ -87,6 +87,9 @@ describe('buildBurndownSeries', () => {
     });
     expect(noBaseline.historyState).toBe('no-baseline');
     expect(noBaseline.status).toBe('unknown');
+    // Every Ideal value is null, not 0: a zero line gets plotted and reads as "the plan was
+    // to do nothing", which is the same fabrication the null snapshot values avoid.
+    expect(noBaseline.points.every((p) => p.ideal === null)).toBe(true);
   });
 
   it('ignores a weekend snapshot stored for audit when judging completeness', () => {

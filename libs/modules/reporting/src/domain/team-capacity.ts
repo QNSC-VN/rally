@@ -28,8 +28,13 @@ export interface CapacityRecord {
 export interface ScopedTaskHours {
   /** Stable task id — the de-duplication key (§8). */
   taskId: string;
-  teamId: string;
-  teamName: string;
+  /**
+   * Null when neither the task, its parent Story/Defect nor the iteration carries a Team.
+   * Grouped under `No Team` rather than dropped: the report has to add up to the same totals
+   * Team Status shows, and hours that vanish are worse than hours under an honest heading.
+   */
+  teamId: string | null;
+  teamName: string | null;
   ownerId: string | null;
   ownerName: string | null;
   estimateHours: number;
@@ -45,7 +50,8 @@ export interface TeamCapacityMemberRow {
 }
 
 export interface TeamCapacityTeamRow {
-  id: string;
+  /** Null for the synthetic `No Team` group. */
+  id: string | null;
   name: string;
   totals: TeamCapacityHours;
   members: TeamCapacityMemberRow[];
@@ -65,6 +71,9 @@ const ZERO: TeamCapacityHours = {
 
 /** The label the `Unassigned` group carries when a scoped task has no owner (§4). */
 export const UNASSIGNED_LABEL = 'Unassigned';
+
+/** The label for work whose Team cannot be resolved at all — see `ScopedTaskHours.teamId`. */
+export const NO_TEAM_LABEL = 'No Team';
 
 function add(a: TeamCapacityHours, b: Partial<TeamCapacityHours>): TeamCapacityHours {
   return {
@@ -106,17 +115,18 @@ export function rollUpTeamCapacity(input: {
   tasks: readonly ScopedTaskHours[];
 }): TeamCapacityRollup {
   interface Bucket {
-    id: string;
+    id: string | null;
     name: string;
     members: Map<string, TeamCapacityMemberRow>;
   }
   const teams = new Map<string, Bucket>();
 
-  const team = (id: string, name: string): Bucket => {
-    const existing = teams.get(id);
+  const team = (id: string | null, name: string): Bucket => {
+    const key = id ?? NO_TEAM_LABEL;
+    const existing = teams.get(key);
     if (existing) return existing;
     const created: Bucket = { id, name, members: new Map() };
-    teams.set(id, created);
+    teams.set(key, created);
     return created;
   };
 
@@ -143,7 +153,7 @@ export function rollUpTeamCapacity(input: {
   for (const task of input.tasks) {
     if (seenTasks.has(task.taskId)) continue;
     seenTasks.add(task.taskId);
-    const bucket = team(task.teamId, task.teamName);
+    const bucket = team(task.teamId, task.teamName ?? NO_TEAM_LABEL);
     const key = task.ownerId ?? UNASSIGNED_LABEL;
     const row = member(bucket, key, task.ownerId, task.ownerName ?? UNASSIGNED_LABEL);
     row.hours = add(row.hours, {
@@ -166,12 +176,19 @@ export function rollUpTeamCapacity(input: {
         members: members.map((m) => ({ ...m, hours: round(m.hours) })),
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort(sortTeams);
 
   // "All Teams totals are the sum of displayed Team rows" — same guarantee one level up.
   const totals = teamRows.reduce((acc, t) => add(acc, t.totals), { ...ZERO });
 
   return { totals: round(totals), teams: teamRows };
+}
+
+/** `No Team` sorts last; real Teams alphabetically. */
+function sortTeams(a: TeamCapacityTeamRow, b: TeamCapacityTeamRow): number {
+  if (a.id === null) return 1;
+  if (b.id === null) return -1;
+  return a.name.localeCompare(b.name);
 }
 
 /** Unassigned sorts last; real members alphabetically. */
