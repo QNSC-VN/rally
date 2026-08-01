@@ -108,40 +108,10 @@ data "terraform_remote_state" "storage" {
 }
 
 # ── Secrets (scaffolding only — fill values in Secrets Manager console) ───────
-module "secrets" {
-  source      = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/secrets?ref=secrets-v1.1.0"
-  prefix      = "${var.product}/${var.env}"
-  kms_key_arn = local.kms_key_arn
-
-  # Dev: delete secrets immediately on teardown (no 7-day recovery window) so a
-  # destroy+redeploy cycle doesn't hit "secret scheduled for deletion" on the
-  # recreate. Prod keeps the default recovery window for safety.
-  recovery_window_days = var.secrets_recovery_window_days
-
-  # ONE store: AWS Secrets Manager. The only other Secrets Manager secrets on the
-  # account are the `rds!db-*` credentials RDS creates and rotates itself.
-  #
-  # Parameter Store SecureString would be free where this is $0.40 per secret per
-  # month, and that was tried — but at 22 secrets it is $8.80/mo, 1.2% of the bill, and
-  # Secrets Manager buys something Parameter Store cannot: a secret can exist while
-  # holding NO value. That empty state is what makes "unpopulated" unambiguous and
-  # gives the failure mode this stack wants everywhere — a task that cannot boot, a
-  # failed deploy and a rollback, rather than a silent downgrade. Parameter Store
-  # rejects an empty value, so the same guarantee needed a placeholder, a version-number
-  # check in CI, and a runtime guard: three mechanisms replacing one property, plus a
-  # new failure mode (a value that looks set and is not).
-  #
-  # Revisit past roughly 30 secrets, where the per-secret fee starts to outweigh that.
-  # The `secure_parameters` input on this module supports the switch when it does.
-  #
-  # Terraform creates these EMPTY; values are pasted in out of band and never enter
-  # state. The deploy preflight in qnsc-ci refuses to deploy while any injected secret
-  # is still an empty container.
-  # Merged rather than a flat map so `observability-token` can be omitted entirely while
-  # the OTel path is dormant. A secret that is deliberately never populated AND never
-  # injected is a resource with no purpose — it still bills $0.40/mo per environment, and
-  # more to the point it shows up in every audit of "which secrets are unpopulated?" as a
-  # permanent false positive, which is how a real unpopulated secret gets overlooked.
+# The secret set this stack owns. Hoisted into a local rather than written inline in
+# `module.secrets` so that `local.secret_iam_arns` below can derive the IAM resource
+# list from the SAME keys — one definition, so the grant cannot drift from the set.
+locals {
   secret_names = merge(var.observability.otlp_endpoint == "" ? {} : {
     # The COMPLETE Authorization header the collector sidecar sends upstream, e.g.
     # `Basic base64(instanceID:token)` — not the bare token. Assembling it in Terraform
@@ -214,6 +184,49 @@ module "secrets" {
     "db-app-password"    = "Password for the rally_app Postgres role (api) — set with the LOGIN grant"
     "db-worker-password" = "Password for the rally_worker Postgres role (worker) — set with the LOGIN grant"
   })
+}
+
+module "secrets" {
+  source      = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/secrets?ref=secrets-v2.1.0"
+  prefix      = "${var.product}/${var.env}"
+  kms_key_arn = local.kms_key_arn
+
+  # Dev: delete secrets immediately on teardown (no 7-day recovery window) so a
+  # destroy+redeploy cycle doesn't hit "secret scheduled for deletion" on the
+  # recreate. Prod keeps the default recovery window for safety.
+  recovery_window_days = var.secrets_recovery_window_days
+
+  # Cost: collapse the set into one JSON secret. Staged across four applies — see
+  # `secrets_bundle_name` in variables.tf for the ordering and why it is staged.
+  bundle_name       = var.secrets_bundle_name
+  use_bundle        = var.secrets_use_bundle
+  create_standalone = var.secrets_create_standalone
+
+  # ONE store: AWS Secrets Manager. The only other Secrets Manager secrets on the
+  # account are the `rds!db-*` credentials RDS creates and rotates itself.
+  #
+  # Parameter Store SecureString would be free where this is $0.40 per secret per
+  # month, and that was tried — but at 22 secrets it is $8.80/mo, 1.2% of the bill, and
+  # Secrets Manager buys something Parameter Store cannot: a secret can exist while
+  # holding NO value. That empty state is what makes "unpopulated" unambiguous and
+  # gives the failure mode this stack wants everywhere — a task that cannot boot, a
+  # failed deploy and a rollback, rather than a silent downgrade. Parameter Store
+  # rejects an empty value, so the same guarantee needed a placeholder, a version-number
+  # check in CI, and a runtime guard: three mechanisms replacing one property, plus a
+  # new failure mode (a value that looks set and is not).
+  #
+  # Revisit past roughly 30 secrets, where the per-secret fee starts to outweigh that.
+  # The `secure_parameters` input on this module supports the switch when it does.
+  #
+  # Terraform creates these EMPTY; values are pasted in out of band and never enter
+  # state. The deploy preflight in qnsc-ci refuses to deploy while any injected secret
+  # is still an empty container.
+  # Merged rather than a flat map so `observability-token` can be omitted entirely while
+  # the OTel path is dormant. A secret that is deliberately never populated AND never
+  # injected is a resource with no purpose — it still bills $0.40/mo per environment, and
+  # more to the point it shows up in every audit of "which secrets are unpopulated?" as a
+  # permanent false positive, which is how a real unpopulated secret gets overlooked.
+  secret_names = local.secret_names
 
   tags = local.tags
 }
@@ -363,6 +376,33 @@ module "ecs_cluster" {
 # difference is that the username stops being a secret field — `rally_app` is not
 # a credential — so it moves to plain env alongside host/port/name.
 locals {
+  # IAM resource list for the secret containers this stack owns.
+  #
+  # NOT `module.secrets.secret_iam_arns`, even though that is the semantically right
+  # output. It is built from `aws_secretsmanager_secret.*.arn`, which is unknown until
+  # apply — and `ecs-service` uses `length(var.secret_arns)` in a `count`, so an unknown
+  # LENGTH fails the plan outright with "Invalid count argument". The contents may be
+  # unknown at plan time; the length may not.
+  #
+  # Constructing the ARNs from names keeps the length static (a function of
+  # `local.secret_names` and the two bundling flags, all known inputs). Secrets Manager
+  # appends a random 6-character suffix to every ARN, so these carry a trailing `-*`
+  # wildcard — which is how the AWS docs themselves recommend writing a secret ARN in an
+  # IAM policy when the suffix is not known.
+  #
+  # Kept in lockstep with the module's own output: same containers, same modes. If the
+  # module's naming changes, this breaks with it.
+  secret_name_prefix = "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${var.product}/${var.env}"
+
+  secrets_standalone_exist = coalesce(var.secrets_create_standalone, !var.secrets_use_bundle)
+
+  secret_iam_arns = concat(
+    local.secrets_standalone_exist ? [
+      for k in keys(local.secret_names) : "${local.secret_name_prefix}/${k}-*"
+    ] : [],
+    var.secrets_bundle_name != "" ? ["${local.secret_name_prefix}/${var.secrets_bundle_name}-*"] : [],
+  )
+
   api_db_secrets = var.db_least_privilege ? [
     { name = "DATABASE_PASSWORD", secret_arn = module.secrets.secret_arns["db-app-password"] },
     ] : [
@@ -490,7 +530,14 @@ module "api" {
   # to inject DATABASE_USER/PASSWORD. Omit it and the task cannot start at all ("unable
   # to pull secrets") — a boot failure, not a runtime error. The migrator reuses this
   # role, so it is covered here too.
-  secret_arns = concat(values(module.secrets.secret_arns), [module.rds.master_secret_arn])
+  #
+  # `secret_iam_arns`, NOT `secret_arns`: this is an IAM resource list. The two outputs
+  # are identical while secrets are standalone, but once `use_bundle` is on `secret_arns`
+  # returns "<arn>:<key>::" — a valueFrom reference, not an ARN — and an IAM statement
+  # built from those matches NOTHING while still applying cleanly. The failure surfaces
+  # at the next task start as "unable to pull secrets", long after the apply reported
+  # success. `secret_iam_arns` returns the container ARNs in both modes.
+  secret_arns = concat(local.secret_iam_arns, [module.rds.master_secret_arn])
   kms_key_arn = local.kms_key_arn
   secrets = concat(local.api_db_secrets, [
     # DB credentials come from local.api_db_secrets above: the RDS-managed secret
@@ -605,16 +652,25 @@ module "api" {
   # connection reuses entra-client-secret; the sso/* prefix covers future
   # vendor connections added out-of-band (create the secret + the DB row, no TF
   # change). Distinct from secret_arns above (execution role, boot-time inject).
-  task_secret_arns = [
-    # Resolved at RUNTIME by SecretsManagerSecretResolver under the task role, not
-    # injected at boot: the broker's home connection needs the Entra secret when a login
-    # happens, and listAvailable/connect mint the GitHub App JWT on demand.
-    module.secrets.secret_arns["entra-client-secret"],
-    module.secrets.secret_arns["github-app-private-key"],
+  # IAM RESOURCES, so these must be container ARNs — `secret_arns["<key>"]` is a
+  # valueFrom reference and is invalid here once bundled (see the execution role above).
+  #
+  # SCOPE WIDENS WHEN BUNDLED, deliberately and unavoidably. Standalone, this granted the
+  # task role exactly two secrets out of the set. IAM cannot scope below a secret, so a
+  # bundle is granted whole or not at all: the task role can now read every key in it,
+  # including the R2 credentials and the signing keys it has no use for. That is the cost
+  # of bundling, and it is accepted here because the EXECUTION role is already granted the
+  # entire set anyway (same task, same instance metadata), so the bundle does not expose
+  # material that was previously unreachable from this task.
+  #
+  # If a value ever needs a genuinely narrower reader than the rest, keep it OUT of the
+  # bundle — the module supports a mixed set, and `secret_iam_arns` returns whatever
+  # containers exist.
+  task_secret_arns = concat(local.secret_iam_arns, [
     # Future per-connection OIDC secrets, created out of band (a secret plus an
     # sso_connections row, no Terraform change), so the grant has to be a wildcard.
     "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${var.product}/${var.env}/sso/*",
-  ]
+  ])
 
   tags = merge(local.tags, { Service = "api" })
 }
@@ -662,7 +718,10 @@ module "worker" {
   # to inject DATABASE_USER/PASSWORD. Omit it and the task cannot start at all ("unable
   # to pull secrets") — a boot failure, not a runtime error. The migrator reuses this
   # role, so it is covered here too.
-  secret_arns = concat(values(module.secrets.secret_arns), [module.rds.master_secret_arn])
+  # `secret_iam_arns`, NOT `secret_arns` — same reason as the api execution role above:
+  # a bundled `secret_arns` yields valueFrom references that are invalid as IAM resources
+  # and fail silently at apply time, surfacing only as a boot failure.
+  secret_arns = concat(local.secret_iam_arns, [module.rds.master_secret_arn])
   kms_key_arn = local.kms_key_arn
   secrets = concat(local.worker_db_secrets, [
     # DB credentials come from local.worker_db_secrets above: the RDS-managed
@@ -694,9 +753,10 @@ module "worker" {
   # GitHub App private key at RUNTIME to mint the App JWT, so the TASK role — not
   # the execution role — needs GetSecretValue on it. Distinct from secret_arns
   # above (execution role, boot-time inject). Mirrors the api's task_secret_arns.
-  task_secret_arns = [
-    module.secrets.secret_arns["github-app-private-key"],
-  ]
+  # IAM RESOURCES — container ARNs, not valueFrom references. Same widening tradeoff as
+  # the api's task_secret_arns above: bundled, this grants the whole object rather than
+  # the one key, because IAM cannot scope below a secret.
+  task_secret_arns = local.secret_iam_arns
 
   environment_vars = concat(local.worker_db_env, [
     { name = "NODE_ENV", value = "production" },
