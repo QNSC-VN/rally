@@ -19,7 +19,7 @@ import {
   type EstimateTier,
   resolveEstimate,
 } from '@modules/portfolio';
-import { projectTeams, releases, teams } from '../../../../../db/schema/work';
+import { projectTeams, releases, teamMembers, teams } from '../../../../../db/schema/work';
 import {
   FORECAST_HISTORY_DAYS,
   forecastCapacity,
@@ -1330,6 +1330,34 @@ export class CapacityPlansService {
       totalEnteredCapacity(teams),
     );
 
+    /**
+     * AC-010: a reader "sees only its assigned Team" inside a published plan.
+     *
+     * The TEAM rows and their allocations are narrowed to the teams this caller belongs to. What is
+     * deliberately NOT narrowed: the plan's own totals, its item list and its cutline. Those are facts
+     * about the PLAN, and a reader who could not see them would have their own team's numbers with
+     * nothing to read them against — "18 of what?" — while the header, the bar and the cutline all
+     * describe a whole a plan member is entitled to understand. The BA's rule is about whose ROWS a
+     * reader may open, not about hiding the plan's size from someone who was shown the plan.
+     *
+     * A planner sees everything. A reader who belongs to no team on the plan sees no team rows, which
+     * is the honest answer rather than an empty-looking error.
+     */
+    if (!(await this.isPlanner(actor, plan.projectId))) {
+      const mine = await this.teamIdsFor(actor);
+      const visibleTeams = teams.filter((team) => mine.has(team.teamId));
+      return {
+        ...plan,
+        teams: visibleTeams,
+        items,
+        itemCutlineIndex,
+        allocations: allocations.filter((a) => a.teamId !== null && mine.has(a.teamId)),
+        unallocated: allocations
+          .filter((a) => a.teamId === null)
+          .reduce((sum, a) => sum + a.metrics.estimated, 0),
+      };
+    }
+
     return {
       ...plan,
       teams,
@@ -1341,6 +1369,27 @@ export class CapacityPlansService {
         .filter((a) => a.teamId === null)
         .reduce((sum, a) => sum + a.metrics.estimated, 0),
     };
+  }
+
+  /**
+   * The teams this caller is an ACTIVE member of, workspace-wide.
+   *
+   * Not narrowed to the plan's project: the caller's memberships are a property of the person, and the
+   * only use is intersecting them with a plan's own teams — which are already project-scoped by
+   * `assertTeamInProject`. Filtering twice would just be a longer way to the same set.
+   */
+  private async teamIdsFor(actor: JwtPayload): Promise<Set<string>> {
+    const rows = await this.db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.workspaceId, actor.workspaceId),
+          eq(teamMembers.userId, actor.sub),
+          eq(teamMembers.status, 'active'),
+        ),
+      );
+    return new Set(rows.map((row) => row.teamId));
   }
 
   /**
