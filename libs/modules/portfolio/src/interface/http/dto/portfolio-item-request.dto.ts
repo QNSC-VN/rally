@@ -57,7 +57,7 @@ const portfolioWritableFields = {
    * Top-down forecasts. NON-NEGATIVE and never null — 0 IS the "not forecast" value.
    *
    * Real Rally shows these as 0 rather than blank and accepts a typed 0; Broadcom
-   * documents no rule either way. So 0 is the absent state (migration 0077) and the tier
+   * documents no rule either way. So 0 is the absent state (migration 0079) and the tier
    * chain already reads it that way: "Refined Estimate = Feature.refinedEstimate |
    * refinedWorkItemCountEstimate -> if > 0" (Capacity Planning SRS), so 0 falls through to
    * the Preliminary Estimate mapping exactly as a blank used to.

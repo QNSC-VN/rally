@@ -93,7 +93,7 @@ describe('computePortfolioProgress', () => {
     it('treats a refined 0 as NOT a forecast and falls back to Preliminary', () => {
       // The tier rule is `refined > 0`, not `refined !== null` — stated that way in the
       // Capacity Planning SRS, the dev handoff and the UI catalog, and the mockup renders
-      // a 0 as an em-dash. Since migration 0077 the column is NOT NULL DEFAULT 0, so 0 is
+      // a 0 as an em-dash. Since migration 0079 the column is NOT NULL DEFAULT 0, so 0 is
       // the value a real "not forecast" row carries and this path is the NORMAL one, not a
       // defensive edge. `resolveEstimate` in this same file uses the same comparison.
       const p = computePortfolioProgress(

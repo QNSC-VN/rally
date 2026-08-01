@@ -77,7 +77,7 @@ const PortfolioItemSchema = z.object({
   preliminaryEstimate: z.enum(SIZES),
   refinedEstimate: z
     .number()
-    .describe('Top-down points forecast. 0 means not forecast — see migration 0077.'),
+    .describe('Top-down points forecast. 0 means not forecast — see migration 0079.'),
   refinedItemCountEstimate: z
     .number()
     .describe('Top-down child-count forecast. 0 means not forecast.'),

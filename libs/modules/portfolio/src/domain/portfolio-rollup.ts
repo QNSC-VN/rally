@@ -35,7 +35,7 @@ export interface PortfolioRollupInput {
 /** Optional top-down forecasts stored on the item, plus the workspace fallback. */
 export interface PortfolioForecastInput {
   /**
-   * `refined_estimate`. Since 0077 the column is NOT NULL DEFAULT 0, so a real row carries
+   * `refined_estimate`. Since 0079 the column is NOT NULL DEFAULT 0, so a real row carries
    * 0 rather than null when nothing was forecast; nullable is kept only for callers that
    * assemble this input from a partial read-model.
    */
@@ -261,7 +261,7 @@ export function computeCutlineIndex(
  * `refined > 0`, NOT `!== null`. The BA spec states the tier that way in three places —
  * "Refined Estimate = Feature.refinedEstimate | refinedWorkItemCountEstimate -> if > 0"
  * (Capacity Planning SRS, echoed in `PHASE5_DEV_HANDOFF` and the UI catalog) — and the
- * mockup renders a stored 0 as an em-dash. Since migration 0077 the column is NOT NULL
+ * mockup renders a stored 0 as an em-dash. Since migration 0079 the column is NOT NULL
  * DEFAULT 0, so 0 IS the "not forecast" value and this comparison is what makes it fall
  * through to the preliminary tier.
  *

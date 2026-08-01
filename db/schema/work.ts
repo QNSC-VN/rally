@@ -379,7 +379,7 @@ export const portfolioItems = workSchema.table(
     //
     // NOT NULL DEFAULT 0, unlike every other typed estimate in this schema, and unlike
     // what the general rule below would suggest. Real Rally shows these as 0 rather than
-    // blank and lets a planner type 0, so 0 — not NULL — is the absent state here (0077).
+    // blank and lets a planner type 0, so 0 — not NULL — is the absent state here (0079).
     // Nothing downstream needed changing: the tier chain already selects the refined
     // forecast only `if > 0`, so 0 falls through to the Preliminary Estimate mapping,
     // which is the same fallback NULL used to trigger. One representation of "no
