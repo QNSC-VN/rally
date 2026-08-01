@@ -75,7 +75,19 @@ export function AllocateFeatureModal({
    * figures per row, and a second source could disagree with the grid behind the dialog.
    */
   const estimates = existing[0]?.estimateBreakdown ?? null
-  const topDown = estimates === null ? null : (estimates.refined ?? estimates.preliminary)
+  /**
+   * Refined, else Preliminary — with ZERO treated as absent, not as a value.
+   *
+   * `refined ?? preliminary` kept a refined estimate of 0, so `Total allocated` read 0 for a Feature
+   * whose blank row Apply would charge at its preliminary size. The backend already resolves the tier
+   * this way ("Refined … -> if > 0"), so this only stops the dialog from disagreeing with it.
+   */
+  const topDown =
+    estimates === null
+      ? null
+      : estimates.refined !== null && estimates.refined > 0
+        ? estimates.refined
+        : estimates.preliminary
 
   /**
    * One row per allocation, plus whatever the planner adds.

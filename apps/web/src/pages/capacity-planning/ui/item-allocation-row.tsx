@@ -33,6 +33,10 @@ export function ItemAllocationRow({
 
   return (
     <div className="flex min-h-[30px] items-center border-b border-border-inner bg-surface-subtle px-3 text-ui-md">
+      {/* EVERY column the header declares gets a cell, even the empty ones. `name` is the `grow`
+          column, so a missing cell is not a gap at the end — `name` absorbs the width and shifts every
+          cell after it out from under its own heading. */}
+      <div style={colStyleFor('marker', { flexShrink: 0 })} />
       <div style={colStyleFor('rank', { flexShrink: 0 })} />
       <div style={colStyleFor('id', { flexShrink: 0 })} />
 
@@ -46,23 +50,28 @@ export function ItemAllocationRow({
         </span>
       </div>
 
-      <div style={colStyleFor('project', { flexShrink: 0 })} />
-
       <div style={colStyleFor('assignment', { flexShrink: 0 })} className="min-w-0 px-2">
-        <span className="truncate text-foreground" title={teamName ?? undefined}>
+        <span
+          className="break-words whitespace-normal text-foreground"
+          title={teamName ?? undefined}
+        >
           {teamName ?? '--'}
         </span>
       </div>
 
-      <div style={colStyleFor('complete', { flexShrink: 0 })} className="px-2 text-right">
-        <MetricValue value={metrics.complete} pct={null} />
-      </div>
+      <div style={colStyleFor('project', { flexShrink: 0 })} />
+      <div style={colStyleFor('dependencies', { flexShrink: 0 })} />
+
       <div style={colStyleFor('rollup', { flexShrink: 0 })} className="px-2 text-right">
         <MetricValue value={metrics.rollup} pct={null} />
       </div>
       <div style={colStyleFor('estimated', { flexShrink: 0 })} className="px-2 text-right">
         <MetricValue value={metrics.estimated} pct={null} />
       </div>
+      <div style={colStyleFor('complete', { flexShrink: 0 })} className="px-2 text-right">
+        <MetricValue value={metrics.complete} pct={null} />
+      </div>
+      <div style={colStyleFor('actions', { flexShrink: 0 })} />
     </div>
   )
 }
