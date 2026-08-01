@@ -3831,6 +3831,7 @@ export interface components {
       description: string | null
       notes: string | null
       releaseNotes: string | null
+      whatSuccessLooksLike: string | null
       /** @enum {string} */
       state:
         | 'no_entry'
@@ -3920,6 +3921,7 @@ export interface components {
       description: string | null
       notes: string | null
       releaseNotes: string | null
+      whatSuccessLooksLike: string | null
       /** @enum {string} */
       state:
         | 'no_entry'
@@ -4051,6 +4053,7 @@ export interface components {
       description?: string | null
       notes?: string | null
       releaseNotes?: string | null
+      whatSuccessLooksLike?: string | null
       /** @enum {string} */
       state?:
         | 'no_entry'
@@ -4081,6 +4084,7 @@ export interface components {
       description?: string | null
       notes?: string | null
       releaseNotes?: string | null
+      whatSuccessLooksLike?: string | null
       /** Format: uuid */
       projectId?: string
       /** @enum {string} */

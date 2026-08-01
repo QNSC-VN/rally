@@ -27,6 +27,7 @@ const view = (over: Partial<PortfolioItemView> = {}): PortfolioItemView => ({
   description: null,
   notes: null,
   releaseNotes: null,
+  whatSuccessLooksLike: null,
   state: 'developing',
   preliminaryEstimate: 'm',
   refinedEstimate: '0',

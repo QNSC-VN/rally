@@ -22,6 +22,7 @@ export function ActionMenu({
   onDark = false,
   icon,
   iconSize = 15,
+  trigger,
 }: {
   ariaLabel: string
   /** `ActionMenuItem`s. Rendered in a single column; the menu closes on any click inside. */
@@ -35,24 +36,33 @@ export function ActionMenu({
    */
   icon?: ReactNode
   iconSize?: number
+  /**
+   * Replaces the icon trigger entirely, for a menu that has to be FINDABLE rather than
+   * discoverable — the BA's `New Portfolio Item`, which opens `New Epic` / `New Feature`, is a
+   * primary action and a bare `⋮` would hide it. Must forward props and a ref (a `Button` or
+   * any element that spreads them does), because Radix renders it `asChild`.
+   */
+  trigger?: ReactNode
 }) {
   const [open, setOpen] = useState(false)
 
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
       <PopoverPrimitive.Trigger asChild>
-        <button
-          type="button"
-          aria-label={ariaLabel}
-          className={cn(
-            'rounded p-1.5 transition-colors',
-            onDark
-              ? 'text-white hover:bg-white/10'
-              : 'text-muted-foreground hover:bg-surface-subtle',
-          )}
-        >
-          {icon ?? <MoreVertical size={iconSize} />}
-        </button>
+        {trigger ?? (
+          <button
+            type="button"
+            aria-label={ariaLabel}
+            className={cn(
+              'rounded p-1.5 transition-colors',
+              onDark
+                ? 'text-white hover:bg-white/10'
+                : 'text-muted-foreground hover:bg-surface-subtle',
+            )}
+          >
+            {icon ?? <MoreVertical size={iconSize} />}
+          </button>
+        )}
       </PopoverPrimitive.Trigger>
       <AppPopoverContent
         align="end"

@@ -374,6 +374,9 @@ export const portfolioItems = workSchema.table(
     // Notes / Release Notes editors (0080). Nullable: an empty rich-text field is absent.
     notes: text('notes'),
     releaseNotes: text('release_notes'),
+    // The BA's fourth rich-text block on Feature and Epic detail (SRS §5.1, §11.4). Same
+    // shape as the pair above for the same reason: an empty editor is ABSENT, not ''.
+    whatSuccessLooksLike: text('what_success_looks_like'),
     state: portfolioItemStateEnum('state').notNull().default('no_entry'),
     preliminaryEstimate: preliminaryEstimateSizeEnum('preliminary_estimate')
       .notNull()

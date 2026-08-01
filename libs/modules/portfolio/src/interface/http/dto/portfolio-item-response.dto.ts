@@ -77,6 +77,7 @@ const PortfolioItemSchema = z.object({
   description: z.string().nullable(),
   notes: z.string().nullable(),
   releaseNotes: z.string().nullable(),
+  whatSuccessLooksLike: z.string().nullable(),
   state: z.enum(STATES),
   preliminaryEstimate: z.enum(SIZES),
   refinedEstimate: z

@@ -39,7 +39,14 @@ export const PORTFOLIO_CHILD_COLUMNS: ColumnSpec<PortfolioChild, unknown, ChildC
   },
   { key: 'priority', label: 'Priority', defaultWidth: 96, minWidth: 80, sortCol: 'priority' },
   // `Est` is the BA's label, and the Totals row sums this column — the one number the tab foots.
-  { key: 'estimate', label: 'Est', defaultWidth: 72, minWidth: 60, align: 'right', sortCol: 'estimate' },
+  {
+    key: 'estimate',
+    label: 'Est',
+    defaultWidth: 72,
+    minWidth: 60,
+    align: 'right',
+    sortCol: 'estimate',
+  },
   { key: 'owner', label: 'Owner', defaultWidth: 140, minWidth: 100, sortCol: 'owner' },
   {
     key: 'scheduleState',
@@ -53,15 +60,7 @@ export const PORTFOLIO_CHILD_COLUMNS: ColumnSpec<PortfolioChild, unknown, ChildC
 ]
 
 export type EpicChildColKey =
-  | 'rank'
-  | 'id'
-  | 'name'
-  | 'team'
-  | 'state'
-  | 'complete'
-  | 'rollup'
-  | 'estimated'
-  | 'owner'
+  'rank' | 'id' | 'name' | 'team' | 'state' | 'complete' | 'rollup' | 'estimated' | 'owner'
 
 /**
  * An Epic's Children tab: its child FEATURES, with the roll-ups the BA lists.

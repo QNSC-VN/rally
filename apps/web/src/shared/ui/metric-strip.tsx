@@ -21,6 +21,10 @@ export type MetricStripProps = {
 export function MetricStrip({ children, actions, className }: MetricStripProps) {
   return (
     <div
+      // A stable hook for "this page has / has no strip". Card LABELS cannot answer that: the
+      // Portfolio strip's `Developing` and `Done` are also state names appearing in the grid's
+      // own cells, so asserting their absence proved nothing.
+      data-metric-strip=""
       className={cn('flex shrink-0 items-center gap-6 px-4', className)}
       style={{
         height: 58,
