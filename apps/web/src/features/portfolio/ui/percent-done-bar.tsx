@@ -54,7 +54,13 @@ export function PercentDoneBar({
 
   return (
     <ProgressBar
-      ratio={ratio}
+      // A NULL ratio renders as 0%, not as a dash. The API keeps null — it is the only way to
+      // tell "nothing linked" from "nothing accepted", and the hover callout below still names
+      // both denominators — but the SPEC and real Rally both display 0% here: SRS.md:192 ("a
+      // Feature with no linked Story/Defect shows 0% progress"), HANDOFF:216 ("zero denominator
+      // renders 0%, never NaN or infinity"), and Rally's own panel shows `Defects: 0% 0/0`.
+      // The data gap stays visible in the RATIO text, which is where Rally puts it.
+      ratio={ratio ?? 0}
       // Grey when there is no verdict: Rally shows a grey bar for an item whose Planned
       // Start Date is undefined or still in the future, and reserves the RAG colours for a
       // bar it can actually judge. `PORTFOLIO_HEALTH_COLOR` maps that case already.

@@ -125,7 +125,9 @@ export function PortfolioDetailSidebar({
         </DetailField>
       )}
 
-      {/* The four read-only indicators, computed from linked Story/Defect. Percent Done is
+      {/* The four read-only indicators, computed from linked Story/Defect. A null ratio (no
+          denominator) renders 0% rather than a dash — see `PercentDoneBar` for why, and note
+          real Rally shows `0% 0/0` for an item with no children of that type. Percent Done is
           coloured by the item's Rally health verdict; Estimated Progress keeps ProgressBar's
           own over-delivery colouring, because it measures accepted work against a top-down
           forecast rather than against the schedule — an item can be at 150% of forecast and
@@ -137,10 +139,10 @@ export function PortfolioDetailSidebar({
         <PercentDoneBar metric="count" health={item.health} progress={progress} rollup={rollup} />
       </DetailField>
       <DetailField label={t('detail.progress.estimatedPoints')}>
-        <ProgressBar ratio={progress.estimatedProgressByPoints} />
+        <ProgressBar ratio={progress.estimatedProgressByPoints ?? 0} />
       </DetailField>
       <DetailField label={t('detail.progress.estimatedCount')}>
-        <ProgressBar ratio={progress.estimatedProgressByCount} />
+        <ProgressBar ratio={progress.estimatedProgressByCount ?? 0} />
       </DetailField>
 
       <DetailField label={t('detail.fields.preliminaryEstimate')}>

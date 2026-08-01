@@ -211,20 +211,23 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
   }
 
   /**
-   * How many of these Milestones belong to `projectId` — the scope check for a write.
+   * The SUBSET of `milestoneIds` that belongs to `projectId` — one query serving two callers.
    *
-   * Workspace-scoped as well as project-scoped: project ids are not guessable, but a count
-   * that matched on project alone would be one leaked id away from letting a caller attach
-   * another tenant's milestone.
+   * The write path compares lengths to reject an out-of-project id; the project-move path keeps
+   * what survives and drops the rest. A count could only answer the first question, and adding
+   * a second near-identical query would let the two definitions of "in project" drift.
+   *
+   * Workspace-scoped as well as project-scoped: project ids are not guessable, but matching on
+   * project alone would be one leaked id away from attaching another tenant's milestone.
    */
-  async countMilestonesInProject(
+  async filterMilestonesInProject(
     milestoneIds: string[],
     projectId: string,
     workspaceId: string,
-  ): Promise<number> {
-    if (milestoneIds.length === 0) return 0;
-    const [row] = await this.db
-      .select({ count: sql<number>`count(*)::int` })
+  ): Promise<string[]> {
+    if (milestoneIds.length === 0) return [];
+    const rows = await this.db
+      .select({ id: milestones.id })
       .from(milestones)
       .where(
         and(
@@ -233,7 +236,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
           eq(milestones.workspaceId, workspaceId),
         ),
       );
-    return Number(row?.count ?? 0);
+    return rows.map((r) => r.id);
   }
 
   /** Active child Features of an Epic. 0 for a Feature — the hierarchy is two levels. */

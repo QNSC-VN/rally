@@ -52,12 +52,15 @@ export interface IPortfolioItemRepository {
   /** Replaces this item's Milestone assignments wholesale, in one transaction. */
   setMilestones(id: string, milestoneIds: string[]): Promise<void>;
 
-  /** How many of these Milestones belong to `projectId` — the write-time scope check. */
-  countMilestonesInProject(
+  /**
+   * The subset of `milestoneIds` belonging to `projectId`. Serves both the write-time scope
+   * check (compare lengths) and the project-move reconciliation (keep the survivors).
+   */
+  filterMilestonesInProject(
     milestoneIds: string[],
     projectId: string,
     workspaceId: string,
-  ): Promise<number>;
+  ): Promise<string[]>;
 
   /**
    * The linked-leaf rollup split by child type, for the detail page's accepted-children

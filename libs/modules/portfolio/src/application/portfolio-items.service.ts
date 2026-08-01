@@ -359,12 +359,12 @@ export class PortfolioItemsService {
     const { milestoneIds, ...columns } = patch;
     if (milestoneIds !== undefined) {
       const projectId = patch.projectId ?? existing.projectId;
-      const inProject = await this.repo.countMilestonesInProject(
+      const inProject = await this.repo.filterMilestonesInProject(
         milestoneIds,
         projectId,
         actor.workspaceId,
       );
-      if (inProject !== milestoneIds.length) {
+      if (inProject.length !== milestoneIds.length) {
         throw new PreconditionFailedException(
           'MILESTONE_PROJECT_MISMATCH',
           'Every Milestone must belong to this item\u2019s Project',
@@ -452,6 +452,26 @@ export class PortfolioItemsService {
     if (patch.parentId === undefined && existing.parentId !== null) {
       const [parent] = await this.repo.findByIds([existing.parentId], workspaceId);
       if (!parent || parent.projectId !== destination) patch.parentId = null;
+    }
+
+    // Milestones follow REAL RALLY's rule, which is a conditional keep rather than a clear:
+    // "If you move a work item to a new project after associating it with a milestone, the work
+    // item will keep existing milestone(s) only if they exist in the new project."
+    // (TechDocs, Managing Milestones.) So survivors stay assigned and the rest are dropped.
+    //
+    // Without this the row lands in a state its OWN write path would reject — the assignment
+    // would still point at the source project's milestone, and the next save of any field would
+    // fail `MILESTONE_PROJECT_MISMATCH`. The BA docs are silent here; Rally is not.
+    if (patch.milestoneIds === undefined) {
+      const current = await this.repo.listMilestones(existing.id, workspaceId);
+      if (current.length > 0) {
+        const surviving = await this.repo.filterMilestonesInProject(
+          current.map((m) => m.id),
+          destination,
+          workspaceId,
+        );
+        if (surviving.length !== current.length) patch.milestoneIds = surviving;
+      }
     }
   }
 
