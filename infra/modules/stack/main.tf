@@ -538,8 +538,11 @@ module "api" {
   cpu_target_pct    = var.api.cpu_target_pct
   memory_target_pct = var.api.memory_target_pct
 
-  attach_alb        = !var.tunnel_enabled
-  alb_listener_arn  = data.terraform_remote_state.runtime.outputs.https_listener_arn
+  attach_alb = !var.tunnel_enabled
+  # try(): the runtime layer stops exporting ALB outputs entirely once its ALB is
+  # deleted (enable_alb = false), so this attribute is ABSENT rather than null. A
+  # tunnelled stack does not attach to a listener anyway — attach_alb is false above.
+  alb_listener_arn  = try(data.terraform_remote_state.runtime.outputs.https_listener_arn, "")
   alb_priority      = 100
   alb_path_patterns = ["/*"]
   alb_host_headers  = [var.api_domain] # host-based routing on the shared ALB
@@ -1009,7 +1012,7 @@ module "observability" {
   ecs_service_names = [module.api.service_name, module.worker.service_name]
   # Full ALB ARN — exposed by the runtime stack for exactly this. Without it the
   # module silently skips the two user-facing ALB alarms.
-  alb_arn = data.terraform_remote_state.runtime.outputs.alb_arn
+  alb_arn = try(data.terraform_remote_state.runtime.outputs.alb_arn, "")
   # `identifier` (rally-prod), NOT `instance_id` (db-F35NKOG…). CloudWatch publishes RDS
   # metrics under the DBInstanceIdentifier dimension, and `aws_db_instance.id` returns the
   # RESOURCE id on AWS provider 5.x — so this pointed at a dimension value that does not
@@ -1105,6 +1108,94 @@ resource "aws_cloudwatch_metric_alarm" "security_fail_open" {
 
   alarm_actions = [module.observability.alarm_topic_arn]
   ok_actions    = [module.observability.alarm_topic_arn]
+}
+
+# ── Ingress health, from OUTSIDE AWS ─────────────────────────────────────────
+# ONLY created when the api is tunnelled, and it exists to replace something real.
+#
+# With an ALB, `monitor_target_health` watched UnHealthyHostCount — described in
+# ../../live/prod/main.tf as "the only alarm that catches an outage producing no load
+# to move CPU, latency or 5xx". A tunnelled task has no target group, so that alarm
+# cannot exist, and nothing else on the AWS side observes ingress at all:
+#
+#   - ECS reports the task RUNNING whether or not cloudflared holds edge connections.
+#   - `essential = true` on the sidecar catches the connector CRASHING, not the
+#     connector staying up with zero edge connections.
+#   - An ECS healthCheck cannot probe it either: the cloudflared image is distroless,
+#     so there is no shell for a CMD-SHELL probe (see the tunnel-agent module).
+#
+# A Route 53 health check probes the PUBLIC hostname from outside AWS, so it exercises
+# the whole path a user takes — Cloudflare edge, tunnel, connector, app — rather than
+# any single component's opinion of itself. $0.50/mo.
+#
+# Deliberately checks /v1/healthz, not /v1/readyz: readyz touches postgres and valkey,
+# so a database blip would page as an ingress outage. Dependency health is already
+# covered by the RDS and fail-open alarms.
+resource "aws_route53_health_check" "api_ingress" {
+  count = var.tunnel_enabled ? 1 : 0
+
+  fqdn              = var.api_domain
+  type              = "HTTPS"
+  port              = 443
+  resource_path     = "/v1/healthz"
+  failure_threshold = 3
+  request_interval  = 30
+
+  # us-east-1 ONLY, and not a copy-paste error: Route 53 health-check metrics are
+  # published exclusively to us-east-1 regardless of where the endpoint lives, so the
+  # alarm below has to be created there too.
+  measure_latency = false
+
+  tags = merge(local.tags, { Name = "${local.name}-api-ingress" })
+}
+
+# CloudWatch alarm on the health check. In us-east-1 because that is the only region
+# where AWS/Route53 HealthCheckStatus exists.
+resource "aws_cloudwatch_metric_alarm" "api_ingress_down" {
+  count    = var.tunnel_enabled ? 1 : 0
+  provider = aws.us_east_1
+
+  alarm_name        = "${local.name}-api-ingress-down"
+  alarm_description = "${var.api_domain} is not answering /v1/healthz from outside AWS. With no ALB this is the only ingress alarm — check the cloudflared sidecar's edge connections first."
+
+  namespace           = "AWS/Route53"
+  metric_name         = "HealthCheckStatus"
+  dimensions          = { HealthCheckId = aws_route53_health_check.api_ingress[0].id }
+  statistic           = "Minimum"
+  period              = 60
+  evaluation_periods  = 3
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+
+  # Missing data is NOT breaching here. The health checker itself is the thing
+  # reporting, and a gap in its own metric is far more likely to be a Route 53
+  # reporting hiccup than an outage — treating it as breaching would page on the
+  # monitoring, not the service.
+  treat_missing_data = "missing"
+
+  alarm_actions = [aws_sns_topic.ingress_alarms_us_east_1[0].arn]
+  ok_actions    = [aws_sns_topic.ingress_alarms_us_east_1[0].arn]
+
+  tags = local.tags
+}
+
+# The alarm lives in us-east-1, and an SNS action must be in the alarm's own region —
+# so the ap-southeast-1 alarm topic cannot be used and this one mirrors it.
+resource "aws_sns_topic" "ingress_alarms_us_east_1" {
+  count    = var.tunnel_enabled ? 1 : 0
+  provider = aws.us_east_1
+
+  name = "${local.name}-ingress-alarms"
+  tags = local.tags
+}
+
+resource "aws_sns_topic_subscription" "ingress_alarms_email" {
+  for_each = var.tunnel_enabled ? toset(var.alarm_emails) : toset([])
+  provider = aws.us_east_1
+
+  topic_arn = aws_sns_topic.ingress_alarms_us_east_1[0].arn
+  protocol  = "email"
+  endpoint  = each.value
 }
 
 # ── Alerting: outbox rows that will never be retried ─────────────────────────

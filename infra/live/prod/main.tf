@@ -43,6 +43,20 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token != "" ? var.cloudflare_api_token : null
 }
 
+// Route 53 publishes health-check metrics ONLY to us-east-1, so the ingress alarm in
+// module.stack has to be created there. Everything else stays in ap-southeast-1.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+  default_tags {
+    tags = {
+      Project     = "rally"
+      Environment = "production"
+      ManagedBy   = "opentofu"
+    }
+  }
+}
+
 locals {
   region = "ap-southeast-1"
 }
@@ -50,6 +64,11 @@ locals {
 // ── The stack ─────────────────────────────────────────────────────────────────
 module "stack" {
   source = "../../modules/stack"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   product = "rally"
   env     = "production"
