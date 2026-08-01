@@ -84,6 +84,39 @@ module "stack" {
   secrets_recovery_window_days = 30
   dlq_max_receive_count        = 3 # move to the DLQ sooner in production
 
+  // ── Secret bundling · COMPLETE ──────────────────────────────────────────────
+  // Every app secret lives in ONE container, rally/production/app, read per key by ECS
+  // via the `<arn>:<key>::` form of valueFrom. Secrets Manager bills per SECRET
+  // regardless of size, so this is 12 containers' worth of material for one fee.
+  //
+  // Develop completed the same migration on 2026-08-01 (#313, #314); the sequence and
+  // the populate/verify script are in docs/runbooks/secrets-bundle-migration.md.
+  //
+  // HOW THIS WAS VERIFIED WITHOUT A RUNNING TASK. Production is idle pre-launch
+  // (min_count = 0 on both services, RDS stopped, no cache node), so unlike develop
+  // nothing boots to prove the cutover. Two checks stood in for that, and both must be
+  // repeated if this is ever redone:
+  //   1. sha256 per key, bundle vs standalone — all 12 identical (bundle-secrets.sh
+  //      --verify).
+  //   2. every `<arn>:<key>::` reference in the api, worker AND migrator task
+  //      definitions resolved against the bundle exactly as ECS does, confirming the key
+  //      is present and non-empty.
+  //
+  // The migrator is the one to watch. It is NOT covered by a -target on module.api or
+  // module.worker, and it was still pointing at the standalone secrets after those two
+  // had been cut over — a step-4 destroy at that moment would have deleted secrets it
+  // still referenced. Plan the WHOLE stack, not a subset, before dropping standalone.
+  //
+  // RECOVERABLE FOR 30 DAYS, unlike develop: recovery_window_days = 30 above, so the
+  // destroyed containers are scheduled rather than gone. Restore with
+  // `aws secretsmanager restore-secret --secret-id rally/production/<name>` inside that
+  // window; after it, they must be recreated and re-pasted by hand.
+  //
+  // AT GO-LIVE, treat any boot failure mentioning secrets as this change first. Rollback
+  // is `secrets_use_bundle = false`, `secrets_create_standalone = true`, apply, redeploy.
+  secrets_bundle_name = "app"
+  secrets_use_bundle  = true
+
   // OFF, including in production. Audited every consumer: all 7 alarms and all 6
   // dashboard widgets read AWS/ECS, AWS/ApplicationELB and AWS/RDS — native namespaces
   // that are free and published whether Container Insights is on or off. Nothing reads
