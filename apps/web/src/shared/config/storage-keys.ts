@@ -24,4 +24,7 @@ export const STORAGE_KEYS = {
   SETTINGS_AUDIT_COLUMNS: 'rally-settings-audit-columns',
   LAST_ACCESSED_ITERATION: 'rally-last-accessed-iteration',
   ITERATION_STATUS_VIEW_MODE: 'rally-iteration-status-view-mode',
+  // Which unit the portfolio detail's "Total Accepted Children" panel opens in, set from
+  // that panel's gear — Rally keeps the same choice per user.
+  ACCEPTED_CHILDREN_UNIT: 'rally-accepted-children-unit',
 } as const
