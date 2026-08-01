@@ -54,6 +54,8 @@ const portfolioWritableFields = {
   /** Rich text, same limit and nullability as a work item's (0080). */
   notes: z.string().max(20000).nullable(),
   releaseNotes: z.string().max(20000).nullable(),
+  /** The BA's fourth rich-text block (SRS §5.1, §11.4) — same editor, same limit. */
+  whatSuccessLooksLike: z.string().max(20000).nullable(),
   state: z.enum(PORTFOLIO_ITEM_STATES),
   preliminaryEstimate: z.enum(PRELIMINARY_SIZES),
   /**
@@ -87,6 +89,7 @@ export const CreatePortfolioItemSchema = z.object({
   description: portfolioWritableFields.description.optional(),
   notes: portfolioWritableFields.notes.optional(),
   releaseNotes: portfolioWritableFields.releaseNotes.optional(),
+  whatSuccessLooksLike: portfolioWritableFields.whatSuccessLooksLike.optional(),
   state: portfolioWritableFields.state.optional(),
   preliminaryEstimate: portfolioWritableFields.preliminaryEstimate.optional(),
   refinedEstimate: portfolioWritableFields.refinedEstimate.optional(),
@@ -123,6 +126,7 @@ export const UpdatePortfolioItemSchema = z
     description: portfolioWritableFields.description.optional(),
     notes: portfolioWritableFields.notes.optional(),
     releaseNotes: portfolioWritableFields.releaseNotes.optional(),
+    whatSuccessLooksLike: portfolioWritableFields.whatSuccessLooksLike.optional(),
     /** Move the item to another project. Never nullable — an item always has a project. */
     projectId: z.string().uuid().optional(),
     state: portfolioWritableFields.state.optional(),

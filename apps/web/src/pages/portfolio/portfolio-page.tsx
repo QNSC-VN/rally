@@ -17,7 +17,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, Archive, PackageOpen, Plus } from 'lucide-react'
+import { AlertTriangle, Archive, ChevronDown, PackageOpen, Plus } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -27,8 +27,6 @@ import { useProjectPermissions, useProjectPermissionsFor } from '@/features/acce
 import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { useProjects } from '@/features/projects/api'
 import { type RowSelection } from '@/shared/lib/hooks/use-row-selection'
-import { MetricCard } from '@/shared/ui/metric-card'
-import { MetricStrip } from '@/shared/ui/metric-strip'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
@@ -49,6 +47,7 @@ import { usePortfolioCellOptions } from './model/use-cell-options'
 import { PORTFOLIO_STATES } from './model/portfolio-states'
 import { PortfolioRow } from './ui/portfolio-row'
 import { PortfolioTypeSwitcher } from './ui/portfolio-type-switcher'
+import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 import { CreatePortfolioItemModal } from './ui/create-portfolio-item-modal'
 
 export function PortfolioPage() {
@@ -58,7 +57,14 @@ export function PortfolioPage() {
   const [type, setType] = useState<PortfolioItemType>(PortfolioItemType.Feature)
   const [stateFilter, setStateFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
+  /**
+   * Which type the create dialog is opening for, or null when it is closed.
+   *
+   * A type rather than a boolean because the BA's `New Portfolio Item` menu offers `New Epic`
+   * AND `New Feature` (SRS §4, §11.2), so the choice is no longer "whatever level the list is
+   * showing" — a planner looking at Features can create an Epic without switching first.
+   */
+  const [createType, setCreateType] = useState<PortfolioItemType | null>(null)
   /**
    * The item to bring into view — set after a create.
    *
@@ -118,8 +124,11 @@ export function PortfolioPage() {
 
   // Type and project are SERVER filters — the API has no combined Epic+Feature view
   // (matching the spec's exclusive Type selector), and narrowing the project server-side
-  // is what keeps `total` describing the scope the user is actually looking at.
-  const { items, total, isLoading, isError } = usePortfolioItems({
+  // keeps the grid describing the scope the user is actually looking at.
+  //
+  // `total` is deliberately unused: the BA removed the summary metrics strip that read it
+  // ("no need", SRS:28), and the list goes from the breadcrumb straight to the toolbar.
+  const { items, isLoading, isError } = usePortfolioItems({
     type,
     projectId: scopedProjectId,
   })
@@ -206,16 +215,6 @@ export function PortfolioPage() {
       rank.mutate({ id, beforeId, afterId }, { onError: (err) => notify.error(err.message) }),
   })
 
-  // Accepted/done counts come from the loaded rows; `total` is the server's count for
-  // the whole filter set, so it stays correct while later pages are still arriving.
-  const stats = useMemo(
-    () => ({
-      inFlight: items.filter((i) => i.state === 'developing').length,
-      done: items.filter((i) => i.state === 'done').length,
-    }),
-    [items],
-  )
-
   /**
    * Archive every selected row the caller may archive.
    *
@@ -253,13 +252,6 @@ export function PortfolioPage() {
             title={t('title')}
             accessory={<PortfolioTypeSwitcher value={type} onChange={setType} />}
           />
-        }
-        metrics={
-          <MetricStrip>
-            <MetricCard label={t('metrics.total')} value={total ?? items.length} minWidth={100} />
-            <MetricCard label={t('metrics.developing')} value={stats.inFlight} minWidth={100} />
-            <MetricCard label={t('metrics.done')} value={stats.done} minWidth={90} />
-          </MetricStrip>
         }
         search={{
           value: search,
@@ -312,9 +304,24 @@ export function PortfolioPage() {
         fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
         actions={
           canCreate ? (
-            <Button size="sm" onClick={() => setShowCreate(true)}>
-              <Plus size={13} /> {t('common:addNew')}
-            </Button>
+            <ActionMenu
+              ariaLabel={t('create.menuLabel')}
+              trigger={
+                <Button size="sm">
+                  <Plus size={13} /> {t('create.menuLabel')}
+                  <ChevronDown size={13} />
+                </Button>
+              }
+            >
+              <ActionMenuItem
+                label={t('create.titleEpic')}
+                onClick={() => setCreateType(PortfolioItemType.Epic)}
+              />
+              <ActionMenuItem
+                label={t('create.titleFeature')}
+                onClick={() => setCreateType(PortfolioItemType.Feature)}
+              />
+            </ActionMenu>
           ) : undefined
         }
         bulkActions={(selection) => (
@@ -387,11 +394,11 @@ export function PortfolioPage() {
         )}
       />
 
-      {showCreate && createProjectId && (
+      {createType !== null && createProjectId && (
         <CreatePortfolioItemModal
           projectId={createProjectId}
-          type={type}
-          onClose={() => setShowCreate(false)}
+          type={createType}
+          onClose={() => setCreateType(null)}
           onCreated={setRevealId}
         />
       )}

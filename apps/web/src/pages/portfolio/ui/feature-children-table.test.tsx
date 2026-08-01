@@ -30,7 +30,7 @@ const child = (over: Partial<PortfolioChild> = {}): PortfolioChild =>
   }) as PortfolioChild
 
 describe('FeatureChildrenTable', () => {
-  it("renders every column the BA lists, including the two that were not on the wire", () => {
+  it('renders every column the BA lists, including the two that were not on the wire', () => {
     // `Priority` and `Iteration` had no source until this slice added them to the children query, so
     // six of the BA's nine columns could not be shown at all.
     render(<FeatureChildrenTable children={[child()]} />)
@@ -52,7 +52,11 @@ describe('FeatureChildrenTable', () => {
   })
 
   it('foots the Est column, which is the one total the BA asks for', () => {
-    render(<FeatureChildrenTable children={[child(), child({ id: 'c2', itemKey: 'US-2', storyPoints: 3 })]} />)
+    render(
+      <FeatureChildrenTable
+        children={[child(), child({ id: 'c2', itemKey: 'US-2', storyPoints: 3 })]}
+      />,
+    )
     expect(screen.getByText('Totals (2)')).toBeTruthy()
     expect(screen.getByText('8')).toBeTruthy()
   })
@@ -69,7 +73,10 @@ describe('FeatureChildrenTable', () => {
     // would say which set it described.
     render(
       <FeatureChildrenTable
-        children={[child(), child({ id: 'c2', itemKey: 'DE-9', title: 'Flaky pipeline', storyPoints: 13 })]}
+        children={[
+          child(),
+          child({ id: 'c2', itemKey: 'DE-9', title: 'Flaky pipeline', storyPoints: 13 }),
+        ]}
       />,
     )
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search linked items' }), {

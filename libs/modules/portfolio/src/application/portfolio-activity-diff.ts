@@ -20,6 +20,7 @@ export const PORTFOLIO_ACTIVITY_CONFIG: ActivityDiffConfig<Record<string, unknow
     'description',
     'notes',
     'releaseNotes',
+    'whatSuccessLooksLike',
     'state',
     'projectId',
     'parentId',
@@ -33,6 +34,6 @@ export const PORTFOLIO_ACTIVITY_CONFIG: ActivityDiffConfig<Record<string, unknow
     'plannedEndDate',
     'marketReleaseDate',
   ],
-  richText: ['description', 'notes', 'releaseNotes'],
+  richText: ['description', 'notes', 'releaseNotes', 'whatSuccessLooksLike'],
   action: (f) => (f === 'state' ? 'portfolio_item.state_changed' : 'portfolio_item.updated'),
 };

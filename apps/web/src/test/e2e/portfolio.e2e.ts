@@ -93,7 +93,10 @@ test.describe('Portfolio', () => {
     // Scoped to the dialog throughout: the grid header also exposes a "Name column"
     // label and a "Resize Name column" separator, so an unscoped getByLabel('Name')
     // matches three elements.
-    await page.getByRole('button', { name: /Add New/i }).click()
+    // The BA's `New Portfolio Item` MENU, not a bare Add New — it offers both types, so the
+    // level the list happens to be showing no longer decides what gets created.
+    await page.getByRole('button', { name: /New Portfolio Item/i }).click()
+    await page.getByRole('button', { name: 'New Feature', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'New Feature' })
     await dialog.getByRole('textbox', { name: 'Name' }).fill(unique)
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
@@ -221,7 +224,8 @@ test.describe('Portfolio', () => {
     await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
 
     for (const suffix of ['A', 'B']) {
-      await page.getByRole('button', { name: /Add New/i }).click()
+      await page.getByRole('button', { name: /New Portfolio Item/i }).click()
+      await page.getByRole('button', { name: 'New Feature', exact: true }).click()
       const dialog = page.getByRole('dialog', { name: 'New Feature' })
       await dialog.getByRole('textbox', { name: 'Name' }).fill(`${tag} ${suffix}`)
       await dialog.getByRole('button', { name: 'Create', exact: true }).click()
@@ -285,5 +289,76 @@ test.describe('Portfolio', () => {
     // Counted as ROWS, not as text: the success toast repeats the name, so a text count would
     // wait for a toast to fade rather than for the archive to land.
     await expect(rows).toHaveCount(0)
+  })
+
+  test('New Portfolio Item creates an EPIC while the list is showing Features', async ({
+    page,
+  }) => {
+    // The point of the BA's menu (SRS §4, §11.2): the type is chosen in the menu, not inherited
+    // from the switcher, so a planner looking at Features can create an Epic without switching
+    // first. The old toolbar button could only ever create the level on screen.
+    const unique = `E2E Epic ${Date.now()}`
+    await login(page)
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+
+    await page.getByRole('button', { name: /New Portfolio Item/i }).click()
+    // Both types on offer from one menu.
+    await expect(page.getByRole('button', { name: 'New Epic', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'New Feature', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'New Epic', exact: true }).click()
+
+    const dialog = page.getByRole('dialog', { name: 'New Epic' })
+    await dialog.getByRole('textbox', { name: 'Name' }).fill(unique)
+    // An Epic has no parent by CHECK constraint (`ck_portfolio_epic_shape`), so the dialog must
+    // not offer the Epic picker a Feature gets.
+    await expect(dialog.getByRole('combobox', { name: 'Epic' })).toHaveCount(0)
+    await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(dialog).toBeHidden()
+
+    // It landed on the EPIC list, which is where an Epic belongs — the Feature list the user was
+    // standing on does not show it.
+    await expect(page.getByText(unique, { exact: true })).toHaveCount(0)
+    await page.getByLabel('Type').selectOption('epic')
+    await page.getByRole('searchbox', { name: /Search portfolio/i }).fill(unique)
+    await expect(page.getByText(unique, { exact: true })).toBeVisible()
+  })
+
+  test('the list carries NO summary metrics strip', async ({ page }) => {
+    // The BA removed it outright — "Features / Total Stories / Accepted Stories / Total Points was
+    // built, then explicitly removed per BA - 'no need'" (SRS:28), asserted again as QA #15. The
+    // page goes from the breadcrumb straight to the toolbar.
+    await login(page)
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('searchbox', { name: /Search portfolio/i })).toBeVisible()
+
+    // The STRIP itself, by its own marker. Card labels cannot answer this: `Developing` and
+    // `Done` are also state names and appear in the grid's State cells regardless.
+    await expect(page.locator('[data-metric-strip]')).toHaveCount(0)
+  })
+
+  test('What Success Looks Like is a real field, and it persists', async ({ page }) => {
+    // The BA's fourth rich-text block on Feature detail (SRS §5.1) and Epic detail (§11.4), and
+    // P5-PI-FR-019 requires it "backed by the shared Feature record rather than display-only".
+    // Nothing backed it at all before migration 0086, so a reload is the assertion that matters.
+    const body = `Success ${Date.now()}`
+    await login(page)
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+    // The ID cell is the link — the row does not navigate and the Name cell edits in place.
+    await page.getByRole('button', { name: 'FE-2', exact: true }).click()
+    await expect(page).toHaveURL(/\/portfolio\/[0-9a-f-]{36}/)
+
+    // By accessible NAME: every `RichTextEditor` now labels its editable area with the field
+    // title, so this addresses the right one of five editors on the page.
+    const editor = page.getByLabel('What Success Looks Like')
+    await editor.scrollIntoViewIfNeeded()
+    await editor.click()
+    await editor.fill(body)
+    // The Save bar is what persists a rich-text edit — the editor only reports keystrokes into
+    // the pending patch.
+    await page.getByRole('button', { name: /^Save$/ }).click()
+    await expect(page.getByRole('button', { name: /^Save$/ })).toHaveCount(0)
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await expect(page.getByText(body)).toBeVisible()
   })
 })

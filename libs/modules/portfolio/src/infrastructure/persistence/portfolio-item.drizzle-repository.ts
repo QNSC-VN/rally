@@ -497,6 +497,17 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         type: input.type,
         name: input.name,
         description: input.description ?? null,
+        /**
+         * The three rich-text blocks beside Description.
+         *
+         * `notes` and `releaseNotes` were accepted by `CreatePortfolioItemSchema` and then
+         * dropped here, so a create that supplied either got a 201 with the field silently
+         * empty — an update was the only way to set them. `whatSuccessLooksLike` (0086) is
+         * listed with them rather than after them for that reason.
+         */
+        notes: input.notes ?? null,
+        releaseNotes: input.releaseNotes ?? null,
+        whatSuccessLooksLike: input.whatSuccessLooksLike ?? null,
         ...(input.state ? { state: input.state } : {}),
         ...(input.preliminaryEstimate ? { preliminaryEstimate: input.preliminaryEstimate } : {}),
         // NOT NULL DEFAULT 0 (0081): 0 is the "not forecast" value, so an omitted
@@ -537,6 +548,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
     assign('description');
     assign('notes');
     assign('releaseNotes');
+    assign('whatSuccessLooksLike');
     // A project MOVE. Listed here because this `assign` list is explicit: a field absent
     // from it is silently dropped, so the PATCH would 200 with nothing changed.
     assign('projectId');
@@ -643,6 +655,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       description: row.description,
       notes: row.notes,
       releaseNotes: row.releaseNotes,
+      whatSuccessLooksLike: row.whatSuccessLooksLike,
       state: row.state,
       preliminaryEstimate: row.preliminaryEstimate,
       refinedEstimate: row.refinedEstimate,

@@ -1,0 +1,15 @@
+-- `What Success Looks Like` on a portfolio item.
+--
+-- The BA lists it as the FOURTH rich-text block on both Feature Detail and Epic Detail,
+-- beside Description, Attachments and Notes (`01_Portfolio_Items/SRS.md` §5.1 and §11.4),
+-- and asserts it in P5-PI-FR-019: "Description, Notes, What Success Looks Like and
+-- attachment metadata have a session-level Feature data contract rather than
+-- display-only placeholders". Nothing backed it, so the field could not exist at all.
+--
+-- `text`, nullable, exactly like `notes` and `release_notes`: it holds the same editor's
+-- HTML, and an empty rich-text field is ABSENT rather than an empty string — otherwise the
+-- activity diff would record a change every time the editor round-tripped a blank body.
+--
+-- No default. A default of '' would make every existing row look like someone had answered
+-- the question with silence.
+ALTER TABLE work.portfolio_items ADD COLUMN IF NOT EXISTS what_success_looks_like text;

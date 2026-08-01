@@ -147,7 +147,10 @@ export function FeatureChildrenTable({ children }: { children: PortfolioChild[] 
                 {child.ownerName ?? '—'}
               </span>
             </div>
-            <div style={table.styleFor('scheduleState', { flexShrink: 0 })} className="min-w-0 px-2">
+            <div
+              style={table.styleFor('scheduleState', { flexShrink: 0 })}
+              className="min-w-0 px-2"
+            >
               <span className="break-words whitespace-normal text-muted-foreground">
                 {child.scheduleState}
               </span>
