@@ -39,7 +39,8 @@ export interface MilestoneProgress {
   completedItems: number;
   totalPoints: number;
   completedPoints: number;
-  progressPercent: number;
+  /** Null when not computable — nothing estimated and not everything finished. */
+  progressPercent: number | null;
 }
 
 interface ReleaseStats {
@@ -432,12 +433,15 @@ export class MilestonesService {
       completedPoints += Number(s.completedPoints);
     }
 
+    // NULL, not 0, when there is nothing to divide by. 0% asserts "none of this work is
+    // done"; an unestimated milestone deserves "cannot tell". The all-items-done shortcut
+    // stays: every item complete IS 100% whether or not anyone estimated it.
     const progressPercent =
       totalPoints > 0
         ? Math.min(Math.round((completedPoints / totalPoints) * 100), 100)
         : totalItems > 0 && completedItems === totalItems
           ? 100
-          : 0;
+          : null;
 
     return { totalItems, completedItems, totalPoints, completedPoints, progressPercent };
   }

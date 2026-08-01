@@ -7,7 +7,8 @@ const MilestoneProgressSchema = z.object({
   completedItems: z.number(),
   totalPoints: z.number(),
   completedPoints: z.number(),
-  progressPercent: z.number(),
+  /** Null when not computable — nothing estimated and not everything finished. */
+  progressPercent: z.number().nullable(),
 });
 
 export const MilestoneResponseSchema = z.object({

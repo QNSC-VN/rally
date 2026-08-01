@@ -388,7 +388,7 @@ const MILESTONES_COLUMNS: ColumnSpec<Milestone, MilestoneCtx, MilestoneColKey>[]
     sortCol: 'milestoneKey',
     cellClassName: 'flex items-center px-2',
     cell: (m, ctx) => (
-      <IdCell type="milestone" itemKey={m.milestoneKey ?? '—'} onOpen={() => ctx.onOpen(m.id)} />
+      <IdCell type="milestone" itemKey={m.milestoneKey ?? '--'} onOpen={() => ctx.onOpen(m.id)} />
     ),
   },
   {

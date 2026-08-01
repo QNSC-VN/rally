@@ -210,20 +210,47 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
 
   // P3.3 — Artifact support
 
+  /**
+   * The milestone's WORK-ITEM artifacts, for the milestone page's artifact picker.
+   *
+   * Filters `entity_type` explicitly since 0084 made the table polymorphic: without it this
+   * would also return portfolio items, which that picker cannot render or save back.
+   */
   async getArtifactIds(milestoneId: string): Promise<string[]> {
     const rows = await this.db
-      .select({ workItemId: milestoneArtifacts.workItemId })
+      .select({ entityId: milestoneArtifacts.entityId })
       .from(milestoneArtifacts)
-      .where(eq(milestoneArtifacts.milestoneId, milestoneId));
-    return rows.map((r) => r.workItemId);
+      .where(
+        and(
+          eq(milestoneArtifacts.milestoneId, milestoneId),
+          eq(milestoneArtifacts.entityType, 'work_item'),
+        ),
+      );
+    return rows.map((r) => r.entityId);
   }
 
+  /**
+   * Replaces the milestone's WORK-ITEM links only. The `entity_type` predicate on the delete
+   * is what stops this picker from silently dropping the portfolio items assigned to the same
+   * milestone from the Feature/Epic detail rail.
+   */
   async setArtifactLinks(milestoneId: string, workItemIds: string[]): Promise<void> {
-    await this.db.delete(milestoneArtifacts).where(eq(milestoneArtifacts.milestoneId, milestoneId));
+    await this.db
+      .delete(milestoneArtifacts)
+      .where(
+        and(
+          eq(milestoneArtifacts.milestoneId, milestoneId),
+          eq(milestoneArtifacts.entityType, 'work_item'),
+        ),
+      );
     if (workItemIds.length > 0) {
-      await this.db
-        .insert(milestoneArtifacts)
-        .values(workItemIds.map((workItemId) => ({ milestoneId, workItemId })));
+      await this.db.insert(milestoneArtifacts).values(
+        workItemIds.map((entityId) => ({
+          milestoneId,
+          entityType: 'work_item' as const,
+          entityId,
+        })),
+      );
     }
   }
 

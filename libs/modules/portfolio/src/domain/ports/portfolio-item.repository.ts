@@ -46,6 +46,40 @@ export interface IPortfolioItemRepository {
   /** Active child Features of an Epic, for the list preview and the Children tab. */
   listChildFeatures(epicId: string, workspaceId: string): Promise<PortfolioItemView[]>;
 
+  /** Milestones assigned to this item, for the detail rail's multi-select. */
+  listMilestones(id: string, workspaceId: string): Promise<{ id: string; name: string }[]>;
+
+  /** Replaces this item's Milestone assignments wholesale, in one transaction. */
+  setMilestones(id: string, milestoneIds: string[]): Promise<void>;
+
+  /**
+   * The subset of `milestoneIds` belonging to `projectId`. Serves both the write-time scope
+   * check (compare lengths) and the project-move reconciliation (keep the survivors).
+   */
+  filterMilestonesInProject(
+    milestoneIds: string[],
+    projectId: string,
+    workspaceId: string,
+  ): Promise<string[]>;
+
+  /**
+   * The linked-leaf rollup split by child type, for the detail page's accepted-children
+   * panel. Detail-only: it is one grouped query, deliberately kept off the list path where
+   * the per-row scalar subqueries live.
+   */
+  childRollupByType(
+    id: string,
+    workspaceId: string,
+  ): Promise<
+    {
+      type: 'story' | 'defect';
+      points: number;
+      count: number;
+      acceptedPoints: number;
+      acceptedCount: number;
+    }[]
+  >;
+
   /** Several items by id, for validating rank neighbours and parent references. */
   findByIds(ids: string[], workspaceId: string): Promise<PortfolioItem[]>;
 
@@ -109,6 +143,11 @@ export interface PortfolioChildItem {
   title: string;
   scheduleState: string;
   storyPoints: string | null;
+  /** IDs as well as names, so a grid can bind an editable picker to the child. */
+  projectId: string;
+  releaseId: string | null;
+  teamId: string | null;
+  assigneeId: string | null;
   releaseName: string | null;
   projectName: string | null;
   teamName: string | null;

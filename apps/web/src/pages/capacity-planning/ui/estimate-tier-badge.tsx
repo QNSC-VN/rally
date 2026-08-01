@@ -92,7 +92,7 @@ export function EstimateTierIcon({
   // reader, and the tier is the fact the row is reporting. FULL tier names, not the badge's
   // 5-character abbreviations — this string is read aloud, and "Alloc" is not a word.
   const label = rows
-    .map((r) => `${t(`tiers.${r.key}Full`)} ${r.value ?? '—'}${r.inForce ? ' ✓' : ''}`)
+    .map((r) => `${t(`tiers.${r.key}Full`)} ${r.value ?? '--'}${r.inForce ? ' ✓' : ''}`)
     .join(', ')
 
   const glyph = (
@@ -121,7 +121,7 @@ export function EstimateTierIcon({
                 {t(`tiers.${key}Full`)}
               </span>
               <span className={inForce ? 'tabular-nums' : 'tabular-nums opacity-40'}>
-                {value ?? '—'}
+                {value ?? '--'}
               </span>
               {/* Rally's tick marks the one in force. */}
               <Check

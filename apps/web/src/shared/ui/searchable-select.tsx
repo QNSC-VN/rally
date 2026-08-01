@@ -53,6 +53,24 @@ interface BaseProps {
    */
   variant?: 'cell' | 'field'
   /**
+   * Shrinks the `field` variant to inline-strip proportions: `text-ui-xs` and tight padding
+   * instead of the full form-input box.
+   *
+   * For a select that sits INSIDE another control's frame rather than in a form column —
+   * Rally's "Total Accepted Children" unit picker is the case. Without it the select is
+   * taller than the strip that contains it and drags the whole row's height with it.
+   */
+  dense?: boolean
+  /**
+   * Let the selected label WRAP instead of truncating.
+   *
+   * Off by default, because most cell selects hold a short bounded value (a state, a
+   * team, a person) where one line is the right answer and a growing row is noise. Opt in
+   * for a column whose value is a name that can genuinely be long — Project is the case
+   * this exists for, and Rally wraps that column too.
+   */
+  wrapLabel?: boolean
+  /**
    * Optional custom content for the trigger, rendered in place of the default
    * icon + label (the chevron and popover behaviour are preserved). Use for
    * fields that need a special at-rest display — e.g. Schedule State's
@@ -119,9 +137,11 @@ export function SearchableSelect(props: SearchableSelectProps) {
     options,
     readOnly = false,
     ariaLabel = 'Select',
-    placeholder = '—',
+    placeholder = '--',
     searchPlaceholder = 'Search',
     variant = 'cell',
+    dense = false,
+    wrapLabel = false,
     triggerContent,
     className,
   } = props
@@ -261,7 +281,10 @@ export function SearchableSelect(props: SearchableSelectProps) {
           className={cn(
             'group w-full text-left text-foreground',
             variant === 'field'
-              ? `rounded border border-input bg-white px-3 py-2 text-ui-md transition-colors hover:border-accent-border-active focus:outline-none ${FIELD_FOCUS_VISIBLE}`
+              ? cn(
+                  `rounded border border-input bg-white transition-colors hover:border-accent-border-active focus:outline-none ${FIELD_FOCUS_VISIBLE}`,
+                  dense ? 'px-1.5 py-0.5 text-ui-xs' : 'px-3 py-2 text-ui-md',
+                )
               : 'inline-edit-cell px-2 py-1.5 text-ui-sm',
             className,
           )}
@@ -272,9 +295,16 @@ export function SearchableSelect(props: SearchableSelectProps) {
             ) : showChips ? (
               chips
             ) : (
-              <span className="flex min-w-0 items-center gap-1.5">
+              <span
+                className={cn('flex min-w-0 gap-1.5', wrapLabel ? 'items-start' : 'items-center')}
+              >
                 {first?.icon}
-                <span className={cn('truncate', !hasSelection && 'text-foreground-subtle')}>
+                <span
+                  className={cn(
+                    wrapLabel ? 'break-words whitespace-normal' : 'truncate',
+                    !hasSelection && 'text-foreground-subtle',
+                  )}
+                >
                   {display}
                 </span>
                 {extraCount > 0 && (
@@ -284,7 +314,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
             )}
             {/* Chevron: always shown in `field`; hover/open only in `cell` (plain text at rest). */}
             <ChevronDown
-              size={variant === 'field' ? 14 : 13}
+              size={variant === 'field' && !dense ? 14 : 13}
               className={cn(
                 'shrink-0 text-muted-foreground',
                 variant === 'cell' &&

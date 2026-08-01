@@ -468,7 +468,7 @@ export function AppShell() {
                     <div className="truncate text-ui-lg font-semibold text-foreground">
                       {memberships.find((m) => m.workspaceId === activeWorkspaceId)?.name ??
                         workspace?.workspaceName ??
-                        '—'}
+                        '--'}
                     </div>
                   </div>
                   <span className="rounded-sm bg-success-bg px-1.5 py-0.5 text-ui-2xs font-semibold text-success">

@@ -20,12 +20,21 @@ export function ActionMenu({
   ariaLabel,
   children,
   onDark = false,
+  icon,
+  iconSize = 15,
 }: {
   ariaLabel: string
   /** `ActionMenuItem`s. Rendered in a single column; the menu closes on any click inside. */
   children: ReactNode
   /** Trigger sits on the dark detail header, where a muted-grey glyph is invisible. */
   onDark?: boolean
+  /**
+   * Overrides the `⋮` glyph. Rally uses a GEAR where the menu holds display preferences
+   * rather than verbs — a kebab promises "things this does", a gear promises "how this
+   * looks", and they are not interchangeable to a reader.
+   */
+  icon?: ReactNode
+  iconSize?: number
 }) {
   const [open, setOpen] = useState(false)
 
@@ -42,7 +51,7 @@ export function ActionMenu({
               : 'text-muted-foreground hover:bg-surface-subtle',
           )}
         >
-          <MoreVertical size={15} />
+          {icon ?? <MoreVertical size={iconSize} />}
         </button>
       </PopoverPrimitive.Trigger>
       <AppPopoverContent

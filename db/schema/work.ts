@@ -1,7 +1,7 @@
 /**
  * work schema — projects, work_items, workflow_statuses, workflow_transitions,
  *               iterations, releases, project_counters, iteration_daily_snapshots,
- *               comments, work_item_attachments, custom_field_defs,
+ *               comments, attachments, custom_field_defs,
  *               time_logs, work_item_watchers
  * Canonical DDL: 05_Architecture/DATABASE_SCHEMA.md §9
  */
@@ -51,6 +51,7 @@ import {
   portfolioItemTypeEnum,
   portfolioItemStateEnum,
   preliminaryEstimateSizeEnum,
+  entityRefTypeEnum,
   capacityPlanStatusEnum,
   capacityPlanUnitEnum,
 } from './enums';
@@ -369,16 +370,27 @@ export const portfolioItems = workSchema.table(
     type: portfolioItemTypeEnum('type').notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
+    // The same pair `work_items` carries, so the Detail page can offer the identical
+    // Notes / Release Notes editors (0080). Nullable: an empty rich-text field is absent.
+    notes: text('notes'),
+    releaseNotes: text('release_notes'),
     state: portfolioItemStateEnum('state').notNull().default('no_entry'),
     preliminaryEstimate: preliminaryEstimateSizeEnum('preliminary_estimate')
       .notNull()
       .default('no_entry'),
-    // Optional TOP-DOWN forecasts. Feed only the two "Estimated Progress by…"
-    // indicators; when null the Preliminary Estimate mapping supplies the fallback.
+    // TOP-DOWN forecasts. Feed only the two "Estimated Progress by…" indicators.
     // Deliberately not a "Plan Estimate": a portfolio item never stores the sum of
     // its children, which is what makes the rollups authoritative.
-    refinedEstimate: numeric('refined_estimate', { precision: 8, scale: 2 }),
-    refinedItemCountEstimate: integer('refined_item_count_estimate'),
+    //
+    // NOT NULL DEFAULT 0, unlike every other typed estimate in this schema, and unlike
+    // what the general rule below would suggest. Real Rally shows these as 0 rather than
+    // blank and lets a planner type 0, so 0 — not NULL — is the absent state here (0081).
+    // Nothing downstream needed changing: the tier chain already selects the refined
+    // forecast only `if > 0`, so 0 falls through to the Preliminary Estimate mapping,
+    // which is the same fallback NULL used to trigger. One representation of "no
+    // forecast" instead of two.
+    refinedEstimate: numeric('refined_estimate', { precision: 8, scale: 2 }).notNull().default('0'),
+    refinedItemCountEstimate: integer('refined_item_count_estimate').notNull().default(0),
     // Feature → Epic. Null for an Epic (no deeper hierarchy: Theme is out of scope).
     parentId: uuid('parent_id'),
     // Feature only. Epic is project-level and has no Team (BA spec §11.1).
@@ -563,7 +575,10 @@ export const comments = workSchema.table(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id').notNull(),
-    workItemId: uuid('work_item_id').notNull(),
+    // Polymorphic subject (0082), the same shape `activity_logs` uses. Replaced a plain
+    // `work_item_id`, which was the only reason a portfolio item could not be discussed.
+    entityType: entityRefTypeEnum('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
     authorId: uuid('author_id').notNull(),
     body: text('body').notNull(),
     parentId: uuid('parent_id'), // NULL = top-level, non-null = threaded reply
@@ -575,13 +590,14 @@ export const comments = workSchema.table(
   },
   (t) => ({
     workspaceIdx: index('ix_comments_workspace').on(t.workspaceId),
-    workItemIdx: index('ix_comments_work_item').on(t.workItemId),
+    // Every read is "the comments on THIS subject", so the pair is the access path.
+    entityIdx: index('ix_comments_entity').on(t.entityType, t.entityId),
     authorIdx: index('ix_comments_author').on(t.authorId),
     parentIdx: index('ix_comments_parent').on(t.parentId),
   }),
 );
 
-// ── work_item_attachments (link: work_items ←→ storage.files) ──────────────
+// ── attachments (link: any owning entity ←→ storage.files) ─────────────────
 //
 // Replaces the old work.attachments table, which carried the blob metadata AND
 // hard-coded work_item_id NOT NULL — meaning every new upload surface needed its
@@ -592,12 +608,20 @@ export const comments = workSchema.table(
 // link rows, and the now-unreferenced storage.files rows are swept by the worker
 // reaper (which is also what deletes the underlying objects).
 
-export const workItemAttachments = workSchema.table(
-  'work_item_attachments',
+/**
+ * File attachments on any entity that can own them (migration 0083).
+ *
+ * Polymorphic on `(entity_type, entity_id)` like `comments` and `activity_logs`, and sharing
+ * `comments`' `entity_ref_type` enum — that enum is the list of things that own child
+ * records. There is deliberately no FK on `entity_id`: it cannot point at two tables, which
+ * is the standing cost of this shape here and in `activity_logs`. Deletion is handled by the
+ * owning service, and the reaper collects blobs no row references.
+ */
+export const attachments = workSchema.table(
+  'attachments',
   {
-    workItemId: uuid('work_item_id')
-      .notNull()
-      .references(() => workItems.id, { onDelete: 'cascade' }),
+    entityType: entityRefTypeEnum('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
     fileId: uuid('file_id')
       .notNull()
       .references(() => files.id, { onDelete: 'cascade' }),
@@ -606,11 +630,12 @@ export const workItemAttachments = workSchema.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.workItemId, t.fileId] }),
-    workItemIdx: index('ix_wia_work_item').on(t.workItemId),
+    // Natural key: the same file attached twice to one entity is still one attachment.
+    pk: primaryKey({ columns: [t.entityType, t.entityId, t.fileId] }),
+    entityIdx: index('ix_attachments_entity').on(t.entityType, t.entityId),
     // Drives the "is this file still referenced?" check in the reaper.
-    fileIdx: index('ix_wia_file').on(t.fileId),
-    workspaceIdx: index('ix_wia_workspace').on(t.workspaceId),
+    fileIdx: index('ix_attachments_file').on(t.fileId),
+    workspaceIdx: index('ix_attachments_workspace').on(t.workspaceId),
   }),
 );
 
@@ -984,19 +1009,32 @@ export const milestoneTeams = workSchema.table(
 );
 
 // ── milestone_artifacts (P3.3 — US/DE assigned to milestone) ──────────
+/**
+ * What a milestone tracks (migration 0084).
+ *
+ * Polymorphic on `(entity_type, entity_id)` like `comments`, `attachments` and
+ * `activity_logs`, sharing the same `entity_ref_type` enum: a milestone can be assigned to a
+ * work item OR to a portfolio item (SRS §5.1 and §11.4 both require the selector).
+ *
+ * The table name did NOT change when the column did — "artifact" is already the
+ * entity-agnostic word, and Rally itself calls the things a milestone tracks its artifacts.
+ *
+ * No FK on `entity_id`: it cannot point at two tables, which is the standing cost of this
+ * shape here and in `activity_logs`. The owning service handles cleanup.
+ */
 export const milestoneArtifacts = workSchema.table(
   'milestone_artifacts',
   {
     milestoneId: uuid('milestone_id').notNull(),
-    workItemId: uuid('work_item_id')
-      .notNull()
-      .references(() => workItems.id, { onDelete: 'cascade' }),
+    entityType: entityRefTypeEnum('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
     assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.milestoneId, t.workItemId] }),
+    // Natural key: assigning one milestone to one item twice is still one assignment.
+    pk: primaryKey({ columns: [t.milestoneId, t.entityType, t.entityId] }),
     milestoneIdx: index('ix_ma_milestone').on(t.milestoneId),
-    workItemIdx: index('ix_ma_work_item').on(t.workItemId),
+    entityIdx: index('ix_ma_entity').on(t.entityType, t.entityId),
   }),
 );
 

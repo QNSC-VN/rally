@@ -45,6 +45,33 @@ const RELEASE_TRANSITIONS: Record<ReleaseStatus, ReleaseStatus[]> = {
   accepted: ['active', 'accepted'],
 };
 
+/**
+ * A release's Story/Defect roll-up. `progressPercent` is null when it cannot be computed
+ * — see `computeTaskRollups`.
+ */
+export interface TaskRollup {
+  totalItems: number;
+  completedItems: number;
+  acceptedItems: number;
+  toDoItems: number;
+  totalPoints: number;
+  completedPoints: number;
+  toDoPoints: number;
+  progressPercent: number | null;
+}
+
+/** A release with no linked Story/Defect at all: zero counts, and no computable percent. */
+const EMPTY_TASK_ROLLUP: TaskRollup = {
+  totalItems: 0,
+  completedItems: 0,
+  acceptedItems: 0,
+  toDoItems: 0,
+  totalPoints: 0,
+  completedPoints: 0,
+  toDoPoints: 0,
+  progressPercent: null,
+};
+
 @Injectable()
 export class ReleasesService {
   private readonly logger = new Logger(ReleasesService.name);
@@ -89,11 +116,80 @@ export class ReleasesService {
   ): Promise<PagedResult<Release & { taskEstimate: number }>> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
     const page = await this.releaseRepo.listByProject(projectId, actor.workspaceId, args);
-    const estimates = await this.computeTaskEstimates(page.data.map((r) => r.id));
+    const ids = page.data.map((r) => r.id);
+    // Both roll-ups are batched over the whole page. `taskRollup` used to be built only
+    // in the detail path, so every list consumer saw `undefined` — the Reports "Release
+    // Progress" widget read `?? 0` off it and painted EVERY release at 0%, including
+    // finished ones. One extra grouped query is the fix; hiding it behind a default was
+    // the bug.
+    const [estimates, rollups] = await Promise.all([
+      this.computeTaskEstimates(ids),
+      this.computeTaskRollups(ids),
+    ]);
     return {
       ...page,
-      data: page.data.map((r) => ({ ...r, taskEstimate: estimates.get(r.id) ?? 0 })),
+      data: page.data.map((r) => ({
+        ...r,
+        taskEstimate: estimates.get(r.id) ?? 0,
+        taskRollup: rollups.get(r.id) ?? EMPTY_TASK_ROLLUP,
+      })),
     };
+  }
+
+  /**
+   * Story/Defect roll-up per release, batched over a page.
+   *
+   * `progressPercent` is NULLABLE, and that is the point: `null` means "not computable"
+   * — nothing linked, or nothing estimated and not everything finished. Returning 0 there
+   * would state that none of the work is done, which is a completely different claim from
+   * "we cannot tell", and it is what made an unestimated release render as a confident 0%.
+   * The all-items-done shortcut is kept, because a release whose every item is accepted IS
+   * 100% regardless of whether anyone estimated it.
+   */
+  private async computeTaskRollups(releaseIds: string[]): Promise<Map<string, TaskRollup>> {
+    if (releaseIds.length === 0) return new Map();
+    const rows = await this.db
+      .select({
+        releaseId: workItems.releaseId,
+        totalItems: sql<number>`COUNT(*)::int`,
+        completedItems: sql<number>`COUNT(*) FILTER (WHERE ${workItems.scheduleState} IN (${completedScheduleStatesSql()}))::int`,
+        acceptedItems: sql<number>`COUNT(*) FILTER (WHERE ${workItems.scheduleState} IN (${acceptedScheduleStatesSql()}))::int`,
+        totalPoints: sql<number>`COALESCE(SUM(${workItems.storyPoints}), 0)`,
+        completedPoints: sql<number>`COALESCE(SUM(${workItems.storyPoints}) FILTER (WHERE ${workItems.scheduleState} IN (${completedScheduleStatesSql()})), 0)`,
+      })
+      .from(workItems)
+      .where(
+        and(
+          inArray(workItems.releaseId, releaseIds),
+          isNull(workItems.deletedAt),
+          sql`${workItems.type} IN ('story', 'defect')`,
+        ),
+      )
+      .groupBy(workItems.releaseId);
+
+    const map = new Map<string, TaskRollup>();
+    for (const r of rows) {
+      if (!r.releaseId) continue;
+      const totalPoints = Number(r.totalPoints);
+      const completedPoints = Number(r.completedPoints);
+      const allItemsDone = r.totalItems > 0 && r.completedItems === r.totalItems;
+      map.set(r.releaseId, {
+        totalItems: r.totalItems,
+        completedItems: r.completedItems,
+        acceptedItems: r.acceptedItems,
+        toDoItems: r.totalItems - r.completedItems,
+        totalPoints,
+        completedPoints,
+        toDoPoints: totalPoints - completedPoints,
+        progressPercent:
+          totalPoints > 0
+            ? Math.min(Math.round((completedPoints / totalPoints) * 100), 100)
+            : allItemsDone
+              ? 100
+              : null,
+      });
+    }
+    return map;
   }
 
   /**
@@ -298,51 +394,15 @@ export class ReleasesService {
   async getReleaseDetail(actor: JwtPayload, id: string) {
     const release = await this.getReleaseForView(actor, id);
 
-    // Task rollup: count of stories/defects linked to this release
-    const stats = await this.db
-      .select({
-        totalItems: sql<number>`COUNT(*)`,
-        completedItems: sql<number>`COUNT(*) FILTER (WHERE schedule_state IN (${completedScheduleStatesSql()}))`,
-        acceptedItems: sql<number>`COUNT(*) FILTER (WHERE schedule_state IN (${acceptedScheduleStatesSql()}))`,
-        totalPoints: sql<number>`COALESCE(SUM(CASE WHEN story_points IS NOT NULL THEN story_points ELSE 0 END), 0)`,
-        completedPoints: sql<number>`COALESCE(SUM(CASE WHEN schedule_state IN (${completedScheduleStatesSql()}) THEN story_points ELSE 0 END), 0)`,
-      })
-      .from(workItems)
-      .where(
-        and(
-          eq(workItems.releaseId, id),
-          isNull(workItems.deletedAt),
-          sql`type IN ('story', 'defect')`,
-        ),
-      );
-
-    const s = stats[0];
-    const totalPoints = Number(s.totalPoints);
-    const completedPoints = Number(s.completedPoints);
-    const toDoPoints = totalPoints - completedPoints;
-    const toDoItems = s.totalItems - s.completedItems;
-    const progressPercent =
-      totalPoints > 0
-        ? Math.min(Math.round((completedPoints / totalPoints) * 100), 100)
-        : s.totalItems > 0 && s.completedItems === s.totalItems
-          ? 100
-          : 0;
+    const rollups = await this.computeTaskRollups([id]);
+    const rollup = rollups.get(id) ?? EMPTY_TASK_ROLLUP;
 
     const estimates = await this.computeTaskEstimates([id]);
 
     return {
       ...release,
       taskEstimate: estimates.get(id) ?? 0,
-      taskRollup: {
-        totalItems: s.totalItems,
-        completedItems: s.completedItems,
-        acceptedItems: s.acceptedItems,
-        toDoItems,
-        totalPoints,
-        completedPoints,
-        toDoPoints,
-        progressPercent,
-      },
+      taskRollup: rollup,
     };
   }
 

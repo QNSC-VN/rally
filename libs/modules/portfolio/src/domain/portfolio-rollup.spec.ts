@@ -89,6 +89,22 @@ describe('computePortfolioProgress', () => {
       expect(p.estimatedProgressByPoints).toBe(0.25); // 5/20 refined
       expect(p.estimatedProgressByCount).toBe(1); // 3/3 preliminary
     });
+
+    it('treats a refined 0 as NOT a forecast and falls back to Preliminary', () => {
+      // The tier rule is `refined > 0`, not `refined !== null` — stated that way in the
+      // Capacity Planning SRS, the dev handoff and the UI catalog, and the mockup renders
+      // a 0 as an em-dash. Since migration 0081 the column is NOT NULL DEFAULT 0, so 0 is
+      // the value a real "not forecast" row carries and this path is the NORMAL one, not a
+      // defensive edge. `resolveEstimate` in this same file uses the same comparison.
+      const p = computePortfolioProgress(
+        rollup({ acceptedPoints: 2, acceptedCount: 3 }),
+        forecast({ refinedPoints: 0, refinedCount: 0 }),
+      );
+      // Preliminary is 5 points / 3 items. A `??` fallback would have divided by 0 here
+      // and blanked both meters.
+      expect(p.estimatedProgressByPoints).toBe(0.4); // 2/5 preliminary
+      expect(p.estimatedProgressByCount).toBe(1); // 3/3 preliminary
+    });
   });
 
   describe('null is not zero', () => {

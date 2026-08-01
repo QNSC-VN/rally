@@ -293,27 +293,6 @@ export const TimeLogQuerySchema = z.object({
 
 export class TimeLogQueryDto extends createZodDto(TimeLogQuerySchema) {}
 
-// ── Attachment ────────────────────────────────────────────────────────────────
-
-export const PresignAttachmentSchema = z.object({
-  filename: z.string().min(1).max(500),
-  mimeType: z.string().min(1).max(255),
-  sizeBytes: z
-    .number()
-    .int()
-    .positive()
-    .max(25 * 1024 * 1024),
-  /**
-   * Base64 SHA-256 of the file the client is about to upload. Bound into the
-   * presigned PUT signature so the bucket rejects any other body — this is what
-   * makes the upload tamper-evident rather than merely size-checked.
-   * Always 44 chars: 32 bytes base64-encoded, one '=' of padding.
-   */
-  checksumSha256: z.string().regex(/^[A-Za-z0-9+/]{43}=$/, 'must be a base64 SHA-256 digest'),
-});
-
-export class PresignAttachmentDto extends createZodDto(PresignAttachmentSchema) {}
-
 // ── Relations (F6 — work-item linking) ────────────────────────────────────────
 
 export const CreateRelationSchema = z.object({

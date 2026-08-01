@@ -109,15 +109,22 @@ describe('PercentDoneBar', () => {
     expect(container.querySelector('[title]')?.getAttribute('title')).toContain('dates are missing')
   })
 
-  it('still shows the placeholder when nothing is measurable', () => {
-    // No linked work means no denominator; a null ratio must stay a dash rather than
-    // becoming a coloured 0% bar that claims the status applies to real progress.
+  it('renders 0%, not a dash, when there is no denominator', () => {
+    // Reversed deliberately. This used to assert a `--` placeholder, on the reasoning that a
+    // null ratio should not become a coloured 0% bar. Both the spec and real Rally disagree:
+    // SRS.md:192 ("a Feature with no linked Story/Defect shows 0% progress"), HANDOFF:216
+    // ("zero denominator renders 0%, never NaN or infinity"), and Rally's own accepted-children
+    // panel reads `Defects: 0% 0/0`.
+    //
+    // The distinction the old behaviour protected is NOT lost: the API still returns null, and
+    // the callout below still names both denominators — which is where Rally puts the data gap.
     const { container } = renderBar(health({ state: 'not_started', indeterminate: 'no_work' }), {
       percentDoneByPlanEstimate: null,
     })
-    expect(fill(container)).toBeNull()
-    expect(container.textContent).toContain('—')
-    // The explanation survives the empty state — it is the only thing on the bar.
+    expect(container.textContent).toContain('0%')
+    expect(container.textContent).not.toContain('--')
+    // The explanation still has to survive — it is the only thing distinguishing this from a
+    // genuine 0-of-40.
     expect(container.querySelector('[title]')?.getAttribute('title')).toContain('no estimated work')
   })
 })

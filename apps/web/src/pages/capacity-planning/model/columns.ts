@@ -126,14 +126,16 @@ export const CAPACITY_TEAM_COLUMNS: ColumnSpec<CapacityPlanTeam, unknown, TeamCo
 ]
 
 export type ItemColKey =
+  | 'marker'
   | 'rank'
   | 'id'
   | 'name'
-  | 'project'
   | 'assignment'
-  | 'complete'
+  | 'project'
+  | 'dependencies'
   | 'rollup'
   | 'estimated'
+  | 'complete'
   | 'actions'
 
 /**
@@ -150,30 +152,96 @@ export type ItemColKey =
  * Three numeric columns rather than one bar: Rally puts no bar on this tab. A Feature has no
  * capacity of its own, so there is no baseline to draw against — the bar on the team grid means
  * "against this team's ceiling", and the same shape here would imply a ceiling that does not exist.
+ *
+ * ORDER is Rally's, left to right: the change marker, Rank, ID, Name, Planned Project Assignment,
+ * Project, Dependencies, then Rollup → Estimated → Complete. The numeric three used to run
+ * Complete-first, which inverted Rally's reading order — total, then what is planned, then what is
+ * done.
+ *
+ * EVERY column that carries a value is sortable, because Rally sorts every one of them here — it even
+ * sorts `+/-`, "to group the added and removed portfolio items together", which is the one sort we
+ * cannot offer until the marker means something. The cutline and the drag grip are defined ONLY in
+ * rank-ascending order, so both disappear under any other sort; `isRankOrder` is the single predicate
+ * for that.
+ *
+ * `marker` and `dependencies` are RESERVED, and deliberately so. The BA's catalog keeps both as
+ * placeholders "for Rally visual parity": the marker is neutral until a publication snapshot exists
+ * to diff against, and Dependencies shows a zero until there is a dependency model to count. A
+ * column that appears later shifts every other one; a column that is present and empty does not.
  */
 export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemColKey>[] = [
-  { key: 'rank', label: 'Rank', defaultWidth: 58, minWidth: 52, align: 'right' },
-  { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 84, locked: true },
+  // Rally's `+/-`: green `+` for a Feature added after publication, red `-` for one removed. Empty
+  // until a plan carries a published snapshot to diff against — the BA calls it "neutral before
+  // Publish", which is every plan today.
+  { key: 'marker', label: '', defaultWidth: 24, minWidth: 24, align: 'center' },
+  { key: 'rank', label: 'Rank', defaultWidth: 58, minWidth: 52, align: 'right', sortCol: 'rank' },
+  { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 84, locked: true, sortCol: 'itemKey' },
   // Sized for the ~1010px this tab has once the Team Capacity rail takes its 256: `grow` spends
   // surplus but never claws width back, so defaults that overflow simply hide the last column.
-  { key: 'name', label: 'Name', defaultWidth: 200, minWidth: 140, locked: true, grow: true },
-  { key: 'project', label: 'Project', defaultWidth: 120, minWidth: 90 },
-  { key: 'assignment', label: 'Planned Team Assignment', defaultWidth: 160, minWidth: 130 },
-  { key: 'complete', label: 'Complete', defaultWidth: 88, minWidth: 74, align: 'right' },
-  { key: 'rollup', label: 'Rollup', defaultWidth: 82, minWidth: 70, align: 'right' },
-  { key: 'estimated', label: 'Estimated', defaultWidth: 96, minWidth: 84, align: 'right' },
-  // Rally's per-item menu lives here — "Remove Only" takes a Feature off the plan. This is the ONLY
-  // place a Feature leaves a plan: the team sub-table has no trash, because removing a Feature is a
-  // decision about the plan, not about one team's slice of it.
+  {
+    key: 'name',
+    label: 'Name',
+    defaultWidth: 180,
+    minWidth: 140,
+    locked: true,
+    grow: true,
+    sortCol: 'name',
+  },
+  {
+    key: 'assignment',
+    label: 'Planned Team Assignment',
+    defaultWidth: 160,
+    minWidth: 130,
+    sortCol: 'assignment',
+  },
+  { key: 'project', label: 'Project', defaultWidth: 110, minWidth: 90, sortCol: 'project' },
+  // Placeholder, per the BA: "It shows `0` until dependency modelling is added."
+  {
+    key: 'dependencies',
+    label: 'Dependencies',
+    defaultWidth: 96,
+    minWidth: 80,
+    align: 'right',
+    sortCol: 'dependencies',
+  },
+  {
+    key: 'rollup',
+    label: 'Rollup',
+    defaultWidth: 82,
+    minWidth: 70,
+    align: 'right',
+    sortCol: 'rollup',
+  },
+  {
+    key: 'estimated',
+    label: 'Estimated',
+    defaultWidth: 96,
+    minWidth: 84,
+    align: 'right',
+    sortCol: 'estimated',
+  },
+  {
+    key: 'complete',
+    label: 'Complete',
+    defaultWidth: 88,
+    minWidth: 74,
+    align: 'right',
+    sortCol: 'complete',
+  },
+  // Rally's per-item menu lives here — `Remove From Plan` takes a Feature off the plan. This is the
+  // ONLY place a Feature leaves a plan: the team sub-table has no trash, because removing a Feature
+  // is a decision about the plan, not about one team's slice of it.
   { key: 'actions', label: '', defaultWidth: 44, minWidth: 44, align: 'center' },
 ]
 
 export type AllocColKey =
+  | 'actions'
   | 'rank'
   | 'id'
   | 'name'
-  | 'allocation'
   | 'state'
+  | 'allocation'
+  | 'dependencies'
   | 'progress'
   | 'complete'
   | 'rollup'
@@ -189,10 +257,13 @@ export type AllocColKey =
  * ceiling this Feature was promised. Reusing the parent's headers made a child's allocation sit
  * under a header that said "Capacity", which is a different number.
  *
- * Column set follows Rally's own, left to right: `Rank`, `ID`, `Name`, `Allocation`, `State`, the
- * bar, `Complete`, `Rollup`, `Estimated`, then the primary-assignment star. `Rank` and `State`
- * belong to the FEATURE, not to the allocation — a planner reading one team's list still wants the
- * plan-wide priority and where the Feature has got to.
+ * Column set follows the BA's catalog for this table, left to right: the row's gear, `Rank`, `ID`,
+ * `Name`, `State`, `Allocation`, `Dependencies`, the bar, `Complete`, `Rollup`, `Estimated`. The
+ * gear LEADS here — "Draft-only gear icon at the start of the row, and the only place this row's
+ * allocation is changed" — which is the one place it does not sit last, because on this table it is
+ * the row's subject rather than an afterthought. `Rank` and `State` belong to the FEATURE, not to the
+ * allocation: a planner reading one team's list still wants the plan-wide priority and where the
+ * Feature has got to.
  *
  * Widths sum to ~1030px so the nested table fits inside the indented container without its own
  * horizontal scrollbar: a scrollbar inside a scrollable page reads as a broken layout, and the
@@ -202,18 +273,19 @@ export type AllocColKey =
  * and scrolls exactly like the one above it.
  */
 export const CAPACITY_ALLOCATION_COLUMNS: ColumnSpec<CapacityAllocation, unknown, AllocColKey>[] = [
+  { key: 'actions', label: '', defaultWidth: 40, minWidth: 40, align: 'center' },
   { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 52, align: 'right' },
   { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 80, locked: true },
-  { key: 'name', label: 'Name', defaultWidth: 220, minWidth: 130, locked: true, grow: true },
-  // Rally's own column name for a team's promised slice of a Feature. Editable in place.
-  { key: 'allocation', label: 'Allocation', defaultWidth: 92, minWidth: 80, align: 'right' },
-  { key: 'state', label: 'State', defaultWidth: 130, minWidth: 90 },
+  { key: 'name', label: 'Name', defaultWidth: 176, minWidth: 130, locked: true, grow: true },
+  { key: 'state', label: 'State', defaultWidth: 120, minWidth: 90 },
+  // Where this row's work came FROM: `—` on the Feature's owning team, `From {owner}` on any other.
+  { key: 'allocation', label: 'Allocation', defaultWidth: 130, minWidth: 90 },
+  // Placeholder, per the BA: "every row shows `—`" until there is a dependency model.
+  { key: 'dependencies', label: 'Dependencies', defaultWidth: 92, minWidth: 80, align: 'right' },
   { key: 'progress', label: '', defaultWidth: 130, minWidth: 100 },
   { key: 'complete', label: 'Complete', defaultWidth: 86, minWidth: 72, align: 'right' },
   { key: 'rollup', label: 'Rollup', defaultWidth: 80, minWidth: 68, align: 'right' },
   { key: 'estimated', label: 'Estimated', defaultWidth: 86, minWidth: 72, align: 'right' },
-  // Rally ends the row with the ESTIMATE glyph — which tier the Estimated figure came from. There
-  // is no delete here: Rally removes a Feature from a plan through the item's own menu on the
-  // Features tab ("Remove Only"), not with a trash can inside a team's list.
+  // The ESTIMATE glyph — which tier the Estimated figure came from.
   { key: 'tier', label: '', defaultWidth: 40, minWidth: 40, align: 'center' },
 ]

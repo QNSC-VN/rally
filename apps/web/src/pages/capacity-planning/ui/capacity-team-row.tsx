@@ -66,11 +66,17 @@ export function CapacityTeamRow({
   const { t } = useTranslation('capacity')
   const warningText = useCapacityWarningText()
   const warnings = warningText(team.metrics.warnings)
-  /** Share of THIS team's capacity, or null when it has entered none. */
+  /**
+   * Share of THIS team's capacity, or null when it has entered none.
+   *
+   * Floored, as Rally floors: "the percentages shown are rounded down to the nearest whole number".
+   * The same rule lives in `pctOfCapacity` for the plan-wide figures — this row divides by the TEAM's
+   * ceiling rather than the plan's, which is why it does the arithmetic itself.
+   */
   const pctOf = (value: number) =>
     team.metrics.capacity === null || team.metrics.capacity <= 0
       ? null
-      : Math.round((value / team.metrics.capacity) * 100)
+      : Math.floor((value / team.metrics.capacity) * 100)
   const setCapacity = useSetCapacity()
 
   function commitCapacity(raw: string) {
@@ -111,8 +117,11 @@ export function CapacityTeamRow({
               : t('row.expandFeatures', { team: team.teamName ?? '' })
           }
         />
-        <span className="truncate text-foreground" title={team.teamName ?? undefined}>
-          {team.teamName ?? '—'}
+        <span
+          className="break-words whitespace-normal text-foreground"
+          title={team.teamName ?? undefined}
+        >
+          {team.teamName ?? '--'}
         </span>
       </div>
 

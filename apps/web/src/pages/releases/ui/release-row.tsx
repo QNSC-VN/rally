@@ -136,7 +136,7 @@ export function ReleaseRow({
         className="flex items-center px-2"
         onClick={(e) => e.stopPropagation()}
       >
-        <IdCell type="release" itemKey={release.releaseKey ?? '—'} onOpen={openDetail} />
+        <IdCell type="release" itemKey={release.releaseKey ?? '--'} onOpen={openDetail} />
       </div>
 
       {/* Name — inline-editable (the ID cell is the click-to-open link),
@@ -172,8 +172,8 @@ export function ReleaseRow({
           onCommit={saveTheme}
           ariaLabel="Theme"
           displayValue={
-            <span className="block truncate text-muted-foreground">
-              {stripHtml(release.theme) || '—'}
+            <span className="block break-words whitespace-normal text-muted-foreground">
+              {stripHtml(release.theme) || '--'}
             </span>
           }
           inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-foreground focus:outline-none"
@@ -193,7 +193,7 @@ export function ReleaseRow({
           onCommit={saveVersion}
           ariaLabel="Version"
           displayValue={
-            <span className="block truncate text-muted-foreground">{release.version || '—'}</span>
+            <span className="block break-all text-muted-foreground">{release.version || '--'}</span>
           }
           inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-foreground focus:outline-none"
         />
@@ -233,7 +233,9 @@ export function ReleaseRow({
         className="min-w-0 px-2"
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="block truncate text-muted-foreground">{project?.projectName ?? '—'}</span>
+        <span className="block break-words whitespace-normal text-muted-foreground">
+          {project?.projectName ?? '--'}
+        </span>
       </div>
 
       {/* Planned Velocity — shared InlineEditableCell */}
@@ -250,7 +252,7 @@ export function ReleaseRow({
           ariaLabel="Planned velocity"
           displayValue={
             <span className="block text-right font-mono text-muted-foreground tabular-nums">
-              {release.plannedVelocity ?? '—'}
+              {release.plannedVelocity ?? '--'}
             </span>
           }
           inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"

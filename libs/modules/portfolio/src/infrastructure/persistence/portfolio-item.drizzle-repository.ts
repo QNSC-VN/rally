@@ -9,6 +9,8 @@ import {
   releases,
   teams,
   projects,
+  milestones,
+  milestoneArtifacts,
 } from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
 import {
@@ -83,6 +85,158 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         sql`count(*) filter (where ${workItems.scheduleState} in (${completedScheduleStatesSql()}))`,
       ),
     };
+  }
+
+  /**
+   * The accepted-children rollup SPLIT BY child type, for the detail page's
+   * "Total Accepted Children" panel.
+   *
+   * A separate query rather than eight more columns on `rollupSubqueries()`. Those are
+   * correlated scalar subqueries evaluated per returned row, and the grid returns up to 200
+   * — the panel exists only on the detail page, so the list path must not pay for it. This
+   * is ONE grouped pass over the same linked-leaf predicate.
+   *
+   * The predicate is deliberately identical to `rollupSubqueries()`, including how an Epic
+   * reaches through its child Features to the leaf Stories and Defects. That is what makes
+   * the panel's total agree with Percent Done on the same page; a second definition of
+   * "this item's children" would put two different numbers next to each other.
+   */
+  async childRollupByType(
+    id: string,
+    workspaceId: string,
+  ): Promise<
+    {
+      type: 'story' | 'defect';
+      points: number;
+      count: number;
+      acceptedPoints: number;
+      acceptedCount: number;
+    }[]
+  > {
+    const rows = await this.db
+      .select({
+        type: workItems.type,
+        points: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)`,
+        count: sql<number>`count(*)`,
+        acceptedPoints: sql<number>`coalesce(sum(${workItems.storyPoints}) filter (where ${workItems.scheduleState} in (${acceptedScheduleStatesSql()})), 0)`,
+        acceptedCount: sql<number>`count(*) filter (where ${workItems.scheduleState} in (${acceptedScheduleStatesSql()}))`,
+      })
+      .from(workItems)
+      .where(
+        and(
+          eq(workItems.workspaceId, workspaceId),
+          isNull(workItems.deletedAt),
+          or(
+            eq(workItems.featureId, id),
+            sql`${workItems.featureId} in (
+              select c.id from ${portfolioItems} c
+              where c.parent_id = ${id} and c.archived_at is null
+            )`,
+          ),
+        ),
+      )
+      // No ORDER BY: the caller indexes these by `type` into a fixed
+      // ['story', 'defect'] sequence, so row order here carries no meaning. Sorting by the
+      // grouping key would also read as a partial ordering to the query-ordering ratchet,
+      // which is right to be suspicious — a bare `ORDER BY type` on a NON-grouped query
+      // would be exactly the unstable-pagination bug it exists to catch.
+      .groupBy(workItems.type);
+
+    return rows
+      .filter((r): r is typeof r & { type: 'story' | 'defect' } => r.type !== 'task')
+      .map((r) => ({
+        type: r.type,
+        points: Number(r.points ?? 0),
+        count: Number(r.count ?? 0),
+        acceptedPoints: Number(r.acceptedPoints ?? 0),
+        acceptedCount: Number(r.acceptedCount ?? 0),
+      }));
+  }
+
+  /**
+   * The Milestones assigned to this item, for the detail rail's multi-select (SRS §5.1, §11.4).
+   *
+   * `milestone_artifacts` became polymorphic in 0084, so both columns are matched — an id alone
+   * no longer identifies a subject.
+   */
+  async listMilestones(id: string, workspaceId: string): Promise<{ id: string; name: string }[]> {
+    return (
+      this.db
+        .select({ id: milestones.id, name: milestones.name })
+        .from(milestoneArtifacts)
+        .innerJoin(milestones, eq(milestones.id, milestoneArtifacts.milestoneId))
+        .where(
+          and(
+            eq(milestoneArtifacts.entityType, 'portfolio_item'),
+            eq(milestoneArtifacts.entityId, id),
+            // `milestone_artifacts` carries no workspace_id, so the tenant predicate has to
+            // ride on the joined `milestones` row — otherwise a leaked link id would resolve
+            // a name from another workspace.
+            eq(milestones.workspaceId, workspaceId),
+          ),
+        )
+        // Name is not unique, so id is the tiebreaker that makes the order total.
+        .orderBy(asc(milestones.name), asc(milestones.id))
+    );
+  }
+
+  /**
+   * Replaces this item's Milestone assignments wholesale.
+   *
+   * Delete-then-insert in ONE transaction rather than diffing: the multi-select sends the whole
+   * set, and a partial failure that left the row half-assigned would be worse than either
+   * outcome. The `entity_type` predicate keeps a work item's assignments to the same milestones
+   * untouched.
+   */
+  async setMilestones(id: string, milestoneIds: string[]): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx
+        .delete(milestoneArtifacts)
+        .where(
+          and(
+            eq(milestoneArtifacts.entityType, 'portfolio_item'),
+            eq(milestoneArtifacts.entityId, id),
+          ),
+        );
+      if (milestoneIds.length > 0) {
+        await tx.insert(milestoneArtifacts).values(
+          milestoneIds.map((milestoneId) => ({
+            milestoneId,
+            entityType: 'portfolio_item' as const,
+            entityId: id,
+          })),
+        );
+      }
+    });
+  }
+
+  /**
+   * The SUBSET of `milestoneIds` that belongs to `projectId` — one query serving two callers.
+   *
+   * The write path compares lengths to reject an out-of-project id; the project-move path keeps
+   * what survives and drops the rest. A count could only answer the first question, and adding
+   * a second near-identical query would let the two definitions of "in project" drift.
+   *
+   * Workspace-scoped as well as project-scoped: project ids are not guessable, but matching on
+   * project alone would be one leaked id away from attaching another tenant's milestone.
+   */
+  async filterMilestonesInProject(
+    milestoneIds: string[],
+    projectId: string,
+    workspaceId: string,
+  ): Promise<string[]> {
+    if (milestoneIds.length === 0) return [];
+    const rows = await this.db
+      .select({ id: milestones.id })
+      .from(milestones)
+      .where(
+        and(
+          inArray(milestones.id, milestoneIds),
+          eq(milestones.projectId, projectId),
+          eq(milestones.workspaceId, workspaceId),
+        ),
+      );
+    return rows.map((r) => r.id);
   }
 
   /** Active child Features of an Epic. 0 for a Feature — the hierarchy is two levels. */
@@ -213,6 +367,13 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         scheduleState: workItems.scheduleState,
         storyPoints: workItems.storyPoints,
         rank: workItems.rank,
+        // The IDs, not just the display names. Every one of these joins was already here;
+        // only the names were selected, which left the grid unable to bind a picker to
+        // anything and forced the disclosed Story/Defect rows to be read-only.
+        projectId: workItems.projectId,
+        releaseId: workItems.releaseId,
+        teamId: workItems.teamId,
+        assigneeId: workItems.assigneeId,
         releaseName: releases.name,
         projectName: projects.name,
         teamName: teams.name,
@@ -235,6 +396,10 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       title: r.title,
       scheduleState: r.scheduleState,
       storyPoints: r.storyPoints,
+      projectId: r.projectId,
+      releaseId: r.releaseId,
+      teamId: r.teamId,
+      assigneeId: r.assigneeId,
       releaseName: r.releaseName,
       projectName: r.projectName,
       teamName: r.teamName,
@@ -322,8 +487,10 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         description: input.description ?? null,
         ...(input.state ? { state: input.state } : {}),
         ...(input.preliminaryEstimate ? { preliminaryEstimate: input.preliminaryEstimate } : {}),
-        refinedEstimate: input.refinedEstimate ?? null,
-        refinedItemCountEstimate: input.refinedItemCountEstimate ?? null,
+        // NOT NULL DEFAULT 0 (0081): 0 is the "not forecast" value, so an omitted
+        // forecast is stored as 0 rather than null.
+        refinedEstimate: input.refinedEstimate ?? '0',
+        refinedItemCountEstimate: input.refinedItemCountEstimate ?? 0,
         parentId: input.parentId ?? null,
         teamId: input.teamId ?? null,
         releaseId: input.releaseId ?? null,
@@ -356,6 +523,11 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
 
     assign('name');
     assign('description');
+    assign('notes');
+    assign('releaseNotes');
+    // A project MOVE. Listed here because this `assign` list is explicit: a field absent
+    // from it is silently dropped, so the PATCH would 200 with nothing changed.
+    assign('projectId');
     assign('state');
     assign('preliminaryEstimate');
     assign('refinedEstimate');
@@ -457,6 +629,8 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       type: row.type,
       name: row.name,
       description: row.description,
+      notes: row.notes,
+      releaseNotes: row.releaseNotes,
       state: row.state,
       preliminaryEstimate: row.preliminaryEstimate,
       refinedEstimate: row.refinedEstimate,

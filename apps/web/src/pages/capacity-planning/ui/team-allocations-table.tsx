@@ -32,6 +32,7 @@ export function TeamAllocationsTable({
   rankPositionOf,
   sharingOf,
   onAddFeatures,
+  itemActions,
 }: {
   planId: string
   allocations: CapacityAllocation[]
@@ -48,11 +49,11 @@ export function TeamAllocationsTable({
    */
   rankPositionOf: (portfolioItemId: string) => number | null
   /**
-   * Who else holds this Feature: its owning team when that is not this table's, and the other teams
-   * it was allocated to when this table's team owns it.
+   * Who else holds this Feature: the team carrying its PLAN assignment when that is not this table's,
+   * and the other teams it was allocated to when this table's team holds the assignment.
    *
-   * Resolved by the page from the plan's allocation list — a nested table only sees its own rows, so
-   * it cannot tell whether a Feature is shared.
+   * Resolved by the page — a nested table only sees its own rows, so it cannot tell whether a Feature
+   * is shared, and Rally's `Allocation` cell is entirely about that.
    */
   sharingOf: (portfolioItemId: string) => { owner: string | null; contributors: string[] }
   /**
@@ -65,6 +66,23 @@ export function TeamAllocationsTable({
    * Omitted for a reader who cannot manage the plan, which is also how the row hides its editors.
    */
   onAddFeatures?: () => void
+  /**
+   * Rally's per-item gear for these rows, resolved by the page.
+   *
+   * A resolver rather than three callbacks: the verbs act on a Feature, and the page already owns
+   * the handlers the Features tab uses — passing them per row here keeps ONE definition of what
+   * `Remove From Plan` does instead of a second copy for the nested table. Undefined means the plan
+   * is read-only and no gear is drawn.
+   */
+  itemActions?: (allocation: CapacityAllocation) => {
+    hasTeams: boolean
+    onAllocate?: () => void
+    onMove?: () => void
+    onMoveUp?: () => void
+    onMoveDown?: () => void
+    onUnassign?: () => void
+    onRemove?: () => void
+  }
 }) {
   const { t } = useTranslation('capacity')
   const table = useDataTable<CapacityAllocation, unknown, AllocColKey>(
@@ -100,6 +118,7 @@ export function TeamAllocationsTable({
               rankPosition={rankPositionOf(allocation.portfolioItemId)}
               ownerTeamName={sharingOf(allocation.portfolioItemId).owner}
               contributorTeamNames={sharingOf(allocation.portfolioItemId).contributors}
+              {...(itemActions?.(allocation) ?? { hasTeams: false })}
             />
           ))}
         </DataTableFrame>

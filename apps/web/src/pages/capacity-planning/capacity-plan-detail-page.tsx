@@ -20,6 +20,11 @@ import { SortableContext } from '@dnd-kit/sortable'
 
 import { useDataTable, useRowRerank } from '@/shared/ui/table'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
+import {
+  isRankOrder,
+  sortCapacityItems,
+  type CapacityItemSortField,
+} from '@/features/capacity-planning/sort-items'
 import { DetailLayout } from '@/shared/ui/detail'
 import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -29,18 +34,18 @@ import { useProjectTeams } from '@/features/teams/api'
 import {
   useAddCapacityTeam,
   useUpdateCapacityPlan,
-  useAllocate,
-  useRemoveAllocation,
-  useUpdateAllocation,
   useRemoveCapacityTeam,
   useCapacityPlan,
   useDeleteCapacityPlan,
   usePublishPlan,
   useRevertPlan,
+  type CapacityAllocation,
   type CapacityPlanItem,
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
 import { CAPACITY_STATUS_STYLE } from '@/features/capacity-planning/status-colors'
+import { usePlanItemActions } from '@/features/capacity-planning/use-plan-item-actions'
+import { usePlanLookups } from '@/features/capacity-planning/use-plan-lookups'
 import {
   sortCapacityTeams,
   type CapacityTeamSortField,
@@ -61,6 +66,7 @@ import { TeamAllocationsTable } from './ui/team-allocations-table'
 import { TeamCapacityRail } from './ui/team-capacity-rail'
 import { AddFeaturesModal } from './ui/add-features-modal'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
+import { MoveToPlanModal } from './ui/move-to-plan-modal'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
@@ -83,6 +89,8 @@ export function CapacityPlanDetailPage() {
   const [tab, setTab] = useState('teams')
   /** Which Feature the Allocate dialog is splitting, or null when it is closed. */
   const [allocateFor, setAllocateFor] = useState<string | null>(null)
+  /** Rally's `Move To Another Plan`, for one Feature. */
+  const [moveFor, setMoveFor] = useState<string | null>(null)
   const [showEdit, setShowEdit] = useState(false)
   const [showTeams, setShowTeams] = useState(false)
   /**
@@ -166,9 +174,6 @@ export function CapacityPlanDetailPage() {
   const { data: teams = [] } = useProjectTeams(plan?.projectId)
   const addTeam = useAddCapacityTeam()
   const removeTeam = useRemoveCapacityTeam()
-  const removeAllocation = useRemoveAllocation()
-  const updateAllocation = useUpdateAllocation()
-  const allocate = useAllocate()
   const rankItem = useRankPortfolioItem()
 
   /**
@@ -199,7 +204,7 @@ export function CapacityPlanDetailPage() {
   const itemProjects = useMemo(() => {
     const names = new Map<string, string>()
     for (const item of plan?.items ?? []) {
-      names.set(item.projectId, item.projectName ?? '—')
+      names.set(item.projectId, item.projectName ?? '--')
     }
     return [...names].map(([id, name]) => ({ id, name }))
   }, [plan?.items])
@@ -216,23 +221,97 @@ export function CapacityPlanDetailPage() {
     [plan?.items, itemTeamFilter, itemProjectFilter],
   )
 
+  /**
+   * Every derived view over the plan — names by id, rank positions, sharing, per-team demand and the
+   * three allocation buckets. One hook because both grids read the same lookups and none of them is
+   * fetched: they are all views over the single payload the detail endpoint returns.
+   */
+  const {
+    teamNameById,
+    rankPositionOf,
+    sharingOf,
+    demandOf,
+    allocationsByItem,
+    allocationsByTeam,
+    unallocated,
+  } = usePlanLookups(plan)
+
+  /**
+   * The Features tab's own sort, independent of the Teams tab's.
+   *
+   * Rally sorts every column here, and the two tabs answer different questions, so a shared sort state
+   * would make switching tabs reorder the other one.
+   */
+  const {
+    sortField: itemSortField,
+    sortDir: itemSortDir,
+    toggle: toggleItemSort,
+  } = useTableSort<CapacityItemSortField>()
+
+  /** Rank ascending is the ONLY order the cutline and the drag grip are defined in. */
+  const inRankOrder = isRankOrder(itemSortField, itemSortDir)
+
+  const sortedItems = useMemo(
+    () =>
+      sortCapacityItems(visibleItems, itemSortField, itemSortDir, (teamId) =>
+        teamId === null ? null : (teamNameById.get(teamId) ?? null),
+      ),
+    [visibleItems, itemSortField, itemSortDir, teamNameById],
+  )
+
   const rankableItems = useMemo(
-    () => visibleItems.map((i) => ({ ...i, id: i.portfolioItemId })),
-    [visibleItems],
+    () => sortedItems.map((i) => ({ ...i, id: i.portfolioItemId })),
+    [sortedItems],
   )
 
   const rerank = useRowRerank({
     items: rankableItems,
-    disabled: !canManage,
+    // Rally ranks by dragging only "when the grid is set to the default sort order": under any other
+    // sort the row's neighbours are not its rank neighbours, so a drop would rank it against rows it
+    // does not sit between. The grip disappears rather than lying about what it will do.
+    disabled: !canManage || !inRankOrder,
     onReorder: ({ id, beforeId, afterId }) =>
       rankItem.mutate({ id, beforeId, afterId }, { onError: (err) => notify.error(err.message) }),
   })
+
+  /**
+   * The BA's `Move up` / `Move down`, for either scope.
+   *
+   * `order` is the list the move happens INSIDE: the plan's rank order on the Features tab, and one
+   * team's rows in its sub-table — the BA is explicit that a nested move swaps "with the adjacent row
+   * inside the same Team only". Both persist through the SAME portfolio rank endpoint the drag uses,
+   * because a plan's Feature order IS the portfolio rank; a plan-local order would disagree with the
+   * Backlog the moment either changed.
+   *
+   * Returns `undefined` at the ends of the list, which is what removes the menu item rather than
+   * offering one that cannot act. `beforeId`/`afterId` are the rows the item lands BETWEEN, so a move
+   * up targets the pair one position higher.
+   */
+  const moveHandlers = useCallback(
+    (portfolioItemId: string, order: readonly string[]) => {
+      if (!canManage) return {}
+      const at = order.indexOf(portfolioItemId)
+      if (at === -1) return {}
+      const run = (beforeId: string | null, afterId: string | null) => () =>
+        rankItem.mutate(
+          { id: portfolioItemId, beforeId, afterId },
+          { onError: (err) => notify.error(err.message) },
+        )
+      return {
+        ...(at > 0 ? { onMoveUp: run(at >= 2 ? order[at - 2] : null, order[at - 1]) } : {}),
+        ...(at < order.length - 1
+          ? { onMoveDown: run(order[at + 1], at + 2 < order.length ? order[at + 2] : null) }
+          : {}),
+      }
+    },
+    [canManage, rankItem],
+  )
 
   /** The plan's teams as picker options, with Rally's/BA's `Unassign` first. */
   const assignOptions = useMemo(
     () => [
       { value: '', label: t('items.unassign') },
-      ...(plan?.teams ?? []).map((pt) => ({ value: pt.teamId, label: pt.teamName ?? '—' })),
+      ...(plan?.teams ?? []).map((pt) => ({ value: pt.teamId, label: pt.teamName ?? '--' })),
     ],
     [plan?.teams, t],
   )
@@ -268,77 +347,16 @@ export function CapacityPlanDetailPage() {
   // key would let one tab's resize silently rearrange the other.
   const itemTable = useDataTable<CapacityPlanItem, unknown, ItemColKey>(CAPACITY_ITEM_COLUMNS, {
     storageKey: 'rally-capacity-item-columns',
+    sort: {
+      col: itemSortField ?? '',
+      dir: itemSortDir ?? 'asc',
+      onSort: (c) => toggleItemSort(c as CapacityItemSortField),
+    },
   })
   const itemColStyleFor = useCallback(
     (key: ItemColKey, base?: React.CSSProperties) => itemTable.styleFor(key, base),
     [itemTable],
   )
-
-  /** Allocations bucketed by team, so each team's Features render beneath it. */
-  // Names live on the plan's team rows; the item row carries only the id, so resolve once here
-  // rather than searching the team list per row.
-  const teamNameById = useMemo(
-    () => new Map(plan?.teams.map((team) => [team.teamId, team.teamName]) ?? []),
-    [plan?.teams],
-  )
-
-  /**
-   * A Feature's 1-based position in the plan's rank order, for the sub-table's `Rank` column.
-   *
-   * Built from `plan.items`, which the API already returns in rank order — the same numbering the
-   * Features tab shows, so one Feature cannot be #3 on one tab and #1 on another.
-   */
-  const rankPositionOf = useCallback(
-    (portfolioItemId: string) => {
-      const index = (plan?.items ?? []).findIndex((i) => i.portfolioItemId === portfolioItemId)
-      return index === -1 ? null : index + 1
-    },
-    [plan?.items],
-  )
-
-  /**
-   * Who else holds a Feature — the input to Rally's `Allocation` cell.
-   *
-   * `owner` is the team whose allocation is primary; `contributors` are the rest. Both are NAMES,
-   * resolved here because only the page has the plan's team list.
-   */
-  const sharingOf = useCallback(
-    (portfolioItemId: string) => {
-      const rows = (plan?.allocations ?? []).filter(
-        (a) => a.portfolioItemId === portfolioItemId && a.teamId !== null,
-      )
-      const owner = rows.find((a) => a.isPrimary)?.teamId ?? null
-      return {
-        owner: owner === null ? null : (teamNameById.get(owner) ?? null),
-        contributors: rows
-          .filter((a) => !a.isPrimary && a.teamId !== null)
-          .map((a) => teamNameById.get(a.teamId as string) ?? '—'),
-      }
-    },
-    [plan?.allocations, teamNameById],
-  )
-
-  /** The same allocations bucketed by FEATURE, for the Features tab's nested rows. */
-  const allocationsByItem = useMemo(() => {
-    const map = new Map<string, NonNullable<typeof plan>['allocations']>()
-    for (const a of plan?.allocations ?? []) {
-      const list = map.get(a.portfolioItemId) ?? []
-      list.push(a)
-      map.set(a.portfolioItemId, list)
-    }
-    return map
-  }, [plan?.allocations])
-
-  const allocationsByTeam = useMemo(() => {
-    const map = new Map<string, NonNullable<typeof plan>['allocations']>()
-    for (const a of plan?.allocations ?? []) {
-      if (a.teamId === null) continue
-      const list = map.get(a.teamId) ?? []
-      list.push(a)
-      map.set(a.teamId, list)
-    }
-    return map
-  }, [plan?.allocations])
 
   const sortedTeams = useMemo(
     () =>
@@ -346,12 +364,6 @@ export function CapacityPlanDetailPage() {
         (plan?.allocations ?? []).reduce((n, a) => (a.teamId === teamId ? n + 1 : n), 0),
       ),
     [plan?.teams, plan?.allocations, sortField, sortDir],
-  )
-
-  /** Demand parked without a team. */
-  const unallocated = useMemo(
-    () => (plan?.allocations ?? []).filter((a) => a.teamId === null),
-    [plan?.allocations],
   )
 
   const openFeature = useCallback(
@@ -394,69 +406,39 @@ export function CapacityPlanDetailPage() {
   }
 
   /**
-   * Rally's `Remove Only`: takes a Feature off the plan.
+   * Rally's Feature-level verbs, shared by both grids.
    *
-   * Deletes every allocation of it, across teams and the Unallocated bucket — the Feature is on the
-   * plan because those rows exist, so removing it means removing them. The Feature itself is
-   * untouched; this is a planning decision, not a portfolio one.
+   * In a hook because the Features tab and a team's sub-table perform the SAME writes — the page was
+   * the only thing holding them together, and one definition is what stops `Remove From Plan`
+   * meaning different things on the two tabs.
    */
-  async function removeFeature(item: { portfolioItemId: string; itemKey: string }) {
-    const rows = (plan?.allocations ?? []).filter((a) => a.portfolioItemId === item.portfolioItemId)
-    try {
-      for (const row of rows) {
-        await removeAllocation.mutateAsync({ id: planId, allocationId: row.id })
-      }
-      notify.success(t('items.removed', { item: item.itemKey }))
-    } catch (err) {
-      notify.error(err instanceof Error ? err.message : t('row.allocationRemoveFailed'))
-    }
-  }
+  const { removeFeature, assignFeature, unassignFeature, itemActionsFor } = usePlanItemActions({
+    plan,
+    planId,
+    canManage,
+    onAllocate: setAllocateFor,
+    onMove: setMoveFor,
+  })
 
   /**
-   * Rally's inline assignment: one team, or none.
+   * The nested table's gear props: the shared verbs, plus a reorder scoped to THAT table's rows.
    *
-   * `null` unassigns — Rally has no wording for it but the BA's `Unassign` is the only way back to
-   * the yellow unassigned state, so the picker offers it first. A Feature with an existing team row
-   * MOVES it (the API's `teamId` patch); one with none gets a fresh allocation, which the service
-   * then consumes from the parked row.
+   * A factory per sub-table rather than one resolver, because the scope is the argument — the BA's
+   * nested move swaps "inside the same Team only", so each table has to pass its own row order.
    */
-  async function assignFeature(item: CapacityPlanItem, teamId: string | null) {
-    const rows = (plan?.allocations ?? []).filter((a) => a.portfolioItemId === item.portfolioItemId)
-    try {
-      if (rows.length === 0) {
-        await allocate.mutateAsync({ id: planId, portfolioItemId: item.portfolioItemId, teamId })
-      } else {
-        await updateAllocation.mutateAsync({ id: planId, allocationId: rows[0].id, teamId })
-      }
-    } catch (err) {
-      notify.error(err instanceof Error ? err.message : t('items.assignFailed'))
-    }
-  }
-
-  /**
-   * Rally's `Remove All Assignments`: the Feature stays on the plan, its teams do not.
-   *
-   * One row survives, moved to the Unallocated bucket, and the rest are deleted — the plan holds a
-   * Feature THROUGH its allocation rows, so removing every row would remove the Feature too, which
-   * is the other verb. Keeping the first and clearing its team is the shortest path to "still
-   * planned, not yet assigned".
-   */
-  async function unassignFeature(item: { portfolioItemId: string; itemKey: string }) {
-    const rows = (plan?.allocations ?? []).filter(
-      (a) => a.portfolioItemId === item.portfolioItemId && a.teamId !== null,
-    )
-    if (rows.length === 0) return
-    const [keep, ...drop] = rows
-    try {
-      await updateAllocation.mutateAsync({ id: planId, allocationId: keep.id, teamId: null })
-      for (const row of drop) {
-        await removeAllocation.mutateAsync({ id: planId, allocationId: row.id })
-      }
-      notify.success(t('items.assignmentsCleared', { item: item.itemKey }))
-    } catch (err) {
-      notify.error(err instanceof Error ? err.message : t('row.allocationRemoveFailed'))
-    }
-  }
+  const subTableActions = useCallback(
+    (rows: readonly { portfolioItemId: string }[]) =>
+      itemActionsFor === undefined
+        ? undefined
+        : (allocation: CapacityAllocation) => ({
+            ...itemActionsFor(allocation),
+            ...moveHandlers(
+              allocation.portfolioItemId,
+              rows.map((r) => r.portfolioItemId),
+            ),
+          }),
+    [itemActionsFor, moveHandlers],
+  )
 
   /**
    * Applies the dialog's selection as a DIFF against the plan's current teams.
@@ -481,24 +463,6 @@ export function CapacityPlanDetailPage() {
 
   const unitLabel = t(`units.${plan.unit}`)
 
-  /**
-   * Publish, or Revert once published — one control, rendered by whichever toolbar the active tab
-   * uses. Plan-level, so it belongs on both; defined once so the two tabs cannot drift.
-   */
-  const publishControl = !canPublish ? null : plan.status === 'draft' ? (
-    <Button size="sm" onClick={() => setShowPublish(true)} disabled={publish.isPending}>
-      <Send size={13} /> {t('publish.action')}
-    </Button>
-  ) : (
-    <Button
-      size="sm"
-      variant="secondary"
-      onClick={() => setConfirmRevert(true)}
-      disabled={revert.isPending}
-    >
-      <Undo2 size={13} /> {t('publish.revert.action')}
-    </Button>
-  )
   // The same totals the summary panel and the Breakdown overlay read, so the header bar cannot
   // disagree with the numbers printed beside it.
   const planWide = planTotals(plan)
@@ -583,10 +547,13 @@ export function CapacityPlanDetailPage() {
           // surface its cutline belongs on.
           { key: 'items', label: t('detail.tabs.items') },
         ]}
-        /* Rally's Actions menu holds exactly two of ours: Edit Plan Details and Delete Plan. The
-           verbs that change what the plan CONTAINS — Add / Remove Teams, Add Feature — and Publish
-           itself are page actions, because Rally puts them there and a planner reaches for them
-           repeatedly while building a plan. A menu is for what you do to a plan once. */
+        /* Rally's Actions menu, in Rally's order: `Edit Plan Details`, `Publish`/`Unpublish`,
+           `Delete Plan`. Publishing lived on the toolbar here until this slice, which is
+           not where Rally keeps it ("Select the Actions menu and select Publish") — and a plan is
+           published once, so a permanent button spent the primary slot on a verb used at the very
+           end. The verbs that change what the plan CONTAINS stay on the tab toolbars, because a
+           planner reaches for those repeatedly while building it.
+           Rally's `Export` is deliberately NOT here: it is out of scope for now. */
         actions={
           canPublish || can('capacity:manage') ? (
             <ActionMenu ariaLabel={t('detail.actionsLabel')} onDark>
@@ -599,6 +566,24 @@ export function CapacityPlanDetailPage() {
                   onClick={() => setShowEdit(true)}
                 />
               )}
+              {canPublish &&
+                (plan.status === 'draft' ? (
+                  <ActionMenuItem
+                    icon={<Send size={13} />}
+                    label={t('publish.action')}
+                    disabled={publish.isPending}
+                    onClick={() => setShowPublish(true)}
+                  />
+                ) : (
+                  /* Rally's word is `Unpublish`, and it is the gate on every other edit: a
+                     published plan is read-only until this runs. */
+                  <ActionMenuItem
+                    icon={<Undo2 size={13} />}
+                    label={t('publish.revert.action')}
+                    disabled={revert.isPending}
+                    onClick={() => setConfirmRevert(true)}
+                  />
+                ))}
               {can('capacity:manage') && (
                 <ActionMenuItem
                   icon={<Trash2 size={13} />}
@@ -687,7 +672,7 @@ export function CapacityPlanDetailPage() {
                         <option value="unassigned">{t('items.notAssigned')}</option>
                         {plan.teams.map((pt) => (
                           <option key={pt.teamId} value={pt.teamId}>
-                            {pt.teamName ?? '—'}
+                            {pt.teamName ?? '--'}
                           </option>
                         ))}
                       </InlineSelect>
@@ -695,7 +680,6 @@ export function CapacityPlanDetailPage() {
                   </div>
                 }
                 fields={<ColumnFieldsMenu {...itemTable.fieldsMenuProps} />}
-                trailing={publishControl}
               />
             ) : (
               <div className="flex items-center gap-2 border-b border-border-inner px-4 py-2">
@@ -704,7 +688,6 @@ export function CapacityPlanDetailPage() {
                     <Users size={13} /> {t('teams.action')}
                   </Button>
                 )}
-                <span className="ml-auto">{publishControl}</span>
               </div>
             )}
 
@@ -747,7 +730,8 @@ export function CapacityPlanDetailPage() {
                           the first one exceeds the plan, so it lands at the very top; `null`
                           (no capacity entered anywhere) draws nothing, because there is no
                           number for the running total to exceed. */}
-                                {plan.itemCutlineIndex !== null &&
+                                {inRankOrder &&
+                                  plan.itemCutlineIndex !== null &&
                                   plan.itemCutlineIndex + 1 === index && (
                                     <CutlineDivider label={t('cutline.label')} />
                                   )}
@@ -758,7 +742,9 @@ export function CapacityPlanDetailPage() {
                                     teamNameById.get(item.primaryTeamId ?? '') ?? null
                                   }
                                   belowCutline={
-                                    plan.itemCutlineIndex !== null && index > plan.itemCutlineIndex
+                                    inRankOrder &&
+                                    plan.itemCutlineIndex !== null &&
+                                    index > plan.itemCutlineIndex
                                   }
                                   expanded={expandedItems.has(item.portfolioItemId)}
                                   onToggleExpanded={() => toggleItem(item.portfolioItemId)}
@@ -771,6 +757,14 @@ export function CapacityPlanDetailPage() {
                                       ? () => setAllocateFor(item.portfolioItemId)
                                       : undefined
                                   }
+                                  onMove={
+                                    canManage ? () => setMoveFor(item.portfolioItemId) : undefined
+                                  }
+                                  // Plan-wide scope here: the Features tab IS the plan's rank order.
+                                  {...moveHandlers(
+                                    item.portfolioItemId,
+                                    plan.items.map((i) => i.portfolioItemId),
+                                  )}
                                   onAssign={
                                     canManage
                                       ? (teamId) => void assignFeature(item, teamId)
@@ -805,7 +799,7 @@ export function CapacityPlanDetailPage() {
                     </DndContext>
                   </DataTableFrame>
                 </div>
-                <TeamCapacityRail teams={sortedTeams} unitLabel={unitLabel} />
+                <TeamCapacityRail teams={sortedTeams} unitLabel={unitLabel} demandOf={demandOf} />
               </div>
             ) : (
               <DataTableFrame
@@ -847,7 +841,6 @@ export function CapacityPlanDetailPage() {
                         canManage={canManage}
                         onOpenFeature={openFeature}
                         rankPositionOf={rankPositionOf}
-                        sharingOf={sharingOf}
                         onAddFeatures={
                           canManage
                             ? () =>
@@ -857,6 +850,8 @@ export function CapacityPlanDetailPage() {
                                 })
                             : undefined
                         }
+                        sharingOf={sharingOf}
+                        itemActions={subTableActions(allocationsByTeam.get(team.teamId) ?? [])}
                       />
                     )}
                   </div>
@@ -888,6 +883,7 @@ export function CapacityPlanDetailPage() {
                       onOpenFeature={openFeature}
                       rankPositionOf={rankPositionOf}
                       sharingOf={sharingOf}
+                      itemActions={subTableActions(unallocated)}
                     />
                   </div>
                 )}
@@ -944,6 +940,17 @@ export function CapacityPlanDetailPage() {
           plan={plan}
           portfolioItemId={allocateFor}
           onClose={() => setAllocateFor(null)}
+        />
+      )}
+      {/* Rally's `Move To Another Plan`. The Feature's OWN release goes in, because that is what
+          decides whether the dialog's release checkbox has any work to do. */}
+      {moveFor !== null && (
+        <MoveToPlanModal
+          plan={plan}
+          portfolioItemId={moveFor}
+          itemKey={plan.items.find((i) => i.portfolioItemId === moveFor)?.itemKey ?? ''}
+          itemReleaseId={plan.items.find((i) => i.portfolioItemId === moveFor)?.releaseId ?? null}
+          onClose={() => setMoveFor(null)}
         />
       )}
       {forecastTeam && (

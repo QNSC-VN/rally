@@ -81,6 +81,18 @@ test.describe('Capacity allocation', () => {
    * Not the header menu — that holds only Edit Plan Details and Delete Plan, the things you do to a
    * plan once. `expandTeam` switches back when a test needs the team view again.
    */
+  /**
+   * Opens the plan's `Actions` menu, where Rally keeps `Publish` and `Unpublish`.
+   *
+   * A helper because every publish step in this file starts with it: the menu is the only route to
+   * those two verbs, so a spec that clicked a toolbar button was asserting a layout Rally does not
+   * have.
+   */
+  async function planAction(page: import('@playwright/test').Page, name: RegExp) {
+    await page.getByRole('button', { name: 'Plan actions' }).click()
+    await page.getByRole('button', { name }).click()
+  }
+
   async function allocateFeature(
     page: import('@playwright/test').Page,
     feature: RegExp,
@@ -112,11 +124,20 @@ test.describe('Capacity allocation', () => {
       .first()
       .click()
     await page.getByRole('button', { name: 'Allocate to teams' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Allocate a Feature' })
-    await dialog.getByLabel('Team').click()
+    const dialog = page.getByRole('dialog', { name: 'Allocate to Teams' })
+    // Rally's table dialog: it opens on the Feature's CURRENT split, so allocating to a NEW team
+    // means adding a row rather than overwriting the one already there.
+    const rows = dialog.getByRole('button', { name: 'Team' })
+    const unset = dialog.getByRole('button', { name: 'Team' }).filter({ hasText: 'Select team' })
+    if ((await unset.count()) === 0 && (await rows.count()) > 0) {
+      const addRow = dialog.getByRole('button', { name: 'Add team' })
+      if (await addRow.count()) await addRow.click()
+    }
+    const targetRow = (await unset.count()) > 0 ? unset.first() : rows.last()
+    await targetRow.click()
     await pickOption(page, team)
-    if (estimate !== undefined) await dialog.getByLabel('Estimate').fill(estimate)
-    await dialog.getByRole('button', { name: 'Allocate', exact: true }).click()
+    if (estimate !== undefined) await dialog.getByLabel('Estimate').last().fill(estimate)
+    await dialog.getByRole('button', { name: 'Apply', exact: true }).click()
     await expect(dialog).toBeHidden()
   }
 
@@ -160,11 +181,13 @@ test.describe('Capacity allocation', () => {
    * removes that entire class of failure.
    */
   async function resetPlan(page: import('@playwright/test').Page) {
-    const revert = page.getByRole('button', { name: 'Revert to draft' })
-    if (await revert.count()) {
-      await revert.click()
-      await page.getByRole('dialog').getByRole('button', { name: 'Revert to draft' }).click()
-      await expect(page.getByRole('button', { name: /^Publish$/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Plan actions' }).click()
+    const unpublish = page.getByRole('button', { name: /^Unpublish$/ })
+    if (await unpublish.count()) {
+      await unpublish.click()
+      await page.getByRole('dialog').getByRole('button', { name: 'Unpublish' }).click()
+    } else {
+      await page.keyboard.press('Escape')
     }
 
     await page.getByRole('tab', { name: /Features/ }).click()
@@ -285,7 +308,8 @@ test.describe('Capacity allocation', () => {
     await allocateFeature(page, /FE-1/, /Team Alpha/)
 
     // ── Publish ──────────────────────────────────────────────────────────────
-    await page.getByRole('button', { name: /^Publish$/ }).click()
+    // From the Actions menu, which is where Rally puts it.
+    await planAction(page, /^Publish$/)
     const dialog = page.getByRole('dialog', { name: /Publish this plan/i })
     // The three things a planner has to know BEFORE the write: what lands, when the Release
     // lands, and that reverting will not undo it.
@@ -302,10 +326,12 @@ test.describe('Capacity allocation', () => {
     // Published plans are read-only, so the editing affordances go away.
     // A published plan offers no Allocate: the action row drops it rather than failing the request.
     await page.getByRole('tab', { name: /Features/ }).click()
-    await expect(page.getByRole('button', { name: /^Allocate a Feature$/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /^Allocate to teams$/ })).toHaveCount(0)
     await page.getByRole('tab', { name: /Teams/ }).click()
-    // …and offers Revert instead, in the same place Publish was.
-    await expect(page.getByRole('button', { name: 'Revert to draft' })).toBeVisible()
+    // …and the Actions menu offers `Unpublish` where `Publish` was.
+    await page.getByRole('button', { name: 'Plan actions' }).click()
+    await expect(page.getByRole('button', { name: /^Unpublish$/ })).toBeVisible()
+    await page.keyboard.press('Escape')
 
     // ── The Feature really took the plan's window ────────────────────────────
     // Read from the Portfolio detail rather than the plan, which is the whole point: the
@@ -317,7 +343,7 @@ test.describe('Capacity allocation', () => {
     await expect(page.getByText('2026-07-01')).toBeVisible()
     await expect(page.getByText('v2.0 — NX Platform Upgrade')).toBeVisible()
 
-    // ── Revert, which does NOT roll the fields back ──────────────────────────
+    // ── Unpublish, which does NOT roll the fields back ───────────────────────
     await page.goBack()
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
     // The ID cell is the link: the row does not navigate and the NAME cell edits in place,
@@ -326,10 +352,10 @@ test.describe('Capacity allocation', () => {
     // is newest-first — so `.first()` opened the read-only one and every draft-only control was
     // missing.
     await page.getByRole('button', { name: /^CP-1$/ }).click()
-    await page.getByRole('button', { name: /^Revert to draft$/ }).click()
+    await planAction(page, /^Unpublish$/)
     const confirm = page.getByRole('dialog')
     await expect(confirm.getByText(/are NOT undone/)).toBeVisible()
-    await confirm.getByRole('button', { name: 'Revert to draft' }).click()
+    await confirm.getByRole('button', { name: 'Unpublish' }).click()
 
     // Editable again.
     await page.getByRole('button', { name: 'Plan actions' }).click()
@@ -362,5 +388,85 @@ test.describe('Capacity allocation', () => {
     // Clean up.
     await removeFeature(page, 'FE-2')
     await expect(page.getByText('Saved payment methods')).toHaveCount(0)
+  })
+
+  test('moves a Feature to another plan, and republishes that plan', async ({ page }) => {
+    /**
+     * Rally's `Move To Another Plan`, driven end to end between the two SEEDED plans: CP-1 (draft,
+     * v2.0) and CP-2 (published, v2.1).
+     *
+     * Cleans up after itself by moving the Feature back, because the two plans are shared with every
+     * other test in this file — a Feature left on CP-2 makes a re-run hit
+     * `CAPACITY_MOVE_ALREADY_ON_TARGET` and the suite fails on its second pass, not its first.
+     */
+    await openPlan(page)
+    await resetPlan(page)
+    await allocateFeature(page, /FE-1/, /Team Alpha/, '5')
+
+    await page.getByRole('tab', { name: /Features/ }).click()
+    await page
+      .getByRole('button', { name: /Actions for FE-1/ })
+      .first()
+      .click()
+    await page.getByRole('button', { name: 'Move to another plan' }).click()
+
+    const dialog = page.getByRole('dialog', { name: 'Move To Another Plan' })
+    // The eligible list is this project's OTHER plans: CP-1 is absent because it is this one.
+    await expect(dialog.getByRole('checkbox', { name: /^CP-1$/ })).toHaveCount(0)
+    await dialog.getByRole('checkbox', { name: /^CP-2$/ }).click()
+
+    // CP-2 belongs to another release, so the checkbox is not optional — the dialog says so BEFORE
+    // the click, and the API refuses the move without it.
+    await expect(dialog.getByText(/belongs to another release/)).toBeVisible()
+    await dialog.getByRole('button', { name: 'Move', exact: true }).click()
+    // The dialog's own ALERT, not a text match: the checkbox hint and the toast both say "another
+    // release" too, so a bare `getByText` matched three nodes and failed strict mode.
+    await expect(dialog.getByRole('alert')).toContainText(/another release/)
+
+    await dialog
+      .getByRole('checkbox', { name: 'Update the Release to match the selected plan' })
+      .click()
+    // Rally's second button, offered because the target is PUBLISHED: the move unpublishes it, and
+    // this publishes it again.
+    await dialog.getByRole('button', { name: 'Move and republish the plan' }).click()
+    await expect(dialog).toBeHidden()
+
+    // Gone from CP-1 — the move relocated the rows rather than copying them.
+    await expect(page.getByRole('button', { name: /Actions for FE-1/ })).toHaveCount(0)
+
+    // ── On CP-2: the Feature arrived, and the plan is published again ────────
+    await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
+    await page.getByRole('button', { name: /^CP-2$/ }).click()
+    await page.getByRole('tab', { name: /Features/ }).click()
+    await expect(page.getByRole('button', { name: 'FE-1' }).first()).toBeVisible()
+    await expect(page.getByText('Published')).toBeVisible()
+
+    // ── Cleanup: unpublish, move it back to CP-1, republish ─────────────────
+    await planAction(page, /^Unpublish$/)
+    await page.getByRole('dialog').getByRole('button', { name: 'Unpublish' }).click()
+    await page.getByRole('tab', { name: /Features/ }).click()
+    await page
+      .getByRole('button', { name: /Actions for FE-1/ })
+      .first()
+      .click()
+    await page.getByRole('button', { name: 'Move to another plan' }).click()
+    const back = page.getByRole('dialog', { name: 'Move To Another Plan' })
+    await back.getByRole('checkbox', { name: /^CP-1$/ }).click()
+    await back
+      .getByRole('checkbox', { name: 'Update the Release to match the selected plan' })
+      .click()
+    await back.getByRole('button', { name: 'Move', exact: true }).click()
+    await expect(back).toBeHidden()
+    await planAction(page, /^Publish$/)
+    const publish = page.getByRole('dialog', { name: /Publish this plan/i })
+    await publish.getByRole('button', { name: 'Publish without updating fields' }).click()
+    await expect(publish).toBeHidden()
+
+    // And CP-1 has it back, parked: its team is not on CP-2, so the return trip cannot restore one.
+    await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
+    await page.getByRole('button', { name: /^CP-1$/ }).click()
+    await page.getByRole('tab', { name: /Features/ }).click()
+    await expect(page.getByRole('button', { name: 'FE-1' }).first()).toBeVisible()
+    await removeFeature(page, 'FE-1')
   })
 })

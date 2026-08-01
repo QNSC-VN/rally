@@ -6,9 +6,30 @@ import { CurrentUser } from '@modules/identity';
 import { AuthPolicy, RequirePermission } from '@modules/access';
 import {
   PortfolioItemsService,
+  type PortfolioItemDetail,
   type PortfolioItemWithProgress,
 } from '../../application/portfolio-items.service';
 import type { PortfolioChildItem } from '../../domain/ports/portfolio-item.repository';
+import {
+  ActivityQueryDto,
+  ActivityResponseDto,
+  ActivityPageDto,
+  type ActivityLog,
+} from '@modules/activity';
+
+function toActivityDto(a: ActivityLog): ActivityResponseDto {
+  return {
+    id: a.id,
+    createdAt: a.createdAt,
+    actorId: a.actorId,
+    actorName: a.actorName,
+    action: a.action,
+    entityType: a.entityType,
+    entityId: a.entityId,
+    changes: a.changes,
+    metadata: a.metadata ?? {},
+  };
+}
 import {
   CreatePortfolioItemDto,
   PortfolioChildrenQueryDto,
@@ -18,6 +39,7 @@ import {
 } from './dto/portfolio-item-request.dto';
 import {
   PortfolioChildResponseDto,
+  PortfolioItemDetailResponseDto,
   PortfolioItemResponseDto,
 } from './dto/portfolio-item-response.dto';
 
@@ -31,11 +53,13 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
     type: i.type,
     name: i.name,
     description: i.description,
+    notes: i.notes,
+    releaseNotes: i.releaseNotes,
     state: i.state,
     preliminaryEstimate: i.preliminaryEstimate,
     // numeric arrives as a string from Drizzle (precision preservation); the API
     // contract is a number, so the conversion belongs here at the boundary.
-    refinedEstimate: i.refinedEstimate === null ? null : Number(i.refinedEstimate),
+    refinedEstimate: Number(i.refinedEstimate),
     refinedItemCountEstimate: i.refinedItemCountEstimate,
     parentId: i.parentId,
     parentKey: i.parentKey,
@@ -59,23 +83,28 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
   };
 }
 
+/** The detail response — `toDto` plus the accepted-children breakdown. */
+function toDetailDto(i: PortfolioItemDetail): PortfolioItemDetailResponseDto {
+  return { ...toDto(i), acceptedChildren: i.acceptedChildren, milestones: i.milestones };
+}
+
 /**
  * The inbound mirror of `toDto`'s numeric handling.
  *
  * `refined_estimate` is a Postgres `numeric`, which Drizzle reads and writes as a STRING
  * to preserve precision, while the API contract is a number. `toDto` converts one way, so
  * this converts the other — both at the boundary, so no other layer sees the mismatch.
- * Preserved exactly: `undefined` stays "not supplied", `null` stays "clear it".
+ *
+ * Only `undefined` is special now: it stays "not supplied". There is no null to carry,
+ * because 0 is the "not forecast" value (migration 0081) and the column is NOT NULL.
  */
-function toWriteInput<T extends { refinedEstimate?: number | null }>(
+function toWriteInput<T extends { refinedEstimate?: number }>(
   body: T,
-): Omit<T, 'refinedEstimate'> & { refinedEstimate?: string | null } {
+): Omit<T, 'refinedEstimate'> & { refinedEstimate?: string } {
   const { refinedEstimate, ...rest } = body;
   return {
     ...rest,
-    ...(refinedEstimate === undefined
-      ? {}
-      : { refinedEstimate: refinedEstimate === null ? null : String(refinedEstimate) }),
+    ...(refinedEstimate === undefined ? {} : { refinedEstimate: String(refinedEstimate) }),
   };
 }
 
@@ -87,6 +116,10 @@ function toChildDto(c: PortfolioChildItem): PortfolioChildResponseDto {
     title: c.title,
     scheduleState: c.scheduleState,
     storyPoints: c.storyPoints === null ? null : Number(c.storyPoints),
+    projectId: c.projectId,
+    releaseId: c.releaseId,
+    teamId: c.teamId,
+    assigneeId: c.assigneeId,
     releaseName: c.releaseName,
     projectName: c.projectName,
     teamName: c.teamName,
@@ -141,13 +174,32 @@ export class PortfolioItemsController {
   @RequirePermission('portfolio:view', { resource: 'portfolio_item', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Get an Epic or Feature with its rollups' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, type: PortfolioItemResponseDto })
+  @ApiResponse({ status: 200, type: PortfolioItemDetailResponseDto })
   @ApiCommonErrors(401, 404)
   async getItem(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<PortfolioItemResponseDto> {
-    return toDto(await this.service.getItem(user, id));
+  ): Promise<PortfolioItemDetailResponseDto> {
+    return toDetailDto(await this.service.getItem(user, id));
+  }
+
+  @Get(':id/activity')
+  @RequirePermission('portfolio:view', { resource: 'portfolio_item', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'List the revision history of an Epic or Feature' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ActivityPageDto })
+  @ApiCommonErrors(401, 404)
+  async getActivity(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ActivityQueryDto,
+  ): Promise<ActivityPageDto> {
+    const { page, pageSize } = query;
+    const result = await this.service.getActivity(user, id, {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+    return { data: result.items.map(toActivityDto), total: result.total, page, pageSize };
   }
 
   @Get(':id/children')

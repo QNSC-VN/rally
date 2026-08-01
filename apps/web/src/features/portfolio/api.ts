@@ -22,6 +22,13 @@ import type { PortfolioItemType } from '@/entities/work-item/model/types'
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type PortfolioItem = components['schemas']['PortfolioItemResponseDto']
+/**
+ * The detail response. A superset of the grid row: `GET /portfolio-items/:id` also returns
+ * the accepted-children breakdown, which is one extra grouped query and so is deliberately
+ * absent from the list.
+ */
+export type PortfolioItemDetail = components['schemas']['PortfolioItemDetailResponseDto']
+export type AcceptedChildren = PortfolioItemDetail['acceptedChildren']
 export type PortfolioChild = components['schemas']['PortfolioChildResponseDto']
 export type PortfolioItemState = PortfolioItem['state']
 export type PreliminaryEstimateSize = PortfolioItem['preliminaryEstimate']
@@ -137,6 +144,33 @@ export function usePortfolioItems(filter: PortfolioListFilter) {
   }
 }
 
+/**
+ * Revision History for one Epic or Feature — newest first.
+ *
+ * Same shape as `useReleaseActivityLog` / the milestone and project equivalents, because
+ * `activity_logs` is one shared polymorphic store: adding `portfolio_item` to its entity
+ * enum (migration 0081) was the entire backend change, so the client side is the same
+ * three lines every other subject uses.
+ */
+export function usePortfolioItemActivityLog(id: string | undefined) {
+  return useQuery({
+    queryKey: ['portfolio', id ?? '', 'activity'] as const,
+    queryFn: async () => {
+      if (!id) return []
+      const { data, error, response } = await apiClient.GET('/v1/portfolio-items/{id}/activity', {
+        params: { path: { id }, query: { page: 1, pageSize: 100 } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as { data?: PortfolioActivityLog[] } | undefined)?.data ?? []
+    },
+    enabled: !!id,
+    staleTime: 15_000,
+  })
+}
+
+/** One Revision History row, as the shared `ActivityHistoryTab` consumes it. */
+export type PortfolioActivityLog = components['schemas']['ActivityPageDto']['data'][number]
+
 // ── Single item ──────────────────────────────────────────────────────────────
 
 export function usePortfolioItem(id: string | undefined) {
@@ -147,7 +181,7 @@ export function usePortfolioItem(id: string | undefined) {
         params: { path: { id: id as string } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return data as PortfolioItem
+      return data as PortfolioItemDetail
     },
     enabled: !!id,
     staleTime: 30_000,

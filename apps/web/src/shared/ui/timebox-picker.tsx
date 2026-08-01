@@ -33,7 +33,7 @@ export type PickerIteration = PickerTimebox
  */
 function fmtRange(it: Pick<PickerTimebox, 'startDate' | 'endDate'>): string | null {
   if (it.startDate === null && it.endDate === null) return null
-  return `${it.startDate ?? '—'} - ${it.endDate ?? '—'}`
+  return `${it.startDate ?? '--'} - ${it.endDate ?? '--'}`
 }
 
 export function TimeboxPicker({

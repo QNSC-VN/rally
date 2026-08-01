@@ -4,3 +4,4 @@ export * from './domain/ports/comment.repository';
 export * from './application/collaboration.service';
 export * from './interface/http/dto/collaboration-request.dto';
 export * from './interface/http/dto/collaboration-response.dto';
+export * from './interface/http/portfolio-collaboration.controller';

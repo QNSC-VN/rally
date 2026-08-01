@@ -41,6 +41,7 @@ import { useReleasesForProjects } from '@/features/releases/api'
 import { useWorkspaceTeams } from '@/features/teams/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useProjects } from '@/features/projects/api'
+import { formatWholePercent } from '@/shared/lib/utils'
 
 // ── Status config ──────────────────────────────────────────────────────────────
 
@@ -359,17 +360,20 @@ export function MilestoneDetailPage() {
                   <div className="space-y-1">
                     <div className="flex justify-between text-ui-sm font-semibold text-foreground">
                       <span>{t('detail.completion')}</span>
-                      <span>{milestone.progress.progressPercent}%</span>
+                      <span>{formatWholePercent(milestone.progress.progressPercent)}</span>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-avatar">
                       <div
                         className="h-full rounded-full transition-all"
                         style={{
-                          width: `${milestone.progress.progressPercent}%`,
+                          width: `${milestone.progress.progressPercent ?? 0}%`,
+                          // Grey when not computable: nothing estimated and not all done.
                           backgroundColor:
-                            milestone.progress.progressPercent === 100
-                              ? BRAND.success
-                              : BRAND.primaryLight,
+                            milestone.progress.progressPercent === null
+                              ? BRAND.borderSubtle
+                              : milestone.progress.progressPercent === 100
+                                ? BRAND.success
+                                : BRAND.primaryLight,
                         }}
                       />
                     </div>

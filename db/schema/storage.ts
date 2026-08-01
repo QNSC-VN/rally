@@ -2,7 +2,7 @@
  * storage schema — files
  *
  * A single, owner-agnostic record per uploaded object. Ownership is expressed by
- * per-context LINK tables (e.g. work.work_item_attachments) rather than by a
+ * per-context LINK tables (e.g. work.attachments) rather than by a
  * polymorphic owner_type/owner_id pair, so every reference stays a real foreign
  * key with real cascade semantics.
  *

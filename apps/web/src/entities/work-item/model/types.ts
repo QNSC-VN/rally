@@ -201,7 +201,7 @@ export interface PriorityStyle {
 }
 
 export const WORK_ITEM_PRIORITY_CONFIG: Record<WorkItemPriority, PriorityStyle> = {
-  [WorkItemPriority.None]: { label: '—', color: BRAND.textMuted },
+  [WorkItemPriority.None]: { label: '--', color: BRAND.textMuted },
   [WorkItemPriority.Low]: { label: 'Low', color: '#8c94a6' },
   [WorkItemPriority.Normal]: { label: 'Normal', color: '#5c6478' },
   [WorkItemPriority.High]: { label: 'High', color: '#d97706' },

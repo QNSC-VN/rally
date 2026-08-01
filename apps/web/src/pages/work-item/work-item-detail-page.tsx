@@ -94,7 +94,10 @@ function DetailsTab({
         onChange={handleChange('description')}
       />
 
-      <AttachmentBlock workItemId={item.id} readOnly={readOnly} />
+      <AttachmentBlock
+        subject={{ entityType: 'work_item', entityId: item.id }}
+        readOnly={readOnly}
+      />
 
       <LinkedItemsBlock workItemId={item.id} projectId={item.projectId} readOnly={readOnly} />
 
@@ -117,7 +120,11 @@ function DetailsTab({
         />
       )}
 
-      <CommentThread workItemId={item.id} projectId={item.projectId} readOnly={readOnly} />
+      <CommentThread
+        subject={{ entityType: 'work_item', entityId: item.id }}
+        projectId={item.projectId}
+        readOnly={readOnly}
+      />
     </div>
   )
 }
@@ -154,7 +161,9 @@ export function WorkItemDetailPage() {
 
   const updateMutation = useUpdateWorkItem(itemByKey?.id ?? '')
   const { status: saveStatus, errorMsg: saveErrorMsg, wrap: wrapSave } = useSaveState()
-  const { uploadAndRewrite } = useUploadPastedImages(itemByKey?.id)
+  const { uploadAndRewrite } = useUploadPastedImages(
+    itemByKey?.id ? { entityType: 'work_item', entityId: itemByKey.id } : undefined,
+  )
 
   // P1-11: work item is read-only when the user lacks work_item:edit permission.
   // BA spec: all active roles (non-Viewer) can update any work item.

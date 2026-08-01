@@ -76,7 +76,8 @@
     "from": "from",
     "allocatedFrom": "Owned by {{team}}, allocated to this team",
     "to": "to",
-    "allocatedTo": "Owned here, also allocated to {{team}}"
+    "allocatedTo": "Owned here, also allocated to {{team}}",
+    "allocatedCount": "{{count}} teams"
   },
   "tiers": {
     "allocated": "Alloc",
@@ -92,17 +93,25 @@
   },
   "allocate": {
     "action": "Allocate a Feature",
-    "title": "Allocate a Feature",
+    "title": "Allocate to Teams",
     "featureLabel": "Feature",
     "featureRequired": "Choose a Feature",
     "teamLabel": "Team",
     "valueLabel": "Estimate",
-    "valuePlaceholder": "Leave blank for the default",
+    "valuePlaceholder": "Full estimate",
     "defaultHint": "Blank uses the Feature’s refined estimate, or its preliminary size — never the total already allocated.",
-    "submit": "Allocate",
+    "submit": "Apply",
     "allocated": "Allocation added",
     "failed": "Failed to allocate",
-    "valueHint": "Leave blank to assign without allocating: the plan charges this Feature’s own estimate to the team."
+    "valueHint": "Leave blank to assign without allocating: the plan charges this Feature’s own estimate to the team.",
+    "addRow": "Add team",
+    "selectTeam": "Select team",
+    "teamRequired": "Choose a team for each allocation",
+    "applied": "Allocations updated",
+    "prelimEstimate": "Prelim Estimate",
+    "refinedEstimate": "Refined Estimate",
+    "removeRow": "Remove this team from the allocation",
+    "totalAllocated": "Total allocated"
   },
   "warnings": {
     "feature_missing_estimate": "This Feature has no estimate — no allocation, refined forecast or preliminary size to plan against",
@@ -181,12 +190,12 @@
     "acknowledge": "Done",
     "failed": "Could not publish the plan",
     "revert": {
-      "action": "Revert to draft",
-      "title": "Revert this plan to draft?",
+      "action": "Unpublish",
+      "title": "Unpublish this plan?",
       "message": "The plan becomes editable and planner-only again. The Release and planned dates already written onto Features are NOT undone — clear those by hand if you need to.",
-      "confirm": "Revert to draft",
-      "done": "Reverted to draft. Feature fields were left as they are.",
-      "failed": "Could not revert the plan"
+      "confirm": "Unpublish",
+      "done": "Unpublished. Feature fields were left as they are.",
+      "failed": "Could not unpublish the plan"
     }
   },
   "cutline": {
@@ -213,7 +222,6 @@
     "removeFromPlan": "Remove from plan",
     "removed": "{{item}} removed from the plan",
     "railName": "Name",
-    "railRatio": "{{unit}} / Capacity",
     "allocationRow": "Allocation",
     "removeAllAssignments": "Remove all assignments",
     "assignmentsCleared": "{{item}} is unassigned but still on the plan",
@@ -223,7 +231,12 @@
     "assignFailed": "Could not change the planned team",
     "dragLabel": "Drag to rank {{item}}",
     "assignmentColumn": "Planned Team Assignment",
-    "projectColumn": "Project"
+    "projectColumn": "Project",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "railAssigned": "Assigned",
+    "railAllocated": "Alloc.",
+    "railCapacity": "Capacity"
   },
   "filters": {
     "oldestRelease": "Oldest Release",
@@ -278,5 +291,20 @@
     "actionForTeam": "Add Features to this team",
     "confirm": "Add to Plan",
     "searchPlaceholder": "Search Features…"
+  },
+  "move": {
+    "action": "Move to another plan",
+    "title": "Move To Another Plan",
+    "itemLabel": "Feature",
+    "searchPlans": "Search plans",
+    "noPlans": "No other plan in this project",
+    "updateRelease": "Update the Release to match the selected plan",
+    "releaseRequired": "Required: this Feature belongs to another release, so the move needs it.",
+    "pickPlan": "Choose the plan to move it to",
+    "confirm": "Move",
+    "moveAndRepublish": "Move and republish the plan",
+    "moved": "{{item}} moved to {{plan}}",
+    "movedParked": "{{item}} moved to {{plan}}, unassigned — its teams are not on that plan",
+    "failed": "Could not move the Feature"
   }
 }

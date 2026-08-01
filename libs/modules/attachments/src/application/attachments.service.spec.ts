@@ -4,7 +4,7 @@ import { PreconditionFailedException, NotFoundException, StorageService } from '
 import type { JwtPayload } from '@platform';
 import { AttachmentsService } from './attachments.service';
 import { FILE_REPOSITORY } from '../domain/ports/file.repository';
-import { WORK_ITEM_ATTACHMENT_POLICY, USER_AVATAR_POLICY } from '../domain/attachment-policy';
+import { ENTITY_ATTACHMENT_POLICY, USER_AVATAR_POLICY } from '../domain/attachment-policy';
 import type { StoredFile } from '../domain/file.types';
 
 const WORKSPACE = '11111111-1111-1111-1111-111111111111';
@@ -78,7 +78,7 @@ describe('AttachmentsService', () => {
   const presign = (over: Partial<Parameters<AttachmentsService['presign']>[2]> = {}, count = 0) =>
     service.presign(
       actor,
-      WORK_ITEM_ATTACHMENT_POLICY,
+      ENTITY_ATTACHMENT_POLICY,
       {
         filename: 'notes.txt',
         mimeType: 'text/plain',
@@ -159,14 +159,14 @@ describe('AttachmentsService', () => {
 
     it('fails when the object never landed in the bucket', async () => {
       storage.headObject.mockResolvedValue(null);
-      await expect(service.confirm(actor, 'file-1', WORK_ITEM_ATTACHMENT_POLICY)).rejects.toThrow(
+      await expect(service.confirm(actor, 'file-1', ENTITY_ATTACHMENT_POLICY)).rejects.toThrow(
         PreconditionFailedException,
       );
     });
 
     it('discards a file whose stored size differs from the declared size', async () => {
       storage.headObject.mockResolvedValue({ contentLength: 999, checksumSha256: CHECKSUM });
-      await expect(service.confirm(actor, 'file-1', WORK_ITEM_ATTACHMENT_POLICY)).rejects.toThrow(
+      await expect(service.confirm(actor, 'file-1', ENTITY_ATTACHMENT_POLICY)).rejects.toThrow(
         PreconditionFailedException,
       );
       expect(fileRepo.softDelete).toHaveBeenCalledWith('file-1');
@@ -178,7 +178,7 @@ describe('AttachmentsService', () => {
         contentLength: 100,
         checksumSha256: `${'B'.repeat(43)}=`,
       });
-      await expect(service.confirm(actor, 'file-1', WORK_ITEM_ATTACHMENT_POLICY)).rejects.toThrow(
+      await expect(service.confirm(actor, 'file-1', ENTITY_ATTACHMENT_POLICY)).rejects.toThrow(
         PreconditionFailedException,
       );
       expect(fileRepo.softDelete).toHaveBeenCalledWith('file-1');
@@ -190,14 +190,14 @@ describe('AttachmentsService', () => {
         service.confirm(
           { ...actor, workspaceId: OTHER_WORKSPACE },
           'file-1',
-          WORK_ITEM_ATTACHMENT_POLICY,
+          ENTITY_ATTACHMENT_POLICY,
         ),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('cannot re-confirm an already completed file', async () => {
       fileRepo.findById.mockResolvedValue(storedFile({ status: 'completed' }));
-      await expect(service.confirm(actor, 'file-1', WORK_ITEM_ATTACHMENT_POLICY)).rejects.toThrow(
+      await expect(service.confirm(actor, 'file-1', ENTITY_ATTACHMENT_POLICY)).rejects.toThrow(
         PreconditionFailedException,
       );
     });
@@ -206,14 +206,14 @@ describe('AttachmentsService', () => {
   describe('getDownloadUrl', () => {
     it('forces Content-Disposition: attachment for private files', async () => {
       fileRepo.findById.mockResolvedValue(storedFile({ status: 'completed' }));
-      await service.getDownloadUrl(actor, 'file-1', WORK_ITEM_ATTACHMENT_POLICY);
+      await service.getDownloadUrl(actor, 'file-1', ENTITY_ATTACHMENT_POLICY);
       expect(storage.presignGet).toHaveBeenCalledWith(expect.objectContaining({ inline: false }));
     });
 
     it('never signs a URL for a file in another workspace', async () => {
       fileRepo.findById.mockResolvedValue(null);
       await expect(
-        service.getDownloadUrl(actor, 'file-1', WORK_ITEM_ATTACHMENT_POLICY),
+        service.getDownloadUrl(actor, 'file-1', ENTITY_ATTACHMENT_POLICY),
       ).rejects.toThrow(NotFoundException);
       expect(storage.presignGet).not.toHaveBeenCalled();
     });

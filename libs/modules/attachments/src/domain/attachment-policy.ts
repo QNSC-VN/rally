@@ -76,7 +76,17 @@ const RASTER_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/
 
 const MB = 1024 * 1024;
 
-export const WORK_ITEM_ATTACHMENT_POLICY: UploadPolicy = {
+/**
+ * Files attached to a work item OR a portfolio item — one policy, because the two carry the
+ * same limits and the same MIME allow-list. Renamed from `WORK_ITEM_ATTACHMENT_POLICY` when
+ * migration 0083 made the link table polymorphic.
+ *
+ * `surface` deliberately keeps the old `work-item-attachment` value: it is the S3 KEY PREFIX
+ * every already-uploaded object lives under, so changing it would strand them — the reaper
+ * would still see them referenced, but no download URL would resolve. The prefix is an
+ * implementation detail of where bytes sit, not a claim about which entity owns them.
+ */
+export const ENTITY_ATTACHMENT_POLICY: UploadPolicy = {
   surface: 'work-item-attachment',
   allowedMimeTypes: new Set([...RASTER_IMAGE_MIME_TYPES, ...DOCUMENT_MIME_TYPES]),
   maxSizeBytes: 25 * MB,

@@ -368,7 +368,7 @@ export function IterationDetail({
               sidebar={
                 <div className="space-y-4">
                   <DetailField label={t('detail.projectLabel')}>
-                    <DetailReadonlyValue>{project?.projectName ?? '—'}</DetailReadonlyValue>
+                    <DetailReadonlyValue>{project?.projectName ?? '--'}</DetailReadonlyValue>
                   </DetailField>
 
                   <TeamSelectField
@@ -431,7 +431,7 @@ export function IterationDetail({
                         placeholder="0"
                       />
                     ) : (
-                      <DetailReadonlyValue mono>{vit.plannedVelocity ?? '—'}</DetailReadonlyValue>
+                      <DetailReadonlyValue mono>{vit.plannedVelocity ?? '--'}</DetailReadonlyValue>
                     )}
                   </DetailField>
                 </div>
@@ -471,14 +471,22 @@ function CapacityStrip({
 }) {
   const { t } = useTranslation('iterations')
   const committed = metrics?.totalPlanEstimate ?? 0
-  const capacity = metrics?.plannedVelocity ?? 0
-  const capacityPct = capacity > 0 ? Math.round((committed / capacity) * 100) : 0
+  // Nullable: "no velocity target" must not render as "Planned Velocity: 0 pts".
+  const capacity = metrics?.plannedVelocity ?? null
+  const capacityPct =
+    capacity !== null && capacity > 0 ? Math.round((committed / capacity) * 100) : 0
   const tiles: Array<{ label: string; value: string; caption?: string }> = [
-    { label: t('capacity.plannedVelocity'), value: t('capacity.pts', { value: capacity }) },
+    {
+      label: t('capacity.plannedVelocity'),
+      value: capacity === null ? '--' : t('capacity.pts', { value: capacity }),
+    },
     {
       label: t('capacity.committed'),
       value: t('capacity.pts', { value: committed }),
-      caption: capacity > 0 ? t('capacity.ofCapacity', { pct: capacityPct }) : undefined,
+      caption:
+        capacity !== null && capacity > 0
+          ? t('capacity.ofCapacity', { pct: capacityPct })
+          : undefined,
     },
     {
       label: t('capacity.accepted'),
@@ -487,7 +495,7 @@ function CapacityStrip({
     },
     {
       label: t('capacity.daysLeft'),
-      value: metrics?.daysLeft != null ? String(metrics.daysLeft) : '—',
+      value: metrics?.daysLeft != null ? String(metrics.daysLeft) : '--',
     },
     { label: t('capacity.scopeItems'), value: String(scopeCount) },
     { label: t('capacity.defects'), value: String(metrics?.defectCount ?? 0) },
@@ -563,10 +571,10 @@ function IterationScope({
                     />
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-muted-foreground">
-                    {i.planEstimate ?? '—'}
+                    {i.planEstimate ?? '--'}
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
-                    {i.assigneeId ? (memberName.get(i.assigneeId) ?? '—') : '—'}
+                    {i.assigneeId ? (memberName.get(i.assigneeId) ?? '--') : '--'}
                   </td>
                 </tr>
               ))}
