@@ -15,6 +15,7 @@ import {
   PreliminaryEstimateMapService,
   computeCapacityWarnings,
   computeCutlineIndex,
+  type CapacityWarning,
   type EstimateTier,
   resolveEstimate,
 } from '@modules/portfolio';
@@ -87,6 +88,23 @@ export interface CapacityPlanItem {
    * Null when only unallocated rows exist, which is Rally's unassigned state.
    */
   primaryTeamId: string | null;
+  /**
+   * The Feature-level warnings the BA specifies for this tab: `Rollup exceeds Estimated`, and
+   * `Point Estimated missing` when no tier produced a number.
+   *
+   * Computed here rather than in the client: they are the same rules, from the same function, that the
+   * team grid and each allocation row already use. The Features tab could not show them at all before
+   * — it had no `warnings`, no `metrics` and no `estimateBreakdown` to reason from, which is why the
+   * triangles the BA asks for were absent rather than merely mis-styled.
+   */
+  warnings: CapacityWarning[];
+  /**
+   * All three estimate candidates behind `estimated`, for the tier tooltip.
+   *
+   * `allocated` is the SUM over this Feature's team rows — the item-level equivalent of a single
+   * allocation's explicit value — and null when no team carries an explicit slice.
+   */
+  estimateBreakdown: { allocated: number | null; refined: number | null; preliminary: number | null };
   /** True when any of its allocations has no team — Rally's unassigned warning. */
   unallocated: boolean;
 }
@@ -1125,6 +1143,16 @@ export class CapacityPlansService {
           rollup: row.itemRollup,
           complete: row.itemComplete,
           tier: allocations[index].tier,
+          // Filled in after the loop: both depend on the FINAL aggregate, so computing them per row
+          // would report the first allocation's view of a Feature that has several.
+          warnings: [],
+          estimateBreakdown: {
+            allocated: row.teamId !== null && row.value !== null ? Number(row.value) : null,
+            refined: row.refined,
+            // 0 means the workspace maps this size to nothing, which reads as "no estimate" rather
+            // than as a real zero — the same treatment the allocation row's tooltip gets.
+            preliminary: inUnit(row.preliminarySize) || null,
+          },
           teamIds: row.teamId === null ? [] : [row.teamId],
           // Rally's Planned Team Assignment shows the team that OWNS the Feature, not a count.
           primaryTeamId: row.isPrimary ? row.teamId : null,
@@ -1133,6 +1161,10 @@ export class CapacityPlansService {
       } else {
         const item = items[at];
         if (row.teamId !== null) item.estimated += allocations[index].metrics.estimated;
+        if (row.teamId !== null && row.value !== null) {
+          item.estimateBreakdown.allocated =
+            (item.estimateBreakdown.allocated ?? 0) + Number(row.value);
+        }
         if (row.teamId === null) item.unallocated = true;
         else item.teamIds.push(row.teamId);
         if (row.isPrimary) item.primaryTeamId = row.teamId;
@@ -1155,6 +1187,25 @@ export class CapacityPlansService {
       if (at === undefined) continue;
       const item = items[at];
       if (item.teamIds.length === 0) item.estimated = allocations[index].metrics.estimated;
+    }
+
+    /**
+     * The Feature-level warnings, from the SAME rule function every other row uses.
+     *
+     * Computed here because both inputs are aggregates: `estimated` is summed over the Feature's team
+     * rows above, and the tier is the strongest any row reported. `kind: 'feature'` restricts the rules
+     * to the two the BA specifies for this tab — a Feature has no capacity of its own, so the
+     * capacity comparisons cannot fire.
+     */
+    for (const item of items) {
+      item.warnings = computeCapacityWarnings({
+        kind: 'feature',
+        rollup: item.rollup,
+        estimated: item.estimated,
+        capacity: null,
+        tier: item.tier,
+        targetLoadPct: null,
+      });
     }
 
     // Ordered by the repository's rank ordering, EXCEPT that it puts unallocated rows last.

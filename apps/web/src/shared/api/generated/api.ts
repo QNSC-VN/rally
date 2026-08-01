@@ -4338,6 +4338,21 @@ export interface components {
         complete: number
         /** @enum {string} */
         tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+        /** @description The Feature-level rules the BA specifies for this tab: rollup exceeds estimated, and no estimate at all. A Feature has no capacity of its own, so the capacity comparisons cannot fire here */
+        warnings: (
+          | 'feature_missing_estimate'
+          | 'team_missing_capacity'
+          | 'rollup_exceeds_estimated'
+          | 'rollup_exceeds_capacity'
+          | 'estimated_exceeds_capacity'
+          | 'load_above_target'
+        )[]
+        /** @description All three candidates behind Estimated, for the estimate-source tooltip */
+        estimateBreakdown: {
+          allocated: number | null
+          refined: number | null
+          preliminary: number | null
+        }
         teamIds: string[]
         /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
         primaryTeamId: string | null
@@ -4515,6 +4530,21 @@ export interface components {
           complete: number
           /** @enum {string} */
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          /** @description The Feature-level rules the BA specifies for this tab: rollup exceeds estimated, and no estimate at all. A Feature has no capacity of its own, so the capacity comparisons cannot fire here */
+          warnings: (
+            | 'feature_missing_estimate'
+            | 'team_missing_capacity'
+            | 'rollup_exceeds_estimated'
+            | 'rollup_exceeds_capacity'
+            | 'estimated_exceeds_capacity'
+            | 'load_above_target'
+          )[]
+          /** @description All three candidates behind Estimated, for the estimate-source tooltip */
+          estimateBreakdown: {
+            allocated: number | null
+            refined: number | null
+            preliminary: number | null
+          }
           teamIds: string[]
           /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
           primaryTeamId: string | null
@@ -4681,6 +4711,21 @@ export interface components {
           complete: number
           /** @enum {string} */
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          /** @description The Feature-level rules the BA specifies for this tab: rollup exceeds estimated, and no estimate at all. A Feature has no capacity of its own, so the capacity comparisons cannot fire here */
+          warnings: (
+            | 'feature_missing_estimate'
+            | 'team_missing_capacity'
+            | 'rollup_exceeds_estimated'
+            | 'rollup_exceeds_capacity'
+            | 'estimated_exceeds_capacity'
+            | 'load_above_target'
+          )[]
+          /** @description All three candidates behind Estimated, for the estimate-source tooltip */
+          estimateBreakdown: {
+            allocated: number | null
+            refined: number | null
+            preliminary: number | null
+          }
           teamIds: string[]
           /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
           primaryTeamId: string | null
@@ -4879,6 +4924,21 @@ export interface components {
           complete: number
           /** @enum {string} */
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          /** @description The Feature-level rules the BA specifies for this tab: rollup exceeds estimated, and no estimate at all. A Feature has no capacity of its own, so the capacity comparisons cannot fire here */
+          warnings: (
+            | 'feature_missing_estimate'
+            | 'team_missing_capacity'
+            | 'rollup_exceeds_estimated'
+            | 'rollup_exceeds_capacity'
+            | 'estimated_exceeds_capacity'
+            | 'load_above_target'
+          )[]
+          /** @description All three candidates behind Estimated, for the estimate-source tooltip */
+          estimateBreakdown: {
+            allocated: number | null
+            refined: number | null
+            preliminary: number | null
+          }
           teamIds: string[]
           /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
           primaryTeamId: string | null
