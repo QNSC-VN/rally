@@ -2469,6 +2469,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/capacity-plans/{id}/allocations/move': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Move a Feature's planning to another plan in the same project */
+    post: operations['CapacityPlansController_moveItemToPlan']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/capacity-plans/{id}/allocations/{allocationId}': {
     parameters: {
       query?: never
@@ -4293,6 +4310,8 @@ export interface components {
          */
         projectId: string
         projectName: string | null
+        /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
+        releaseId: string | null
         /** @description Committed demand summed over this Feature’s allocations */
         estimated: number
         /** @description The Feature’s OWN rollup, across every team */
@@ -4466,6 +4485,8 @@ export interface components {
            */
           projectId: string
           projectName: string | null
+          /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
+          releaseId: string | null
           /** @description Committed demand summed over this Feature’s allocations */
           estimated: number
           /** @description The Feature’s OWN rollup, across every team */
@@ -4628,6 +4649,8 @@ export interface components {
            */
           projectId: string
           projectName: string | null
+          /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
+          releaseId: string | null
           /** @description Committed demand summed over this Feature’s allocations */
           estimated: number
           /** @description The Feature’s OWN rollup, across every team */
@@ -4740,6 +4763,179 @@ export interface components {
       portfolioItemId: string
       teamId?: string | null
       value?: number
+    }
+    MoveItemToPlanDto: {
+      /** Format: uuid */
+      portfolioItemId: string
+      /** Format: uuid */
+      targetPlanId: string
+      /** @default false */
+      updateRelease: boolean
+      /** @default false */
+      republish: boolean
+    }
+    MoveItemResultResponseDto: {
+      plan: {
+        /** Format: uuid */
+        id: string
+        /** Format: uuid */
+        workspaceId: string
+        /** Format: uuid */
+        projectId: string
+        projectName: string | null
+        /** Format: uuid */
+        releaseId: string
+        releaseName: string | null
+        /** @description CP-<n>, per project — the list’s ID column */
+        planKey: string | null
+        name: string
+        /** @enum {string} */
+        status: 'draft' | 'published'
+        /**
+         * @description Fixed at creation — every number on the plan uses it
+         * @enum {string}
+         */
+        unit: 'points' | 'count'
+        /** @description YYYY-MM-DD */
+        plannedStartDate: string | null
+        /** @description YYYY-MM-DD */
+        plannedEndDate: string | null
+        /** @description Advisory load ceiling, 1–99 */
+        targetLoadPct: number
+        publishedAt: string | null
+        publishedBy: string | null
+        /** Format: date-time */
+        createdAt: string
+        /** Format: date-time */
+        updatedAt: string
+        teams: {
+          /** Format: uuid */
+          id: string
+          /** Format: uuid */
+          teamId: string
+          teamName: string | null
+          capacity: number | null
+          metrics: {
+            complete: number
+            rollup: number
+            estimated: number
+            capacity: number | null
+            warnings: (
+              | 'feature_missing_estimate'
+              | 'team_missing_capacity'
+              | 'rollup_exceeds_estimated'
+              | 'rollup_exceeds_capacity'
+              | 'estimated_exceeds_capacity'
+              | 'load_above_target'
+            )[]
+          }
+        }[]
+        totalCapacity: number | null
+        /** @description One row per Feature, in RANK order */
+        items: {
+          /** Format: uuid */
+          portfolioItemId: string
+          itemKey: string
+          name: string
+          /** @description LexoRank — the order the cutline accumulates down */
+          rank: string
+          /**
+           * Format: uuid
+           * @description The Feature's OWN project — Rally's Project column
+           */
+          projectId: string
+          projectName: string | null
+          /** @description The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release */
+          releaseId: string | null
+          /** @description Committed demand summed over this Feature’s allocations */
+          estimated: number
+          /** @description The Feature’s OWN rollup, across every team */
+          rollup: number
+          complete: number
+          /** @enum {string} */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          teamIds: string[]
+          /** @description Rally's Planned Team Assignment — the team that owns this Feature in the plan */
+          primaryTeamId: string | null
+          /** @description Any allocation has no team — Rally’s unassigned warning */
+          unallocated: boolean
+        }[]
+        /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
+        itemCutlineIndex: number | null
+        allocations: {
+          /** Format: uuid */
+          id: string
+          /** Format: uuid */
+          portfolioItemId: string
+          itemKey: string
+          name: string
+          teamId: string | null
+          isPrimary: boolean
+          /** @description Explicitly allocated points, or null when the team was assigned without a slice */
+          value: number | null
+          /**
+           * @description Which estimate tier the Feature figure came from — drives the UI badge
+           * @enum {string}
+           */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
+          rank: string
+          /**
+           * @description The Feature's own workflow state
+           * @enum {string}
+           */
+          state:
+            | 'no_entry'
+            | 'intake'
+            | 'idea_prioritization'
+            | 'problem_discovery'
+            | 'solution_discovery'
+            | 'feature_prioritization'
+            | 'developing'
+            | 'accepted'
+            | 'measuring'
+            | 'done'
+            | 'cancelled'
+          /** Format: uuid */
+          projectId: string
+          /** @description The Feature's own project — Rally prints `← from <project>` when it is not the plan's */
+          projectName: string | null
+          /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
+          estimateBreakdown: {
+            allocated: number | null
+            refined: number | null
+            preliminary: number | null
+          }
+          metrics: {
+            complete: number
+            rollup: number
+            estimated: number
+            capacity: number | null
+            warnings: (
+              | 'feature_missing_estimate'
+              | 'team_missing_capacity'
+              | 'rollup_exceeds_estimated'
+              | 'rollup_exceeds_capacity'
+              | 'estimated_exceeds_capacity'
+              | 'load_above_target'
+            )[]
+          }
+        }[]
+        unallocated: number
+      }
+      /** Format: uuid */
+      targetPlanId: string
+      targetPlanKey: string | null
+      /** @description Allocations recreated on the target against the same team */
+      carried: number
+      /** @description 1 when teams missing from the target were collapsed into one unassigned row */
+      parked: number
+      /** @description Rally's `Update the Release to match the selected plan` */
+      releaseUpdated: boolean
+      /** @description The move reverted a published target to draft */
+      targetUnpublished: boolean
+      /** @description `Move and Republish the Plan` published it again */
+      targetRepublished: boolean
     }
     UpdateAllocationDto: {
       value?: number | null
@@ -13539,6 +13735,66 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['CapacityPlanResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  CapacityPlansController_moveItemToPlan: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['MoveItemToPlanDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MoveItemResultResponseDto']
         }
       }
       /** @description Bad Request — validation error or malformed input */

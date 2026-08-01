@@ -105,6 +105,13 @@ const CapacityPlanItemSchema = z.object({
   rank: z.string().describe('LexoRank — the order the cutline accumulates down'),
   projectId: z.string().uuid().describe("The Feature's OWN project — Rally's Project column"),
   projectName: z.string().nullable(),
+  releaseId: z
+    .string()
+    .uuid()
+    .nullable()
+    .describe(
+      "The Feature's OWN release — `Move To Another Plan` reads it to decide whether the move must also write the Release",
+    ),
   estimated: z.number().describe('Committed demand summed over this Feature’s allocations'),
   rollup: z.number().describe('The Feature’s OWN rollup, across every team'),
   complete: z.number(),
@@ -212,6 +219,28 @@ const PublishResultSchema = z.object({
   ),
 });
 export class PublishResultResponseDto extends createZodDto(PublishResultSchema) {}
+
+/**
+ * The result of a move.
+ *
+ * The SOURCE plan plus what happened elsewhere: the planner stays on this page, but the move may
+ * have parked demand on the target, moved the Feature's Release, and unpublished a published target.
+ * None of that is visible in a refreshed source grid.
+ */
+const MoveItemResultSchema = z.object({
+  plan: CapacityPlanSchema,
+  targetPlanId: z.string().uuid(),
+  targetPlanKey: z.string().nullable(),
+  carried: z.number().int().describe('Allocations recreated on the target against the same team'),
+  parked: z
+    .number()
+    .int()
+    .describe('1 when teams missing from the target were collapsed into one unassigned row'),
+  releaseUpdated: z.boolean().describe("Rally's `Update the Release to match the selected plan`"),
+  targetUnpublished: z.boolean().describe('The move reverted a published target to draft'),
+  targetRepublished: z.boolean().describe('`Move and Republish the Plan` published it again'),
+});
+export class MoveItemResultResponseDto extends createZodDto(MoveItemResultSchema) {}
 
 /**
  * The result of a revert.

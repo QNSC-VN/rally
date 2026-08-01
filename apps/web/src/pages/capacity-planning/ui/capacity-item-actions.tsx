@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Scale, Trash2, Undo2 } from 'lucide-react'
+import { ArrowRightLeft, Scale, Trash2, Undo2 } from 'lucide-react'
 
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 
@@ -19,6 +19,7 @@ export function CapacityItemActions({
   itemKey,
   hasTeams,
   onAllocate,
+  onMove,
   onUnassign,
   onRemove,
 }: {
@@ -28,6 +29,8 @@ export function CapacityItemActions({
   hasTeams: boolean
   /** Split this Feature across teams — Rally's `Allocate`. */
   onAllocate?: () => void
+  /** Rally's `Move To Another Plan`: plan this Feature in a different plan of the same project. */
+  onMove?: () => void
   /** Rally's `Remove All Assignments`: keep the Feature on the plan, empty its teams. */
   onUnassign?: () => void
   /** Rally's `Remove From Plan`: take the Feature off the plan entirely. */
@@ -36,7 +39,9 @@ export function CapacityItemActions({
   const { t } = useTranslation('capacity')
 
   const showUnassign = onUnassign !== undefined && hasTeams
-  if (onAllocate === undefined && !showUnassign && onRemove === undefined) return null
+  if (onAllocate === undefined && onMove === undefined && !showUnassign && onRemove === undefined) {
+    return null
+  }
 
   return (
     <ActionMenu ariaLabel={t('items.actionsLabel', { item: itemKey })}>
@@ -45,6 +50,13 @@ export function CapacityItemActions({
           icon={<Scale size={13} />}
           label={t('items.allocate')}
           onClick={onAllocate}
+        />
+      )}
+      {onMove !== undefined && (
+        <ActionMenuItem
+          icon={<ArrowRightLeft size={13} />}
+          label={t('move.action')}
+          onClick={onMove}
         />
       )}
       {/* The two removal verbs answer different questions. `Remove All Assignments` keeps the

@@ -36,6 +36,7 @@ export type CapacityForecast = components['schemas']['CapacityForecastResponseDt
 export type PublishResult = components['schemas']['PublishResultResponseDto']
 export type PublishSkip = PublishResult['skipped'][number]
 export type RevertResult = components['schemas']['RevertResultResponseDto']
+export type MoveItemResult = components['schemas']['MoveItemResultResponseDto']
 export type CapacityForecastComplexity =
   paths['/v1/capacity-plans/{id}/teams/{teamId}/forecast']['post']['requestBody']['content']['application/json']['complexity']
 
@@ -296,6 +297,36 @@ export function useAllocate() {
       return data as CapacityPlan
     },
     meta: { invalidates: ['capacity'] },
+  })
+}
+
+/**
+ * Rally's `Move To Another Plan`.
+ *
+ * Invalidates `capacity` AND `portfolio`: the move can write the Feature's Release
+ * (`Update the Release to match the selected plan`), which is a field the Portfolio surfaces show.
+ * Every other allocation write stays inside the plan, which is why they invalidate `capacity` alone.
+ */
+export function useMoveItemToPlan() {
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...body
+    }: {
+      id: string
+      portfolioItemId: string
+      targetPlanId: string
+      updateRelease: boolean
+      republish: boolean
+    }) => {
+      const { data, error, response } = await apiClient.POST(
+        '/v1/capacity-plans/{id}/allocations/move',
+        { params: { path: { id } }, body },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as MoveItemResult
+    },
+    meta: { invalidates: ['capacity', 'portfolio'] },
   })
 }
 

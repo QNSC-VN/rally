@@ -34,6 +34,7 @@ export function CapacityItemRow({
   onRemove,
   onUnassign,
   onAllocate,
+  onMove,
   onAssign,
   assignOptions = [],
   dragHandle,
@@ -57,6 +58,8 @@ export function CapacityItemRow({
   onUnassign?: () => void
   /** Opens the Allocate dialog for THIS Feature — splitting it across teams. */
   onAllocate?: () => void
+  /** Opens Rally's `Move To Another Plan` for THIS Feature. */
+  onMove?: () => void
   /**
    * Assigns the Feature to one team, or to none. Omitted where the reader cannot manage the plan,
    * which turns the cell back into text.
@@ -215,6 +218,7 @@ export function CapacityItemRow({
           itemKey={item.itemKey}
           hasTeams={item.teamIds.length > 0}
           onAllocate={onAllocate}
+          onMove={onMove}
           onUnassign={onUnassign}
           onRemove={onRemove}
         />

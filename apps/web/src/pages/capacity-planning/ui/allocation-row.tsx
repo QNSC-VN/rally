@@ -43,6 +43,7 @@ export function AllocationRow({
   contributorTeamNames,
   hasTeams,
   onAllocate,
+  onMove,
   onUnassign,
   onRemove,
 }: {
@@ -74,6 +75,7 @@ export function AllocationRow({
    * wherever it is seen. Omitted (and the gear then hidden) on a published plan.
    */
   onAllocate?: () => void
+  onMove?: () => void
   onUnassign?: () => void
   onRemove?: () => void
 }) {
@@ -306,6 +308,7 @@ export function AllocationRow({
           itemKey={allocation.itemKey}
           hasTeams={hasTeams}
           onAllocate={onAllocate}
+          onMove={onMove}
           onUnassign={onUnassign}
           onRemove={onRemove}
         />

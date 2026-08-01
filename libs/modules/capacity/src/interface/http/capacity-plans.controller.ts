@@ -21,6 +21,7 @@ import type { CapacityPlanDetail } from '../../application/capacity-plans.servic
 import {
   AddCapacityTeamDto,
   AllocateDto,
+  MoveItemToPlanDto,
   CapacityPlanListQueryDto,
   CreateCapacityPlanDto,
   ForecastCapacityDto,
@@ -32,6 +33,7 @@ import {
 import {
   CapacityForecastResponseDto,
   CapacityPlanResponseDto,
+  MoveItemResultResponseDto,
   PublishResultResponseDto,
   RevertResultResponseDto,
 } from './dto/capacity-plan-response.dto';
@@ -68,6 +70,7 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       rank: item.rank,
       projectId: item.projectId,
       projectName: item.projectName,
+      releaseId: item.releaseId,
       estimated: item.estimated,
       rollup: item.rollup,
       complete: item.complete,
@@ -322,6 +325,21 @@ export class CapacityPlansController {
     @Body() body: AllocateDto,
   ): Promise<CapacityPlanResponseDto> {
     return toDto(await this.service.allocate(user, id, body));
+  }
+
+  @Post(':id/allocations/move')
+  @RequirePermission('capacity:manage', { resource: 'capacity_plan', from: 'param', field: 'id' })
+  @ApiOperation({ summary: "Move a Feature's planning to another plan in the same project" })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: MoveItemResultResponseDto })
+  @ApiCommonErrors(400, 401, 403, 404, 422)
+  async moveItemToPlan(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: MoveItemToPlanDto,
+  ): Promise<MoveItemResultResponseDto> {
+    const result = await this.service.moveItemToPlan(user, id, body);
+    return { ...result, plan: toDto(result.plan) };
   }
 
   @Patch(':id/allocations/:allocationId')

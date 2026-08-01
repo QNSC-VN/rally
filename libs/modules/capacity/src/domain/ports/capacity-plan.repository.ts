@@ -87,6 +87,15 @@ export interface ICapacityPlanRepository {
 
   findAllocation(id: string, planId: string): Promise<CapacityAllocation | null>;
 
+  /**
+   * Every allocation of ONE Feature on a plan, across teams and the Unallocated bucket.
+   *
+   * `listAllocations` would do it, but it runs the whole metrics query for every row on the plan to
+   * answer a question about one Feature — `Move To Another Plan` needs the raw rows it is about to
+   * relocate, not their computed tiers.
+   */
+  listAllocationsForItem(planId: string, portfolioItemId: string): Promise<CapacityAllocation[]>;
+
   /** An existing allocation for the same (plan, item, team) triple, for the merge check. */
   findAllocationFor(
     planId: string,
@@ -175,6 +184,20 @@ export interface ICapacityPlanRepository {
     portfolioItemId: string,
     workspaceId: string,
     fields: { plannedStartDate: string | null; plannedEndDate: string | null; releaseId?: string },
+    executor?: DbExecutor,
+  ): Promise<void>;
+
+  /**
+   * Point one Feature at a release, touching NOTHING else.
+   *
+   * `applyPlanToFeature` always writes the planned dates too, which is right for a publish and wrong
+   * for Rally's `Update the Release to match the selected plan` — that option moves the Feature's
+   * release and leaves its dates to the target plan's own publish.
+   */
+  setFeatureRelease(
+    portfolioItemId: string,
+    workspaceId: string,
+    releaseId: string,
     executor?: DbExecutor,
   ): Promise<void>;
 
