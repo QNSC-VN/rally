@@ -62,6 +62,23 @@
   --success: #1e6930;
   --success-bg: #eaf5ed;
   --success-border: #c7e4ce;
+
+  /* Capacity-bar bands — SAMPLED from Rally's own legend swatches, not approximated: a mid
+     blue for delivered work, a pale blue for live child work, a grey hatch for a
+     commitment and a green hatch for untouched headroom. Deliberately NOT the app's navy
+     `--primary`, which made the Complete band vanish inside the dark plan header and read
+     as brand chrome rather than as data.
+     Each pair is fill/stroke + border, and the two hatched bands also carry the tint their
+     gaps sit on — a hatch over pure white reads lighter than Rally's. */
+  --capacity-complete: #5691f0;
+  --capacity-complete-border: #1d5bbf;
+  --capacity-rollup: #cfe0fc;
+  --capacity-rollup-border: #5691f0;
+  --capacity-estimated: #dde3ed;
+  --capacity-estimated-border: #afbacc;
+  --capacity-headroom: #abedc5;
+  --capacity-headroom-bg: #e1faeb;
+  --capacity-headroom-border: #57c282;
   --warning: #d97706;
   --warning-bg: #fef5e4;
   --warning-border: #f0d9a5;
@@ -159,6 +176,18 @@
   --success: #3fb950;
   --success-bg: #12261a;
   --success-border: #2a4a32;
+
+  /* Same bands on a dark surface: Rally's hues kept, values inverted so a hatch reads
+     against a dark card instead of disappearing into it. */
+  --capacity-complete: #5691f0;
+  --capacity-complete-border: #8fb8f6;
+  --capacity-rollup: #24405f;
+  --capacity-rollup-border: #4b7fc4;
+  --capacity-estimated: #3a4552;
+  --capacity-estimated-border: #55657a;
+  --capacity-headroom: #2f5f45;
+  --capacity-headroom-bg: #16261e;
+  --capacity-headroom-border: #57c282;
   --warning: #e3a008;
   --warning-bg: #2a2110;
   --warning-border: #4a3a14;

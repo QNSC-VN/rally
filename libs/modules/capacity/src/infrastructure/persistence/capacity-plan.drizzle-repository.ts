@@ -215,6 +215,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         // Feature owned elsewhere, and the planner needs to see that before allocating to it.
         itemProjectId: portfolioItems.projectId,
         itemProjectName: projects.name,
+        itemState: portfolioItems.state,
         refinedEstimate: portfolioItems.refinedEstimate,
         preliminaryEstimate: portfolioItems.preliminaryEstimate,
         rollup: sql<string>`(
@@ -284,6 +285,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       name: row.name,
       itemProjectId: row.itemProjectId,
       itemProjectName: row.itemProjectName,
+      state: row.itemState,
       refined: row.refinedEstimate === null ? null : Number(row.refinedEstimate),
       preliminarySize: row.preliminaryEstimate,
       totalAllocated: Number(row.totalAllocated),

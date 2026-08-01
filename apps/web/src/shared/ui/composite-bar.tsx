@@ -1,4 +1,7 @@
+import type { ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
+
+import { Tooltip } from '@/shared/ui/tooltip'
 import { BRAND } from '@/shared/config/brand'
 
 /**
@@ -14,17 +17,26 @@ import { BRAND } from '@/shared/config/brand'
  * the one behind it, which is what makes "Complete ⊆ Rollup" legible without a legend.
  */
 export const CAPACITY_SEGMENTS = {
-  complete: { fill: BRAND.primary, border: BRAND.primaryDark, label: 'complete' },
-  rollup: { fill: BRAND.primaryLighter, border: BRAND.primaryLight, label: 'rollup' },
+  // Rally's own bands, not the app's navy `primary`: navy-on-navy made Complete vanish inside the
+  // dark plan header, and a brand colour on a data band reads as chrome rather than as a value.
+  complete: {
+    fill: BRAND.capacityComplete,
+    border: BRAND.capacityCompleteBorder,
+    label: 'complete',
+  },
+  rollup: { fill: BRAND.capacityRollup, border: BRAND.capacityRollupBorder, label: 'rollup' },
   /** Diagonal hatch — a commitment is not delivered work, so it must not read as a solid fill. */
   estimated: {
     // The gaps are the SURFACE colour, not transparent: this band is drawn over the green headroom
     // backdrop, and transparent gaps let the green show through, so a committed stretch and a free
     // stretch read as the same green hatch.
-    fill: `repeating-linear-gradient(-45deg, ${BRAND.borderSubtle} 0, ${BRAND.borderSubtle} 3px, ${BRAND.surface} 3px, ${BRAND.surface} 6px)`,
-    border: BRAND.border,
+    fill: `repeating-linear-gradient(-45deg, ${BRAND.capacityEstimated} 0, ${BRAND.capacityEstimated} 3px, ${BRAND.surface} 3px, ${BRAND.surface} 6px)`,
+    border: BRAND.capacityEstimatedBorder,
     label: 'estimated',
   },
+  // Rally's own green: a light hatch over a pale mint, not a hatch over white. Sampled from its
+  // legend — the tint under the strokes is what stops the band reading as "empty".
+
   /**
    * Remaining capacity — a GREEN hatch, not empty space.
    *
@@ -33,8 +45,8 @@ export const CAPACITY_SEGMENTS = {
    * is "how much room is left". Hatched, not solid, because headroom is not work.
    */
   capacity: {
-    fill: `repeating-linear-gradient(-45deg, ${BRAND.successBorder} 0, ${BRAND.successBorder} 3px, ${BRAND.successBg} 3px, ${BRAND.successBg} 6px)`,
-    border: BRAND.success,
+    fill: `repeating-linear-gradient(-45deg, ${BRAND.capacityHeadroom} 0, ${BRAND.capacityHeadroom} 3px, ${BRAND.capacityHeadroomBg} 3px, ${BRAND.capacityHeadroomBg} 6px)`,
+    border: BRAND.capacityHeadroomBorder,
     label: 'capacity',
   },
 } as const
@@ -74,8 +86,24 @@ export interface CompositeBarProps {
    * information Rally encodes: it marks where the bar failed.
    */
   warningLabelled?: boolean
-  /** Tooltip text, usually the four numbers spelled out. */
+  /** Tooltip text, usually the four numbers spelled out. Ignored when `tooltip` is given. */
   title?: string
+  /**
+   * Rich hover content — Rally's legend panel: a swatch, name, value and percentage per band.
+   *
+   * A node rather than a string because the panel carries the SWATCHES, and because `shared/ui` must
+   * not learn a capacity vocabulary: the caller builds the rows, this only decides where they show.
+   */
+  tooltip?: ReactNode
+  /**
+   * Draw for a DARK background (the detail header bar).
+   *
+   * The default palette is navy-on-white: `complete` is `BRAND.primary`, which on the header's
+   * `bg-primary-dark` is navy on navy — the band a reader most needs to see disappears into the
+   * bar. On dark, the bands become tints of white and the track a translucent outline, which is how
+   * Rally draws its header bar.
+   */
+  onDark?: boolean
 }
 
 /**
@@ -101,6 +129,8 @@ export function CompositeBar({
   warningLabels = [],
   warningLabelled = true,
   title,
+  tooltip,
+  onDark = false,
 }: CompositeBarProps) {
   const hasCapacity = capacity !== null && capacity > 0
   // Denominator: the ceiling when there is one, else the largest value present. Never 0 —
@@ -109,18 +139,55 @@ export function CompositeBar({
   const hasAnything = scale > 0
 
   const pct = (v: number) => (hasAnything ? Math.max(0, Math.min(100, (v / scale) * 100)) : 0)
+  /**
+   * The bands, resolved for the background this bar sits on.
+   *
+   * Same THREE-layer meaning either way — headroom, commitment, live work, finished work — only the
+   * ink changes. On dark the segments cannot come from `CAPACITY_SEGMENTS`, whose colours are chosen
+   * for a white card.
+   */
+  const ink = onDark
+    ? {
+        // Bands keep Rally's colours — a mid blue reads on the dark header exactly as it does in
+        // Rally's own. Only the WHITE-based parts change: a grey hatch and a white track disappear
+        // against navy, so the commitment hatch and the outline become translucent white.
+        complete: CAPACITY_SEGMENTS.complete,
+        rollup: CAPACITY_SEGMENTS.rollup,
+        estimated: {
+          fill: `repeating-linear-gradient(-45deg, rgba(255,255,255,0.42) 0, rgba(255,255,255,0.42) 3px, transparent 3px, transparent 6px)`,
+          border: 'rgba(255,255,255,0.4)',
+        },
+        capacityFill: `repeating-linear-gradient(-45deg, rgba(255,255,255,0.2) 0, rgba(255,255,255,0.2) 3px, transparent 3px, transparent 6px)`,
+        capacityBorder: 'rgba(255,255,255,0.55)',
+        trackBg: 'transparent',
+        emptyBorder: 'rgba(255,255,255,0.35)',
+      }
+    : {
+        complete: CAPACITY_SEGMENTS.complete,
+        rollup: CAPACITY_SEGMENTS.rollup,
+        estimated: CAPACITY_SEGMENTS.estimated,
+        capacityFill: CAPACITY_SEGMENTS.capacity.fill,
+        capacityBorder: CAPACITY_SEGMENTS.capacity.border,
+        trackBg: undefined,
+        emptyBorder: BRAND.borderSubtle,
+      }
+
   /** Over the ceiling — the bar is pinned at 100% and cannot show it by length alone. */
   const overflows = hasCapacity && Math.max(rollup, estimated, complete) > capacity
 
-  return (
-    <div className="flex w-full items-center gap-1.5" title={title}>
+  const bar = (
+    <div
+      className="flex w-full items-center gap-1.5"
+      title={tooltip === undefined ? title : undefined}
+    >
       {/* The TRACK is the capacity: outlined green when a ceiling exists, plain when the row has
           none of its own (a Feature). Rally draws it this way, and it means "over capacity" is
           visible as a full bar rather than a rescaled one. */}
       <div
-        className="relative h-4 flex-1 overflow-hidden rounded-sm bg-card"
+        className="relative h-4 flex-1 overflow-hidden rounded-sm"
         style={{
-          border: `1px solid ${hasCapacity ? CAPACITY_SEGMENTS.capacity.border : BRAND.borderSubtle}`,
+          backgroundColor: ink.trackBg ?? BRAND.surface,
+          border: `1px solid ${hasCapacity ? ink.capacityBorder : ink.emptyBorder}`,
         }}
       >
         {/* Headroom first, as the backdrop: everything else is drawn ON TOP of it, so the green
@@ -133,7 +200,7 @@ export function CompositeBar({
             style={{
               left: `${pct(estimated)}%`,
               right: 0,
-              background: CAPACITY_SEGMENTS.capacity.fill,
+              background: ink.capacityFill,
             }}
           />
         )}
@@ -143,7 +210,7 @@ export function CompositeBar({
           <div
             className="absolute inset-y-0 left-0"
             data-segment="estimated"
-            style={{ width: `${pct(estimated)}%`, background: CAPACITY_SEGMENTS.estimated.fill }}
+            style={{ width: `${pct(estimated)}%`, background: ink.estimated.fill }}
           />
         )}
         <div
@@ -151,8 +218,8 @@ export function CompositeBar({
           data-segment="rollup"
           style={{
             width: `${pct(rollup)}%`,
-            backgroundColor: CAPACITY_SEGMENTS.rollup.fill,
-            borderRight: rollup > 0 ? `1px solid ${CAPACITY_SEGMENTS.rollup.border}` : undefined,
+            backgroundColor: ink.rollup.fill,
+            borderRight: rollup > 0 ? `1px solid ${ink.rollup.border}` : undefined,
           }}
         />
         <div
@@ -160,9 +227,8 @@ export function CompositeBar({
           data-segment="complete"
           style={{
             width: `${pct(complete)}%`,
-            backgroundColor: CAPACITY_SEGMENTS.complete.fill,
-            borderRight:
-              complete > 0 ? `1px solid ${CAPACITY_SEGMENTS.complete.border}` : undefined,
+            backgroundColor: ink.complete.fill,
+            borderRight: complete > 0 ? `1px solid ${ink.complete.border}` : undefined,
           }}
         />
 
@@ -201,5 +267,15 @@ export function CompositeBar({
         )}
       </div>
     </div>
+  )
+
+  // The shared `Tooltip` PORTALS, which a `title` attribute cannot: a legend has to escape the
+  // grid's scroll container, and a native tooltip cannot carry swatches at all.
+  return tooltip === undefined ? (
+    bar
+  ) : (
+    <Tooltip side="top" delayDuration={150} content={tooltip}>
+      {bar}
+    </Tooltip>
   )
 }

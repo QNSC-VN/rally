@@ -61,6 +61,17 @@ export const BRAND = {
   danger: 'var(--destructive)',
   dangerBg: 'var(--destructive-bg)',
   dangerBorder: 'var(--destructive-border)',
+  /** Capacity-bar bands — Rally's own palette; see `globals.css` for why not `primary`. */
+  capacityComplete: 'var(--capacity-complete)',
+  capacityCompleteBorder: 'var(--capacity-complete-border)',
+  capacityRollup: 'var(--capacity-rollup)',
+  capacityRollupBorder: 'var(--capacity-rollup-border)',
+  capacityEstimated: 'var(--capacity-estimated)',
+  capacityEstimatedBorder: 'var(--capacity-estimated-border)',
+  capacityHeadroom: 'var(--capacity-headroom)',
+  capacityHeadroomBg: 'var(--capacity-headroom-bg)',
+  capacityHeadroomBorder: 'var(--capacity-headroom-border)',
+
   success: 'var(--success)',
   successBg: 'var(--success-bg)',
   successBorder: 'var(--success-border)',

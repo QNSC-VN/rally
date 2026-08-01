@@ -72,6 +72,31 @@ export const NXP_FEATURE_2_ID = '00000000-0000-7000-8000-0000000000c2';
 // consume the project's only unplanned release and fail on the next run.
 export const NXP_CAPACITY_PLAN_ID = '00000000-0000-7000-8000-0000000000d0';
 
+/**
+ * The rest of the Phase 5.2 flow fixture, added so the seeded plan walks the BA's whole
+ * end-to-end flow rather than only its first two steps.
+ *
+ * Each id exists to make ONE state renderable that the thin fixture could not:
+ *   • TEAM_BETA        a SECOND team, so a Feature can be split and the team grid can be sorted
+ *   • FEATURE_3        split across both teams (primary + contributor), the `→ to` provenance case
+ *   • FEATURE_4        parked in the Unallocated bucket — demand with nowhere to go
+ *   • FEATURE_5        ARCHIVED, and FEATURE_6 CANCELLED: the two the picker and the API must refuse
+ *   • FEATURE_7        committed to ANOTHER release, the third refusal
+ *   • RELEASE_2        that other release, and the home of a PUBLISHED plan
+ *   • CAPACITY_PLAN_2  published, so read-only rendering and Revert have a case without a test
+ *                      having to publish the draft one first
+ */
+export const TEAM_BETA_ID = '00000000-0000-7000-8000-000000000041';
+export const NXP_RELEASE_2_ID = '00000000-0000-7000-8000-000000000051';
+export const NXP_FEATURE_3_ID = '00000000-0000-7000-8000-0000000000c3';
+export const NXP_FEATURE_4_ID = '00000000-0000-7000-8000-0000000000c4';
+export const NXP_FEATURE_5_ID = '00000000-0000-7000-8000-0000000000c5';
+export const NXP_FEATURE_6_ID = '00000000-0000-7000-8000-0000000000c6';
+export const NXP_FEATURE_7_ID = '00000000-0000-7000-8000-0000000000c7';
+export const NXP_CAPACITY_PLAN_2_ID = '00000000-0000-7000-8000-0000000000d1';
+export const NXP_STORY_2_ID = '00000000-0000-7000-8000-0000000000a2';
+export const NXP_STORY_3_ID = '00000000-0000-7000-8000-0000000000a3';
+
 // ── Seed data constants ───────────────────────────────────────────────────────
 // Format: { id, key, name, description }
 // All are owned by ADMIN_USER_ID and belong to the default workspace.

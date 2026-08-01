@@ -1,14 +1,16 @@
-import { type CSSProperties } from 'react'
+import { type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { MetricValue } from '@/shared/ui/metric-value'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { BRAND } from '@/shared/config/brand'
 import { cn } from '@/shared/lib/utils'
 import type { CapacityPlanItem } from '@/features/capacity-planning/api'
-import { EstimateTierBadge } from './estimate-tier-badge'
+import { EstimateTierIcon } from './estimate-tier-badge'
+import { CapacityItemActions } from './capacity-item-actions'
 import { type ItemColKey } from '../model/columns'
 
 /**
@@ -29,6 +31,12 @@ export function CapacityItemRow({
   belowCutline,
   expanded = false,
   onToggleExpanded,
+  onRemove,
+  onUnassign,
+  onAllocate,
+  onAssign,
+  assignOptions = [],
+  dragHandle,
   colStyleFor,
   onOpenFeature,
 }: {
@@ -43,6 +51,21 @@ export function CapacityItemRow({
   expanded?: boolean
   /** Omitted where nothing can be nested — the toggle then renders as a spacer. */
   onToggleExpanded?: () => void
+  /** Removes the Feature from the plan. Omitted for a reader without `capacity:manage`. */
+  onRemove?: () => void
+  /** Clears every team assignment but keeps the Feature on the plan — Rally's second removal verb. */
+  onUnassign?: () => void
+  /** Opens the Allocate dialog for THIS Feature — splitting it across teams. */
+  onAllocate?: () => void
+  /**
+   * Assigns the Feature to one team, or to none. Omitted where the reader cannot manage the plan,
+   * which turns the cell back into text.
+   */
+  onAssign?: (teamId: string | null) => void
+  /** Teams on the plan, plus `Unassign` — built once by the page. */
+  assignOptions?: { value: string; label: string }[]
+  /** The rank grip, rendered by the page so the row need not know about dnd-kit. */
+  dragHandle?: ReactNode
   colStyleFor: (key: ItemColKey, base?: CSSProperties) => CSSProperties
   onOpenFeature: (portfolioItemId: string) => void
 }) {
@@ -58,10 +81,14 @@ export function CapacityItemRow({
       )}
       data-below-cutline={belowCutline || undefined}
     >
+      {/* Rank + grip. Rally ranks by dragging the row and only "when the grid is set to the default
+          sort order", which is the plan's own rank order — the same rule `useRowRerank` enforces on
+          the Backlog, so the grip simply disappears under any other sort. */}
       <div
         style={colStyleFor('rank', { flexShrink: 0 })}
-        className="px-2 text-right text-muted-foreground tabular-nums"
+        className="flex items-center justify-end gap-1 px-2 text-muted-foreground tabular-nums"
       >
+        {dragHandle}
         {position}
       </div>
 
@@ -115,14 +142,42 @@ export function CapacityItemRow({
             it the same way. Allocated to SEVERAL teams, Rally shows the COUNT rather than one
             team's name, because no single name would be the answer; the nested rows below say
             which teams they are. */}
-        {item.primaryTeamId === null && item.teamIds.length === 0 ? (
+        {item.teamIds.length <= 1 && onAssign !== undefined ? (
+          /* Rally: "You can select the project from this field to assign a portfolio item to a
+             single project." A SPLIT Feature is read-only here — no single team is the answer, and
+             Rally sends those edits through the Allocate dialog. The BA adds `Unassign` as the
+             first option, which is the only way back to the yellow unassigned state. */
+          <SearchableSelect
+            value={item.primaryTeamId ?? ''}
+            ariaLabel={t('items.assignmentLabel', { item: item.itemKey })}
+            options={assignOptions}
+            onChange={(v) => onAssign(v === '' || v === null ? null : v)}
+            /* The trigger says `Not assigned`, in the BA's yellow, while the MENU offers `Unassign`.
+               They are the same row of the list but not the same sentence: one is a state the plan is
+               in, the other an action you can take — and without this the cell rendered the option's
+               own label, so an unassigned Feature read as the verb "Unassign". */
+            triggerContent={
+              item.primaryTeamId === null ? (
+                <span className="flex items-center gap-1" style={{ color: BRAND.warning }}>
+                  <AlertTriangle size={12} />
+                  <span className="text-ui-sm">{t('items.notAssigned')}</span>
+                </span>
+              ) : undefined
+            }
+          />
+        ) : item.primaryTeamId === null && item.teamIds.length === 0 ? (
           <span className="flex items-center gap-1" style={{ color: BRAND.warning }}>
             <AlertTriangle size={12} />
             <span className="text-ui-sm">{t('items.notAssigned')}</span>
           </span>
         ) : item.teamIds.length > 1 ? (
-          <span className="text-foreground">
-            {t('items.teamCount', { count: item.teamIds.length })}
+          /* Rally prints a boxed COUNT here and lists the teams in the nested rows beneath. A count
+             is the only honest answer for a split Feature — no single team name is it. */
+          <span
+            className="inline-flex min-w-6 justify-center rounded-sm border border-border-strong px-1 text-ui-sm text-foreground tabular-nums"
+            title={t('items.teamCount', { count: item.teamIds.length })}
+          >
+            {item.teamIds.length}
           </span>
         ) : (
           <span className="truncate text-foreground" title={primaryTeamName ?? undefined}>
@@ -143,8 +198,26 @@ export function CapacityItemRow({
         style={colStyleFor('estimated', { flexShrink: 0 })}
         className="flex items-center justify-end gap-1.5 px-2"
       >
-        <EstimateTierBadge tier={item.tier} />
+        <EstimateTierIcon tier={item.tier} />
         <span className="tabular-nums">{item.estimated}</span>
+      </div>
+
+      {/* Rally's per-item menu. `Remove From Plan` drops every team's allocation of the Feature; a
+          trash can in a team's sub-table would instead remove it from ONE team while leaving it on
+          the plan, which is a different decision and one Rally makes through the assignment
+          field. */}
+      <div
+        style={colStyleFor('actions', { flexShrink: 0 })}
+        className="flex items-center justify-center px-1"
+      >
+        {/* The shared gear, rendered identically in a team's sub-table on the Teams tab. */}
+        <CapacityItemActions
+          itemKey={item.itemKey}
+          hasTeams={item.teamIds.length > 0}
+          onAllocate={onAllocate}
+          onUnassign={onUnassign}
+          onRemove={onRemove}
+        />
       </div>
     </div>
   )

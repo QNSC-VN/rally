@@ -524,7 +524,10 @@ export const capacityPlanAllocations = workSchema.table(
      * all" is already expressed by `team_id IS NULL`, Rally's unassigned state.
      */
     isPrimary: boolean('is_primary').notNull().default(false),
-    value: numeric('value', { precision: 10, scale: 2 }).notNull().default('0'),
+    // NULLABLE, and the default is gone with the NOT NULL: null means "not explicitly
+    // allocated", which the read path resolves to the Feature's own estimate (Refined →
+    // Preliminary). Rally's `Allocation` column is blank on exactly those rows.
+    value: numeric('value', { precision: 10, scale: 2 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -533,6 +536,20 @@ export const capacityPlanAllocations = workSchema.table(
     itemIdx: index('ix_capacity_allocations_item').on(t.portfolioItemId),
     // Team grid: rows for one team within one plan.
     planTeamIdx: index('ix_capacity_allocations_plan_team').on(t.planId, t.teamId),
+    /**
+     * ONE row per (plan, Feature, team) — and one unallocated row per (plan, Feature).
+     *
+     * Two indexes because NULL is not a value: Postgres treats null team ids as distinct, so the
+     * first index cannot hold the Unallocated bucket to a single row per Feature. Without either,
+     * the service's read-then-merge was the only guard: a race, a retried request or a re-run seed
+     * duplicated the row and multiplied a team's Estimated.
+     */
+    oneRowPerTeam: uniqueIndex('uq_capacity_allocation_team')
+      .on(t.planId, t.portfolioItemId, t.teamId)
+      .where(sql`${t.teamId} is not null`),
+    oneUnassignedRow: uniqueIndex('uq_capacity_allocation_unassigned')
+      .on(t.planId, t.portfolioItemId)
+      .where(sql`${t.teamId} is null`),
     // ONE primary per Feature per plan, enforced by the database rather than by the service:
     // a race between two "make this the primary" calls would otherwise leave two.
     onePrimaryPerItem: uniqueIndex('uq_capacity_allocation_primary')

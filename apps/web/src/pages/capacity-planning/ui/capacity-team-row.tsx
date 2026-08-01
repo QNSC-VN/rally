@@ -1,17 +1,14 @@
 import { type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Sparkles, Trash2 } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 
-import {
-  useRemoveCapacityTeam,
-  useSetCapacity,
-  type CapacityPlanTeam,
-} from '@/features/capacity-planning/api'
+import { useSetCapacity, type CapacityPlanTeam } from '@/features/capacity-planning/api'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { MetricValue } from '@/shared/ui/metric-value'
 import { WarningCountBadge } from '@/shared/ui/warning-count-badge'
 import { CompositeBar } from '@/shared/ui/composite-bar'
+import { CapacityBarTooltip } from './capacity-bar-tooltip'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
@@ -75,7 +72,6 @@ export function CapacityTeamRow({
       ? null
       : Math.round((value / team.metrics.capacity) * 100)
   const setCapacity = useSetCapacity()
-  const removeTeam = useRemoveCapacityTeam()
 
   function commitCapacity(raw: string) {
     const trimmed = raw.trim()
@@ -93,18 +89,6 @@ export function CapacityTeamRow({
       { id: planId, teamId: team.teamId, capacity: next },
       {
         onSuccess: () => notify.success(t('row.capacityUpdated')),
-        onError: (err) => notify.error(err.message),
-      },
-    )
-  }
-
-  function remove() {
-    removeTeam.mutate(
-      { id: planId, teamId: team.teamId },
-      {
-        onSuccess: () => notify.success(t('row.teamRemoved')),
-        // Surfaces the API's refusal when the team still holds allocations, rather than
-        // silently doing nothing.
         onError: (err) => notify.error(err.message),
       },
     )
@@ -134,14 +118,20 @@ export function CapacityTeamRow({
 
       {/* The count lives here so a COLLAPSED team still says how much it carries — hiding the
           children with no trace would make an empty team and a full one look identical. */}
+      {/* `inline-flex` + `items-center`, not a text block: the badge is a pill with its own line
+          height, so inside plain text it rode ABOVE the count's baseline. */}
       <div
         style={colStyleFor('features', { flexShrink: 0 })}
-        className="px-2 text-right text-muted-foreground tabular-nums"
+        className="flex items-center justify-end gap-1 px-2 text-muted-foreground tabular-nums"
       >
         {featureCount}
         {/* The warning COUNT, as Rally shows it: on a plan with a dozen teams "⚠5" says which row
             to read first, where a bare triangle only says "something". */}
-        <WarningCountBadge count={warnings.length} label={warnings.join('. ')} />
+        <WarningCountBadge
+          count={warnings.length}
+          heading={t('warnings.requiresAttention', { count: warnings.length })}
+          label={warnings.join('. ')}
+        />
       </div>
 
       {/* The bar draws the warning glyph but does NOT name it: the `WarningCountBadge` above
@@ -157,12 +147,14 @@ export function CapacityTeamRow({
           targetLoadPct={targetLoadPct}
           warningLabels={warnings}
           warningLabelled={false}
-          title={t('row.barTooltip', {
-            complete: team.metrics.complete,
-            rollup: team.metrics.rollup,
-            estimated: team.metrics.estimated,
-            unit: unitLabel,
-          })}
+          tooltip={
+            <CapacityBarTooltip
+              complete={team.metrics.complete}
+              rollup={team.metrics.rollup}
+              estimated={team.metrics.estimated}
+              capacity={team.metrics.capacity}
+            />
+          }
         />
       </div>
 
@@ -219,15 +211,10 @@ export function CapacityTeamRow({
         >
           <Sparkles size={13} />
         </IconButton>
-        {canManage && (
-          <IconButton
-            aria-label={t('row.removeTeam', { team: team.teamName ?? '' })}
-            onClick={remove}
-            disabled={removeTeam.isPending}
-          >
-            <Trash2 size={13} />
-          </IconButton>
-        )}
+        {/* No delete here: Rally changes a plan's teams through `Add / Remove Project(s) to Plan`,
+            the checkbox dialog on the toolbar. A per-row trash can also invited removing a team
+            whose demand has to be moved first, which the API refuses — the dialog says so before
+            the click instead of after it. */}
       </div>
     </div>
   )

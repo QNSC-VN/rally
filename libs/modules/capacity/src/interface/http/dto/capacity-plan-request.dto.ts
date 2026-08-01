@@ -80,11 +80,11 @@ export const SetCapacitySchema = z.object({
 export class SetCapacityDto extends createZodDto(SetCapacitySchema) {}
 
 /**
- * Commit demand for a Feature.
+ * Plan a Feature against a team.
  *
- * `teamId` null (or omitted) parks it in the Unallocated bucket. `value` omitted accepts the
- * server default, which is Refined → Preliminary and deliberately SKIPS the allocated tier
- * so a blank field cannot commit the sum of the allocations it is creating.
+ * `teamId` null (or omitted) parks it in the Unallocated bucket. `value` OMITTED assigns without
+ * allocating — Rally's primary assignment — which stores null and charges the Feature's own
+ * estimate (Refined → Preliminary) to that team on read.
  */
 export const AllocateSchema = z.object({
   portfolioItemId: z.string().uuid(),
@@ -95,7 +95,8 @@ export class AllocateDto extends createZodDto(AllocateSchema) {}
 
 export const UpdateAllocationSchema = z
   .object({
-    value: CAPACITY.optional(),
+    /** Explicit null clears the allocation, so the row charges the Feature's estimate again. */
+    value: CAPACITY.nullable().optional(),
     /** Explicit null moves the row into the Unallocated bucket. */
     teamId: z.string().uuid().nullable().optional(),
   })

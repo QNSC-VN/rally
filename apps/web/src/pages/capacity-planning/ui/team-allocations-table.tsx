@@ -1,4 +1,5 @@
 import { useCallback, type CSSProperties } from 'react'
+import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
@@ -26,17 +27,59 @@ export function TeamAllocationsTable({
   planId,
   allocations,
   teamName,
-  unitLabel,
   canManage,
   onOpenFeature,
+  rankPositionOf,
+  sharingOf,
+  onAddFeatures,
+  itemActions,
 }: {
   planId: string
   allocations: CapacityAllocation[]
   /** Owning team, or null for the Unallocated bucket. Used for the make-primary label. */
   teamName: string | null
-  unitLabel: string
   canManage: boolean
   onOpenFeature: (portfolioItemId: string) => void
+  /**
+   * The Feature's 1-based position in the PLAN's rank order.
+   *
+   * Resolved by the page from the plan's item list rather than counted inside this table: a team's
+   * rows are a subset of the plan, so counting locally would number them 1..n and claim a priority
+   * order this team does not own.
+   */
+  rankPositionOf: (portfolioItemId: string) => number | null
+  /**
+   * Who else holds this Feature: its owning team when that is not this table's, and the other teams
+   * it was allocated to when this table's team owns it.
+   *
+   * Resolved by the page from the plan's allocation list — a nested table only sees its own rows, so
+   * it cannot tell whether a Feature is shared.
+   */
+  sharingOf: (portfolioItemId: string) => { owner: string | null; contributors: string[] }
+  /**
+   * Rally's `Add Items to Project Plan`: adds Features already assigned to THIS team.
+   *
+   * Below the list rather than above it, which is where Rally puts it and where the BA's catalog
+   * puts it too — the button belongs to the group it appends to, and a header-level control would
+   * read as belonging to the plan.
+   *
+   * Omitted for a reader who cannot manage the plan, which is also how the row hides its editors.
+   */
+  onAddFeatures?: () => void
+  /**
+   * Rally's per-item gear for these rows, resolved by the page.
+   *
+   * A resolver rather than three callbacks: the verbs act on a Feature, and the page already owns
+   * the handlers the Features tab uses — passing them per row here keeps ONE definition of what
+   * `Remove From Plan` does instead of a second copy for the nested table. Undefined means the plan
+   * is read-only and no gear is drawn.
+   */
+  itemActions?: (allocation: CapacityAllocation) => {
+    hasTeams: boolean
+    onAllocate?: () => void
+    onUnassign?: () => void
+    onRemove?: () => void
+  }
 }) {
   const { t } = useTranslation('capacity')
   const table = useDataTable<CapacityAllocation, unknown, AllocColKey>(
@@ -65,14 +108,27 @@ export function TeamAllocationsTable({
               key={allocation.id}
               planId={planId}
               allocation={allocation}
-              unitLabel={unitLabel}
               canManage={canManage}
               colStyleFor={colStyleFor}
               onOpenFeature={onOpenFeature}
               teamName={teamName}
+              rankPosition={rankPositionOf(allocation.portfolioItemId)}
+              ownerTeamName={sharingOf(allocation.portfolioItemId).owner}
+              contributorTeamNames={sharingOf(allocation.portfolioItemId).contributors}
+              {...(itemActions?.(allocation) ?? { hasTeams: false })}
             />
           ))}
         </DataTableFrame>
+
+        {onAddFeatures !== undefined && (
+          <button
+            type="button"
+            onClick={onAddFeatures}
+            className="flex items-center gap-1 px-2 py-1.5 text-ui-sm text-primary-light underline-offset-2 hover:underline"
+          >
+            <Plus size={12} /> {t('addFeatures.actionForTeam')}
+          </button>
+        )}
       </div>
     </div>
   )

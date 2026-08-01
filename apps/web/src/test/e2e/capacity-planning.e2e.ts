@@ -30,7 +30,12 @@ test.describe('Capacity Planning', () => {
   async function openSeededPlan(page: import('@playwright/test').Page) {
     await loginAndSelectProject(page)
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
-    await page.getByText('NX Platform v2 capacity').click()
+    // The ID cell is the link: the row does not navigate and the NAME cell edits in place,
+    // which is how Rally and every other grid here behave.
+    // CP-1 by name, not `.first()`: the seed now also carries CP-2, a PUBLISHED plan, and the list
+    // is newest-first — so `.first()` opened the read-only one and every draft-only control was
+    // missing.
+    await page.getByRole('button', { name: /^CP-1$/ }).click()
     await expect(page).toHaveURL(/\/capacity-planning\/[0-9a-f-]{36}/)
     await expect(page.getByText('Team Alpha').first()).toBeVisible()
   }
@@ -106,22 +111,24 @@ test.describe('Capacity Planning', () => {
     await expect(glyph).toBeVisible()
 
     // ── Breakdown ───────────────────────────────────────────────────────────
+    // Rally's panel, not a modal table: four bars on one scale, each labelled with its value and
+    // annotated with the GAP to the level above — Complete, then Unfinished, then two Remainings.
     await page.getByRole('button', { name: 'Breakdown', exact: true }).click()
-    const dialog = page.getByRole('dialog', { name: /Capacity breakdown/i })
-    await expect(dialog).toBeVisible()
-
-    // Rally's four columns, by name rather than by position.
-    for (const column of ['Complete', 'Rollup', 'Estimated', 'Capacity', 'Remaining']) {
-      await expect(dialog.getByRole('columnheader', { name: column, exact: true })).toBeVisible()
+    const panel = page.getByText('By Story Points')
+    await expect(panel).toBeVisible()
+    for (const label of [
+      'Complete',
+      'Rollup',
+      'Estimated',
+      'Capacity',
+      'Unfinished',
+      'Remaining',
+    ]) {
+      await expect(page.getByText(label, { exact: true }).first()).toBeVisible()
     }
-    // The team is a row header, and its missing capacity is reported here too rather than
-    // rendering as a zero ceiling.
-    await expect(dialog.getByRole('rowheader', { name: /Team Alpha/ })).toBeVisible()
-    await expect(dialog.getByRole('row', { name: /Total/ })).toContainText('Not entered')
-
-    // The modal's own X — this overlay adds no footer, so there is exactly one Close.
-    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
-    await expect(dialog).toBeHidden()
+    // Esc closes a popover; there is no dialog to find a Close button in.
+    await page.keyboard.press('Escape')
+    await expect(panel).toBeHidden()
 
     // Entering a capacity clears that warning — the plan is now measurable. Restores the
     // seeded blank afterwards so re-runs start where this began.
@@ -175,11 +182,17 @@ test.describe('Capacity Planning', () => {
     await loginAndSelectProject(page)
     await page.goto('/capacity-planning', { waitUntil: 'domcontentloaded' })
 
-    await expect(page.getByLabel('Release column', { exact: true })).toBeVisible()
-    await expect(page.getByLabel('Unit column', { exact: true })).toBeVisible()
+    // Rally's columns, and only those: Unit, Target Load and Capacity are plan SETTINGS, so they
+    // live on the detail page rather than telling two rows apart here.
+    for (const column of ['ID', 'Name', 'Release', 'Status', 'Last Updated', 'Teams in Plan']) {
+      await expect(page.getByLabel(`${column} column`, { exact: true })).toBeVisible()
+    }
+    for (const gone of ['Unit', 'Target Load', 'Capacity']) {
+      await expect(page.getByLabel(`${gone} column`, { exact: true })).toHaveCount(0)
+    }
     await expect(page.getByText('NX Platform v2 capacity')).toBeVisible()
-    // Unit is fixed at creation and shown per plan.
-    await expect(page.getByText('points').first()).toBeVisible()
+    // The plan's key leads the row and is the only cell that navigates.
+    await expect(page.getByRole('button', { name: /^CP-1$/ })).toBeVisible()
   })
 
   test('the create dialog will not offer a release that already has a plan', async ({ page }) => {

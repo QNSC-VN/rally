@@ -56,6 +56,7 @@ import {
   workItemWatchers,
   portfolioItems,
   capacityPlans,
+  capacityPlanAllocations,
   capacityPlanTeams,
 } from '../schema/work';
 import { userRoleAssignments } from '../schema/access';
@@ -70,6 +71,8 @@ import {
   DEVELOPER_ID,
   VIEWER_ID,
   NXP_STORY_1_ID,
+  NXP_STORY_2_ID,
+  NXP_STORY_3_ID,
   NXP_DEFECT_1_ID,
   NXP_TASK_1_ID,
   NXP_TASK_2_ID,
@@ -80,6 +83,14 @@ import {
   NXP_EPIC_1_ID,
   NXP_FEATURE_1_ID,
   NXP_FEATURE_2_ID,
+  NXP_FEATURE_3_ID,
+  NXP_FEATURE_4_ID,
+  NXP_FEATURE_5_ID,
+  NXP_FEATURE_6_ID,
+  NXP_FEATURE_7_ID,
+  NXP_RELEASE_2_ID,
+  TEAM_BETA_ID,
+  NXP_CAPACITY_PLAN_2_ID,
   NXP_CAPACITY_PLAN_ID,
   SEED_PROJECTS,
 } from './constants';
@@ -191,15 +202,29 @@ async function seedFlow() {
   // ── 1. Team Alpha (with members) ────────────────────────────────────────
   await db
     .insert(teams)
-    .values({
-      id: TEAM_ALPHA_ID,
-      workspaceId: WORKSPACE_ID,
-      name: 'Team Alpha',
-      key: 'ALPHA',
-      description: 'Core platform team — owns NX Platform.',
-      leadId: ADMIN_USER_ID,
-      status: 'active',
-    })
+    .values([
+      {
+        id: TEAM_ALPHA_ID,
+        workspaceId: WORKSPACE_ID,
+        name: 'Team Alpha',
+        key: 'ALPHA',
+        description: 'Core platform team — owns NX Platform.',
+        leadId: ADMIN_USER_ID,
+        status: 'active',
+      },
+      {
+        // A SECOND team, because most of the capacity flow needs two: a Feature cannot be split
+        // across one, `← from` / `→ to` provenance has nothing to name, and sorting the team grid
+        // by a column cannot change anything.
+        id: TEAM_BETA_ID,
+        workspaceId: WORKSPACE_ID,
+        name: 'Team Beta',
+        key: 'BETA',
+        description: 'Payments team — shares NX Platform delivery with Alpha.',
+        leadId: ADMIN_USER_ID,
+        status: 'active',
+      },
+    ])
     .onConflictDoNothing();
 
   // Members: the 3 core users (admin/dev/viewer) so the Team Status roster has
@@ -262,6 +287,27 @@ async function seedFlow() {
       status: 'planning',
       startDate: '2026-07-01',
       releaseDate: '2026-07-31',
+    })
+    .onConflictDoNothing();
+
+  /**
+   * A SECOND release, so the flow has somewhere to put its other two fixtures.
+   *
+   * A plan is one per (project, release), so the published-plan fixture below needs its own release,
+   * and FE-7 needs a release that is not this plan's to be the "belongs to another release" refusal.
+   */
+  await db
+    .insert(releases)
+    .values({
+      id: NXP_RELEASE_2_ID,
+      workspaceId: WORKSPACE_ID,
+      projectId: nxpId,
+      releaseKey: 'RE-2',
+      name: 'v2.1 — Payments hardening',
+      description: 'Follow-on release: subscription billing and wallet cleanup.',
+      status: 'planning',
+      startDate: '2026-08-01',
+      releaseDate: '2026-08-31',
     })
     .onConflictDoNothing();
 
@@ -328,7 +374,10 @@ async function seedFlow() {
     .where(eq(schema.workflowStatuses.projectId, nxpId));
   const todoStatus = statusRows.find((s) => s.category === 'to_do')?.id;
   const inProgressStatus = statusRows.find((s) => s.category === 'in_progress')?.id;
-  if (!todoStatus || !inProgressStatus) {
+  // `done` is the ACCEPTED end of the workflow — the capacity grid's `Complete` counts it, so the
+  // split-Feature fixture needs one child sitting there.
+  const acceptedStatus = statusRows.find((s) => s.category === 'done')?.id;
+  if (!todoStatus || !inProgressStatus || !acceptedStatus) {
     throw new Error('seedFlow: NXP workflow statuses missing — seedProject must run first');
   }
 
@@ -443,6 +492,77 @@ async function seedFlow() {
         preliminaryEstimate: 's' as const,
         rank: getDeterministicRank('FE-2'),
       },
+      /**
+       * FE-3 … FE-7 exist for the CAPACITY flow, not for the Portfolio page.
+       *
+       * The plan fixture used to be one team and no Features, so most of the BA's flow (§4.4–§4.7)
+       * had nothing to render: no split Feature, no unassigned demand, and none of the three
+       * eligibility refusals. Each of these makes exactly one of those states real.
+       */
+      {
+        id: NXP_FEATURE_3_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        parentId: NXP_EPIC_1_ID,
+        // A REFINED estimate, so the estimate tier ladder has a middle rung: FE-1 resolves from its
+        // preliminary size, this one from a top-down number, and an allocated row beats both.
+        refinedEstimate: '21',
+        itemKey: 'FE-3',
+        type: 'feature' as const,
+        name: 'One-click reorder',
+        state: 'developing' as const,
+        preliminaryEstimate: 'm' as const,
+        rank: getDeterministicRank('FE-3'),
+      },
+      {
+        id: NXP_FEATURE_4_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        parentId: NXP_EPIC_1_ID,
+        itemKey: 'FE-4',
+        type: 'feature' as const,
+        name: 'Address book cleanup',
+        state: 'feature_prioritization' as const,
+        preliminaryEstimate: 's' as const,
+        rank: getDeterministicRank('FE-4'),
+      },
+      {
+        id: NXP_FEATURE_5_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        itemKey: 'FE-5',
+        type: 'feature' as const,
+        name: 'Legacy wallet import (archived)',
+        state: 'developing' as const,
+        preliminaryEstimate: 'm' as const,
+        // Archived: the picker must omit it and the API must refuse it.
+        archivedAt: new Date(),
+        rank: getDeterministicRank('FE-5'),
+      },
+      {
+        id: NXP_FEATURE_6_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        itemKey: 'FE-6',
+        type: 'feature' as const,
+        name: 'Crypto checkout (cancelled)',
+        state: 'cancelled' as const,
+        preliminaryEstimate: 'l' as const,
+        rank: getDeterministicRank('FE-6'),
+      },
+      {
+        id: NXP_FEATURE_7_ID,
+        workspaceId: WORKSPACE_ID,
+        projectId: nxpId,
+        itemKey: 'FE-7',
+        type: 'feature' as const,
+        name: 'Subscription billing (next release)',
+        state: 'developing' as const,
+        preliminaryEstimate: 'm' as const,
+        // Committed to the OTHER release: eligible for that plan, refused by this one.
+        releaseId: NXP_RELEASE_2_ID,
+        rank: getDeterministicRank('FE-7'),
+      },
     ])
     .onConflictDoNothing();
 
@@ -454,6 +574,81 @@ async function seedFlow() {
     .set({ featureId: NXP_FEATURE_1_ID })
     .where(inArray(workItems.id, [NXP_STORY_1_ID, NXP_DEFECT_1_ID]));
 
+  /**
+   * Two more Stories, under FE-3, so the SPLIT Feature has child work on BOTH teams.
+   *
+   * This is what makes Rollup and Complete mean anything on the capacity grid: those figures count
+   * child Stories whose PROJECT and RELEASE match the plan, attributed by the child's own team. With
+   * children on one team only, a shared Feature reported all its delivery against one side of the
+   * split and the per-team columns could not be told apart from the Feature's total.
+   *
+   * US-3 is ACCEPTED, so `Complete` is non-zero for Beta while Alpha's stays behind — the D1
+   * distinction (Complete counts completed/accepted/release; Percent Done counts accepted only) has
+   * a case in the seed rather than only in a test.
+   */
+  /**
+   * Keys carry a `D` for demo, because `uq_wi_item_key` is per WORKSPACE while the app mints keys
+   * per project.
+   *
+   * A fixture claiming `US-2` collides the moment any project in the workspace has a second story —
+   * an e2e run, a developer clicking Add — and `onConflictDoNothing` then skips the fixture
+   * SILENTLY: the rows appear to exist, the plan reads zero rollup, and nothing says why. (That is
+   * exactly what happened here, twice: first at `US-2`, then at `US-90`, which e2e debris in another
+   * project already held.) `US-D1` is a shape the counter never produces, so the fixture can always
+   * be inserted.
+   *
+   * Typed as the table's own insert row: `.values()` takes an ARRAY here, and without the annotation
+   * the two rows' literal types (`in_progress` vs `accepted`) widen into a union the overload refuses.
+   */
+  const splitFeatureChildren: (typeof workItems.$inferInsert)[] = [
+    {
+      id: NXP_STORY_2_ID,
+      workspaceId: WORKSPACE_ID,
+      projectId: nxpId,
+      teamId: TEAM_ALPHA_ID,
+      iterationId: NXP_ITER_CURRENT_ID,
+      releaseId: NXP_RELEASE_1_ID,
+      itemKey: 'US-D1',
+      type: 'story',
+      title: 'Reorder API endpoint',
+      statusId: inProgressStatus,
+      scheduleState: 'in_progress',
+      flowState: 'in_progress',
+      priority: 'normal',
+      storyPoints: '3',
+      assigneeId: DEVELOPER_ID,
+      createdBy: ADMIN_USER_ID,
+      rank: getDeterministicRank('US-D1'),
+    },
+    {
+      id: NXP_STORY_3_ID,
+      workspaceId: WORKSPACE_ID,
+      projectId: nxpId,
+      teamId: TEAM_BETA_ID,
+      iterationId: NXP_ITER_CURRENT_ID,
+      releaseId: NXP_RELEASE_1_ID,
+      itemKey: 'US-D2',
+      type: 'story',
+      title: 'Reorder payment re-auth',
+      statusId: acceptedStatus,
+      scheduleState: 'accepted',
+      flowState: 'accepted',
+      priority: 'normal',
+      storyPoints: '8',
+      assigneeId: DEVELOPER_ID,
+      createdBy: ADMIN_USER_ID,
+      rank: getDeterministicRank('US-D2'),
+    },
+  ];
+  await db.insert(workItems).values(splitFeatureChildren).onConflictDoNothing();
+
+  // Linked in a second statement, as FE-1's children are: `featureId` is the only tie between a work
+  // item and the portfolio, and setting it here keeps both link sites reading the same way.
+  await db
+    .update(workItems)
+    .set({ featureId: NXP_FEATURE_3_ID })
+    .where(inArray(workItems.id, [NXP_STORY_2_ID, NXP_STORY_3_ID]));
+
   // Capacity plan fixture (P5.2): one draft plan on the seeded release, with Team Alpha
   // added and capacity deliberately left NULL so the "not entered" state — distinct from a
   // capacity of zero — has a case to render.
@@ -464,6 +659,10 @@ async function seedFlow() {
       workspaceId: WORKSPACE_ID,
       projectId: nxpId,
       releaseId: NXP_RELEASE_1_ID,
+      // The per-project key the list's ID column links from. Set explicitly because migration 0076
+      // backfills EXISTING rows: on a fresh database it runs before this seed, so a plan inserted
+      // without a key keeps none, the ID cell renders `—`, and nothing on the list is clickable.
+      planKey: 'CP-1',
       name: 'NX Platform v2 capacity',
       unit: 'points' as const,
       targetLoadPct: 80,
@@ -477,7 +676,114 @@ async function seedFlow() {
 
   await db
     .insert(capacityPlanTeams)
-    .values({ planId: NXP_CAPACITY_PLAN_ID, teamId: TEAM_ALPHA_ID })
+    .values([
+      { planId: NXP_CAPACITY_PLAN_ID, teamId: TEAM_ALPHA_ID },
+      /**
+       * Beta carries a REAL capacity while Alpha's stays null, so one plan shows both states the
+       * whole feature turns on: "not entered" (no ceiling stated — every percentage is absent and
+       * the missing-capacity warning fires) and an entered ceiling that demand can exceed.
+       */
+      { planId: NXP_CAPACITY_PLAN_ID, teamId: TEAM_BETA_ID, capacity: '20' },
+    ])
+    .onConflictDoNothing();
+
+  /**
+   * The plan's allocations — one row per state the BA flow reaches (§4.4–§4.6).
+   *
+   *   FE-1  Alpha, primary, NO explicit value → charged its Preliminary size: Rally's assignment
+   *   FE-2  Alpha, primary, explicit 5        → an allocated slice, the strongest estimate tier
+   *   FE-3  Alpha primary 8 + Beta 13         → SPLIT: `→ to Beta` on one row, `← from Alpha` on the
+   *                                             other, a boxed count on the Features tab, and the
+   *                                             only case where Remove All Assignments does work
+   *   FE-4  no team                           → the Unallocated bucket: demand with nowhere to go,
+   *                                             which is what the plan's Unassigned count counts
+   *
+   * Beta's ceiling is 20 and it is charged 13, so it sits UNDER capacity; Alpha has no ceiling at
+   * all. Neither is over — a planner has to type a number to see the red rules, which is the point:
+   * a seed that started over-capacity would make the warning look like the default state.
+   */
+  await db
+    .insert(capacityPlanAllocations)
+    .values([
+      {
+        planId: NXP_CAPACITY_PLAN_ID,
+        portfolioItemId: NXP_FEATURE_1_ID,
+        teamId: TEAM_ALPHA_ID,
+        isPrimary: true,
+        value: null,
+      },
+      {
+        planId: NXP_CAPACITY_PLAN_ID,
+        portfolioItemId: NXP_FEATURE_2_ID,
+        teamId: TEAM_ALPHA_ID,
+        isPrimary: true,
+        value: '5',
+      },
+      {
+        planId: NXP_CAPACITY_PLAN_ID,
+        portfolioItemId: NXP_FEATURE_3_ID,
+        teamId: TEAM_ALPHA_ID,
+        isPrimary: true,
+        value: '8',
+      },
+      {
+        planId: NXP_CAPACITY_PLAN_ID,
+        portfolioItemId: NXP_FEATURE_3_ID,
+        teamId: TEAM_BETA_ID,
+        isPrimary: false,
+        value: '13',
+      },
+      {
+        planId: NXP_CAPACITY_PLAN_ID,
+        portfolioItemId: NXP_FEATURE_4_ID,
+        teamId: null,
+        isPrimary: false,
+        value: '3',
+      },
+    ])
+    .onConflictDoNothing();
+
+  /**
+   * A PUBLISHED plan on the second release.
+   *
+   * Published is half the lifecycle and the seed had no case for it: the read-only grid, the
+   * `Revert to draft` path and the list's Published badge could only be reached by a test publishing
+   * the draft plan first — which then left it published for every later test. This one exists to be
+   * looked at, not edited.
+   */
+  await db
+    .insert(capacityPlans)
+    .values({
+      id: NXP_CAPACITY_PLAN_2_ID,
+      workspaceId: WORKSPACE_ID,
+      projectId: nxpId,
+      releaseId: NXP_RELEASE_2_ID,
+      planKey: 'CP-2',
+      name: 'Payments hardening capacity',
+      unit: 'points' as const,
+      targetLoadPct: 80,
+      plannedStartDate: '2026-08-01',
+      plannedEndDate: '2026-08-31',
+      status: 'published' as const,
+      publishedAt: new Date('2026-07-20T09:00:00Z'),
+      publishedBy: ADMIN_USER_ID,
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(capacityPlanTeams)
+    .values({ planId: NXP_CAPACITY_PLAN_2_ID, teamId: TEAM_BETA_ID, capacity: '34' })
+    .onConflictDoNothing();
+
+  await db
+    .insert(capacityPlanAllocations)
+    .values({
+      planId: NXP_CAPACITY_PLAN_2_ID,
+      portfolioItemId: NXP_FEATURE_7_ID,
+      teamId: TEAM_BETA_ID,
+      isPrimary: true,
+      value: '21',
+    })
     .onConflictDoNothing();
 
   // Assign the Story to the milestone (Iteration Status "Milestones" column).

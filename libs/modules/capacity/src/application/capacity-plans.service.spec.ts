@@ -119,12 +119,17 @@ describe('CapacityPlansService', () => {
           // Allocation targets resolve through the portfolio service; default to a Feature
           // in the plan's project so tests that are not about that check stay short.
           useValue: {
+            // Every field the eligibility rules read, stated: a fixture that omits them makes those
+            // rules pass by accident, which is how three of them went unenforced.
             getItem: vi.fn().mockResolvedValue({
               id: 'fe-1',
               type: 'feature',
               projectId: 'proj-a',
               refinedEstimate: null,
               preliminaryEstimate: 'm',
+              archivedAt: null,
+              state: 'developing',
+              releaseId: null,
             }),
           },
         },
@@ -223,10 +228,19 @@ describe('CapacityPlansService', () => {
       expect(repo.delete).toHaveBeenCalledWith('plan-1', WORKSPACE);
     });
 
-    it('refuses a PUBLISHED plan — revert undoes the writes, delete would abandon them', async () => {
+    it('deletes a PUBLISHED plan too — Rally allows it, unlike every other write here', async () => {
+      // "you can delete an existing plan, even if the plan is published". The Release and dates the
+      // plan stamped onto Features are those Features' data now; deleting drops the explanation,
+      // not the values, and revert is what undoes them.
       repo.findById.mockResolvedValue(plan({ status: 'published', publishedAt: new Date() }));
-      await expect(service.deletePlan(actor, 'plan-1')).rejects.toMatchObject({
-        code: 'CAPACITY_PLAN_NOT_DRAFT',
+      await service.deletePlan(actor, 'plan-1');
+      expect(repo.delete).toHaveBeenCalledWith('plan-1', WORKSPACE);
+    });
+
+    it('404s on an unknown id instead of a silent no-op', async () => {
+      repo.findById.mockResolvedValue(null);
+      await expect(service.deletePlan(actor, 'nope')).rejects.toMatchObject({
+        code: 'CAPACITY_PLAN_NOT_FOUND',
       });
       expect(repo.delete).not.toHaveBeenCalled();
     });
@@ -382,6 +396,7 @@ describe('CapacityPlansService', () => {
         itemComplete: 0,
         itemProjectId: 'proj-a',
         itemProjectName: 'Project A',
+        state: 'developing',
         ...over,
       });
 
@@ -482,6 +497,7 @@ describe('CapacityPlansService', () => {
       itemComplete: 0,
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
+      state: 'developing',
       ...over,
     });
 
@@ -746,6 +762,7 @@ describe('CapacityPlansService', () => {
       itemComplete: 0,
       itemProjectId: 'proj-a',
       itemProjectName: 'Project A',
+      state: 'developing',
       ...over,
     });
 
@@ -1055,19 +1072,60 @@ describe('CapacityPlansService', () => {
       expect(repo.findTeam).not.toHaveBeenCalled();
     });
 
+    it('MOVES the unallocated row onto the team instead of adding beside it', async () => {
+      // Rally: "choosing a Team assigns the existing unallocated row to that Team". Keeping both
+      // would count the Feature twice — parked demand AND a team commitment — which is what
+      // happened once adding and allocating became two steps.
+      repo.findAllocationFor.mockImplementation(async (_plan, _item, teamId) =>
+        teamId === null
+          ? {
+              id: 'parked-1',
+              planId: 'plan-1',
+              portfolioItemId: 'fe-1',
+              teamId: null,
+              isPrimary: false,
+              value: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }
+          : null,
+      );
+      repo.hasPrimaryAllocation.mockResolvedValue(false);
+
+      await service.allocate(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        value: 7,
+      });
+
+      expect(repo.createAllocation).not.toHaveBeenCalled();
+      expect(repo.updateAllocation).toHaveBeenCalledWith('parked-1', {
+        teamId: 'team-1',
+        value: '7',
+        // The first team to receive the work owns it, exactly as a fresh allocation would.
+        isPrimary: true,
+      });
+    });
+
     it('ADDS to an existing row for the same (Feature, team) pair rather than duplicating', async () => {
       // Rally models sharing as one row per team under a Feature. A second row for the same
       // pair would double-count that team's demand in every total.
-      repo.findAllocationFor.mockResolvedValue({
-        id: 'al-1',
-        planId: 'plan-1',
-        portfolioItemId: 'fe-1',
-        teamId: 'team-1',
-        isPrimary: false,
-        value: '10',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      // Per-argument, because `allocate` asks twice: first whether the Feature has an UNALLOCATED
+      // row to move onto the team, then whether the team already holds one to add to.
+      repo.findAllocationFor.mockImplementation(async (_plan, _item, teamId) =>
+        teamId === null
+          ? null
+          : {
+              id: 'al-1',
+              planId: 'plan-1',
+              portfolioItemId: 'fe-1',
+              teamId: 'team-1',
+              isPrimary: false,
+              value: '10',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+      );
 
       await service.allocate(actor, 'plan-1', {
         portfolioItemId: 'fe-1',
@@ -1103,7 +1161,7 @@ describe('CapacityPlansService', () => {
       } as never);
       await expect(
         service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-x', teamId: 'team-1' }),
-      ).rejects.toMatchObject({ code: 'CAPACITY_PLAN_RELEASE_MISMATCH' });
+      ).rejects.toMatchObject({ code: 'CAPACITY_ALLOCATION_WRONG_PROJECT' });
     });
 
     it('requires the team to be ON the plan', async () => {
@@ -1121,7 +1179,33 @@ describe('CapacityPlansService', () => {
     });
   });
 
-  describe('the blank-Estimate default (anti-circularity)', () => {
+  describe("a blank Estimate ASSIGNS without allocating (Rally's primary assignment)", () => {
+    /** One allocation row, with the tier inputs each test varies. */
+    const row = (over: Partial<CapacityAllocationRow> = {}): CapacityAllocationRow => ({
+      id: 'alloc-1',
+      planId: 'plan-1',
+      portfolioItemId: 'fe-1',
+      teamId: 'team-1',
+      isPrimary: true,
+      value: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      itemKey: 'FE-1',
+      name: 'A feature',
+      refined: null,
+      preliminarySize: 'm',
+      totalAllocated: 0,
+      rollup: 0,
+      complete: 0,
+      rank: 'm',
+      itemRollup: 0,
+      itemComplete: 0,
+      itemProjectId: 'proj-a',
+      itemProjectName: 'Project A',
+      state: 'developing',
+      ...over,
+    });
+
     beforeEach(() => {
       repo.findTeam.mockResolvedValue({
         id: 'pt-1',
@@ -1131,53 +1215,130 @@ describe('CapacityPlansService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+      repo.findViewById.mockResolvedValue(
+        view({
+          teams: [
+            {
+              id: 'pt-1',
+              planId: 'plan-1',
+              teamId: 'team-1',
+              teamName: 'Alpha',
+              capacity: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          ],
+        }),
+      );
     });
 
-    it('uses the REFINED estimate when the caller omits a value', async () => {
+    it('stores NULL, not a copy of the Feature estimate', async () => {
+      // Rally assigns an item to one team and allocates points to the additional ones. The
+      // assignment carries no number: the plan charges the Feature's own estimate there. Writing
+      // that estimate into the row — which this used to do — froze a copy, so a later change to
+      // the Feature stopped moving the plan and the Allocation column could never render blank.
       portfolio.getItem.mockResolvedValue({
         id: 'fe-1',
         type: 'feature',
         projectId: 'proj-a',
         refinedEstimate: '30',
         preliminaryEstimate: 'm',
+        archivedAt: null,
+        state: 'developing',
+        releaseId: null,
       } as never);
 
       await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
 
-      expect(repo.createAllocation).toHaveBeenCalledWith(expect.objectContaining({ value: '30' }));
+      expect(repo.createAllocation).toHaveBeenCalledWith(expect.objectContaining({ value: null }));
+    });
+
+    it('charges the REFINED estimate on read for a null row', async () => {
+      repo.listAllocations.mockResolvedValue([
+        row({ value: null, refined: 30, preliminarySize: 'm' }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+
+      expect(detail.allocations[0].value).toBeNull();
+      expect(detail.allocations[0].metrics.estimated).toBe(30);
+      expect(detail.allocations[0].tier).toBe('refined');
     });
 
     it('falls back to the PRELIMINARY mapping when there is no refined estimate', async () => {
-      portfolio.getItem.mockResolvedValue({
-        id: 'fe-1',
-        type: 'feature',
-        projectId: 'proj-a',
-        refinedEstimate: null,
-        preliminaryEstimate: 'm',
-      } as never);
+      repo.listAllocations.mockResolvedValue([
+        row({ value: null, refined: null, preliminarySize: 'm' }),
+      ]);
 
-      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
+      const detail = await service.getPlanDetail(actor, 'plan-1');
 
       // 'm' maps to 5 points in the seeded default.
-      expect(repo.createAllocation).toHaveBeenCalledWith(expect.objectContaining({ value: '5' }));
+      expect(detail.allocations[0].metrics.estimated).toBe(5);
+      expect(detail.allocations[0].tier).toBe('preliminary');
     });
 
-    it('NEVER folds existing allocations into the default', async () => {
-      // The subtlest rule in Phase 5: if the default consulted the allocated tier, a blank
-      // field would commit the sum of the very allocations it is being used to create.
-      repo.totalAllocatedFor.mockResolvedValue(999);
+    it('NEVER charges a null row with what OTHER teams were allocated', async () => {
+      // `totalAllocated` is the SUM over this Feature's team rows. Folding it into a null row would
+      // bill one team for the slices the others were given — the circularity that made the old
+      // default skip the allocated tier, now expressed on the read side.
+      repo.listAllocations.mockResolvedValue([
+        row({ value: null, refined: null, preliminarySize: 'm', totalAllocated: 999 }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+
+      expect(detail.allocations[0].metrics.estimated).toBe(5);
+    });
+
+    it('an EXPLICIT value wins and reads as the allocated tier', async () => {
+      repo.listAllocations.mockResolvedValue([
+        row({ value: '12', refined: 30, preliminarySize: 'm' }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+
+      expect(detail.allocations[0].value).toBe('12');
+      expect(detail.allocations[0].metrics.estimated).toBe(12);
+      expect(detail.allocations[0].tier).toBe('allocated');
+    });
+
+    it("sums a team's RESOLVED charges, so a null row still costs the team", async () => {
+      // Two Features on one team: one assigned (null → estimate 30), one sliced at 12. The team is
+      // charged 42, and a grid that read the raw column would have shown 12.
+      repo.listAllocations.mockResolvedValue([
+        row({ portfolioItemId: 'fe-1', value: null, refined: 30, preliminarySize: 'm' }),
+        row({ portfolioItemId: 'fe-2', value: '12', refined: null, preliminarySize: 'm' }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+
+      expect(detail.teams[0].metrics.estimated).toBe(42);
+      expect(detail.items.map((i) => i.estimated)).toEqual([30, 12]);
+    });
+
+    it.each([
+      ['ARCHIVED', { archivedAt: new Date() }, 'CAPACITY_ALLOCATION_ARCHIVED'],
+      ['CANCELLED', { state: 'cancelled' }, 'CAPACITY_ALLOCATION_CANCELLED'],
+      ['in another RELEASE', { releaseId: 'rel-other' }, 'CAPACITY_ALLOCATION_OTHER_RELEASE'],
+    ])('refuses a Feature that is %s', async (_label, over, code) => {
+      // The BA flow's eligibility rules (§4.4). The picker hides all three, but a picker is not a
+      // rule — a stale tab or a scripted client reaches the API directly.
       portfolio.getItem.mockResolvedValue({
         id: 'fe-1',
         type: 'feature',
         projectId: 'proj-a',
         refinedEstimate: null,
         preliminaryEstimate: 'm',
+        archivedAt: null,
+        state: 'developing',
+        releaseId: null,
+        ...over,
       } as never);
 
-      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
-
-      // Preliminary 'm' = 5, NOT 999.
-      expect(repo.createAllocation).toHaveBeenCalledWith(expect.objectContaining({ value: '5' }));
+      await expect(
+        service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' }),
+      ).rejects.toMatchObject({ code });
+      expect(repo.createAllocation).not.toHaveBeenCalled();
     });
 
     it('honours an explicit 0 rather than substituting a default', async () => {

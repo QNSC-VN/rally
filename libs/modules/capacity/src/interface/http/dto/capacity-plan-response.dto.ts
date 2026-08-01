@@ -1,9 +1,14 @@
 import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
-import { capacityPlanStatusEnum, capacityPlanUnitEnum } from '../../../../../../../db/schema/enums';
+import {
+  capacityPlanStatusEnum,
+  capacityPlanUnitEnum,
+  portfolioItemStateEnum,
+} from '../../../../../../../db/schema/enums';
 
 const STATUSES = capacityPlanStatusEnum.enumValues;
 const UNITS = capacityPlanUnitEnum.enumValues;
+const PORTFOLIO_ITEM_STATES = portfolioItemStateEnum.enumValues;
 
 /**
  * The four numbers every capacity row shows, plus advisory warnings.
@@ -49,10 +54,29 @@ const CapacityAllocationSchema = z.object({
    * contributors: Rally assigns the item to one team, then allocates points to the rest.
    */
   isPrimary: z.boolean(),
-  value: z.number(),
+  value: z
+    .number()
+    .nullable()
+    .describe('Explicitly allocated points, or null when the team was assigned without a slice'),
   tier: z
     .enum(['allocated', 'refined', 'preliminary', 'none'])
     .describe('Which estimate tier the Feature figure came from — drives the UI badge'),
+  rank: z.string().describe("The Feature's LexoRank — the nested table shows the plan's Rank too"),
+  state: z.enum(PORTFOLIO_ITEM_STATES).describe("The Feature's own workflow state"),
+  projectId: z.string().uuid(),
+  projectName: z
+    .string()
+    .nullable()
+    .describe(
+      "The Feature's own project — Rally prints `← from <project>` when it is not the plan's",
+    ),
+  estimateBreakdown: z
+    .object({
+      allocated: z.number().nullable(),
+      refined: z.number().nullable(),
+      preliminary: z.number().nullable(),
+    })
+    .describe("All three candidates behind Estimated, for Rally's Estimate tooltip"),
   metrics: CapacityMetricsSchema,
 });
 

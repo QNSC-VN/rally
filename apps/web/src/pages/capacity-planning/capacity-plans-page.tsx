@@ -35,10 +35,8 @@ import {
   useCapacityPlans,
   useDeleteCapacityPlan,
   CAPACITY_PLAN_STATUSES,
-  CAPACITY_PLAN_UNITS,
   type CapacityPlan,
   type CapacityPlanStatus,
-  type CapacityPlanUnit,
 } from '@/features/capacity-planning/api'
 import { CAPACITY_PLAN_COLUMNS, type PlanColKey } from './model/columns'
 import { CreateCapacityPlanModal } from './ui/create-capacity-plan-modal'
@@ -58,7 +56,6 @@ export function CapacityPlansPage() {
   const [oldestReleaseId, setOldestReleaseId] = useState('')
   const [newestReleaseId, setNewestReleaseId] = useState('')
   const [statusFilter, setStatusFilter] = useState<CapacityPlanStatus | 'all'>('all')
-  const [unitFilter, setUnitFilter] = useState<CapacityPlanUnit | 'all'>('all')
 
   const table = useDataTable<CapacityPlan, unknown, PlanColKey>(CAPACITY_PLAN_COLUMNS, {
     storageKey: STORAGE_KEYS.CAPACITY_PLAN_COLUMNS,
@@ -145,7 +142,6 @@ export function CapacityPlansPage() {
         if (!matches) return false
       }
       if (statusFilter !== 'all' && p.status !== statusFilter) return false
-      if (unitFilter !== 'all' && p.unit !== unitFilter) return false
       if (from === null && to === null) return true
       // A plan whose release is not in this project's release list cannot be placed in the
       // window, so a set window excludes it rather than silently keeping it.
@@ -155,7 +151,7 @@ export function CapacityPlansPage() {
       if (to !== null && rank > to) return false
       return true
     })
-  }, [plans, search, oldestReleaseId, newestReleaseId, releaseRank, statusFilter, unitFilter])
+  }, [plans, search, oldestReleaseId, newestReleaseId, releaseRank, statusFilter])
 
   const { sortField, sortDir, toggle } = useTableSort<PlanColKey>()
   const sorted = useMemo(() => {
@@ -176,23 +172,24 @@ export function CapacityPlansPage() {
    * The window has its own always-visible boxes in the header (as in Rally), so counting it here
    * would badge a filter the reader can already see and would auto-open a panel that adds nothing.
    */
-  const activeFilterCount = (statusFilter === 'all' ? 0 : 1) + (unitFilter === 'all' ? 0 : 1)
+  // Status is the only facet left: `Unit` filtered a column that no longer exists, so it narrowed
+  // the list by an attribute the reader could not see.
+  const activeFilterCount = statusFilter === 'all' ? 0 : 1
   const isNarrowed =
     activeFilterCount > 0 || oldestReleaseId !== '' || newestReleaseId !== '' || search !== ''
 
   /**
-   * Only DRAFTS are deleted. The server refuses a published plan (its writes have to be reverted
-   * first), so the ones that cannot go are skipped here with a message rather than each producing
-   * its own failed request.
+   * Deletes every selected plan, PUBLISHED ones included — Rally allows that, and so does the API.
+   *
+   * A published plan's Release and planned dates already belong to its Features; deleting the plan
+   * drops the explanation, not those values, and revert is what takes them back. The confirmation
+   * says so when the selection contains one, which is why the count is computed here.
    */
   async function handleBulkDelete(selection: RowSelection) {
     const chosen = plans.filter((p) => selection.selectedIds.has(p.id))
-    const drafts = chosen.filter((p) => p.status === 'draft')
-    const published = chosen.length - drafts.length
     try {
-      await Promise.all(drafts.map((p) => deletePlan.mutateAsync(p.id)))
-      if (drafts.length > 0) notify.success(t('delete.bulkDone', { count: drafts.length }))
-      if (published > 0) notify.error(t('delete.publishedSkipped', { count: published }))
+      await Promise.all(chosen.map((p) => deletePlan.mutateAsync(p.id)))
+      notify.success(t('delete.bulkDone', { count: chosen.length }))
       selection.clear()
     } catch (err) {
       notify.error(err instanceof Error ? err.message : t('delete.failed'))
@@ -200,6 +197,10 @@ export function CapacityPlansPage() {
       setConfirmBulkDelete(false)
     }
   }
+
+  /** How many of the selected plans are published — decides which confirmation text is shown. */
+  const selectedPublishedCount = (ids: ReadonlySet<string>) =>
+    plans.filter((p) => ids.has(p.id) && p.status === 'published').length
 
   if (!projectId) {
     return (
@@ -288,22 +289,6 @@ export function CapacityPlansPage() {
                 ))}
               </InlineSelect>
             </label>
-            <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
-              {t('fields.unit')}
-              <InlineSelect
-                value={unitFilter}
-                aria-label={t('filters.byUnit')}
-                onChange={(e) => setUnitFilter(e.target.value as CapacityPlanUnit | 'all')}
-                className="w-auto"
-              >
-                <option value="all">{t('filters.allUnits')}</option>
-                {CAPACITY_PLAN_UNITS.map((unit) => (
-                  <option key={unit} value={unit}>
-                    {t(`units.${unit}`)}
-                  </option>
-                ))}
-              </InlineSelect>
-            </label>
           </div>
         }
         /* Rally prints a running total on the right of this bar. It counts what the grid is
@@ -330,7 +315,14 @@ export function CapacityPlansPage() {
                   <ConfirmDialog
                     open={confirmBulkDelete}
                     title={t('delete.title')}
-                    message={t('delete.bulkMessage', { count: selection.count })}
+                    message={
+                      selectedPublishedCount(selection.selectedIds) > 0
+                        ? t('delete.bulkPublishedMessage', {
+                            count: selection.count,
+                            published: selectedPublishedCount(selection.selectedIds),
+                          })
+                        : t('delete.bulkMessage', { count: selection.count })
+                    }
                     confirmLabel={t('delete.confirm')}
                     destructive
                     pending={deletePlan.isPending}
