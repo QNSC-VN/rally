@@ -7,10 +7,26 @@ import { TableTotalsRow } from '@/shared/ui/table-totals-row'
 import { SearchInput } from '@/shared/ui/search-input'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { RowGutter } from '@/shared/ui/row-gutter'
+import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
+import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { StateStepper } from '@/entities/work-item/ui/state-stepper'
+import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
+import { PRIORITY_LABEL, PRIORITY_VALUES, ScheduleState } from '@/entities/work-item/model/types'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useTableSort, type SortDir } from '@/shared/lib/hooks/use-table-sort'
+import { useReleases, type Release } from '@/features/releases/api'
+import { useProjectMembers, type ProjectMember } from '@/features/teams/api'
+import {
+  useTasks,
+  useUpdateWorkItem,
+  type UpdateWorkItemInput,
+  type WorkItem,
+} from '@/features/work-items/api'
 import type { PortfolioChild } from '@/features/portfolio/api'
 import { PORTFOLIO_CHILD_COLUMNS, type ChildColKey } from '../model/children-columns'
 
@@ -47,15 +63,33 @@ const text = (value: string | null): string => value ?? ''
  * endpoint returns them for that Feature alone), so there is no page to re-fetch and a server round
  * trip per keystroke would be slower and no more correct.
  *
- * Rows navigate to the work item, they are NOT editable here — a gap against §5.2, which asks for
- * inline edit on Name/Priority/Est/Owner/Schedule State/Release plus expand-to-Tasks and `Add Item`.
- * That is tracked separately rather than smuggled into a consistency pass.
+ * INLINE EDIT and EXPAND-TO-TASKS are §5.2, FR-011 and FR-012 — specified, and until now unbuilt.
+ * The tab's earlier comment argued editing away as "a second editing surface for the same fields",
+ * but the SRS asks for it by name and the wire was already built to serve it: `PortfolioChildSchema`
+ * returns `projectId` / `releaseId` / `assigneeId` beside the display names, with the comment "IDs
+ * alongside the names, so the disclosed child rows can edit in place". The scenario covering both
+ * (P5-PI-013) was never run, so this was missing rather than deliberately dropped.
+ *
+ * Every editable cell is the SAME primitive the Backlog uses for that field — `InlineEditableCell`
+ * for Name and Est, `SearchableSelect` for Priority and Release, `OwnerSelectCell`, `StateStepper` —
+ * so the two surfaces cannot disagree about how a field is edited. Iteration stays read-only text,
+ * which §5.2 calls a deliberate scope trim.
+ *
+ * `Add Item` and the pagination footer are the remaining §5.2 items and are NOT here: the first
+ * needs the Backlog creation flow's contract for a pre-linked child, and the second is a server
+ * decision, since these rows arrive whole from one endpoint.
  */
 export function FeatureChildrenTable({
   children,
+  projectId,
+  canEdit = false,
   isLoading = false,
 }: {
   children: PortfolioChild[]
+  /** The Feature's project — scopes the Release and Owner option lists. */
+  projectId: string | undefined
+  /** `portfolio:edit`. FR-011 gates inline editing on it. */
+  canEdit?: boolean
   isLoading?: boolean
 }) {
   // Two namespaces: the tab's own copy, and `work-items` for the priority labels — those already
@@ -116,6 +150,22 @@ export function FeatureChildrenTable({
 
   const selection = useRowSelection(visible)
 
+  // Option lists for the editable cells, scoped to the Feature's own project — the same two
+  // queries the Backlog row uses, so the choices offered here are the choices offered there.
+  const { data: releases = [] } = useReleases(projectId)
+  const { data: members = [] } = useProjectMembers(projectId)
+
+  // FR-012: which rows have their Tasks disclosed. A Set rather than a per-row flag so collapsing
+  // one row cannot disturb another, and so the state survives a re-sort.
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(new Set())
+  const toggleExpanded = (id: string) =>
+    setExpandedIds((previous) => {
+      const next = new Set(previous)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <SearchInput
@@ -163,75 +213,314 @@ export function FeatureChildrenTable({
           ) : undefined
         }
         renderRow={(child, { selected, onToggleSelect }) => (
-          <div
+          <ChildRow
             key={child.id}
-            // `min-w-max` (not an inline style) so the row is as wide as its columns and the
-            // horizontal scroll region covers all of them.
-            className="group flex min-h-[34px] min-w-max items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
-          >
-            {/* `dragDisabled` always: a Story's rank is not a portfolio rank (see the note above),
-                so the grip would be a control with nothing to persist. The gutter still renders so
-                the checkbox column lines up with the header's select-all and the totals row. */}
-            <RowGutter
-              dragDisabled
-              stopPropagation
-              checkbox={{
-                checked: selected,
-                onChange: onToggleSelect,
-                ariaLabel: t('detail.children.selectChild', { key: child.itemKey }),
-              }}
+            child={child}
+            colStyles={colStyles}
+            canEdit={canEdit}
+            selected={selected}
+            onToggleSelect={onToggleSelect}
+            selectLabel={t('detail.children.selectChild', { key: child.itemKey })}
+            expanded={expandedIds.has(child.id)}
+            onToggleExpand={() => toggleExpanded(child.id)}
+            expandLabel={t('detail.children.expandTasks', { key: child.itemKey })}
+            releases={releases}
+            members={members}
+            onOpen={() =>
+              void navigate({ to: '/item/$itemKey', params: { itemKey: child.itemKey } })
+            }
+          />
+        )}
+      />
+    </div>
+  )
+}
+
+/**
+ * One linked Story/Defect, editable in place (FR-011) and expandable to its Tasks (FR-012).
+ *
+ * Each control is the primitive the Backlog uses for that same field, so a reader who learns to
+ * edit an estimate on one screen already knows how to do it on the other. Every cell stops click
+ * propagation: the row itself opens the full Work Item Detail (§5.2), and an edit must not
+ * navigate away mid-keystroke.
+ */
+function ChildRow({
+  child,
+  colStyles,
+  canEdit,
+  selected,
+  onToggleSelect,
+  selectLabel,
+  expanded,
+  onToggleExpand,
+  expandLabel,
+  releases,
+  members,
+  onOpen,
+}: {
+  child: PortfolioChild
+  colStyles: Record<ChildColKey, CSSProperties>
+  canEdit: boolean
+  selected: boolean
+  onToggleSelect: () => void
+  selectLabel: string
+  expanded: boolean
+  onToggleExpand: () => void
+  expandLabel: string
+  // The real query types, not structural stand-ins: `OwnerSelectCell` takes `ProjectMember[]`, and
+  // a hand-written `{ userId; displayName?; email? }` would silently accept a roster missing the
+  // fields that component reads.
+  releases: Release[]
+  members: ProjectMember[]
+  onOpen: () => void
+}) {
+  const { t } = useTranslation(['portfolio', 'work-items'])
+  const update = useUpdateWorkItem(child.id)
+  const patch = (body: UpdateWorkItemInput) => update.mutate(body)
+  const stop = (event: React.MouseEvent) => event.stopPropagation()
+
+  const ownerName = (() => {
+    const member = members.find((m) => m.userId === child.assigneeId)
+    return member?.displayName ?? member?.email ?? null
+  })()
+
+  return (
+    <div>
+      <div
+        // `min-w-max` (not an inline style) so the row is as wide as its columns and the
+        // horizontal scroll region covers all of them.
+        className="group flex min-h-[34px] min-w-max cursor-pointer items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
+        onClick={onOpen}
+      >
+        {/* `dragDisabled` always: a Story's rank is not a portfolio rank (see the note above),
+            so the grip would be a control with nothing to persist. The gutter still renders so
+            the checkbox column lines up with the header's select-all and the totals row. */}
+        <RowGutter
+          dragDisabled
+          stopPropagation
+          checkbox={{ checked: selected, onChange: onToggleSelect, ariaLabel: selectLabel }}
+        />
+        <div
+          style={colStyles.type}
+          className="flex items-center justify-center gap-1 px-1"
+          onClick={stop}
+        >
+          <RowExpandToggle expanded={expanded} onToggle={onToggleExpand} label={expandLabel} />
+          <TypeBadge type={child.type} size={16} />
+        </div>
+        <div style={colStyles.id} className="flex items-center px-2" onClick={stop}>
+          <IdCell type={child.type} itemKey={child.itemKey} onOpen={onOpen} />
+        </div>
+        <div style={colStyles.name} className="min-w-0 px-0" onClick={stop}>
+          <InlineEditableCell
+            value={child.title}
+            canEdit={canEdit}
+            fullCell
+            ariaLabel={t('detail.children.editName', { key: child.itemKey })}
+            onCommit={(raw) => {
+              const next = raw.trim()
+              if (next && next !== child.title) patch({ title: next })
+            }}
+            className="block break-words whitespace-normal text-foreground"
+            inputClassName="w-full rounded border border-primary bg-transparent px-1 text-ui-md text-foreground focus:outline-none"
+            title={child.title}
+          />
+        </div>
+        {/* Priority is Defect-only (§5.2); a Story shows the same `--` the Backlog shows. */}
+        <div
+          style={colStyles.priority}
+          className="flex min-w-0 items-center overflow-hidden px-0"
+          onClick={stop}
+        >
+          {child.type === 'defect' ? (
+            <SearchableSelect
+              value={child.priority ?? ''}
+              readOnly={!canEdit}
+              ariaLabel={t('detail.children.editPriority', { key: child.itemKey })}
+              // `PRIORITY_VALUES` / `PRIORITY_LABEL` from the entity layer — the SAME source the
+              // Backlog's priority cell uses. A local list here would be a second enum to keep in
+              // step with `work_item_priority`, and the `work-items:priority.*` i18n block is not
+              // that source: it still carries a `critical` key that migration 0011 remapped to
+              // `urgent`, so it would have offered a value the column no longer has.
+              options={PRIORITY_VALUES.map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))}
+              // Cast to the UPDATE input's union, not to `WorkItem['priority']`: the read model
+              // types this field as a bare `string` (the response DTO does not narrow it), so
+              // `WiPriority` would not constrain anything. Same cast the Backlog cell uses.
+              onChange={(v) => patch({ priority: v as UpdateWorkItemInput['priority'] })}
             />
-            <div style={colStyles.type} className="flex items-center justify-center px-1">
-              <TypeBadge type={child.type} size={16} />
+          ) : (
+            <span className="px-2 font-mono text-ui-xs text-foreground-disabled">--</span>
+          )}
+        </div>
+        <div style={colStyles.estimate} className="px-0 text-right" onClick={stop}>
+          <InlineEditableCell
+            value={child.storyPoints != null ? String(child.storyPoints) : ''}
+            canEdit={canEdit}
+            fullCell
+            ariaLabel={t('detail.children.editEstimate', { key: child.itemKey })}
+            onCommit={(raw) => {
+              const next = raw.trim() === '' ? null : Number(raw)
+              if (next !== null && (Number.isNaN(next) || next < 0)) return
+              if (next !== (child.storyPoints ?? null)) patch({ storyPoints: next })
+            }}
+            // A dash, not 0: an unestimated Story is not a Story worth zero points.
+            displayValue={child.storyPoints ?? '—'}
+            className="block text-right font-mono text-muted-foreground tabular-nums"
+            inputClassName="w-full rounded border border-primary bg-transparent px-0.5 text-right font-mono text-ui-xs text-foreground focus:outline-none"
+          />
+        </div>
+        <div
+          style={colStyles.owner}
+          className="flex min-w-0 items-center overflow-hidden px-0"
+          onClick={stop}
+        >
+          <OwnerSelectCell
+            ownerName={ownerName}
+            assigneeId={child.assigneeId}
+            members={members}
+            canEdit={canEdit}
+            onChange={(userId) => patch({ assigneeId: userId })}
+          />
+        </div>
+        <div
+          style={colStyles.scheduleState}
+          className="min-w-0 overflow-hidden px-2"
+          onClick={stop}
+        >
+          <StateStepper
+            steps={SCHEDULE_STATE_STEPS}
+            value={child.scheduleState as ScheduleState}
+            canEdit={canEdit}
+            onChange={(next) =>
+              patch({ scheduleState: next as UpdateWorkItemInput['scheduleState'] })
+            }
+            ariaLabel={t('detail.children.editState', { key: child.itemKey })}
+          />
+        </div>
+        {/* Iteration stays READ-ONLY text — §5.2 calls that a deliberate scope trim. */}
+        <div style={colStyles.iteration} className="min-w-0 px-2">
+          <span className="break-words whitespace-normal text-muted-foreground">
+            {child.iterationName ?? '—'}
+          </span>
+        </div>
+        <div
+          style={colStyles.release}
+          className="flex min-w-0 items-center overflow-hidden px-0"
+          onClick={stop}
+        >
+          <SearchableSelect
+            value={child.releaseId ?? ''}
+            readOnly={!canEdit}
+            ariaLabel={t('detail.children.editRelease', { key: child.itemKey })}
+            placeholder="—"
+            options={[
+              { value: '', label: '—' },
+              ...releases.map((r) => ({
+                value: r.id,
+                label: r.releaseKey ? `${r.releaseKey}: ${r.name}` : r.name,
+                searchText: `${r.releaseKey ?? ''} ${r.name}`,
+                icon: <TypeBadge type="release" size={16} />,
+              })),
+            ]}
+            onChange={(v) => patch({ releaseId: v || null })}
+          />
+        </div>
+      </div>
+
+      {expanded && <ChildTaskRows workItemId={child.id} colStyles={colStyles} members={members} />}
+    </div>
+  )
+}
+
+/**
+ * A disclosed child's Tasks, READ-ONLY (FR-012).
+ *
+ * Fetched per expanded row rather than up front: a Feature can link many children and each of them
+ * has its own task list, so loading all of them to render none would be the expensive default.
+ *
+ * Read-only is the spec, and it is also the honest boundary — a Task's hours belong to the Work
+ * Item Detail's Tasks tab, which owns the totals that roll up from them.
+ */
+function ChildTaskRows({
+  workItemId,
+  colStyles,
+  members,
+}: {
+  workItemId: string
+  colStyles: Record<ChildColKey, CSSProperties>
+  /** A task carries `assigneeId`, not a name — the roster resolves it, as the Tasks tab does. */
+  members: ProjectMember[]
+}) {
+  const { t } = useTranslation('portfolio')
+  const { data: tasks = [], isLoading } = useTasks(workItemId)
+
+  if (isLoading) {
+    return (
+      <div className="border-b border-border-inner bg-surface-subtle px-3 py-2">
+        <span className={`text-ui-xs text-foreground-subtle ${NESTED_ROW_INDENT}`}>
+          {t('detail.children.tasksLoading')}
+        </span>
+      </div>
+    )
+  }
+
+  if (tasks.length === 0) {
+    return (
+      <div className="border-b border-border-inner bg-surface-subtle px-3 py-2">
+        <span className={`text-ui-xs text-foreground-subtle ${NESTED_ROW_INDENT}`}>
+          {t('detail.children.noTasks')}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {tasks.map((task: WorkItem) => {
+        const owner = members.find((m) => m.userId === task.assigneeId)
+        return (
+          <div
+            key={task.id}
+            className="flex min-h-[30px] min-w-max items-center border-b border-border-inner bg-surface-subtle px-3 text-ui-sm"
+          >
+            <div className="w-12 shrink-0" />
+            <div style={colStyles.id} className={`truncate px-2 ${NESTED_ROW_INDENT}`}>
+              <span className="font-mono text-ui-xs text-foreground-subtle">{task.itemKey}</span>
             </div>
-            <div style={colStyles.id} className="flex items-center px-2">
-              <IdCell
-                type={child.type}
-                itemKey={child.itemKey}
-                onOpen={() =>
-                  void navigate({ to: '/item/$itemKey', params: { itemKey: child.itemKey } })
-                }
-              />
-            </div>
-            <div style={colStyles.name} className="min-w-0 px-2" title={child.title}>
-              <span className="break-words whitespace-normal text-foreground">{child.title}</span>
+            <div style={colStyles.name} className="min-w-0 px-2" title={task.title}>
+              <span className="break-words whitespace-normal text-muted-foreground">
+                {task.title}
+              </span>
             </div>
             <div style={colStyles.priority} className="min-w-0 px-2">
-              <span className="break-words whitespace-normal text-muted-foreground">
-                {t(`work-items:priority.${child.priority}`, { defaultValue: child.priority })}
+              <span className="truncate text-ui-xs text-foreground-subtle">
+                {task.scheduleState}
               </span>
             </div>
             <div
               style={colStyles.estimate}
-              className="px-2 text-right text-muted-foreground tabular-nums"
+              className="px-2 text-right font-mono text-muted-foreground tabular-nums"
             >
-              {/* A dash, not 0: an unestimated Story is not a Story worth zero points. */}
-              {child.storyPoints ?? '—'}
+              {task.estimateHours ?? '—'}
             </div>
-            <div style={colStyles.owner} className="min-w-0 px-2">
-              <span className="break-words whitespace-normal text-muted-foreground">
-                {child.ownerName ?? '—'}
+            <div style={colStyles.owner} className="min-w-0 truncate px-2">
+              <span className="text-ui-xs text-muted-foreground">
+                {owner?.displayName ?? owner?.email ?? '—'}
               </span>
             </div>
+            {/* To Do and Actual share the remaining span, as the mockup renders them. */}
             <div style={colStyles.scheduleState} className="min-w-0 px-2">
-              <span className="break-words whitespace-normal text-muted-foreground">
-                {child.scheduleState}
-              </span>
-            </div>
-            <div style={colStyles.iteration} className="min-w-0 px-2">
-              <span className="break-words whitespace-normal text-muted-foreground">
-                {child.iterationName ?? '—'}
-              </span>
-            </div>
-            <div style={colStyles.release} className="min-w-0 px-2">
-              <span className="break-words whitespace-normal text-muted-foreground">
-                {child.releaseName ?? '—'}
+              <span className="text-ui-xs text-foreground-subtle">
+                {t('detail.children.taskHours', {
+                  todo: task.todoHours ?? 0,
+                  actual: task.actualHours ?? 0,
+                })}
               </span>
             </div>
           </div>
-        )}
-      />
-    </div>
+        )
+      })}
+    </>
   )
 }
 

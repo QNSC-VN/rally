@@ -329,7 +329,12 @@ export function PortfolioDetailPage() {
               isLoading={featuresLoading}
             />
           ) : (
-            <FeatureChildrenTable children={children} isLoading={childrenLoading} />
+            <FeatureChildrenTable
+              children={children}
+              projectId={server?.projectId}
+              canEdit={canEdit}
+              isLoading={childrenLoading}
+            />
           )}
         </div>
       )}

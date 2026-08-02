@@ -136,7 +136,16 @@
       "selectAll": "Select all linked items",
       "selectAllFeatures": "Select all child Features",
       "selectChild": "Select linked item {{key}}",
-      "selectFeature": "Select Feature {{key}}"
+      "selectFeature": "Select Feature {{key}}",
+      "expandTasks": "Show tasks for {{key}}",
+      "editName": "{{key}} name",
+      "editPriority": "{{key}} priority",
+      "editEstimate": "{{key}} plan estimate",
+      "editState": "{{key}} schedule state",
+      "editRelease": "{{key}} release",
+      "tasksLoading": "Loading tasks...",
+      "noTasks": "No tasks on this item.",
+      "taskHours": "To Do {{todo}}h · Actual {{actual}}h"
     },
     "notFound": "Portfolio item not found.",
     "history": {
