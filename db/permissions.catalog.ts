@@ -116,6 +116,24 @@ export const PERMISSION = {
   // planned dates, so it changes records outside the plan. Editing a draft does not.
   // Different blast radius, different grant.
   CAPACITY_PUBLISH: 'capacity:publish',
+
+  // ── report namespace (P6) ──────────────────────────────────────────────────
+  // Iteration Burndown, Velocity and Team Capacity, plus Release Tracking's
+  // classification and burnup. ONE read code for the whole surface rather than one
+  // per report: the three reports are a single page with a Type selector, and the
+  // SRS gives them one authorization boundary ("Enforce Project/Team authorization
+  // before returning aggregates"). Splitting it would create three grants nobody
+  // could explain the difference between.
+  //
+  // Not folded into `iteration:view` — which is what the legacy reporting controller
+  // reused. A report aggregates ACROSS iterations, releases, tasks and member
+  // capacity, so an admin restricting who may read team-level performance data has to
+  // be able to do that without also revoking the iteration list.
+  //
+  // Read-only by design. Nothing in Phase 6 writes through a report: the daily
+  // snapshot jobs are internal scheduled work with no HTTP surface, and capacity is
+  // still edited through `team_status:edit` on Team Status.
+  REPORT_VIEW: 'report:view',
 } as const;
 
 /** Union of every valid permission code. */
@@ -195,6 +213,10 @@ export const PERMISSION_TIER = {
   [PERMISSION.CAPACITY_VIEW]: 'project',
   [PERMISSION.CAPACITY_MANAGE]: 'project',
   [PERMISSION.CAPACITY_PUBLISH]: 'project',
+  // Project tier: every report is bounded by one Project, and Team is a filter inside
+  // it. A workspace-tier report code would let a grant on one project read another's
+  // velocity.
+  [PERMISSION.REPORT_VIEW]: 'project',
 } as const satisfies Record<Permission, 'workspace' | 'project'>;
 
 /** Permissions enforced against the workspace-wide JWT baseline. */
@@ -302,6 +324,7 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.CAPACITY_VIEW,
     PERMISSION.CAPACITY_MANAGE,
     PERMISSION.CAPACITY_PUBLISH,
+    PERMISSION.REPORT_VIEW,
   ],
   // Full DELIVERY control of an assigned project, but NOT its lifecycle or
   // membership. Per SRS Phase 4.2: project create/archive/restore/delete and
@@ -335,6 +358,7 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.CAPACITY_VIEW,
     PERMISSION.CAPACITY_MANAGE,
     PERMISSION.CAPACITY_PUBLISH,
+    PERMISSION.REPORT_VIEW,
   ],
   // Delivery contributor inside ONE assigned project. Per SRS Phase 4.2 the
   // member can create AND delete US/DE + tasks (delete added); no iteration/
@@ -350,6 +374,9 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     // Features and capacity plans for their Project/Team but never mutate them.
     PERMISSION.PORTFOLIO_VIEW,
     PERMISSION.CAPACITY_VIEW,
+    // Reports are read-only and describe the member's own delivery, so the delivery
+    // tier reads them too. Export stays gated on a write permission in the UI.
+    PERMISSION.REPORT_VIEW,
   ],
 };
 

@@ -61,6 +61,40 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   route (which surfaces only as `Cannot POST /v1/...` in the browser). When a change spans
   packages, verify with `tsc -b --force`.
 
+## Reporting (Phase 6) — what is frozen, what is live
+
+Four surfaces share one module (`libs/modules/reporting`) but not one data strategy, and the
+difference is the whole design. Read this before changing a report or the snapshot job.
+
+- **Burndown is FROZEN history; Velocity and Team Capacity are LIVE queries.** Task To Do is
+  overwritten in place, so yesterday's remaining hours only exist if something wrote them
+  down — hence `iteration_daily_snapshots`. Velocity deliberately has no snapshot: moving an
+  item out of a closed iteration must change that bar. Never "unify" the two paths.
+- **The snapshot cron runs HOURLY and writes only TODAY's workspace-local date.** Date cutoffs
+  are per workspace (`workspace_settings.timezone`), so one UTC-midnight tick is wrong for
+  every workspace that is not on UTC — which is what it used to do. The value that survives a
+  day is the last tick before that workspace's midnight; when the local date rolls over the
+  day stops being addressed and is marked `finalized`. A missed day stays a GAP: the report
+  renders it unavailable, and `buildFallbackSnapshots`-style interpolation is prohibited.
+- **`work_items.accepted_date` is maintained by a TRIGGER** (`trg_sync_accepted_date`,
+  migration 0086), not by the service: `db/seeds/**` and raw SQL write this table directly,
+  and an Accepted row with no acceptance timestamp is a data-quality error the reports refuse
+  to guess about. The trigger never invents a date for a row that was already accepted before
+  0086 — those stay NULL and Velocity reports them as `unclassified`.
+- **`iterations.timebox_group_id` is how All Teams fuses per-Team iterations.** It is DERIVED
+  from (project, start, end) — `timeboxGroupIdFor()` and migration 0087 share the expression,
+  pinned by a spec — and computed ONCE at create, so a later date edit cannot split a
+  historical bar. The approved mockup shows the failure this prevents: two adjacent velocity
+  bars both labelled 25.1.
+- **`workspace_settings.working_days`** (ISO 1–7, default Mon–Fri) is the Burndown x-axis and
+  the Ideal line's index. The Ideal line is indexed by WORKING day and reaches zero on the
+  last one; the mockup interpolates over calendar days and never reaches zero — the SRS wins.
+- **`release_daily_snapshots.team_id IS NULL` is the All Teams row, and it is MEASURED, not
+  summed** from the Team rows: a work item two Teams both touch must be counted once. Points
+  and count live on the same row because `Chart Unit` is a display switch over one population.
+- Report series colours are `--report-*` tokens (both themes) in `globals.css`, exposed via
+  `BRAND.report*`. They are data colours fixed by the BA, deliberately not `primary`.
+
 ## Observability
 
 The implementation lives in `@qnsc-vn/observability` — shared with opshub, so fix it

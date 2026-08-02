@@ -17,6 +17,9 @@ export const FEATURE_FLAGS: Record<string, boolean> = {
   'feature.releases': true,
   'feature.milestones': true,
   'feature.reports': true,
+  // Portfolio > Release Tracking (P6). Separate from `feature.reports`: it is a different page
+  // under a different menu, and the SRS closes it as its own deliverable.
+  'feature.release-tracking': true,
   // Phase 0 features that are live:
   'feature.home': true,
   'feature.projects': true,

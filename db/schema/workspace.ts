@@ -15,6 +15,7 @@ import {
   timestamp,
   jsonb,
   integer,
+  smallint,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
@@ -129,6 +130,18 @@ export const workspaceSettings = workspaceSchema.table(
       .$type<Partial<PreliminaryEstimateMap>>()
       .notNull()
       .default({}),
+    // The working-day calendar the Iteration Burndown renders and indexes its Ideal
+    // line by (IB §2, IB-BR-03). ISO numbering, 1 = Monday … 7 = Sunday, matching
+    // Postgres `EXTRACT(ISODOW FROM date)` so the report query filters without
+    // translating. Mon–Fri by default — confirmed against the approved mockup, whose
+    // burndown axis omits weekends.
+    //
+    // Configuration rather than a service constant for the same reason as the
+    // preliminary-estimate map: a Sun–Thu working week must not be a code change, and
+    // the day a holiday calendar arrives there must be exactly one place that decides
+    // what a working day is. Holidays are deliberately not modelled here — separate
+    // data with its own lifecycle, and out of scope for this phase.
+    workingDays: smallint('working_days').array().notNull().default([1, 2, 3, 4, 5]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

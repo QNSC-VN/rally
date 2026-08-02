@@ -79,4 +79,20 @@ export const BRAND = {
   warningBg: 'var(--warning-bg)',
   warningBorder: 'var(--warning-border)',
   statusDefault: 'var(--status-default)', // default swatch for a new custom status (to-do grey)
+
+  /**
+   * Report chart series (P6). Data colours, not chrome — the SRS names each series and the
+   * approved mockup fixes the hues, so they live in their own group rather than borrowing
+   * `primary`/`primaryLight`, which would make two unrelated measures look related.
+   */
+  reportTodo: 'var(--report-todo)',
+  reportIdeal: 'var(--report-ideal)',
+  reportAccepted: 'var(--report-accepted)',
+  reportDuring: 'var(--report-during)',
+  reportAfter: 'var(--report-after)',
+  reportNotAccepted: 'var(--report-not-accepted)',
+  reportTrend: 'var(--report-trend)',
+  reportPlanned: 'var(--report-planned)',
+  reportPreliminary: 'var(--report-preliminary)',
+  reportGrid: 'var(--report-grid)',
 } as const

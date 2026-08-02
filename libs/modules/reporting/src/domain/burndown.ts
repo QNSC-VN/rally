@@ -1,0 +1,188 @@
+import { roundForDisplay, workingDaysBetween } from './report-scope';
+
+/**
+ * Iteration Burndown arithmetic (IB-BR-01…03 and §6).
+ *
+ * The two measured series are NOT computed here — they are read from
+ * `iteration_daily_snapshots`, because Burndown is frozen history and cannot be
+ * reconstructed from today's tasks. This module owns the parts that ARE derivable: the
+ * Ideal line, the working-day axis, and the status indicator.
+ *
+ * WHY THE IDEAL LINE IS NOT THE MOCKUP'S
+ *
+ * The approved mockup interpolates over CALENDAR days
+ * (`totalEstimate * (1 - elapsedDays / daysBetween(start, end))`), which is why its line
+ * still sits near 3.5 hours on the last plotted day and never reaches zero. IB-BR-03
+ * indexes by WORKING day and requires zero on the last one. The SRS is the contract; the
+ * mockup is a display fixture (its own §9 says so).
+ */
+
+/** One plotted day. `null` series values mean "no snapshot for this date". */
+export interface BurndownPoint {
+  /** Workspace-local date, `YYYY-MM-DD`. */
+  date: string;
+  /** SUM(task.todo) at end of day, HOURS, left axis. `null` = no snapshot. */
+  remainingToDo: number | null;
+  /** Cumulative accepted points as of end of day, right axis. `null` = no snapshot. */
+  acceptedPoints: number | null;
+  /**
+   * The frozen reference line, HOURS, left axis. `null` when no baseline was ever captured —
+   * a zero line would be plotted and read as "the plan was to do nothing".
+   */
+  ideal: number | null;
+}
+
+/** Why a burndown has no usable curve — the SRS demands these be distinguishable. */
+export type BurndownHistoryState =
+  /** Every working day in the window has a snapshot. */
+  | 'complete'
+  /** Some days have snapshots and some do not; the gaps render as gaps. */
+  | 'partial'
+  /** The iteration has no snapshots at all — the job has not run for it yet. */
+  | 'missing'
+  /** No baseline was captured, so no Ideal line can be drawn. */
+  | 'no-baseline';
+
+export type BurndownStatus = 'on-track' | 'behind-plan' | 'unknown';
+
+/**
+ * `ideal(i) = totalTaskEstimateAtStart * (1 - i / (N - 1))` over working days, clamped to
+ * `[0, totalTaskEstimateAtStart]`.
+ *
+ * Single-working-day iterations: `N - 1` is zero, so the formula is undefined. IB-BR-03
+ * says to render the baseline at the start of that day and zero at the iteration-end
+ * boundary, which as a one-point series is the baseline itself.
+ */
+export function idealLine(totalTaskEstimateAtStart: number, workingDayCount: number): number[] {
+  if (workingDayCount <= 0) return [];
+  const baseline = Math.max(0, totalTaskEstimateAtStart);
+  if (workingDayCount === 1) return [baseline];
+  const last = workingDayCount - 1;
+  return Array.from({ length: workingDayCount }, (_, i) =>
+    roundForDisplay(Math.min(baseline, Math.max(0, baseline * (1 - i / last)))),
+  );
+}
+
+/** One stored snapshot row, already narrowed to what the chart needs. */
+export interface StoredSnapshot {
+  date: string;
+  remainingToDo: number;
+  acceptedPoints: number;
+}
+
+export interface BurndownSeries {
+  points: BurndownPoint[];
+  historyState: BurndownHistoryState;
+  status: BurndownStatus;
+  /** The frozen baseline, echoed so the UI can label the axis honestly. */
+  totalTaskEstimateAtStart: number | null;
+  /** The latest date that actually has a snapshot, or null when none do. */
+  latestSnapshotDate: string | null;
+}
+
+/**
+ * Assemble the chart series from the working-day axis, the frozen baseline and whatever
+ * snapshots exist.
+ *
+ * Missing days are emitted with `null` series values rather than skipped or zero-filled.
+ * A zero would read as "no work remained", which is measured performance; a gap reads as
+ * what it is. IB §5: "Missing historical snapshots are reported as unavailable.
+ * Production must not interpolate or fabricate them."
+ */
+export function buildBurndownSeries(input: {
+  startDate: string;
+  endDate: string;
+  workingDays: readonly number[];
+  totalTaskEstimateAtStart: number | null;
+  snapshots: readonly StoredSnapshot[];
+}): BurndownSeries {
+  const axis = workingDaysBetween(input.startDate, input.endDate, input.workingDays);
+  const byDate = new Map(input.snapshots.map((s) => [s.date, s]));
+  const baseline = input.totalTaskEstimateAtStart;
+  const ideal = baseline === null ? null : idealLine(baseline, axis.length);
+
+  const points: BurndownPoint[] = axis.map((date, i) => {
+    const snap = byDate.get(date);
+    return {
+      date,
+      remainingToDo: snap ? roundForDisplay(snap.remainingToDo) : null,
+      acceptedPoints: snap ? roundForDisplay(snap.acceptedPoints) : null,
+      ideal: ideal === null ? null : (ideal[i] ?? null),
+    };
+  });
+
+  // Only snapshots ON the plotted axis count towards completeness: a weekend row stored
+  // for audit must not make a gap on Monday look filled.
+  const onAxis = points.filter((p) => p.remainingToDo !== null);
+  const historyState: BurndownHistoryState =
+    baseline === null
+      ? 'no-baseline'
+      : onAxis.length === 0
+        ? 'missing'
+        : onAxis.length === axis.length
+          ? 'complete'
+          : 'partial';
+
+  const latest = onAxis.at(-1) ?? null;
+
+  return {
+    points,
+    historyState,
+    // "if remainingToDo(d) > ideal(d): Behind plan else: On track" for the LATEST
+    // available snapshot date — equality is On track (IB §8 example 5). Unknown when
+    // there is nothing measured or nothing to measure against.
+    status:
+      latest === null || baseline === null
+        ? 'unknown'
+        : (latest.remainingToDo ?? 0) > (latest.ideal ?? 0)
+          ? 'behind-plan'
+          : 'on-track',
+    totalTaskEstimateAtStart: baseline,
+    latestSnapshotDate: latest?.date ?? null,
+  };
+}
+
+/**
+ * Sum the participating Teams' baselines for an All Teams view.
+ *
+ * "For All Teams, the baseline is the sum of the participating Team baselines for the
+ * shared timebox." Returns null when NO participating iteration has a baseline — that is
+ * `no-baseline`, not zero. A Team that has one contributes it; a Team that does not is
+ * simply absent from the sum, which is the same treatment its missing snapshots get.
+ */
+export function combineBaselines(baselines: readonly (number | null)[]): number | null {
+  const present = baselines.filter((b): b is number => b !== null);
+  if (present.length === 0) return null;
+  return roundForDisplay(present.reduce((a, b) => a + b, 0));
+}
+
+/**
+ * Fuse the per-Team snapshot rows of one shared timebox into one series per date.
+ *
+ * Summing is correct for both measures here and needs no de-duplication: a task's To Do
+ * hours belong to exactly one Team's iteration, and a Story's points are counted under
+ * the one iteration it is assigned to. The de-duplication the SRS demands applies where
+ * the same item could be reached through two Teams, which is the Release Tracking case,
+ * not this one.
+ *
+ * A date is emitted only if at least one Team snapshotted it, so a Team that missed a day
+ * lowers nothing — the alternative (treating its absence as 0 hours remaining) would
+ * invent progress.
+ */
+export function combineTeamSnapshots(rows: readonly StoredSnapshot[]): StoredSnapshot[] {
+  const byDate = new Map<string, StoredSnapshot>();
+  for (const row of rows) {
+    const existing = byDate.get(row.date);
+    byDate.set(
+      row.date,
+      existing
+        ? {
+            date: row.date,
+            remainingToDo: existing.remainingToDo + row.remainingToDo,
+            acceptedPoints: existing.acceptedPoints + row.acceptedPoints,
+          }
+        : { ...row },
+    );
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
