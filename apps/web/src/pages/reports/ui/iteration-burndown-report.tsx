@@ -67,6 +67,26 @@ export function IterationBurndownReport({
   // of them. `totalTaskEstimateAtStart` is the wire's answer now that `historyState` is snapshot-only.
   const noBaseline = data !== undefined && data.totalTaskEstimateAtStart === null
 
+  /**
+   * Everything qualifying the chart, in one line under it.
+   *
+   * `partialCaptureDates` is the third kind of caveat and the least obvious: those days have REAL
+   * numbers that were frozen before the day closed, because the hourly job stopped early. IB-BR-01
+   * calls the source an end-of-day snapshot, so a reader comparing two days deserves to know which one
+   * is not. The dates are named — "which day do I distrust" is the only actionable form.
+   */
+  const partialCaptures = data?.partialCaptureDates ?? []
+  const notes = [
+    data?.historyState === 'partial' ? t('burndown.partialHistory') : null,
+    noBaseline ? t('burndown.noBaselineNote') : null,
+    partialCaptures.length > 0
+      ? t('burndown.partialCapture', {
+          count: partialCaptures.length,
+          dates: partialCaptures.join(', '),
+        })
+      : null,
+  ].filter((line): line is string => line !== null)
+
   const behind = data?.status === 'behind-plan'
 
   return (
@@ -106,15 +126,8 @@ export function IterationBurndownReport({
         </>
       }
       footer={
-        data?.historyState === 'partial' || noBaseline ? (
-          <p className="mt-2 text-center text-ui-xs text-foreground-subtle">
-            {[
-              data?.historyState === 'partial' ? t('burndown.partialHistory') : null,
-              noBaseline ? t('burndown.noBaselineNote') : null,
-            ]
-              .filter((line) => line !== null)
-              .join(' ')}
-          </p>
+        notes.length > 0 ? (
+          <p className="mt-2 text-center text-ui-xs text-foreground-subtle">{notes.join(' ')}</p>
         ) : null
       }
     >

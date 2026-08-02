@@ -45,6 +45,14 @@ export const IterationBurndownResponseSchema = z.object({
   // `no-baseline` is gone: the baseline governs the Ideal LINE (IB §3), and a missing one used
   // to discard measured bars. `totalTaskEstimateAtStart === null` is now how a client knows.
   historyState: z.enum(['complete', 'partial', 'missing', 'no-window']),
+  /**
+   * Plotted days whose value was NOT captured at the end of that local day.
+   *
+   * IB-BR-01 calls the source an "end-of-day snapshot". When the hourly job stops early the surviving
+   * value is a partway reading, and a closed day cannot be re-measured — so it is frozen as-is and
+   * flagged here. Dates rather than a count, so a reader can be told WHICH day to distrust.
+   */
+  partialCaptureDates: z.array(z.string()),
   status: z.enum(['on-track', 'behind-plan', 'unknown']),
   latestSnapshotDate: z.string().nullable(),
   hasScheduledWork: z.boolean(),

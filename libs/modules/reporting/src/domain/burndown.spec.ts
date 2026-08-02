@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildBurndownSeries, combineBaselines, combineTeamSnapshots, idealLine } from './burndown';
+import {
+  buildBurndownSeries,
+  combineBaselines,
+  combineTeamSnapshots,
+  idealLine,
+  type StoredSnapshot,
+} from './burndown';
 import { DEFAULT_WORKING_DAYS } from './report-scope';
 
 describe('idealLine (IB-BR-03)', () => {
@@ -27,6 +33,28 @@ describe('idealLine (IB-BR-03)', () => {
 
 const WEEK = { startDate: '2026-01-05', endDate: '2026-01-09' }; // Mon–Fri
 
+/**
+ * A stored snapshot, captured at the END of its day unless a test says otherwise.
+ *
+ * End-of-day is the normal case — the hourly job's last tick before local midnight is the value that
+ * survives — so it is the default here, and the tests that care about a job dying early pass
+ * `endOfDay: false` explicitly. `StoredSnapshot` keeps both fields REQUIRED rather than defaulting
+ * them in the type: the repository always knows `captured_at` (it is NOT NULL in the table), and a
+ * type-level default of `true` would let unknown data claim to be a closing figure.
+ */
+const snap = (
+  date: string,
+  remainingToDo: number,
+  acceptedPoints: number,
+  over: { capturedAt?: Date | null; endOfDay?: boolean } = {},
+): StoredSnapshot => ({
+  date,
+  remainingToDo,
+  acceptedPoints,
+  capturedAt: over.capturedAt ?? new Date(`${date}T23:30:00Z`),
+  endOfDay: over.endOfDay ?? true,
+});
+
 describe('buildBurndownSeries', () => {
   it('plots working days only, with the ideal reaching zero on Friday', () => {
     const series = buildBurndownSeries({
@@ -34,11 +62,11 @@ describe('buildBurndownSeries', () => {
       workingDays: DEFAULT_WORKING_DAYS,
       totalTaskEstimateAtStart: 40,
       snapshots: [
-        { date: '2026-01-05', remainingToDo: 40, acceptedPoints: 0 },
-        { date: '2026-01-06', remainingToDo: 32, acceptedPoints: 0 },
-        { date: '2026-01-07', remainingToDo: 24, acceptedPoints: 5 },
-        { date: '2026-01-08', remainingToDo: 12, acceptedPoints: 5 },
-        { date: '2026-01-09', remainingToDo: 0, acceptedPoints: 13 },
+        snap('2026-01-05', 40, 0),
+        snap('2026-01-06', 32, 0),
+        snap('2026-01-07', 24, 5),
+        snap('2026-01-08', 12, 5),
+        snap('2026-01-09', 0, 13),
       ],
     });
     expect(series.points.map((p) => p.date)).toEqual([
@@ -60,10 +88,7 @@ describe('buildBurndownSeries', () => {
       ...WEEK,
       workingDays: DEFAULT_WORKING_DAYS,
       totalTaskEstimateAtStart: 40,
-      snapshots: [
-        { date: '2026-01-05', remainingToDo: 40, acceptedPoints: 0 },
-        { date: '2026-01-07', remainingToDo: 24, acceptedPoints: 5 },
-      ],
+      snapshots: [snap('2026-01-05', 40, 0), snap('2026-01-07', 24, 5)],
     });
     expect(series.points.map((p) => p.remainingToDo)).toEqual([40, null, 24, null, null]);
     expect(series.historyState).toBe('partial');
@@ -91,7 +116,7 @@ describe('buildBurndownSeries', () => {
       ...WEEK,
       workingDays: DEFAULT_WORKING_DAYS,
       totalTaskEstimateAtStart: null,
-      snapshots: [{ date: '2026-01-05', remainingToDo: 40, acceptedPoints: 0 }],
+      snapshots: [snap('2026-01-05', 40, 0)],
     });
     expect(noBaseline.historyState).toBe('partial');
     expect(noBaseline.totalTaskEstimateAtStart).toBeNull();
@@ -127,8 +152,8 @@ describe('buildBurndownSeries', () => {
       workingDays: DEFAULT_WORKING_DAYS,
       totalTaskEstimateAtStart: 40,
       snapshots: [
-        { date: '2026-01-10', remainingToDo: 20, acceptedPoints: 5 }, // Saturday
-        { date: '2026-01-11', remainingToDo: 20, acceptedPoints: 5 }, // Sunday
+        snap('2026-01-10', 20, 5), // Saturday
+        snap('2026-01-11', 20, 5), // Sunday
       ],
     });
     expect(series.points.some((p) => p.date === '2026-01-10')).toBe(false);
@@ -141,10 +166,7 @@ describe('buildBurndownSeries', () => {
         ...WEEK,
         workingDays: DEFAULT_WORKING_DAYS,
         totalTaskEstimateAtStart: 40,
-        snapshots: [
-          { date: '2026-01-05', remainingToDo: 40, acceptedPoints: 0 },
-          { date: '2026-01-06', remainingToDo: remaining, acceptedPoints: 0 },
-        ],
+        snapshots: [snap('2026-01-05', 40, 0), snap('2026-01-06', remaining, 0)],
       });
     expect(at(31).status).toBe('behind-plan');
     expect(at(30).status).toBe('on-track'); // equality is On track
@@ -163,20 +185,71 @@ describe('All Teams aggregation', () => {
   it('fuses the Teams rows of one shared timebox per date', () => {
     expect(
       combineTeamSnapshots([
-        { date: '2026-01-06', remainingToDo: 10, acceptedPoints: 2 },
-        { date: '2026-01-05', remainingToDo: 20, acceptedPoints: 0 },
-        { date: '2026-01-06', remainingToDo: 15, acceptedPoints: 3 },
+        snap('2026-01-06', 10, 2),
+        snap('2026-01-05', 20, 0),
+        snap('2026-01-06', 15, 3),
       ]),
-    ).toEqual([
-      { date: '2026-01-05', remainingToDo: 20, acceptedPoints: 0 },
-      { date: '2026-01-06', remainingToDo: 25, acceptedPoints: 5 },
-    ]);
+    ).toEqual([snap('2026-01-05', 20, 0), snap('2026-01-06', 25, 5)]);
   });
 
   it('omits a date no Team snapshotted rather than treating absence as zero remaining', () => {
-    const fused = combineTeamSnapshots([
-      { date: '2026-01-05', remainingToDo: 20, acceptedPoints: 0 },
-    ]);
+    const fused = combineTeamSnapshots([snap('2026-01-05', 20, 0)]);
     expect(fused.map((f) => f.date)).toEqual(['2026-01-05']);
+  });
+});
+describe('partial captures (IB-BR-01: the source is an END-OF-DAY snapshot)', () => {
+  /**
+   * A day the job died in is frozen anyway — a closed day cannot be re-measured — so the number is
+   * real but is not the closing figure the axis implies. That difference has to travel with it.
+   */
+  it('names the plotted days whose capture did NOT close the day', () => {
+    const series = buildBurndownSeries({
+      ...WEEK,
+      workingDays: DEFAULT_WORKING_DAYS,
+      totalTaskEstimateAtStart: 40,
+      snapshots: [
+        snap('2026-01-05', 40, 0),
+        // The job stopped at 10:04 — this is a mid-morning reading wearing a closing label.
+        snap('2026-01-06', 32, 0, {
+          capturedAt: new Date('2026-01-06T10:04:00Z'),
+          endOfDay: false,
+        }),
+        snap('2026-01-07', 24, 5),
+      ],
+    });
+
+    expect(series.partialCaptureDates).toEqual(['2026-01-06']);
+    expect(series.points.find((p) => p.date === '2026-01-06')?.endOfDay).toBe(false);
+    // The VALUE still stands: partial is not the same as unavailable, and blanking it would be the
+    // fabrication IB §5 forbids in the other direction.
+    expect(series.points.find((p) => p.date === '2026-01-06')?.remainingToDo).toBe(32);
+  });
+
+  it('reports nothing for a clean run, and null on days with no capture', () => {
+    const series = buildBurndownSeries({
+      ...WEEK,
+      workingDays: DEFAULT_WORKING_DAYS,
+      totalTaskEstimateAtStart: 40,
+      snapshots: [snap('2026-01-05', 40, 0)],
+    });
+
+    expect(series.partialCaptureDates).toEqual([]);
+    // A day with no snapshot has no capture to judge — null, not false, which would read as "the job
+    // ran late" for a day it never ran at all.
+    expect(series.points.find((p) => p.date === '2026-01-06')?.endOfDay).toBeNull();
+  });
+
+  it('fuses All Teams pessimistically: one team’s early stop makes the day partial', () => {
+    // The summed total is only a closing figure if every contributing row closed its own day, and the
+    // timestamp kept is the EARLIEST — the one that explains why.
+    const fused = combineTeamSnapshots([
+      snap('2026-01-05', 20, 3, { capturedAt: new Date('2026-01-05T23:40:00Z'), endOfDay: true }),
+      snap('2026-01-05', 15, 2, { capturedAt: new Date('2026-01-05T09:10:00Z'), endOfDay: false }),
+    ]);
+
+    expect(fused).toHaveLength(1);
+    expect(fused[0].remainingToDo).toBe(35);
+    expect(fused[0].endOfDay).toBe(false);
+    expect(fused[0].capturedAt?.toISOString()).toBe('2026-01-05T09:10:00.000Z');
   });
 });

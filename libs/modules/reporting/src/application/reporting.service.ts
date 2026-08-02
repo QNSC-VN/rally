@@ -89,7 +89,7 @@ export class ReportingService {
     const iterationIds = participating.map((i) => i.id);
 
     const [snapshots, scheduled] = await Promise.all([
-      this.repo.getIterationSnapshots(workspaceId, iterationIds, scope),
+      this.repo.getIterationSnapshots(workspaceId, iterationIds, scope, settings.timeZone),
       this.repo.countScheduledWork(workspaceId, iterationIds),
     ]);
 
@@ -113,6 +113,7 @@ export class ReportingService {
       historyState: series.historyState,
       status: series.status,
       latestSnapshotDate: series.latestSnapshotDate,
+      partialCaptureDates: series.partialCaptureDates,
       // Distinguishes "no scheduled work" from "work exists, the job has not run" (IB §7).
       hasScheduledWork: scheduled > 0,
     };

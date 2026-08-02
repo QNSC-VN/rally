@@ -359,9 +359,11 @@ export const iterationDailySnapshots = workSchema.table(
     // predicate and the daily job stays a single idempotent upsert for the team rows and
     // the All Teams row alike. A plain unique index over a nullable column would not
     // dedupe NULLs, and the All Teams row would double on the second tick.
+    // Same COALESCE as migration 0093 creates, and for the same reason as the release table's: the
+    // All Teams row carries `team_id IS NULL`, which a plain unique index would not dedupe.
     uniqueDay: uniqueIndex('uq_ids_iteration_team_date').on(
       t.iterationId,
-      t.teamId,
+      sql`coalesce(${t.teamId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
       t.snapshotDate,
     ),
     // The daily job's own read: which dates do I have for this scope, and are they closed?
@@ -999,9 +1001,18 @@ export const releaseDailySnapshots = workSchema.table(
   (t) => ({
     // COALESCE'd into the nil UUID in SQL (migration 0089) so ON CONFLICT targets one
     // predicate and the daily job stays a single upsert for team and All Teams rows.
+    /**
+     * COALESCE'd, exactly as migration 0089 creates it.
+     *
+     * Declared with `sql` rather than as three plain columns because a unique index over a NULLABLE
+     * column does not dedupe NULLs — and `team_id IS NULL` is the All Teams row, so the plain form
+     * would let two ticks insert it twice. The declaration drifted from the migration here: the DB had
+     * the COALESCE and this said `(release_id, team_id, snapshot_date)`, which a regenerated migration
+     * would have "fixed" into the broken shape and quietly killed the idempotent upsert.
+     */
     uniqueRelease: uniqueIndex('uq_rds_release_team_date').on(
       t.releaseId,
-      t.teamId,
+      sql`coalesce(${t.teamId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
       t.snapshotDate,
     ),
     releaseIdx: index('ix_rds_release').on(t.releaseId),

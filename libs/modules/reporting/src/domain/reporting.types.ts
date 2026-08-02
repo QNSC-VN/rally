@@ -53,6 +53,8 @@ export interface IterationBurndownReport {
   historyState: BurndownHistoryState;
   status: 'on-track' | 'behind-plan' | 'unknown';
   latestSnapshotDate: string | null;
+  /** Plotted days whose value was not captured at the end of that local day (IB-BR-01). */
+  partialCaptureDates: string[];
   /**
    * Whether any Story/Defect is assigned at all. Distinguishes "no scheduled work" from
    * "work exists but the snapshot job has not run for it" — IB §7 requires the empty state

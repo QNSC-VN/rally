@@ -34,7 +34,9 @@
       "noHistory": "No daily history has been recorded for this iteration yet. Burndown is built from end-of-day snapshots and is never reconstructed from today's values.",
       "noWindow": "This iteration has no start and end dates, so there is no window to plot. Add the dates first."
     },
-    "noBaselineNote": "No start baseline was recorded, so the Ideal line is not drawn."
+    "noBaselineNote": "No start baseline was recorded, so the Ideal line is not drawn.",
+    "partialCapture": "One day was recorded before it closed ({{dates}}), so its value is not an end-of-day figure.",
+    "partialCapture_plural": "{{count}} days were recorded before they closed ({{dates}}), so those values are not end-of-day figures."
   },
   "velocity": {
     "title": "Velocity - Accepted Iterations",

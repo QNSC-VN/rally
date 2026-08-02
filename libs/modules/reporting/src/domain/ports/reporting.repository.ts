@@ -119,6 +119,8 @@ export interface IReportingRepository {
     workspaceId: string,
     iterationIds: string[],
     scope: TeamScope,
+    /** The workspace's calendar, for deciding whether each capture closed its own local day. */
+    timeZone: string,
   ): Promise<StoredSnapshot[]>;
   countScheduledWork(workspaceId: string, iterationIds: string[]): Promise<number>;
 
@@ -208,6 +210,16 @@ export interface IReportingRepository {
   findActiveIterations(): Promise<ActiveIterationRow[]>;
   /** Releases whose window is open, across every workspace. */
   findActiveReleases(): Promise<ActiveReleaseRow[]>;
+
+  /**
+   * Workspaces holding at least one snapshot that is not yet `finalized`.
+   *
+   * The finalization pass used to run only over workspaces with an ACTIVE iteration or release,
+   * because that was the set the snapshot loop had already computed timezones for. So the final day of
+   * a workspace's last timebox stayed `finalized = false` forever: nothing was active any more, so the
+   * workspace never appeared in the map again. This asks the question the pass actually needs.
+   */
+  findWorkspacesWithOpenSnapshots(): Promise<string[]>;
 
   /**
    * SUM(task.estimate) over the tasks in an iteration's scope, for the one-time Ideal
