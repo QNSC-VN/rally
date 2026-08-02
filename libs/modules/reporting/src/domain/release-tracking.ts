@@ -18,6 +18,19 @@ export type ChartUnit = 'points' | 'count';
 
 export type ReleaseBucket = 'direct' | 'derived' | 'unparented';
 
+/**
+ * Rows per page over the ACTIVE bucket when the caller does not ask.
+ *
+ * Paging is a domain concern here, not a transport detail: the row set grows with the
+ * PROJECT's Feature count (a Derived Feature is one outside the release, so the population
+ * cannot be narrowed by the release), while the summary counts and the Preliminary/Planned/
+ * Accepted totals are measured over that whole population and must not move when a page does.
+ */
+export const RELEASE_TRACKING_PAGE_SIZE = 25;
+
+/** Hard ceiling on one page, so a caller cannot opt out of paging by asking for everything. */
+export const RELEASE_TRACKING_MAX_PAGE_SIZE = 200;
+
 /** A Story or Defect. `featureId` null means unparented. */
 export interface ReleaseChild {
   id: string;

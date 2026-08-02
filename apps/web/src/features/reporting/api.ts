@@ -35,6 +35,8 @@ export type TeamCapacityHours = TeamCapacityTeam['totals']
 
 export type ReleaseTrackingReport = Json<'ReportingController_getReleaseTracking'>
 export type ReleaseTrackingRow = ReleaseTrackingReport['rows'][number]
+/** The active bucket's page window. `total` is the whole bucket, never the page. */
+export type ReleaseTrackingPage = ReleaseTrackingReport['page']
 export type ReleaseMismatch = ReleaseTrackingRow['mismatches'][number]
 export type ReleaseBucket = ReleaseTrackingReport['bucket']
 export type ChartUnit = ReleaseTrackingReport['unit']
@@ -57,8 +59,22 @@ export const reportingKeys = {
     releaseId: string,
     unit: ChartUnit,
     bucket: ReleaseBucket,
+    page: number,
+    pageSize: number,
   ) =>
-    ['reports', 'release-tracking', projectId, teamId ?? 'all', releaseId, unit, bucket] as const,
+    [
+      'reports',
+      'release-tracking',
+      projectId,
+      teamId ?? 'all',
+      releaseId,
+      unit,
+      bucket,
+      // Page is part of the key: each page is a distinct server response, so reusing one
+      // page's cache entry for another would show stale rows under a new page number.
+      page,
+      pageSize,
+    ] as const,
   releaseBurnup: (
     projectId: string,
     teamId: string | undefined,
@@ -143,18 +159,47 @@ export function useReleaseTracking({
   releaseId,
   unit,
   bucket,
-}: Scope & { releaseId: string | undefined; unit: ChartUnit; bucket: ReleaseBucket }) {
+  page,
+  pageSize,
+}: Scope & {
+  releaseId: string | undefined
+  unit: ChartUnit
+  bucket: ReleaseBucket
+  page: number
+  pageSize: number
+}) {
   return useQuery({
-    queryKey: reportingKeys.releaseTracking(projectId ?? '', teamId, releaseId ?? '', unit, bucket),
+    queryKey: reportingKeys.releaseTracking(
+      projectId ?? '',
+      teamId,
+      releaseId ?? '',
+      unit,
+      bucket,
+      page,
+      pageSize,
+    ),
     queryFn: async () => {
       const { data, error, response } = await apiClient.GET('/v1/reports/release-tracking', {
-        params: { query: { projectId: projectId!, teamId, releaseId: releaseId!, unit, bucket } },
+        params: {
+          query: {
+            projectId: projectId!,
+            teamId,
+            releaseId: releaseId!,
+            unit,
+            bucket,
+            page,
+            pageSize,
+          },
+        },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as ReleaseTrackingReport
     },
     enabled: !!projectId && !!releaseId,
     staleTime: LIVE,
+    // Keep the previous page's rows on screen while the next one loads, so paging does not
+    // flash the grid's skeleton between clicks.
+    placeholderData: (previous) => previous,
   })
 }
 

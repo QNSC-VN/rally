@@ -4399,6 +4399,12 @@ export interface components {
           }
         } | null
       }[]
+      page: {
+        page: number
+        pageSize: number
+        total: number
+        pageCount: number
+      }
       totals: {
         planned: number
         accepted: number
@@ -12821,6 +12827,8 @@ export interface operations {
         releaseId: string
         unit?: 'points' | 'count'
         bucket?: 'direct' | 'derived' | 'unparented'
+        page?: number
+        pageSize?: number
       }
       header?: never
       path?: never

@@ -116,6 +116,8 @@ export class ReportingController {
       releaseId: query.releaseId,
       unit: query.unit,
       bucket: query.bucket,
+      page: query.page,
+      pageSize: query.pageSize,
     });
   }
 

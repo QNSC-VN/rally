@@ -2,7 +2,7 @@
   "title": "Release Tracking",
   "selectProject": "Select a project to track a release.",
   "chartUnit": "Chart Unit",
-  "searchPlaceholder": "Search this list...",
+  "searchPlaceholder": "Search this page...",
   "unit": {
     "points": "Points",
     "count": "Count"
@@ -108,5 +108,9 @@
       "title": "No unparented items",
       "description": "Every story and defect in this release belongs to a Feature."
     }
+  },
+  "error": {
+    "title": "Could not load release tracking",
+    "description": "The list failed to load. This is not an empty release - retry, and check the connection if it persists."
   }
 }

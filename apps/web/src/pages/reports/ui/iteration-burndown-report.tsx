@@ -18,7 +18,6 @@ import { useIterations } from '@/features/iterations/api'
 import { useIterationBurndown } from '@/features/reporting/api'
 import { iterationsInScope, reportScopeLabel } from '@/features/reporting/scope'
 import { IterationPicker } from '@/shared/ui/timebox-picker'
-import { SkeletonList } from '@/shared/ui/skeleton'
 import {
   CHART_AXIS,
   CHART_GRID,
@@ -28,6 +27,7 @@ import {
   axisLabel,
 } from '@/shared/ui/chart'
 
+import { ReportSurface } from './report-surface'
 import { useSelectedIteration } from '../model/use-selected-iteration'
 
 export function IterationBurndownReport({
@@ -43,8 +43,6 @@ export function IterationBurndownReport({
   const iterations = iterationsInScope(allIterations, teamId)
   const { selectedId, select } = useSelectedIteration(projectId, iterations)
   const { data, isLoading } = useIterationBurndown({ projectId, teamId, iterationId: selectedId })
-
-  if (isLoading && !data) return <SkeletonList rows={6} cols={3} />
 
   const points = data?.points ?? []
   /**
@@ -93,16 +91,20 @@ export function IterationBurndownReport({
   const behind = data?.status === 'behind-plan'
 
   return (
-    <ChartFrame
+    <ReportSurface
       title={t('burndown.title')}
-      subtitle={
+      // Project/Team context was a centred 18px line above the chart — larger than the report's
+      // own title and in a place no other page puts context. It is the same scope caption
+      // Velocity and Team Capacity now carry beside their titles, and it goes through
+      // `reportScopeLabel` so All Teams is NAMED rather than rendering as a trailing dash.
+      caption={
         data
           ? reportScopeLabel(data.context.projectName, data.context.teamName, t('common:allTeams'))
-          : t('burndown.title')
+          : undefined
       }
-      actions={
-        <div className="flex items-center gap-3">
-          <span className="text-ui-sm font-semibold text-foreground">{t('iteration')}</span>
+      controls={
+        <>
+          <span className="text-ui-xs font-semibold text-foreground-subtle">{t('iteration')}</span>
           <IterationPicker iterations={iterations} selectedId={selectedId} onSelect={select} />
           {data?.status !== 'unknown' && (
             <span
@@ -114,91 +116,97 @@ export function IterationBurndownReport({
               {behind ? t('burndown.behindPlan') : t('burndown.onTrack')}
             </span>
           )}
-        </div>
-      }
-      isEmpty={points.length === 0 || emptyDescription !== undefined}
-      emptyTitle={t('burndown.empty.title')}
-      emptyDescription={emptyDescription ?? t('burndown.empty.noHistory')}
-      legend={
-        <>
-          <ChartLegendItem color={BRAND.reportTodo} label={t('burndown.series.todo')} />
-          <ChartLegendItem
-            color={BRAND.reportIdeal}
-            label={t('burndown.series.ideal')}
-            shape="line"
-          />
-          <ChartLegendItem color={BRAND.reportAccepted} label={t('burndown.series.accepted')} />
         </>
       }
-      dataTable={{
-        caption: t('burndown.tableCaption'),
-        noDataLabel: t('common:noData'),
-        columns: [
-          t('burndown.axis.date'),
-          t('burndown.series.todo'),
-          t('burndown.series.ideal'),
-          t('burndown.series.accepted'),
-        ],
-        // The SAME array recharts plots, so the table cannot drift from the chart — and the nulls
-        // travel through untouched, which is how a gap stays a gap here too.
-        rows: points.map((point) => [
-          point.date,
-          point.remainingToDo,
-          point.ideal,
-          point.acceptedPoints,
-        ]),
-      }}
-      footer={
-        notes.length > 0 ? (
-          <p className="mt-2 text-center text-ui-xs text-foreground-subtle">{notes.join(' ')}</p>
-        ) : null
-      }
+      padBody
+      loading={isLoading && !data}
     >
-      <ComposedChart data={points} margin={{ top: 12, right: 16, left: 4, bottom: 12 }}>
-        <CartesianGrid {...CHART_GRID} />
-        <XAxis
-          dataKey="date"
-          {...CHART_AXIS}
-          label={axisLabel(t('burndown.axis.date'), 'bottom')}
-        />
-        <YAxis
-          yAxisId="hours"
-          {...CHART_AXIS}
-          label={axisLabel(t('burndown.axis.hours'), 'left')}
-        />
-        <YAxis
-          yAxisId="points"
-          orientation="right"
-          {...CHART_AXIS}
-          label={axisLabel(t('burndown.axis.points'), 'right')}
-        />
-        <Tooltip contentStyle={CHART_TOOLTIP} />
-        <Bar
-          yAxisId="hours"
-          dataKey="remainingToDo"
-          name={t('burndown.series.todo')}
-          fill={BRAND.reportTodo}
-          barSize={34}
-        />
-        <Line
-          yAxisId="hours"
-          type="linear"
-          dataKey="ideal"
-          name={t('burndown.series.ideal')}
-          stroke={BRAND.reportIdeal}
-          strokeWidth={2.5}
-          dot={{ r: 3, fill: BRAND.reportIdeal }}
-          // `false` keeps the line broken across a day with no baseline rather than bridging it.
-          connectNulls={false}
-        />
-        <Bar
-          yAxisId="points"
-          dataKey="acceptedPoints"
-          name={t('burndown.series.accepted')}
-          fill={BRAND.reportAccepted}
-          barSize={18}
-        />
-      </ComposedChart>
-    </ChartFrame>
+      <ChartFrame
+        bare
+        dataTable={{
+          caption: t('burndown.tableCaption'),
+          noDataLabel: t('common:noData'),
+          columns: [
+            t('burndown.axis.date'),
+            t('burndown.series.todo'),
+            t('burndown.series.ideal'),
+            t('burndown.series.accepted'),
+          ],
+          // The SAME array recharts plots, so the table cannot drift from the chart — and the
+          // nulls travel through untouched, which is how a gap stays a gap here too.
+          rows: points.map((point) => [
+            point.date,
+            point.remainingToDo,
+            point.ideal,
+            point.acceptedPoints,
+          ]),
+        }}
+        isEmpty={points.length === 0 || emptyDescription !== undefined}
+        emptyTitle={t('burndown.empty.title')}
+        emptyDescription={emptyDescription ?? t('burndown.empty.noHistory')}
+        legend={
+          <>
+            <ChartLegendItem color={BRAND.reportTodo} label={t('burndown.series.todo')} />
+            <ChartLegendItem
+              color={BRAND.reportIdeal}
+              label={t('burndown.series.ideal')}
+              shape="line"
+            />
+            <ChartLegendItem color={BRAND.reportAccepted} label={t('burndown.series.accepted')} />
+          </>
+        }
+        footer={
+          notes.length > 0 ? (
+            <p className="mt-2 text-center text-ui-xs text-foreground-subtle">{notes.join(' ')}</p>
+          ) : null
+        }
+      >
+        <ComposedChart data={points} margin={{ top: 12, right: 16, left: 4, bottom: 12 }}>
+          <CartesianGrid {...CHART_GRID} />
+          <XAxis
+            dataKey="date"
+            {...CHART_AXIS}
+            label={axisLabel(t('burndown.axis.date'), 'bottom')}
+          />
+          <YAxis
+            yAxisId="hours"
+            {...CHART_AXIS}
+            label={axisLabel(t('burndown.axis.hours'), 'left')}
+          />
+          <YAxis
+            yAxisId="points"
+            orientation="right"
+            {...CHART_AXIS}
+            label={axisLabel(t('burndown.axis.points'), 'right')}
+          />
+          <Tooltip contentStyle={CHART_TOOLTIP} />
+          <Bar
+            yAxisId="hours"
+            dataKey="remainingToDo"
+            name={t('burndown.series.todo')}
+            fill={BRAND.reportTodo}
+            barSize={34}
+          />
+          <Line
+            yAxisId="hours"
+            type="linear"
+            dataKey="ideal"
+            name={t('burndown.series.ideal')}
+            stroke={BRAND.reportIdeal}
+            strokeWidth={2.5}
+            dot={{ r: 3, fill: BRAND.reportIdeal }}
+            // `false` keeps the line broken across a day with no baseline rather than bridging it.
+            connectNulls={false}
+          />
+          <Bar
+            yAxisId="points"
+            dataKey="acceptedPoints"
+            name={t('burndown.series.accepted')}
+            fill={BRAND.reportAccepted}
+            barSize={18}
+          />
+        </ComposedChart>
+      </ChartFrame>
+    </ReportSurface>
   )
 }
