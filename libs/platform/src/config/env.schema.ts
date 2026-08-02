@@ -290,21 +290,28 @@ export const EnvSchema = z
     PLATFORM_ADMIN_EMAILS: z.string().default(''),
   })
   .superRefine((env, ctx) => {
-    // Database credentials must arrive by exactly one of the two routes. Checked
-    // here so a misconfigured task dies at boot with a precise message, rather
-    // than surviving startup and failing on the first query — which is how the
-    // stale db-url secret presented: a healthy-looking deploy, then 28P01.
-    if (env.DATABASE_URL) return;
-
-    const missing = (
-      [
-        'DATABASE_HOST',
-        'DATABASE_PORT',
-        'DATABASE_NAME',
-        'DATABASE_USER',
-        'DATABASE_PASSWORD',
-      ] as const
-    ).filter((k) => !env[k]);
+    /**
+     * Database credentials must arrive by exactly one of the two routes. Checked here so a
+     * misconfigured task dies at boot with a precise message, rather than surviving startup and
+     * failing on the first query — which is how the stale db-url secret presented: a healthy-looking
+     * deploy, then 28P01.
+     *
+     * `DATABASE_URL` short-circuits THIS check only. It used to `return` out of the whole
+     * `superRefine`, which silently disabled every rule written after it — the storage-credential
+     * pairing below never ran for any deploy that used a database URL, which is every deploy we
+     * have. A refinement block that grows more rules cannot early-return.
+     */
+    const missing = env.DATABASE_URL
+      ? []
+      : (
+          [
+            'DATABASE_HOST',
+            'DATABASE_PORT',
+            'DATABASE_NAME',
+            'DATABASE_USER',
+            'DATABASE_PASSWORD',
+          ] as const
+        ).filter((k) => !env[k]);
 
     // Half a credential pair is a misconfiguration, not a partial feature: an id
     // without a secret silently falls back to the private-bucket credential, which is
@@ -328,6 +335,32 @@ export const EnvSchema = z
         message:
           `Database not configured. Set DATABASE_URL, or all of DATABASE_HOST, DATABASE_PORT, ` +
           `DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD. Missing: ${missing.join(', ')}.`,
+      });
+    }
+
+    /**
+     * A real email provider needs a SENDER, and the absence of one is silent otherwise.
+     *
+     * `MAIL_FROM_EMAIL` said "Required when EMAIL_PROVIDER != 'dev'" in its own comment and was
+     * `.optional()` in the schema, so nothing enforced it. Unset, `resolveFromEmail()` returns `''`
+     * and every message goes out as `"Mini Rally" <>`: SES rejects each one with
+     * `Email address not verified`, three failures open the email circuit breaker, and it stays open
+     * for the life of the process. The task boots healthy and reports healthy — invitations,
+     * notifications and password resets simply never arrive.
+     *
+     * That was the live state of BOTH deployed environments: `infra/modules/stack/main.tf` sets
+     * `EMAIL_PROVIDER=ses` for the api and worker tasks and nothing set a sender. Failing at boot is
+     * the rule this repo already follows for the database credentials above, and for the same
+     * reason — a precise message now beats an invisible outage later.
+     */
+    if (env.EMAIL_PROVIDER !== 'dev' && !env.MAIL_FROM_EMAIL && !env.SES_FROM_EMAIL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAIL_FROM_EMAIL'],
+        message:
+          `EMAIL_PROVIDER is "${env.EMAIL_PROVIDER}", which sends real mail, so a verified sender ` +
+          `is required. Set MAIL_FROM_EMAIL (or the legacy SES_FROM_EMAIL), or set ` +
+          `EMAIL_PROVIDER=dev to log messages instead of sending them.`,
       });
     }
   })

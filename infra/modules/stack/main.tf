@@ -657,8 +657,12 @@ module "api" {
     # URL)", which is what develop did until the buckets got a custom domain.
     { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs["${var.product}_attachments_endpoint"] },
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
-    # Email — SES in production
+    # Email — SES in production. The sender is REQUIRED alongside the provider: without it the API
+    # now fails at boot by design, because the old behaviour was to send every message as
+    # `"Mini Rally" <>`, collect an SES rejection for each, open the email circuit breaker for the
+    # life of the process — and go on reporting healthy.
     { name = "EMAIL_PROVIDER", value = "ses" },
+    { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     # Observability
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
@@ -833,7 +837,10 @@ module "worker" {
     # URL)", which is what develop did until the buckets got a custom domain.
     { name = "STORAGE_ENDPOINT", value = data.terraform_remote_state.storage.outputs["${var.product}_attachments_endpoint"] },
     { name = "STORAGE_FORCE_PATH_STYLE", value = "true" },
+    # The WORKER sends too — the notification relay is its job — so it needs the sender for the
+    # same reason the api task does.
     { name = "EMAIL_PROVIDER", value = "ses" },
+    { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
     { name = "OTEL_SERVICE_NAME", value = "${var.product}-worker" },

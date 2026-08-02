@@ -110,6 +110,26 @@ variable "platform_admin_emails" {
   default     = []
 }
 
+variable "mail_from_email" {
+  description = <<-EOT
+    Verified sender for all outbound mail. REQUIRED while email_provider is not "dev":
+    the API now fails at boot without it, deliberately, because the previous behaviour was
+    to send every message as `"Mini Rally" <>`, have SES reject each one, open the email
+    circuit breaker and report healthy — a silent outage of invitations, notifications and
+    password resets in both environments.
+
+    The address (or its domain) must be a verified identity in the target account's SES,
+    or every send still fails — Terraform cannot check that for you.
+  EOT
+  type        = string
+  default     = "noreply@qnsc.vn"
+
+  validation {
+    condition     = can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.mail_from_email))
+    error_message = "mail_from_email must be a single bare email address (no display name)."
+  }
+}
+
 variable "seed_on_deploy" {
   description = "Whether the migrator runs the demo seed after migrating. Never true in production."
   type        = bool

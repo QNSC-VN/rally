@@ -123,3 +123,82 @@ describe('EnvSchema — REDIS_URL', () => {
     expect(EnvSchema.safeParse(env({ REDIS_URL: 'redis://localhost:6379' })).success).toBe(true);
   });
 });
+
+describe('EnvSchema — email sender', () => {
+  /**
+   * The sender is required whenever mail actually leaves the process.
+   *
+   * `MAIL_FROM_EMAIL` documented itself as "Required when EMAIL_PROVIDER != 'dev'" and was
+   * `.optional()`, so nothing enforced it — and both deployed environments ran
+   * `EMAIL_PROVIDER=ses` with no sender. Every message went out as `"Mini Rally" <>`, SES rejected
+   * each one, three failures opened the email circuit breaker for the life of the process, and the
+   * task went on reporting healthy. Invitations, notifications and password resets simply never
+   * arrived, with nothing in the health checks to say so.
+   */
+  it('REFUSES to boot with a real provider and no sender', () => {
+    const result = EnvSchema.safeParse(env({ EMAIL_PROVIDER: 'ses' }));
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    // The message has to name the way out, both of them: set a sender, or stop sending.
+    const issue = result.error.issues.find((i) => i.path.includes('MAIL_FROM_EMAIL'));
+    expect(issue?.message).toMatch(/MAIL_FROM_EMAIL/);
+    expect(issue?.message).toMatch(/EMAIL_PROVIDER=dev/);
+  });
+
+  it('boots with a sender', () => {
+    const result = EnvSchema.safeParse(
+      env({ EMAIL_PROVIDER: 'ses', MAIL_FROM_EMAIL: 'noreply@qnsc.vn' }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts the legacy SES_FROM_EMAIL alias', () => {
+    // Still honoured by `resolveFromEmail`, so the guard must not reject a deploy that uses it.
+    const result = EnvSchema.safeParse(
+      env({ EMAIL_PROVIDER: 'ses', SES_FROM_EMAIL: 'noreply@qnsc.vn' }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it('needs no sender for the dev provider, which only logs', () => {
+    // The default. Local development and CI must not have to configure mail at all.
+    expect(EnvSchema.safeParse(env({ EMAIL_PROVIDER: 'dev' })).success).toBe(true);
+    expect(EnvSchema.safeParse(env()).success).toBe(true);
+  });
+
+  it('rejects a resend deployment with no sender too — the rule is about SENDING', () => {
+    const result = EnvSchema.safeParse(env({ EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 'k' }));
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('EnvSchema — refinements are not disabled by an early return', () => {
+  /**
+   * The storage-credential rule existed and never ran.
+   *
+   * `superRefine` opened with `if (env.DATABASE_URL) return;`, which returned out of the WHOLE
+   * block — so every rule written after the database check was dead for any deploy that used a
+   * database URL, which is every deploy we have. Both live rules are asserted here with
+   * `DATABASE_URL` set, which is the configuration that used to skip them.
+   */
+  it('still checks the public-storage credential PAIR when DATABASE_URL is set', () => {
+    const half = EnvSchema.safeParse(env({ STORAGE_PUBLIC_ACCESS_KEY_ID: 'AKIA' }));
+    expect(half.success).toBe(false);
+
+    const other = EnvSchema.safeParse(env({ STORAGE_PUBLIC_SECRET_ACCESS_KEY: 'secret' }));
+    expect(other.success).toBe(false);
+
+    const both = EnvSchema.safeParse(
+      env({ STORAGE_PUBLIC_ACCESS_KEY_ID: 'AKIA', STORAGE_PUBLIC_SECRET_ACCESS_KEY: 'secret' }),
+    );
+    expect(both.success).toBe(true);
+  });
+
+  it('still reports missing database parts when DATABASE_URL is absent', () => {
+    const { DATABASE_URL: _omitted, ...withoutUrl } = env();
+    const result = EnvSchema.safeParse(withoutUrl);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.some((i) => i.message.includes('DATABASE_HOST'))).toBe(true);
+  });
+});
