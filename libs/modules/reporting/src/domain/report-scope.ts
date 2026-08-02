@@ -56,6 +56,18 @@ export function isWorkingDay(localDate: string, workingDays: readonly number[]):
   return workingDays.includes(isoDayOfWeek(localDate));
 }
 
+/**
+ * Whether this is a real `YYYY-MM-DD` calendar date.
+ *
+ * Shape AND validity: `'2026-02-30'` has the right shape and is not a date, and every helper
+ * here reaches for `new Date(...)` immediately after.
+ */
+export function isCalendarDate(value: string | null | undefined): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 /** Add whole days to a `YYYY-MM-DD` date, staying in the calendar (no zone involved). */
 export function addDays(localDate: string, days: number): string {
   const d = new Date(`${localDate}T00:00:00Z`);
@@ -70,14 +82,22 @@ export function addDays(localDate: string, days: number): string {
  * working-day index (IB-BR-03). Weekend snapshots may still be STORED for audit; they
  * are simply not plotted.
  *
- * Returns `[]` when the range is inverted or when the window contains no working day at
- * all — an empty axis is an explicit empty state, never a fabricated one.
+ * Returns `[]` when either endpoint is missing or unparseable, when the range is inverted, or
+ * when the window contains no working day at all — an empty axis is an explicit empty state,
+ * never a fabricated one.
+ *
+ * The missing-endpoint guard is load-bearing, not defensive dressing. A dateless iteration
+ * reaches here as `''` (the caller has nothing else to pass), and `'' < ''` is false, so the
+ * inverted-range check let it through into the loop — where `addDays('')` calls
+ * `toISOString()` on an Invalid Date and throws `RangeError`. That was a 500 on every
+ * iteration with no dates.
  */
 export function workingDaysBetween(
   start: string,
   end: string,
   workingDays: readonly number[] = DEFAULT_WORKING_DAYS,
 ): string[] {
+  if (!isCalendarDate(start) || !isCalendarDate(end)) return [];
   if (end < start) return [];
   const out: string[] = [];
   for (let d = start; d <= end; d = addDays(d, 1)) {

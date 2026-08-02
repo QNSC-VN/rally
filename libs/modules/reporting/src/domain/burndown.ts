@@ -32,7 +32,14 @@ export interface BurndownPoint {
   ideal: number | null;
 }
 
-/** Why a burndown has no usable curve — the SRS demands these be distinguishable. */
+/**
+ * What the SNAPSHOT history looks like — the SRS demands these be distinguishable.
+ *
+ * Deliberately says nothing about the Ideal baseline. IB §3 scopes the baseline to the Ideal
+ * LINE, and §5 makes only missing snapshots "unavailable", so folding the two into one enum
+ * made a missing baseline discard measured Task-To-Do and Accepted-Points bars that were
+ * really recorded. `hasBaseline` reports that separately.
+ */
 export type BurndownHistoryState =
   /** Every working day in the window has a snapshot. */
   | 'complete'
@@ -40,8 +47,16 @@ export type BurndownHistoryState =
   | 'partial'
   /** The iteration has no snapshots at all — the job has not run for it yet. */
   | 'missing'
-  /** No baseline was captured, so no Ideal line can be drawn. */
-  | 'no-baseline';
+  /**
+   * The iteration has no start or end date, so there is no window to plot.
+   *
+   * A fourth state beyond the three IB §7 lists, because it is a fourth real situation and
+   * the alternative was worse: the service used to pass `startDate ?? ''` into
+   * `workingDaysBetween`, where `'' < ''` slipped past the inverted-range guard and
+   * `addDays('')` threw `RangeError: Invalid time value` — a 500 on 99 of 206 local
+   * iterations. "Add the dates first" and "wait for the job" are different actions.
+   */
+  | 'no-window';
 
 export type BurndownStatus = 'on-track' | 'behind-plan' | 'unknown';
 
@@ -113,10 +128,14 @@ export function buildBurndownSeries(input: {
 
   // Only snapshots ON the plotted axis count towards completeness: a weekend row stored
   // for audit must not make a gap on Monday look filled.
+  //
+  // The baseline is NOT consulted here. It decides whether an Ideal line can be drawn, which
+  // is a different question from whether the days were measured — and answering both with one
+  // enum is what made a baseline-less iteration report as having no history at all.
   const onAxis = points.filter((p) => p.remainingToDo !== null);
   const historyState: BurndownHistoryState =
-    baseline === null
-      ? 'no-baseline'
+    axis.length === 0
+      ? 'no-window'
       : onAxis.length === 0
         ? 'missing'
         : onAxis.length === axis.length

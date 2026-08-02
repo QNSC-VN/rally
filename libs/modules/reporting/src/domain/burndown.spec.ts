@@ -79,17 +79,45 @@ describe('buildBurndownSeries', () => {
     expect(noHistory.historyState).toBe('missing');
     expect(noHistory.status).toBe('unknown');
 
+    /**
+     * A missing baseline costs the IDEAL LINE, not the measured history.
+     *
+     * IB §3 scopes the baseline to the Ideal line and §5 makes only missing SNAPSHOTS
+     * unavailable, so `historyState` reports what was captured and `totalTaskEstimateAtStart`
+     * reports whether a trajectory can be drawn. Conflating them made a real, measured day of
+     * Task-To-Do render as "no burndown to show".
+     */
     const noBaseline = buildBurndownSeries({
       ...WEEK,
       workingDays: DEFAULT_WORKING_DAYS,
       totalTaskEstimateAtStart: null,
       snapshots: [{ date: '2026-01-05', remainingToDo: 40, acceptedPoints: 0 }],
     });
-    expect(noBaseline.historyState).toBe('no-baseline');
+    expect(noBaseline.historyState).toBe('partial');
+    expect(noBaseline.totalTaskEstimateAtStart).toBeNull();
+    // The measured day SURVIVES — that is the whole point of the split.
+    expect(noBaseline.points.find((p) => p.date === '2026-01-05')?.remainingToDo).toBe(40);
+    // Status still cannot be judged: there is nothing to compare the measurement against.
     expect(noBaseline.status).toBe('unknown');
     // Every Ideal value is null, not 0: a zero line gets plotted and reads as "the plan was
     // to do nothing", which is the same fabrication the null snapshot values avoid.
     expect(noBaseline.points.every((p) => p.ideal === null)).toBe(true);
+  });
+
+  it('reports NO WINDOW for an iteration with no dates, rather than throwing', () => {
+    // The service has nothing but `''` to pass for a dateless iteration, and `'' < ''` slipped
+    // past the inverted-range guard into `addDays('')`, which threw `RangeError: Invalid time
+    // value` — a 500 on 99 of 206 iterations in the local database.
+    const dateless = buildBurndownSeries({
+      startDate: '',
+      endDate: '',
+      workingDays: DEFAULT_WORKING_DAYS,
+      totalTaskEstimateAtStart: 40,
+      snapshots: [],
+    });
+    expect(dateless.historyState).toBe('no-window');
+    expect(dateless.points).toEqual([]);
+    expect(dateless.status).toBe('unknown');
   });
 
   it('ignores a weekend snapshot stored for audit when judging completeness', () => {

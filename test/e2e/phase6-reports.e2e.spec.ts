@@ -16,10 +16,12 @@
  *
  * Prereqs: docker deps up + `pnpm db:migrate` (see flow-harness).
  */
+import { randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 
+import { AccessService } from '@modules/access';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { IterationsService } from '@modules/iterations';
@@ -30,8 +32,16 @@ import { ReportSnapshotService, ReportingService } from '@modules/reporting';
 import { TeamStatusService } from '@modules/team-status';
 import { WorkItemsService } from '@modules/work-items';
 import { iterationDailySnapshots, iterations, workItems } from '@db/schema/work';
+import { users } from '@db/schema/identity';
 
-import { ADMIN_USER_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import {
+  ADMIN_USER_ID,
+  WORKSPACE_ID,
+  adminActor,
+  bootRallyApp,
+  makeActor,
+  uniqueKey,
+} from './support/flow-harness';
 
 describe('Phase 6 reports (e2e)', () => {
   let app: NestFastifyApplication;
@@ -153,18 +163,103 @@ describe('Phase 6 reports (e2e)', () => {
     expect(report.context.teamName).toBe('All Teams');
     expect(report.totalTaskEstimateAtStart).toBe(8);
 
+    /**
+     * Both branches assert. Today may be a weekend, in which case it is deliberately absent from
+     * the working-day axis — but "absent from the axis" is itself a rule worth pinning, and the
+     * row must still be STORED for audit.
+     *
+     * This used to be `if (today) { ... }` with `measured.length` only bounded ABOVE, so on a
+     * Saturday or Sunday the test asserted nothing at all about the stored history: it passed
+     * even if the report had returned an all-null series. It ran that way for real — the audit
+     * that found it was run on a Sunday.
+     */
     const today = report.points.find((p) => p.date === localToday);
-    // Today may be a weekend, in which case it is deliberately absent from the axis.
+    const measured = report.points.filter((p) => p.remainingToDo !== null);
+
     if (today) {
       expect(today.remainingToDo).toBe(6);
       expect(today.ideal).not.toBeNull();
+      // Exactly one measured day out of a multi-working-day window: partial, never fabricated.
+      expect(measured).toHaveLength(1);
+      expect(report.historyState).toBe('partial');
+    } else {
+      // A weekend. The snapshot exists in the table…
+      const stored = await db
+        .select({ date: iterationDailySnapshots.snapshotDate })
+        .from(iterationDailySnapshots)
+        .where(
+          and(
+            eq(iterationDailySnapshots.iterationId, iterationId),
+            eq(iterationDailySnapshots.snapshotDate, localToday),
+          ),
+        );
+      expect(stored).toHaveLength(1);
+      // …and is deliberately NOT plotted, so the axis carries no measurement at all.
+      expect(measured).toHaveLength(0);
+      expect(report.historyState).toBe('missing');
     }
 
-    // Exactly one measured day out of a multi-working-day window: partial, never fabricated.
-    const measured = report.points.filter((p) => p.remainingToDo !== null);
-    expect(measured.length).toBeLessThanOrEqual(1);
-    expect(report.historyState === 'partial' || report.historyState === 'missing').toBe(true);
     expect(report.hasScheduledWork).toBe(true);
+  });
+
+  it('reports NO WINDOW for a dateless iteration instead of failing', async () => {
+    /**
+     * `startDate ?? ''` used to reach `workingDaysBetween`, where `'' < ''` slipped past the
+     * inverted-range guard and `addDays('')` threw `RangeError: Invalid time value` — an HTTP 500,
+     * reproduced against 99 of 206 iterations in the local database. "Add the dates first" and
+     * "wait for the job to run" are different instructions, so this is its own state.
+     */
+    const dateless = await iterationsSvc.createIteration(admin, projectId, 'P6 No Dates', {
+      state: 'planning',
+    });
+
+    const report = await reporting.getIterationBurndown(admin, {
+      projectId,
+      iterationId: dateless.id,
+    });
+    expect(report.historyState).toBe('no-window');
+    expect(report.points).toEqual([]);
+    expect(report.status).toBe('unknown');
+  });
+
+  it('resolves report:view for a WORKSPACE-SCOPED project_member role', async () => {
+    /**
+     * The permission that makes every report reachable at all.
+     *
+     * Phase 6 added `report:view` to PROJECT_ADMIN and PROJECT_MEMBER in
+     * `db/permissions.catalog.ts`, but the catalogue only reaches a workspace through
+     * `db/seeds/bootstrap.ts`, whose upsert is `set: { name }` so it cannot clobber an admin's
+     * edits. Every workspace created before Phase 6 therefore kept its old permission array and
+     * answered 403 on all five report routes to everyone except Workspace Admin — whose grant is
+     * the global immutable anchor and hid the fault. Migration 0092 backfills it.
+     *
+     * Asserted through the workspace-scoped role row that `PolicyGuard` actually resolves, not
+     * through the global template, because the template was never the one that was wrong.
+     */
+    const access = app.get(AccessService);
+    const roles = await access.listRoles(WORKSPACE_ID);
+    const member = roles.find((r) => r.slug === 'project_member' && r.workspaceId !== null);
+    expect(member, 'workspace-scoped project_member role must exist').toBeDefined();
+    expect(member?.permissions).toContain('report:view');
+
+    // `identity.users` is workspace-agnostic — membership comes from the role ASSIGNMENT below,
+    // which is what carries the workspace and the project scope.
+    const userId = randomUUID();
+    await db.insert(users).values({
+      id: userId,
+      email: `p6-report-reader-${userId.slice(0, 8)}@qnsc.dev`,
+      displayName: 'P6 report reader',
+    });
+    await access.assignRole(admin, userId, member!.id, 'project', projectId);
+
+    // The harness's own actor builder: the permission array on it is INERT (authorization
+    // resolves from the database), so this is identity only — exactly what the guard passes.
+    const reader = makeActor(userId);
+    await expect(access.hasProjectPermission(reader, projectId, 'report:view')).resolves.toBe(true);
+    // Still a reader: the grant is view-only, so a write permission must not come with it.
+    await expect(access.hasProjectPermission(reader, projectId, 'capacity:manage')).resolves.toBe(
+      false,
+    );
   });
 
   // ── Velocity ──────────────────────────────────────────────────────────────
@@ -365,10 +460,14 @@ describe('Phase 6 reports (e2e)', () => {
     });
 
     const before = await reporting.getReleaseBurnup(admin, { projectId, releaseId: release.id });
-    // Nothing captured yet, and no persisted Ideal target: reported, not drawn.
+    // Nothing captured yet, and no persisted Ideal target: reported, not drawn. `historyState`
+    // describes the SNAPSHOTS (none), and `idealTarget` separately says there is no target — the
+    // old single enum could only report `no-baseline` while nothing was measured, so a release
+    // with history and no target was indistinguishable from one with a gap.
     expect(before.points.every((p) => p.accepted === null)).toBe(true);
     expect(before.points.every((p) => p.ideal === null)).toBe(true);
-    expect(before.historyState).toBe('no-baseline');
+    expect(before.historyState).toBe('missing');
+    expect(before.idealTarget).toBeNull();
 
     await snapshots.takeSnapshots();
 
@@ -379,6 +478,16 @@ describe('Phase 6 reports (e2e)', () => {
     // One captured day inside a multi-day window.
     expect(after.historyState).toBe('partial');
 
+    /**
+     * The Ideal target was CAPTURED on this first snapshot day, from the planned scope.
+     *
+     * `ideal_target_points` / `ideal_target_count` had no writer anywhere in the codebase, so the
+     * Ideal line could never be drawn for any release — the column existed, the DTO carried it,
+     * and every point came back null forever.
+     */
+    expect(after.idealTarget).toBe(13);
+    expect(after.points.some((p) => p.ideal !== null)).toBe(true);
+
     // Idempotent: a second tick rewrites the same (release, scope, date) row.
     await snapshots.takeSnapshots();
     const counted = await db.execute<{ n: number }>(
@@ -387,6 +496,20 @@ describe('Phase 6 reports (e2e)', () => {
             and team_id is null`,
     );
     expect(counted.rows[0].n).toBe(1);
+
+    /**
+     * And the target is captured ONCE. Scope grows by 8 points, a later tick runs, and the target
+     * must not follow it — RT-BR-09 forbids an Ideal that redraws whenever scope changes, which is
+     * the same rule `captureStartBaseline` enforces for the iteration baseline.
+     */
+    await items.createWorkItem(admin, projectId, 'story', 'burnup scope creep', {
+      releaseId: release.id,
+      storyPoints: '8',
+    });
+    await snapshots.takeSnapshots();
+    const later = await reporting.getReleaseBurnup(admin, { projectId, releaseId: release.id });
+    expect(later.points.find((p) => p.date === localToday)?.planned).toBe(21);
+    expect(later.idealTarget).toBe(13);
   });
 
   it('refuses an iteration from another project even with a project the caller can read', async () => {

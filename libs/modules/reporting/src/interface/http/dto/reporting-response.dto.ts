@@ -42,7 +42,9 @@ export const IterationBurndownResponseSchema = z.object({
   timebox: TimeboxSchema,
   points: z.array(BurndownPointSchema),
   totalTaskEstimateAtStart: z.number().nullable(),
-  historyState: z.enum(['complete', 'partial', 'missing', 'no-baseline']),
+  // `no-baseline` is gone: the baseline governs the Ideal LINE (IB §3), and a missing one used
+  // to discard measured bars. `totalTaskEstimateAtStart === null` is now how a client knows.
+  historyState: z.enum(['complete', 'partial', 'missing', 'no-window']),
   status: z.enum(['on-track', 'behind-plan', 'unknown']),
   latestSnapshotDate: z.string().nullable(),
   hasScheduledWork: z.boolean(),
@@ -186,7 +188,9 @@ export const ReleaseBurnupResponseSchema = z.object({
       ideal: z.number().nullable(),
     }),
   ),
-  historyState: z.enum(['complete', 'partial', 'missing', 'no-baseline']),
+  historyState: z.enum(['complete', 'partial', 'missing', 'no-window']),
+  /** Null when no Ideal target is stored — which is why every `ideal` above would be null. */
+  idealTarget: z.number().nullable(),
   iterations: z.array(
     z.object({
       id: z.string().uuid(),

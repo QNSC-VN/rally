@@ -77,12 +77,14 @@ difference is the whole design. Read this before changing a report or the snapsh
   day stops being addressed and is marked `finalized`. A missed day stays a GAP: the report
   renders it unavailable, and `buildFallbackSnapshots`-style interpolation is prohibited.
 - **`work_items.accepted_date` is maintained by a TRIGGER** (`trg_sync_accepted_date`,
-  migration 0086), not by the service: `db/seeds/**` and raw SQL write this table directly,
+  migration 0087), not by the service: `db/seeds/**` and raw SQL write this table directly,
   and an Accepted row with no acceptance timestamp is a data-quality error the reports refuse
   to guess about. The trigger never invents a date for a row that was already accepted before
-  0086 — those stay NULL and Velocity reports them as `unclassified`.
+  0087 — those stay NULL and Velocity reports them as `unclassified`. Verified by experiment:
+  `accepted` sets it, `release` RETAINS it (accepted-equivalent), reopening clears it, and a
+  later re-acceptance writes a fresh, later timestamp.
 - **`iterations.timebox_group_id` is how All Teams fuses per-Team iterations.** It is DERIVED
-  from (project, start, end) — `timeboxGroupIdFor()` and migration 0087 share the expression,
+  from (project, start, end) — `timeboxGroupIdFor()` and migration 0088 share the expression,
   pinned by a spec — and computed ONCE at create, so a later date edit cannot split a
   historical bar. The approved mockup shows the failure this prevents: two adjacent velocity
   bars both labelled 25.1.
@@ -94,6 +96,43 @@ difference is the whole design. Read this before changing a report or the snapsh
   and count live on the same row because `Chart Unit` is a display switch over one population.
 - Report series colours are `--report-*` tokens (both themes) in `globals.css`, exposed via
   `BRAND.report*`. They are data colours fixed by the BA, deliberately not `primary`.
+- **`historyState` describes SNAPSHOTS only.** Both burndown and burnup once folded "no Ideal
+  baseline" into that enum, which made a missing baseline discard measured bars that had really
+  been recorded — IB §3 scopes the baseline to the Ideal LINE, and §5 makes only missing
+  snapshots unavailable. The baseline is now reported separately
+  (`totalTaskEstimateAtStart` / `idealTarget`, null when absent) and a fourth state `no-window`
+  covers an iteration or release with no dates. That state exists because the alternative was a
+  500: the service had nothing but `''` to pass, `'' < ''` slipped past the inverted-range guard
+  in `workingDaysBetween`, and `addDays('')` threw `RangeError`.
+- **`releases.ideal_target_points` / `_count` are captured ONCE, by the snapshot job**, on a
+  release's first snapshot day, from the then-current planned scope — the same `IS NULL`-guarded
+  capture as the iteration baseline, and for the same reason (RT-BR-09): an Ideal derived from
+  today's Planned value silently redraws every past day whenever scope changes. Before this
+  nothing wrote those columns at all, so the Ideal line could never be drawn for any release.
+- **A sparse series needs DOTS, not just lines.** `connectNulls={false}` is right — a bridged gap
+  is a fabrication — but a line segment needs two adjacent points, so a measured day between two
+  gaps drew zero pixels and a young release rendered an empty grid beside populated totals. Give
+  a dot an explicit `fill`: recharts fills dots white by default and draws the series colour as
+  the ring, so `{ r: 2, strokeWidth: 0 }` alone is twelve invisible dots on a white card.
+- **The demo seed writes frozen report history** (`seedReportHistory` in `db/seeds/demo.ts`).
+  Both seeded timeboxes are in the past and the cron only ever writes TODAY, so without it every
+  Phase 6 chart shows its empty state on a fresh database. The rows deliberately include a GAP,
+  weekend audit rows and a sparse burnup — production must never fabricate history, a dev seed
+  must, and those shapes are the ones worth being able to see.
+
+## Permissions reach a workspace ONCE
+
+`db/permissions.catalog.ts` is the source of truth, but `db/seeds/bootstrap.ts` upserts the
+per-workspace tier roles with `set: { name }` — deliberately, so re-seeding cannot clobber an
+admin's edits to a role's permissions. The consequence is easy to miss: **a permission added to
+the catalogue never reaches an existing workspace.** Phase 6 added `report:view` to
+PROJECT_ADMIN and PROJECT_MEMBER and every pre-Phase-6 workspace kept its old array, so all five
+report routes answered 403 to everyone except Workspace Admin — whose `workspace:*` grant is the
+global anchor and hid the fault everywhere it was tested. Migration 0092 backfills it.
+
+So: **a new permission needs a backfill migration**, not just a catalogue entry. Force it only
+when the permission is genuinely new (nobody can have revoked what never existed); a permission
+that already shipped must be merged, not forced, or the migration undoes someone's decision.
 
 ## Observability
 

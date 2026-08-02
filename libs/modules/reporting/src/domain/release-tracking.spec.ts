@@ -279,11 +279,37 @@ describe('buildBurnup (RT-BR-09)', () => {
     expect(historyState).toBe('partial');
   });
 
-  it('has no Ideal at all without a persisted baseline', () => {
-    // Reconstructing it from today's Planned value is what RT-BR-09 forbids.
-    const { points, historyState } = buildBurnup({ axis, idealTarget: null, snapshots: [] });
+  it('has no Ideal at all without a persisted baseline, and SAYS so separately', () => {
+    // Reconstructing it from today's Planned value is what RT-BR-09 forbids. `historyState`
+    // describes the snapshots; `idealTarget` is how a client knows why every `ideal` is null.
+    const { points, historyState, idealTarget } = buildBurnup({
+      axis,
+      idealTarget: null,
+      snapshots: [],
+    });
     expect(points.every((p) => p.ideal === null)).toBe(true);
-    expect(historyState).toBe('no-baseline');
+    expect(historyState).toBe('missing');
+    expect(idealTarget).toBeNull();
+  });
+
+  it('keeps measured days when no Ideal target is stored', () => {
+    // The old enum could only report `no-baseline` when NOTHING was measured, so a release with
+    // history and no target came back `partial` with no way to tell a gap from a missing target.
+    const { points, historyState, idealTarget } = buildBurnup({
+      axis,
+      idealTarget: null,
+      snapshots: [{ date: axis[0], accepted: 4, planned: 10, preliminary: 12 }],
+    });
+    expect(historyState).toBe('partial');
+    expect(idealTarget).toBeNull();
+    expect(points[0]?.accepted).toBe(4);
+  });
+
+  it('reports NO WINDOW for an empty axis', () => {
+    // A release with no start or release date has nothing to plot against.
+    expect(buildBurnup({ axis: [], idealTarget: 30, snapshots: [] }).historyState).toBe(
+      'no-window',
+    );
   });
 
   it('reports missing history when a baseline exists but nothing was captured', () => {

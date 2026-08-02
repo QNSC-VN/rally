@@ -37,7 +37,9 @@ import {
   projectMembers,
   projectTeams,
   workItems,
+  iterationDailySnapshots,
   iterations,
+  releaseDailySnapshots,
   releases,
   teams,
   teamMembers,
@@ -1140,10 +1142,138 @@ async function seedFlow() {
     ])
     .onConflictDoNothing();
 
+  // ── 14. Phase 6 report history ────────────────────────────────────────────
+  await seedReportHistory();
+
   console.log(
     '✅  Demo flow seeded — Team Alpha, Story + Defect (team+iteration+release-linked), 2 Tasks, ' +
-      '1 Iteration, 1 Release, 1 Milestone, plus capacity/labels/comments/time logs/watchers',
+      '1 Iteration, 1 Release, 1 Milestone, plus capacity/labels/comments/time logs/watchers, ' +
+      'and frozen Burndown + Release burnup history',
   );
+}
+
+/**
+ * Frozen daily history for the Phase 6 reports.
+ *
+ * Without it every report renders its empty state on a fresh database, because Burndown and the
+ * Release burnup read STORED snapshots (IB §5, RT-BR-09) and the hourly job only ever writes
+ * TODAY — it cannot reconstruct the past, by design. The seeded iteration ran 2026-06-16..27 and
+ * the seeded release 2026-07-01..31, both in the past, so no cron tick will ever fill them and
+ * anyone reviewing the reports locally sees nothing at all.
+ *
+ * These rows are FABRICATED history, which is exactly what production must never do — hence
+ * `finalized: true` and a seed-only writer. They are shaped to exercise the contract rather than
+ * to look tidy:
+ *   • one deliberate GAP (2026-06-24) so a reviewer sees a real gap rendered as a gap, not as a
+ *     zero — the single most important behaviour in IB §5;
+ *   • a weekend row (2026-06-20) that must NOT appear on the working-day axis, so the axis rule
+ *     is visible too;
+ *   • a captured `total_task_estimate_at_start`, so the Ideal line has a baseline to descend from;
+ *   • a sparse burnup (four scattered days) so the isolated-point rendering stays honest.
+ */
+async function seedReportHistory() {
+  /**
+   * Burndown: hours remaining fall from the 40h baseline; accepted points climb to the sprint's 8.
+   *
+   * The sprint runs Tue 2026-06-16 → Sat 2026-06-27, so its LAST WORKING day is Fri 06-26 — that
+   * is where the Ideal line reaches zero and where the team therefore has to land. Ending the
+   * measured series at 06-27 instead left 4h outstanding on the last plotted day and the report
+   * read `Behind plan`, correctly. The dates are the fixture's; the arithmetic is the SRS's.
+   */
+  const burndown: Array<{ date: string; todo: string; accepted: string }> = [
+    { date: '2026-06-16', todo: '40', accepted: '0' },
+    { date: '2026-06-17', todo: '36', accepted: '0' },
+    { date: '2026-06-18', todo: '30', accepted: '0' },
+    { date: '2026-06-19', todo: '26', accepted: '3' },
+    // Saturday: stored for audit, never plotted.
+    { date: '2026-06-20', todo: '26', accepted: '3' },
+    { date: '2026-06-22', todo: '20', accepted: '3' },
+    { date: '2026-06-23', todo: '16', accepted: '5' },
+    // 2026-06-24 is MISSING on purpose — the job did not run. It must render as a gap.
+    { date: '2026-06-25', todo: '6', accepted: '5' },
+    // The last working day: finished, so the report reads `On track` rather than `Behind plan`.
+    { date: '2026-06-26', todo: '0', accepted: '8' },
+    // Also a Saturday, and after the finish — a second audit-only row.
+    { date: '2026-06-27', todo: '0', accepted: '8' },
+  ];
+
+  /**
+   * Set OUTRIGHT, not capture-once.
+   *
+   * Production must never overwrite a captured baseline (`captureStartBaseline` guards on
+   * `IS NULL`) — but the seed owns this fixed-UUID iteration, and a shared dev database picks up
+   * whatever the e2e suites leave behind. A stale baseline of 5 under a 40-hour seeded burndown
+   * draws an Ideal line that contradicts the bars beside it, which is worse for a reviewer than
+   * no chart at all.
+   */
+  await db
+    .update(iterations)
+    .set({
+      totalTaskEstimateAtStart: '40',
+      totalTaskEstimateCapturedAt: new Date('2026-06-16T08:00:00Z'),
+    })
+    .where(eq(iterations.id, NXP_ITER_CURRENT_ID));
+
+  await db
+    .insert(iterationDailySnapshots)
+    .values(
+      burndown.map((row) => ({
+        id: uuidv7(),
+        workspaceId: WORKSPACE_ID,
+        iterationId: NXP_ITER_CURRENT_ID,
+        snapshotDate: row.date,
+        remainingTodo: row.todo,
+        acceptedPoints: row.accepted,
+        capturedAt: new Date(`${row.date}T17:00:00Z`),
+        // Every seeded day is a CLOSED day, so the job will not try to rewrite one.
+        finalized: true,
+      })),
+    )
+    .onConflictDoNothing();
+
+  /**
+   * Release burnup: four scattered days across July, on the ALL TEAMS row.
+   *
+   * `teamId: null` is the All Teams row and it is MEASURED, not summed from team rows — a work
+   * item two teams both touch must be counted once. Deliberately sparse: that is what a real young
+   * release looks like, and it is the case where a chart drawing only line SEGMENTS renders
+   * nothing at all.
+   */
+  const burnup = [
+    { date: '2026-07-06', accepted: '0', count: 0 },
+    { date: '2026-07-13', accepted: '3', count: 1 },
+    { date: '2026-07-22', accepted: '5', count: 2 },
+    { date: '2026-07-29', accepted: '8', count: 3 },
+  ];
+
+  await db
+    .insert(releaseDailySnapshots)
+    .values(
+      burnup.map((row) => ({
+        id: uuidv7(),
+        workspaceId: WORKSPACE_ID,
+        releaseId: NXP_RELEASE_1_ID,
+        teamId: null,
+        snapshotDate: row.date,
+        acceptedPoints: row.accepted,
+        acceptedCount: row.count,
+        plannedPoints: '13',
+        plannedCount: 4,
+        preliminaryPoints: '21',
+        preliminaryCount: 6,
+        capturedAt: new Date(`${row.date}T17:00:00Z`),
+        finalized: true,
+      })),
+    )
+    .onConflictDoNothing();
+
+  // The Ideal target the burnup climbs toward — the same capture-once column the snapshot job
+  // writes on a release's first snapshot day, set here because that day is in the past. Outright,
+  // for the same reason as the baseline above.
+  await db
+    .update(releases)
+    .set({ idealTargetPoints: '13', idealTargetCount: 4 })
+    .where(eq(releases.id, NXP_RELEASE_1_ID));
 }
 
 /**

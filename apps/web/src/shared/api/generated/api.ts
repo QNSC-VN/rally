@@ -4236,7 +4236,7 @@ export interface components {
       }[]
       totalTaskEstimateAtStart: number | null
       /** @enum {string} */
-      historyState: 'complete' | 'partial' | 'missing' | 'no-baseline'
+      historyState: 'complete' | 'partial' | 'missing' | 'no-window'
       /** @enum {string} */
       status: 'on-track' | 'behind-plan' | 'unknown'
       latestSnapshotDate: string | null
@@ -4413,7 +4413,8 @@ export interface components {
         ideal: number | null
       }[]
       /** @enum {string} */
-      historyState: 'complete' | 'partial' | 'missing' | 'no-baseline'
+      historyState: 'complete' | 'partial' | 'missing' | 'no-window'
+      idealTarget: number | null
       iterations: {
         /** Format: uuid */
         id: string
