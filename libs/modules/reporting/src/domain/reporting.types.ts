@@ -85,6 +85,15 @@ export interface TeamCapacityTeam {
   /** Null for the synthetic `No Team` group. */
   id: string | null;
   name: string;
+  /**
+   * The Team is archived, and its hours are reported anyway.
+   *
+   * Archiving a Team does not delete its linked Work Item/Sprint history (DB design §488), so
+   * dropping these rows would shrink a total for a reason the reader cannot see. The row is marked
+   * instead, because the global Team picker hides archived teams — nothing else on the screen says
+   * that this team no longer exists.
+   */
+  archived: boolean;
   totals: TeamCapacityHours;
   members: Array<{ id: string | null; name: string; hours: TeamCapacityHours }>;
 }

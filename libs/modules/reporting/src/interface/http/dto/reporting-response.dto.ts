@@ -109,6 +109,10 @@ export const TeamCapacityResponseSchema = z.object({
       // Null for the synthetic `No Team` group — work whose Team cannot be resolved.
       id: z.string().uuid().nullable(),
       name: z.string(),
+      // The Team is archived. Its hours are still reported (archiving a Team does not delete its
+      // linked history), so the row says so — the global Team picker hides archived teams, and
+      // nothing else on screen would.
+      archived: z.boolean(),
       totals: HoursSchema,
       members: z.array(
         z.object({

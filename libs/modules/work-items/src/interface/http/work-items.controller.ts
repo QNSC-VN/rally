@@ -519,7 +519,8 @@ export class WorkItemsController {
       state: dto.state,
       assigneeId: dto.assigneeId,
       teamId: dto.teamId,
-      iterationId: dto.iterationId,
+      // No iteration: it comes from the parent (P1-TASK-011). `CreateTaskSchema` does not
+      // carry the field, and the service refuses one.
       estimateHours: dto.estimateHours,
       todoHours: dto.todoHours,
       actualHours: dto.actualHours,
