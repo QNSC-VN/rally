@@ -216,6 +216,27 @@ export function CapacityPlanDetailPage() {
     return [...names].map(([id, name]) => ({ id, name }))
   }, [plan?.items])
 
+  /**
+   * Per team: how many of its allocated Features breach their OWN rule (`Rollup > Estimated`).
+   *
+   * The BA's attention badge sits beside each team's Features count and promises
+   * `{N} Feature(s) require attention` (Capacity SRS:121), so N has to be a count of FEATURES. The
+   * row was passing `team.metrics.warnings.length` instead — the team's own warnings, which include
+   * capacity rules that say nothing about any Feature.
+   *
+   * Counted from `plan.items`, which already carries each Feature's resolved warnings from the
+   * service, so the number beside the count and the triangles inside the disclosure come from one
+   * source and cannot disagree.
+   */
+  const featuresNeedingAttentionByTeam = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of plan?.items ?? []) {
+      if (!item.warnings.includes('rollup_exceeds_estimated')) continue
+      for (const teamId of item.teamIds) counts.set(teamId, (counts.get(teamId) ?? 0) + 1)
+    }
+    return counts
+  }, [plan?.items])
+
   const visibleItems = useMemo(
     () =>
       (plan?.items ?? []).filter((item) => {
@@ -845,6 +866,9 @@ export function CapacityPlanDetailPage() {
                       expanded={expandedTeams.has(team.teamId)}
                       onToggleExpanded={() => toggleTeam(team.teamId)}
                       featureCount={allocationsByTeam.get(team.teamId)?.length ?? 0}
+                      featuresRequiringAttention={
+                        featuresNeedingAttentionByTeam.get(team.teamId) ?? 0
+                      }
                     />
                     {/* Allocated Features sit under their team — one row per team, which is
                           how Rally groups a shared Feature — and DISCLOSED rather than always

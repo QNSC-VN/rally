@@ -84,7 +84,12 @@ function ChildRow({ children }: { children: React.ReactNode }) {
     // most obviously. Subordination is carried by the indent, the dashed divider and the
     // tinted rail; shrinking the controls as well just made them look like a different
     // component.
-    <div className="flex min-h-[34px] items-center border-b border-dashed border-border-subtle px-3 text-ui-md text-muted-foreground hover:bg-primary-lighter">
+    <div
+      // A stable hook for the AC-5 cap: "up to 5 linked items". Counting rendered rows is the only
+      // way to assert a cap as a property rather than against a fixture's child count.
+      data-child-preview-row=""
+      className="flex min-h-[34px] items-center border-b border-dashed border-border-subtle px-3 text-ui-md text-muted-foreground hover:bg-primary-lighter"
+    >
       {/* Mirrors the parent's gutter through the shared component (inert here — a child
           is not selectable and not rankable) so column 1 starts at the same x. */}
       <RowGutter dragDisabled />
@@ -388,6 +393,14 @@ function ChildWorkItemRow({
   )
 }
 
+/**
+ * Rally's inline preview shows at most five linked items (SRS:61, FR-006, AC-5).
+ *
+ * A cap, not pagination: the disclosure answers "what is under here" at a glance, and the Children
+ * tab is where the full, sortable, searchable list lives.
+ */
+const CHILD_PREVIEW_LIMIT = 5
+
 export function PortfolioChildRows({
   item,
   colStyleFor,
@@ -439,17 +452,34 @@ export function PortfolioChildRows({
           onOpen={openPortfolioItem}
         />
       ))
-    : (children.data ?? []).map((c) => (
-        <ChildWorkItemRow
-          key={c.id}
-          child={c}
-          colStyleFor={colStyleFor}
-          members={members}
-          canEdit={canEditProject(c.projectId)}
-          options={optionsFor(c.projectId)}
-          onOpen={openWorkItem}
-        />
-      ))
+    : (children.data ?? [])
+        .slice(0, CHILD_PREVIEW_LIMIT)
+        .map((c) => (
+          <ChildWorkItemRow
+            key={c.id}
+            child={c}
+            colStyleFor={colStyleFor}
+            members={members}
+            canEdit={canEditProject(c.projectId)}
+            options={optionsFor(c.projectId)}
+            onOpen={openWorkItem}
+          />
+        ))
+
+  /**
+   * How many linked items the preview is NOT showing.
+   *
+   * "If more than 5 items are linked, a static `+N more - see Children tab` line is shown; it is
+   * not clickable" (SRS:61, FR-006, AC-5). A disclosure that listed every child turned a quick
+   * peek into an unbounded list inside the grid — the Children tab is the place that pages.
+   *
+   * Only the Story/Defect preview is capped. An Epic's disclosure reveals its child FEATURES
+   * (§11.3), which the BA does not cap, and a Feature count per Epic is bounded by planning
+   * rather than by delivery volume.
+   */
+  const hiddenChildren = isEpic
+    ? 0
+    : Math.max(0, (children.data?.length ?? 0) - CHILD_PREVIEW_LIMIT)
 
   return (
     <div className="bg-surface-hover shadow-[inset_2px_0_0_var(--primary-lighter)]">
@@ -463,7 +493,17 @@ export function PortfolioChildRows({
           {isEpic ? t('row.noChildFeatures') : t('row.noChildItems')}
         </div>
       ) : (
-        rows
+        <>
+          {rows}
+          {hiddenChildren > 0 && (
+            /* STATIC, and deliberately not a link: "it is not clickable" (AC-5). Making it one
+               would offer a second route to the Children tab from a row whose own click target is
+               the ID cell, and the BA is explicit that the preview navigates nowhere. */
+            <div className="py-1.5 pl-11 text-ui-xs text-foreground-subtle">
+              {t('row.morePreviewItems', { count: hiddenChildren })}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

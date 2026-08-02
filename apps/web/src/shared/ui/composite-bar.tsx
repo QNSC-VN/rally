@@ -80,10 +80,13 @@ export interface CompositeBarProps {
   /**
    * Whether the glyph carries `warningLabels` as its ACCESSIBLE NAME (default) or is decoration.
    *
-   * `false` where the row already names the same warnings elsewhere — the team grid puts a
-   * `WarningCountBadge` in its Features cell, and two nodes with the same accessible name make a
-   * screen reader read the reason twice. The glyph still draws, because its POSITION is the
-   * information Rally encodes: it marks where the bar failed.
+   * `false` where the row already names the same warnings elsewhere — two nodes with the same
+   * accessible name make a screen reader read the reason twice. The glyph still draws, because its
+   * POSITION is the information Rally encodes: it marks where the bar failed.
+   *
+   * The team grid used to pass `false` for that reason, when its Features-cell badge named the
+   * team's warnings. That badge now counts the FEATURES requiring attention (Capacity SRS:121) — a
+   * different quantity — so the bar names them again, which is where SRS:128 puts them.
    */
   warningLabelled?: boolean
   /** Tooltip text, usually the four numbers spelled out. Ignored when `tooltip` is given. */
