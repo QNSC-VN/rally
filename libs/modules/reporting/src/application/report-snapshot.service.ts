@@ -173,6 +173,23 @@ export class ReportSnapshotService {
       const points = releaseTotals(leaves, inRelease, 'points');
       const counts = releaseTotals(leaves, inRelease, 'count');
 
+      /**
+       * The Ideal target, captured once from the ALL TEAMS planned scope.
+       *
+       * All Teams because the Ideal is a release-level trajectory, not a per-Team one, and that
+       * row is measured rather than summed. First snapshot day because RT-BR-09 forbids deriving
+       * it from today's Planned value — see `captureReleaseIdealTarget`, which only writes while
+       * both columns are still null, so this is a no-op on every later tick.
+       */
+      if (teamId === null) {
+        await this.repo.captureReleaseIdealTarget(
+          release.workspaceId,
+          release.id,
+          points.planned,
+          counts.planned,
+        );
+      }
+
       await this.repo.upsertReleaseSnapshot({
         workspaceId: release.workspaceId,
         releaseId: release.id,

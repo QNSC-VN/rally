@@ -634,6 +634,31 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       );
   }
 
+  async captureReleaseIdealTarget(
+    workspaceId: string,
+    releaseId: string,
+    plannedPoints: number,
+    plannedCount: number,
+  ): Promise<void> {
+    // `isNull` on BOTH columns, mirroring `captureStartBaseline`: the write is the capture, so a
+    // second tick matches zero rows instead of moving the target as scope changes. Guarding on
+    // one column alone would let a half-written pair be completed on a later, different day.
+    await this.db
+      .update(releases)
+      .set({
+        idealTargetPoints: String(plannedPoints),
+        idealTargetCount: Math.round(plannedCount),
+      })
+      .where(
+        and(
+          eq(releases.workspaceId, workspaceId),
+          eq(releases.id, releaseId),
+          isNull(releases.idealTargetPoints),
+          isNull(releases.idealTargetCount),
+        ),
+      );
+  }
+
   async measureIterationDay(
     workspaceId: string,
     iterationId: string,

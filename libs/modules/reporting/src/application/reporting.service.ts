@@ -300,7 +300,7 @@ export class ReportingService {
     // No window means no axis and no ideal trajectory. Reported as unavailable rather than
     // drawn from whichever snapshots happen to exist.
     if (!release.startDate || !release.releaseDate) {
-      return { unit, points: [], historyState: 'no-baseline', iterations: [] };
+      return { unit, points: [], historyState: 'no-window', idealTarget: null, iterations: [] };
     }
 
     const [snapshots, band] = await Promise.all([
@@ -314,7 +314,7 @@ export class ReportingService {
       ),
     ]);
 
-    const { points, historyState } = buildBurnup({
+    const { points, historyState, idealTarget } = buildBurnup({
       axis: calendarDays(release.startDate, release.releaseDate),
       idealTarget: unit === 'points' ? release.idealTargetPoints : release.idealTargetCount,
       snapshots,
@@ -324,6 +324,7 @@ export class ReportingService {
       unit,
       points,
       historyState,
+      idealTarget,
       iterations: band.map((i) => ({
         id: i.id,
         name: i.name,

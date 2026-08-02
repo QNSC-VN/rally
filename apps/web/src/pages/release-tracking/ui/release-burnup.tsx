@@ -26,6 +26,17 @@ import {
   axisLabel,
 } from '@/shared/ui/chart'
 
+/**
+ * Dots on the measured series, so a day with no measured neighbour is still visible.
+ *
+ * Small deliberately: a release window is often 60–90 days, and a dot per day on three series
+ * would read as noise. `fill` is explicit and `strokeWidth: 0` — recharts fills a dot WHITE by
+ * default and draws the series colour as its ring, so `{ r: 2, strokeWidth: 0 }` alone rendered
+ * twelve invisible white dots on a white card. Verified by counting `.recharts-dot` nodes in the
+ * DOM while nothing showed on screen.
+ */
+const measuredDot = (color: string) => ({ r: 2, strokeWidth: 0, fill: color })
+
 export function ReleaseBurnup({
   projectId,
   teamId,
@@ -54,6 +65,15 @@ export function ReleaseBurnup({
   // An axis of dates whose every value is null is not a chart — it is an empty grid that reads
   // as "everything was zero". The window exists; the measurements do not.
   const hasMeasuredDay = points.some((point) => point.accepted !== null)
+  /**
+   * Whether a stored Ideal target exists at all.
+   *
+   * `historyState` cannot answer this any more (it describes the snapshots), and it could not
+   * really answer it before either: the old `no-baseline` state was reachable only when NOTHING
+   * was measured, so a release with history and no target reported `partial` and the reader was
+   * left with a legend swatch for a line that was never drawn.
+   */
+  const hasIdealTarget = data?.idealTarget !== null && data?.idealTarget !== undefined
 
   return (
     <ChartFrame
@@ -83,11 +103,15 @@ export function ReleaseBurnup({
             shape="line"
             label={t('burnup.series.preliminary')}
           />
-          <ChartLegendItem
-            color={BRAND.reportIdeal}
-            shape="line"
-            label={t('burnup.series.ideal')}
-          />
+          {/* Advertised only when it can actually be drawn — four swatches over three lines is a
+              reader hunting for a series that does not exist. */}
+          {hasIdealTarget && (
+            <ChartLegendItem
+              color={BRAND.reportIdeal}
+              shape="line"
+              label={t('burnup.series.ideal')}
+            />
+          )}
         </>
       }
       footer={
@@ -99,7 +123,7 @@ export function ReleaseBurnup({
               {t('burnup.partialHistory')}
             </p>
           )}
-          {historyState === 'no-baseline' && hasMeasuredDay && (
+          {!hasIdealTarget && hasMeasuredDay && (
             <p className="mt-2 text-center text-ui-xs text-foreground-subtle">
               {t('burnup.noBaseline')}
             </p>
@@ -160,14 +184,20 @@ export function ReleaseBurnup({
         />
         <Tooltip contentStyle={CHART_TOOLTIP} />
         {/* connectNulls={false} everywhere: a bridged gap is indistinguishable from a measured
-            straight line, which is the fabrication RT-BR-09 rules out. */}
+            straight line, which is the fabrication RT-BR-09 rules out.
+
+            The measured series therefore carry DOTS. A line segment needs two adjacent points,
+            so with `connectNulls={false}` a day whose neighbours are gaps drew nothing at all —
+            and that is the normal state of a young release, where the cron has written one or
+            two scattered days. The chart showed an empty grid beside populated totals. The Ideal
+            line needs no dot: it is computed for every axis day and is never sparse. */}
         <Line
           type="monotone"
           dataKey="accepted"
           name={t('burnup.series.accepted', { unit: unitLabel })}
           stroke={BRAND.reportAccepted}
           strokeWidth={2}
-          dot={false}
+          dot={measuredDot(BRAND.reportAccepted)}
           connectNulls={false}
         />
         <Line
@@ -176,7 +206,7 @@ export function ReleaseBurnup({
           name={t('burnup.series.planned', { unit: unitLabel })}
           stroke={BRAND.reportPlanned}
           strokeWidth={2}
-          dot={false}
+          dot={measuredDot(BRAND.reportPlanned)}
           connectNulls={false}
         />
         <Line
@@ -185,19 +215,21 @@ export function ReleaseBurnup({
           name={t('burnup.series.preliminary')}
           stroke={BRAND.reportPreliminary}
           strokeWidth={2}
-          dot={false}
+          dot={measuredDot(BRAND.reportPreliminary)}
           connectNulls={false}
         />
-        <Line
-          type="linear"
-          dataKey="ideal"
-          name={t('burnup.series.ideal')}
-          stroke={BRAND.reportIdeal}
-          strokeDasharray="4 3"
-          strokeWidth={1.5}
-          dot={false}
-          connectNulls={false}
-        />
+        {hasIdealTarget && (
+          <Line
+            type="linear"
+            dataKey="ideal"
+            name={t('burnup.series.ideal')}
+            stroke={BRAND.reportIdeal}
+            strokeDasharray="4 3"
+            strokeWidth={1.5}
+            dot={false}
+            connectNulls={false}
+          />
+        )}
       </LineChart>
     </ChartFrame>
   )

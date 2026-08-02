@@ -201,6 +201,26 @@ export interface IReportingRepository {
   ): Promise<void>;
 
   /**
+   * Stores the release's Ideal target once, from the planned scope on its FIRST snapshot day.
+   *
+   * The same capture-once rule as the iteration baseline, for the same reason (RT-BR-09): the
+   * Ideal must not be reconstructed from today's mutable Planned value, or every past day's
+   * trajectory silently redraws whenever scope changes. `ideal_target_points` /
+   * `ideal_target_count` had no writer anywhere in the codebase before this, so the Ideal line
+   * could never be drawn at all.
+   *
+   * Points and count move together: `Chart Unit` is a display switch over one population, so a
+   * release with a target in one unit and not the other would draw an Ideal on one toggle
+   * setting and not the other.
+   */
+  captureReleaseIdealTarget(
+    workspaceId: string,
+    releaseId: string,
+    plannedPoints: number,
+    plannedCount: number,
+  ): Promise<void>;
+
+  /**
    * Today's measured values for one iteration: SUM(task.todo) in hours, and the cumulative
    * accepted points as of the end of the workspace-local day.
    */

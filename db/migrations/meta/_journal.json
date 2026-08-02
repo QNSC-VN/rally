@@ -652,6 +652,13 @@
       "when": 1786864703005,
       "tag": "0091_phase6_drop_legacy_snapshot_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1786951103005,
+      "tag": "0092_backfill_report_view_tier_roles",
+      "breakpoints": true
     }
   ]
 }

@@ -342,8 +342,16 @@ export function featureProgress(children: readonly ReleaseChild[]): {
 
 // ── Burnup ──────────────────────────────────────────────────────────────────
 
-/** Why a burnup cannot be trusted yet (RT-BR-09, §5.1). */
-export type BurnupHistoryState = 'complete' | 'partial' | 'missing' | 'no-baseline';
+/**
+ * What the burnup's SNAPSHOT history looks like (RT-BR-09, §5.1).
+ *
+ * Says nothing about the Ideal target, for the same reason `BurndownHistoryState` does not:
+ * whether a target exists and whether the days were measured are different questions, and
+ * `no-baseline` used to be reachable ONLY when nothing was measured — so a release with
+ * history but no target reported `partial` and the client could not tell why every `ideal`
+ * came back null. `idealTarget` on the result answers that directly.
+ */
+export type BurnupHistoryState = 'complete' | 'partial' | 'missing' | 'no-window';
 
 export interface BurnupPoint {
   date: string;
@@ -378,7 +386,12 @@ export function buildBurnup(input: {
   axis: readonly string[];
   idealTarget: number | null;
   snapshots: readonly StoredBurnupRow[];
-}): { points: BurnupPoint[]; historyState: BurnupHistoryState } {
+}): {
+  points: BurnupPoint[];
+  historyState: BurnupHistoryState;
+  /** Echoed so a client can say WHY every `ideal` is null: no target, versus no snapshot. */
+  idealTarget: number | null;
+} {
   const byDate = new Map(input.snapshots.map((s) => [s.date, s]));
   const last = input.axis.length - 1;
 
@@ -400,15 +413,15 @@ export function buildBurnup(input: {
 
   const measured = points.filter((p) => p.accepted !== null).length;
   const historyState: BurnupHistoryState =
-    input.idealTarget === null && measured === 0
-      ? 'no-baseline'
+    input.axis.length === 0
+      ? 'no-window'
       : measured === 0
         ? 'missing'
         : measured === input.axis.length
           ? 'complete'
           : 'partial';
 
-  return { points, historyState };
+  return { points, historyState, idealTarget: input.idealTarget };
 }
 
 // ── shared ──────────────────────────────────────────────────────────────────

@@ -44,17 +44,28 @@ export function IterationBurndownReport({
   if (isLoading && !data) return <SkeletonList rows={6} cols={3} />
 
   const points = data?.points ?? []
-  // The three empty states IB §7 requires be distinguishable, in the order they can occur.
+  /**
+   * The empty states IB §7 requires be distinguishable, in the order they can occur.
+   *
+   * A missing Ideal BASELINE is deliberately not one of them. IB §3 scopes the baseline to the
+   * Ideal line, so blanking the chart for it threw away Task-To-Do and Accepted-Points bars that
+   * were genuinely measured — the reader saw "no burndown to show" for an iteration with a week
+   * of real history. It is a note under the chart now (`noBaselineNote`), not an empty state.
+   */
   const emptyDescription =
     selectedId === null
       ? t('burndown.empty.noIteration')
-      : data?.hasScheduledWork === false
-        ? t('burndown.empty.noScheduledWork')
-        : data?.historyState === 'no-baseline'
-          ? t('burndown.empty.noBaseline')
+      : data?.historyState === 'no-window'
+        ? t('burndown.empty.noWindow')
+        : data?.hasScheduledWork === false
+          ? t('burndown.empty.noScheduledWork')
           : data?.historyState === 'missing'
             ? t('burndown.empty.noHistory')
             : undefined
+
+  // Null baseline = no Ideal trajectory, reported beside the measured series rather than instead
+  // of them. `totalTaskEstimateAtStart` is the wire's answer now that `historyState` is snapshot-only.
+  const noBaseline = data !== undefined && data.totalTaskEstimateAtStart === null
 
   const behind = data?.status === 'behind-plan'
 
@@ -95,9 +106,14 @@ export function IterationBurndownReport({
         </>
       }
       footer={
-        data?.historyState === 'partial' ? (
+        data?.historyState === 'partial' || noBaseline ? (
           <p className="mt-2 text-center text-ui-xs text-foreground-subtle">
-            {t('burndown.partialHistory')}
+            {[
+              data?.historyState === 'partial' ? t('burndown.partialHistory') : null,
+              noBaseline ? t('burndown.noBaselineNote') : null,
+            ]
+              .filter((line) => line !== null)
+              .join(' ')}
           </p>
         ) : null
       }

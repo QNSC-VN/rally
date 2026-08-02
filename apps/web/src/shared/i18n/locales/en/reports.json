@@ -31,9 +31,10 @@
       "title": "No burndown to show",
       "noIteration": "Select an iteration to see its burndown.",
       "noScheduledWork": "No stories or defects are scheduled in this iteration yet.",
-      "noBaseline": "This iteration has no recorded start baseline, so the Ideal line cannot be drawn.",
-      "noHistory": "No daily history has been recorded for this iteration yet. Burndown is built from end-of-day snapshots and is never reconstructed from today's values."
-    }
+      "noHistory": "No daily history has been recorded for this iteration yet. Burndown is built from end-of-day snapshots and is never reconstructed from today's values.",
+      "noWindow": "This iteration has no start and end dates, so there is no window to plot. Add the dates first."
+    },
+    "noBaselineNote": "No start baseline was recorded, so the Ideal line is not drawn."
   },
   "velocity": {
     "title": "Velocity - Accepted Iterations",

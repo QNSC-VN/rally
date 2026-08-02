@@ -58,6 +58,28 @@ describe('the working-day calendar', () => {
     expect(workingDaysBetween('2026-01-10', '2026-01-11')).toEqual([]);
   });
 
+  it('returns an empty axis for a MISSING or unparseable endpoint instead of throwing', () => {
+    /**
+     * The guard that stops a 500, not a defensive nicety.
+     *
+     * A dateless iteration reaches this function as `''` — the caller has nothing else to pass —
+     * and `'' < ''` is false, so the inverted-range check let it through into the loop, where
+     * `addDays('')` calls `toISOString()` on an Invalid Date and throws `RangeError: Invalid time
+     * value`. Reproduced live as HTTP 500 against 99 of 206 local iterations.
+     */
+    expect(workingDaysBetween('', '')).toEqual([]);
+    expect(workingDaysBetween('', '2026-01-16')).toEqual([]);
+    expect(workingDaysBetween('2026-01-05', '')).toEqual([]);
+    // Right shape, not a real date — `new Date` would roll it over to March.
+    expect(workingDaysBetween('2026-02-30', '2026-03-02')).toEqual([]);
+    expect(workingDaysBetween('not-a-date', '2026-01-16')).toEqual([]);
+  });
+
+  it('accepts a single-day window that IS a working day', () => {
+    // The boundary the guard must not swallow: start === end is a legitimate one-day axis.
+    expect(workingDaysBetween('2026-01-05', '2026-01-05')).toEqual(['2026-01-05']);
+  });
+
   it('crosses month and year boundaries', () => {
     expect(addDays('2026-01-31', 1)).toBe('2026-02-01');
     expect(addDays('2026-12-31', 1)).toBe('2027-01-01');

@@ -146,6 +146,8 @@ export interface ReleaseBurnupReport {
   unit: ChartUnit;
   points: BurnupPoint[];
   historyState: BurnupHistoryState;
+  /** Null when no Ideal target is stored, which is why every point's `ideal` would be null. */
+  idealTarget: number | null;
   /** The iteration band under the x-axis: timeboxes the release window crosses (§4.1). */
   iterations: Array<{ id: string; name: string; startDate: string | null; endDate: string | null }>;
 }
