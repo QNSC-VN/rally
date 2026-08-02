@@ -39,6 +39,7 @@ export function CapacityTeamRow({
   expanded,
   onToggleExpanded,
   featureCount,
+  featuresRequiringAttention,
 }: {
   planId: string
   team: CapacityPlanTeam
@@ -62,6 +63,18 @@ export function CapacityTeamRow({
    * identical.
    */
   featureCount: number
+  /**
+   * How many of this team's allocated FEATURES breach their own Feature-level rule.
+   *
+   * The BA is specific about this badge: it sits beside the Features count and "if one or more
+   * allocated Features under the Team exceed their Feature-level rule (`Rollup > Estimated`), show
+   * a red attention badge beside the count. Hover/focus on the badge shows
+   * `{N} Feature(s) require attention`" (Capacity SRS:121). It used to render
+   * `team.metrics.warnings.length` — the TEAM's own warnings, which include capacity rules that say
+   * nothing about any Feature — so the number beside the Features column was counting something
+   * else entirely, under copy that promised Features.
+   */
+  featuresRequiringAttention: number
 }) {
   const { t } = useTranslation('capacity')
   const warningText = useCapacityWarningText()
@@ -137,8 +150,10 @@ export function CapacityTeamRow({
         {/* The warning COUNT, as Rally shows it: on a plan with a dozen teams "⚠5" says which row
             to read first, where a bare triangle only says "something". */}
         <WarningCountBadge
-          count={warnings.length}
-          heading={t('warnings.requiresAttention', { count: warnings.length })}
+          count={featuresRequiringAttention}
+          heading={t('warnings.featuresRequireAttention', { count: featuresRequiringAttention })}
+          // The team's own warnings stay as the detail text: they are why the row is worth
+          // opening, and dropping them would trade one true number for less information.
           label={warnings.join('. ')}
         />
       </div>
@@ -155,7 +170,18 @@ export function CapacityTeamRow({
           capacity={team.metrics.capacity}
           targetLoadPct={targetLoadPct}
           warningLabels={warnings}
-          warningLabelled={false}
+          /**
+           * The BAR names the team's warnings now.
+           *
+           * It was `false` because the Features cell's badge carried the same accessible name and
+           * two nodes reading it would say the reason twice. That badge now counts FEATURES
+           * requiring attention (SRS:121), which is a different quantity and says nothing about
+           * `No capacity entered` — so without this the team's own warnings had no accessible name
+           * anywhere on the row. SRS:128 puts them here anyway: "a red warning triangle on the
+           * progress bar and in the hover breakdown".
+           */
+          warningLabelled
+
           tooltip={
             <CapacityBarTooltip
               complete={team.metrics.complete}

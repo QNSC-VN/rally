@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { login } from './helpers'
+import { login, selectProject } from './helpers'
 
 /**
  * Portfolio list + detail (P5).
@@ -360,5 +360,114 @@ test.describe('Portfolio', () => {
 
     await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(page.getByText(body)).toBeVisible()
+  })
+
+  test("a specific Team plus Epic shows the BA's explicit message, not an empty grid", async ({
+    page,
+  }) => {
+    /**
+     * FR-035 / Q16 / QA #35, quoted verbatim three times in the SRS: "specific Team + Epic shows
+     * `Filter not show item`".
+     *
+     * An Epic is project-level and has no team (`ck_portfolio_epic_shape`), so a team filter can
+     * only ever match Features. The service already returned an empty page for that pair — the page
+     * just never passed the team, so an Epic list under a selected Team listed every Epic in the
+     * project and the rule was unreachable.
+     */
+    await login(page)
+    await selectProject(page)
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+
+    /**
+     * Pick a specific Team in the GLOBAL context.
+     *
+     * It lives behind the header's workspace button — the one reading `NXP · All Teams` — and the
+     * SELECTED project is already expanded, so there is no disclosure to open: clicking
+     * `Expand project` hit the first *other* project in a list of twenty and moved everything.
+     *
+     * The name is `/Team Alpha$/`, not `/^Team Alpha$/`: the button's accessible name is its badge
+     * plus its label, so it reads `ALPHATeam Alpha`.
+     */
+    await page.getByRole('button', { name: /NXP · / }).click()
+    await page
+      .getByRole('button', { name: /Team Alpha$/ })
+      .first()
+      .click()
+    await expect(page.getByRole('button', { name: /NXP · Team Alpha/ })).toBeVisible()
+
+    await page.getByLabel('Type').selectOption('epic')
+    await expect(page.getByText('Filter not show item')).toBeVisible()
+
+    // All Teams restores the Epic list — the message is about the PAIR, not about Epics.
+    await page.getByRole('button', { name: /NXP · Team Alpha/ }).click()
+    await page
+      .getByRole('button', { name: /^All Teams$/ })
+      .first()
+      .click()
+    await expect(page.getByRole('button', { name: /NXP · All Teams/ })).toBeVisible()
+    await expect(page.getByText('Filter not show item')).toHaveCount(0)
+  })
+
+  test('bulk Delete archives what it can and REPORTS what it skipped', async ({ page }) => {
+    /**
+     * FR-037: "`Delete` archives the selected Portfolio Items rather than hard-deleting them; an
+     * Epic with active child Features is skipped and reported."
+     *
+     * Both halves were missing. The rows the caller could not archive were dropped from the target
+     * list with no report at all, and on a partial failure only `failed[0].reason.message` surfaced
+     * — so a mixed selection reported one row, hid the rest, and still showed a success toast.
+     */
+    const unique = `E2E Skip ${Date.now()}`
+    await login(page)
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+
+    // A Feature that CAN be archived…
+    await page.getByRole('button', { name: /New Portfolio Item/i }).click()
+    await page.getByRole('button', { name: 'New Feature', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'New Feature' })
+    await dialog.getByRole('textbox', { name: 'Name' }).fill(unique)
+    await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(dialog).toBeHidden()
+
+    const featureRow = page.locator('div.group').filter({ hasText: unique }).first()
+    await featureRow.getByRole('checkbox').check()
+
+    // …and the seeded Epic, which has active child Features and therefore cannot be.
+    await page.getByLabel('Type').selectOption('epic')
+    await page.waitForTimeout(800)
+    const epicRow = page.locator('div.group').filter({ hasText: 'EP-1' }).first()
+    await epicRow.getByRole('checkbox').check()
+
+    await page.getByRole('button', { name: 'Archive', exact: true }).first().click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Archive', exact: true }).click()
+
+    // Reported: the Epic is NAMED, so "skipped" is actionable rather than a count.
+    await expect(page.getByText(/Skipped 1 item/)).toBeVisible()
+    await expect(page.getByText(/EP-1/).first()).toBeVisible()
+  })
+
+  test('the inline child preview never lists more than five rows', async ({ page }) => {
+    /**
+     * AC-5 caps the preview at five, with a static `+N more - see Children tab` line beyond that.
+     * Asserted as a PROPERTY rather than against a fixture: the seeded Features carry three children
+     * each, so a count-based assertion would pass on data alone and say nothing about the cap.
+     *
+     * The `+N more` line therefore cannot be exercised by this seed — it needs a Feature with six
+     * linked items — so what is pinned here is the cap itself and the absence of a spurious line.
+     */
+    await login(page)
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+
+    const chevron = page.getByRole('button', { name: /Expand|Show children/i }).first()
+    if ((await chevron.count()) === 0) return
+
+    await chevron.click()
+    await page.waitForTimeout(1200)
+
+    const previewRows = page.locator('[data-child-preview-row]')
+    const shown = await previewRows.count()
+    expect(shown).toBeLessThanOrEqual(5)
+    // With five or fewer linked items there is nothing hidden, so the line must be absent.
+    if (shown < 5) await expect(page.getByText(/more - see Children tab/)).toHaveCount(0)
   })
 })

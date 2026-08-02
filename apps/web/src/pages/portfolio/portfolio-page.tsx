@@ -91,7 +91,7 @@ export function PortfolioPage() {
   // Creating targets ONE project, so it uses the currently-selected project the way every
   // other list page does. Editing is per-row (see `rowPerms`) because the grid can be
   // cross-project and each row may then sit in a different one.
-  const { project, workspace } = useAppContext()
+  const { project, team, workspace } = useAppContext()
   const createProjectId = project?.projectId
   /**
    * The project the list is narrowed to, or `undefined` for every readable project.
@@ -128,10 +128,23 @@ export function PortfolioPage() {
   //
   // `total` is deliberately unused: the BA removed the summary metrics strip that read it
   // ("no need", SRS:28), and the list goes from the breadcrumb straight to the toolbar.
+  /**
+   * The global TEAM context narrows the list, and an Epic + specific Team shows nothing.
+   *
+   * An Epic is project-level and has no team (`ck_portfolio_epic_shape`), so a team filter can
+   * only ever match Features. The BA asks for an explicit message rather than an empty grid —
+   * "specific Team + Epic shows `Filter not show item`" (SRS:52, FR-035, Q16) — and the service
+   * already returns an empty page for that pair, deliberately, so the UI can say why. The page
+   * simply never passed the team, so the whole rule was unreachable: an Epic list under a selected
+   * Team showed every Epic in the project.
+   */
+  const teamId = team?.teamId ?? undefined
   const { items, isLoading, isError } = usePortfolioItems({
     type,
     projectId: scopedProjectId,
+    teamId,
   })
+  const filterHidesEpics = teamId !== undefined && type === PortfolioItemType.Epic
 
   // One permission lookup per DISTINCT project on the page, deduped and cache-shared with
   // the single-project hook.
@@ -216,29 +229,56 @@ export function PortfolioPage() {
   })
 
   /**
-   * Archive every selected row the caller may archive.
+   * Archive every selected row that CAN be archived, and report every one that could not.
    *
-   * Rows in projects they cannot archive are SKIPPED rather than attempted, so a mixed
-   * selection on this cross-project grid does not half-fail with a wall of 403s. An Epic
-   * that still has active Features is refused by the API; that message surfaces per item.
+   * The BA's rule is a partial success, not all-or-nothing: "`Delete` archives the selected
+   * Portfolio Items rather than hard-deleting them; an Epic with active child Features is skipped
+   * and reported" (SRS:54, FR-037). Two ways a row is skipped, and both used to vanish:
+   *
+   *   • no `portfolio:archive` on that row's project — a real case on this cross-project grid, and
+   *     silently dropping it meant "6 items archived" for a selection of eight;
+   *   • the API refuses it, which is how an Epic with active children presents.
+   *
+   * Only `failed[0].reason.message` was surfaced, so a mixed failure reported one row and hid the
+   * rest, and the successes were reported as if nothing had gone wrong. Now: the successes are
+   * counted, the skips are NAMED by item key, and the selection keeps the rows that did not go
+   * through so the planner can act on exactly those.
    */
   async function archiveSelected(selection: RowSelection) {
-    const targets = rerank.items.filter(
-      (i) => selection.selectedIds.has(i.id) && rowPerms.can(i.projectId, 'portfolio:archive'),
+    const selected = rerank.items.filter((i) => selection.selectedIds.has(i.id))
+    const [allowed, forbidden] = selected.reduce<[PortfolioItem[], PortfolioItem[]]>(
+      ([ok, no], item) =>
+        rowPerms.can(item.projectId, 'portfolio:archive')
+          ? [[...ok, item], no]
+          : [ok, [...no, item]],
+      [[], []],
     )
+
     const results = await Promise.allSettled(
-      targets.map((i) => setArchived.mutateAsync({ id: i.id, archived: true })),
+      allowed.map((i) => setArchived.mutateAsync({ id: i.id, archived: true })),
     )
-    const failed = results.filter((r) => r.status === 'rejected')
-    if (failed.length > 0) {
-      const first = failed[0]
+    const refused = allowed.filter((_, at) => results[at]?.status === 'rejected')
+    const archived = allowed.length - refused.length
+
+    if (archived > 0) notify.success(t('archive.archived', { count: archived }))
+
+    const skipped = [...refused, ...forbidden]
+    if (skipped.length > 0) {
+      // Named, and capped at three so one toast stays readable on a large selection.
+      const named = skipped
+        .slice(0, 3)
+        .map((i) => i.itemKey)
+        .join(', ')
       notify.error(
-        first.status === 'rejected' && first.reason instanceof Error
-          ? first.reason.message
-          : t('archive.failed'),
+        t('archive.skipped', {
+          count: skipped.length,
+          items: named,
+          more: skipped.length > 3 ? `, +${skipped.length - 3}` : '',
+        }),
       )
+      // Keep the problem rows selected; drop the ones that succeeded.
+      selection.replace(new Set(skipped.map((i) => i.id)))
     } else {
-      notify.success(t('archive.archived', { count: targets.length }))
       selection.clear()
     }
     setConfirmArchive(false)
@@ -370,7 +410,12 @@ export function PortfolioPage() {
           sorted.length === 0 ? (
             <EmptyState
               icon={<PackageOpen size={32} className="text-border-strong" />}
-              title={search ? t('emptySearch') : t('empty')}
+              /* `filterHidesEpics` wins over the search message: the reason there is nothing to
+                 show is the Team+Epic pair, not the search box, and the BA quotes this string
+                 verbatim (FR-035). */
+              title={
+                filterHidesEpics ? t('filterNotShowItem') : search ? t('emptySearch') : t('empty')
+              }
             />
           ) : undefined
         }
