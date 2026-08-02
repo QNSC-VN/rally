@@ -28,4 +28,23 @@ export interface IWorkspaceMemberRepository {
   countActiveAdmins(workspaceId: string): Promise<number>;
   /** True if the user holds the workspace-scoped admin role and is an active member. */
   isActiveAdmin(workspaceId: string, userId: string): Promise<boolean>;
+  /**
+   * The user's own email address, for binding an invitation to its recipient.
+   *
+   * On this repository rather than a new identity port because it already joins `identity.users`
+   * for the member roster; a second port for one column would be ceremony.
+   */
+  findUserEmail(userId: string): Promise<string | null>;
+  /**
+   * Grant the invited workspace-scoped role, in the caller's transaction.
+   *
+   * `workspace_members.role_id` is denormalised and NOT authoritative — this repository's own
+   * members query reads the role from `user_role_assignments`, and so does every permission check.
+   * `onConflictDoNothing` because a user may already hold the role (a re-invite, or an admin who
+   * granted it by hand while the invitation was pending): the accept must not fail for that.
+   */
+  grantWorkspaceRole(
+    input: { workspaceId: string; userId: string; roleId: string; grantedBy: string },
+    tx?: DbExecutor,
+  ): Promise<void>;
 }
