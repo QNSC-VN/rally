@@ -384,8 +384,16 @@ describe('capacity allocation (e2e)', () => {
     // allocation, so a three-way split was three requests and a failure on the second left the Feature
     // on the plan minus the team the first had already dropped.
     const featureId = await newFeature(`Remove split ${uniqueKey()}`);
-    await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: teamAId, value: 4 });
-    await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: teamBId, value: 6 });
+    await capacity.allocate(admin, planId, {
+      portfolioItemId: featureId,
+      teamId: teamAId,
+      value: 4,
+    });
+    await capacity.allocate(admin, planId, {
+      portfolioItemId: featureId,
+      teamId: teamBId,
+      value: 6,
+    });
     await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: null, value: 2 });
 
     const before = (await capacity.getPlanDetail(admin, planId)).allocations.filter(
@@ -456,6 +464,62 @@ describe('capacity allocation (e2e)', () => {
     expect(Number(rows[0].value)).toBe(7);
 
     await capacity.addTeam(admin, planId, teamBId);
+  });
+
+  it('MOVE keeps the numbers a planner typed, folding the lost teams into one parked row', async () => {
+    /**
+     * `Move To Another Plan` created the collapsed row with a hard-coded `value: null`, so every
+     * figure belonging to a team the target does not hold was silently destroyed — and the parked
+     * row then resolved through Refined → Preliminary, so the plan reported an estimate nobody
+     * entered. `mergeParkedValue` is the helper `removeTeam` has always used for the same
+     * situation; the move simply did not call it.
+     *
+     * Against the real database because the collapse is bounded by a constraint:
+     * `uq_capacity_allocation_unassigned` permits ONE unassigned row per (plan, Feature), which is
+     * why N lost teams have to become one row rather than N.
+     */
+    const featureId = await newFeature(`Move value ${uniqueKey()}`);
+    await capacity.allocate(admin, planId, {
+      portfolioItemId: featureId,
+      teamId: teamAId,
+      value: 8,
+    });
+    await capacity.allocate(admin, planId, {
+      portfolioItemId: featureId,
+      teamId: teamBId,
+      value: 5,
+    });
+
+    // A second plan on this project holding NEITHER team, so both rows have to park.
+    const target = await capacity.createPlan(admin, {
+      projectId,
+      releaseId: otherReleaseId,
+      name: `Move target ${uniqueKey()}`,
+      unit: 'points',
+    });
+
+    const result = await capacity.moveItemToPlan(admin, planId, {
+      portfolioItemId: featureId,
+      targetPlanId: target.id,
+      updateRelease: true,
+      republish: false,
+    });
+    expect(result.carried).toBe(0);
+    expect(result.parked).toBe(1);
+
+    const moved = (await capacity.getPlanDetail(admin, target.id)).allocations.filter(
+      (a) => a.portfolioItemId === featureId,
+    );
+    expect(moved).toHaveLength(1);
+    expect(moved[0].teamId).toBeNull();
+    // 8 + 5. Not null, and not 13 by coincidence — the sum of exactly what the two rows stated.
+    expect(Number(moved[0].value)).toBe(13);
+
+    // And gone from the source: a move relocates, it does not copy.
+    const left = (await capacity.getPlanDetail(admin, planId)).allocations.filter(
+      (a) => a.portfolioItemId === featureId,
+    );
+    expect(left).toHaveLength(0);
   });
 
   it('refuses to allocate an Epic', async () => {

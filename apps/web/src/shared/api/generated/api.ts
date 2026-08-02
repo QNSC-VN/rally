@@ -4634,6 +4634,8 @@ export interface components {
         /** @description The Feature’s OWN rollup, across every team */
         rollup: number
         complete: number
+        /** @description The Feature is archived, so it charges 0 here as it already does on the team grid — the two tabs must not disagree about the same Feature */
+        archived: boolean
         /** @enum {string} */
         tier: 'allocated' | 'refined' | 'preliminary' | 'none'
         /** @description The Feature-level rules the BA specifies for this tab: rollup exceeds estimated, and no estimate at all. A Feature has no capacity of its own, so the capacity comparisons cannot fire here */
@@ -4829,6 +4831,8 @@ export interface components {
           /** @description The Feature’s OWN rollup, across every team */
           rollup: number
           complete: number
+          /** @description The Feature is archived, so it charges 0 here as it already does on the team grid — the two tabs must not disagree about the same Feature */
+          archived: boolean
           /** @enum {string} */
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
           /** @description The Feature-level rules the BA specifies for this tab: rollup exceeds estimated, and no estimate at all. A Feature has no capacity of its own, so the capacity comparisons cannot fire here */
@@ -5013,6 +5017,8 @@ export interface components {
           /** @description The Feature’s OWN rollup, across every team */
           rollup: number
           complete: number
+          /** @description The Feature is archived, so it charges 0 here as it already does on the team grid — the two tabs must not disagree about the same Feature */
+          archived: boolean
           /** @enum {string} */
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
           /** @description The Feature-level rules the BA specifies for this tab: rollup exceeds estimated, and no estimate at all. A Feature has no capacity of its own, so the capacity comparisons cannot fire here */
@@ -5235,6 +5241,8 @@ export interface components {
           /** @description The Feature’s OWN rollup, across every team */
           rollup: number
           complete: number
+          /** @description The Feature is archived, so it charges 0 here as it already does on the team grid — the two tabs must not disagree about the same Feature */
+          archived: boolean
           /** @enum {string} */
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
           /** @description The Feature-level rules the BA specifies for this tab: rollup exceeds estimated, and no estimate at all. A Feature has no capacity of its own, so the capacity comparisons cannot fire here */

@@ -76,6 +76,7 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       estimated: item.estimated,
       rollup: item.rollup,
       complete: item.complete,
+      archived: item.archived,
       tier: item.tier,
       warnings: item.warnings,
       estimateBreakdown: item.estimateBreakdown,

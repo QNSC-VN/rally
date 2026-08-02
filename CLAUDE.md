@@ -56,6 +56,12 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   `pnpm --filter rally-web codegen` against a running local API, then a commit. The
   `OpenAPI contract` job regenerates from the spec it captured and diffs
   (`codegen:check`), so drift fails CI instead of failing at runtime.
+- **Do NOT run the worker while running the BE e2e suite.** `test/e2e/notification-flow.e2e.spec.ts`
+  drives the notification relay directly, and a live `pnpm start:dev:worker` is a competing consumer
+  of `messaging.notification_outbox` — it claims the rows the test is waiting for, which surfaces as
+  `waitFor() timed out after 10000ms` and looks like a product bug. Stop the worker first. (That
+  spec also has an in-suite ordering flake independent of the worker: it passes alone and can fail
+  in a full run. Reproducible on a clean checkout, so it is not yours.)
 - **`tsc -b` can pass on STALE build info.** Two things hid behind that in one session: an
   error code missing from the `ErrorCode` union, and a client that had never seen a new
   route (which surfaces only as `Cannot POST /v1/...` in the browser). When a change spans

@@ -91,6 +91,14 @@ export interface CapacityPlanItem {
   estimated: number;
   rollup: number;
   complete: number;
+  /**
+   * The Feature has been archived, so it charges 0 on every tab.
+   *
+   * On the wire because the client had no way to explain a Feature reading zero: the team grid
+   * excludes archived Features outright (`childWorkPredicate`), so a row present on the Features
+   * tab with nothing behind it looks like a data fault rather than an archived item.
+   */
+  archived: boolean;
   tier: EstimateTier;
   /** Teams this Feature is allocated to; empty when it sits only in the Unallocated bucket. */
   teamIds: string[];
@@ -398,12 +406,12 @@ export class CapacityPlansService {
    *   • Only ASSIGNED allocations are written. An allocation parked in the Unallocated bucket
    *     names no team, so there is no plan for that Feature to inherit — writing the plan's
    *     window onto it would assert a schedule nobody agreed.
-   *   • The Release field follows Rally's span rule: "The Release field is only updated when
-   *     the start and end dates do not span releases." So a plan whose window falls inside
-   *     its release writes `release_id`; one that reaches beyond it writes the DATES ONLY and
-   *     reports why. That corrects the Phase 5 spec, which required the plan window to EQUAL
-   *     the release window and skipped the whole write otherwise — stricter than Rally on the
-   *     condition, and wrong about the consequence.
+   *   • The Release field is written only when the plan's window MATCHES the release's, which
+   *     is AC-019 stated three times in the BA's spec. A plan whose window differs at either end
+   *     writes the DATES ONLY and reports why — the consequence still follows Rally (a skip is
+   *     reported, the rest of the publish stands), but the CONDITION is the BA's equality, not
+   *     Rally's containment. This was containment until it was ruled on: a two-week plan inside a
+   *     quarter-long release wrote the Release field where the BA expects a reported skip.
    *   • Everything runs in ONE transaction with the status flip, so a partial publish cannot
    *     leave some Features carrying a plan that is still a draft.
    *   • Skips are REPORTED, never thrown. A planner needs to know which Features did not take
@@ -437,7 +445,7 @@ export class CapacityPlansService {
     if (options.updateFields) {
       // Read once, outside the loop: every Feature takes the same release decision.
       const releaseWindow = await this.repo.releaseWindow(plan.releaseId, actor.workspaceId);
-      const spansReleases = !windowFitsInside(plan, releaseWindow);
+      const spansReleases = !windowsMatch(plan, releaseWindow);
 
       await this.uow.run(async (tx) => {
         for (const row of rows) {
@@ -990,9 +998,17 @@ export class CapacityPlansService {
         'A plan can only take Features from its own project',
       );
     }
-    // Republishing is a `capacity:publish` act even though the move is not, so it is asserted before
-    // anything is written rather than failing halfway with the rows already relocated.
-    if (input.republish) {
+    /**
+     * UNPUBLISHING the target is a `capacity:publish` act, and so is republishing it.
+     *
+     * Both are asserted here, before anything is written, rather than failing halfway with the rows
+     * already relocated. The unpublish check was missing entirely: the move sets a published target
+     * back to draft unconditionally, so a planner holding `capacity:manage` but not
+     * `capacity:publish` could revert someone else's published plan — and hide it from every
+     * Project Member with it (AC-013) — by moving one Feature onto it. `revertPlan` requires
+     * `capacity:publish` for exactly that act, and the two paths must agree.
+     */
+    if (input.republish || target.status === 'published') {
       await this.access.assertProjectPermission(actor, target.projectId, 'capacity:publish');
     }
 
@@ -1043,7 +1059,10 @@ export class CapacityPlansService {
     }
 
     const carriable = rows.filter((row) => row.teamId !== null && teamsOnTarget.has(row.teamId));
-    const parkable = rows.length - carriable.length;
+    // The rows that cannot keep their team — kept as ROWS, not counted, because their values have
+    // to be folded into the parked row rather than discarded.
+    const lost = rows.filter((row) => !carriable.includes(row));
+    const parkable = lost.length;
     const targetUnpublished = target.status === 'published';
 
     /**
@@ -1071,15 +1090,32 @@ export class CapacityPlansService {
         );
       }
 
-      // Everything that could not keep its team becomes ONE unassigned row, not one per lost team:
-      // the target has no way to tell those rows apart, so N of them would read as N commitments.
-      if (parkable > 0) {
+      /**
+       * Everything that could not keep its team becomes ONE unassigned row, not one per lost team:
+       * the target has no way to tell those rows apart, so N of them would read as N commitments.
+       *
+       * Its value is the SUM of what those rows carried, folded with `mergeParkedValue` — the same
+       * helper `removeTeam` uses for the same situation. It used to be hard-coded `null`, which
+       * silently destroyed every number a planner had typed for a team the target does not hold:
+       * FE-1 with Team A = 8 and Team B = 5 moved to a plan holding only Team A arrived as 8 plus a
+       * valueless placeholder, and the parked row then resolved through Refined → Preliminary, so
+       * the plan reported an estimate nobody entered. With no team carried at all, the whole
+       * committed demand was replaced by a forecast.
+       *
+       * `null` survives as `null` when none of the lost rows stated a value: that is "planned, not
+       * yet estimated", and the Feature's own estimate answers for it (AC-014).
+       */
+      const parkedValue = lost.reduce<string | null>(
+        (acc, row) => mergeParkedValue(acc, row.value),
+        null,
+      );
+      if (lost.length > 0) {
         await this.repo.createAllocation(
           {
             planId: input.targetPlanId,
             portfolioItemId: input.portfolioItemId,
             teamId: null,
-            value: null,
+            value: parkedValue,
           },
           tx,
         );
@@ -1280,8 +1316,21 @@ export class CapacityPlansService {
            * assigned" reads as the Feature's size rather than as zero.
            */
           estimated: row.teamId === null ? 0 : allocations[index].metrics.estimated,
-          rollup: row.itemRollup,
-          complete: row.itemComplete,
+          /**
+           * An ARCHIVED Feature charges nothing, on BOTH tabs.
+           *
+           * `estimated` was already zeroed for an archived Feature (`:1194` does the same for the
+           * allocation row) but `rollup` and `complete` were assigned unconditionally, so the
+           * Features tab showed Rollup 21 / Estimated 0 and raised `rollup_exceeds_estimated` —
+           * "Rollup exceeds Estimated" — for work contributing nothing. Meanwhile
+           * `childWorkPredicate` excludes archived Features from the team grid entirely, so
+           * Teams-by-Total showed 0 for the same Feature: two tabs, two numbers, one of them
+           * warning about the other. SRS §15 calls archived work "not actionable planning demand",
+           * and AC-017 requires the split views to reconcile.
+           */
+          rollup: row.itemArchivedAt !== null ? 0 : row.itemRollup,
+          complete: row.itemArchivedAt !== null ? 0 : row.itemComplete,
+          archived: row.itemArchivedAt !== null,
           tier: allocations[index].tier,
           // Filled in after the loop: both depend on the FINAL aggregate, so computing them per row
           // would report the first allocation's view of a Feature that has several.
@@ -1616,14 +1665,20 @@ function windowDays(start: string | null, end: string | null): number {
 }
 
 /**
- * Does the plan's window fall INSIDE the release's own window?
+ * Does the plan's window MATCH the release's own window, exactly?
  *
- * Rally updates a Feature's Release field "only when the start and end dates do not span
- * releases", so this is the release-write condition. Unknown dates on either side mean the
- * question cannot be answered, and an unanswerable check must not authorise the write — a
- * plan or release with no dates therefore skips the Release field and says so.
+ * AC-019 is explicit, and says so three times (SRS §3.12, AC-019, `BUSINESS_FLOW:205`): the
+ * Release field is written "only when the Plan planned start/end dates MATCH the selected Release
+ * start/end dates". This used to test containment (`ps >= rs && pe <= re`), reasoning from
+ * Broadcom's "do not span releases" wording — defensible for Rally, but it is a deviation from the
+ * BA's own acceptance criterion that no ruling covered, so a two-week plan inside a quarter-long
+ * release wrote the Release field where the BA expects a reported skip. Ruled in favour of the BA.
+ *
+ * Unknown dates on either side mean the question cannot be answered, and an unanswerable check
+ * must not authorise the write — a plan or release with no dates skips the Release field and says
+ * so.
  */
-function windowFitsInside(
+function windowsMatch(
   plan: { plannedStartDate: string | null; plannedEndDate: string | null },
   release: { startDate: string | null; endDate: string | null } | null,
 ): boolean {
@@ -1633,7 +1688,7 @@ function windowFitsInside(
   if (ps === null || pe === null || rs === null || re === null) return false;
   // ISO `YYYY-MM-DD` compares correctly as a string, so no parsing (and no timezone) is
   // involved.
-  return ps >= rs && pe <= re;
+  return ps === rs && pe === re;
 }
 
 /**
