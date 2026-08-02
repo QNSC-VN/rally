@@ -4232,7 +4232,7 @@ export interface components {
         date: string
         remainingToDo: number | null
         acceptedPoints: number | null
-        ideal: number
+        ideal: number | null
       }[]
       totalTaskEstimateAtStart: number | null
       /** @enum {string} */
@@ -4298,8 +4298,7 @@ export interface components {
         actualHours: number
       }
       teams: {
-        /** Format: uuid */
-        id: string
+        id: string | null
         name: string
         totals: {
           capacityHours: number
