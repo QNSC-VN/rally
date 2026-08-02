@@ -22,7 +22,18 @@ export interface ITeamStatusRepository {
   }): Promise<TeamStatusRosterMember[]>;
 
   /** Get capacity for a set of (iterationId, userId) pairs. */
-  getCapacities(iterationId: string, userIds: string[]): Promise<Map<string, number>>;
+  /**
+   * Persisted capacity per member for one iteration.
+   *
+   * `teamId` is required (nullable) because `member_capacity` is unique on
+   * `(project_id, team_id, iteration_id, user_id)` — a member on two teams legitimately has TWO rows
+   * in one iteration, so a read that ignores the team cannot say which one it returned.
+   */
+  getCapacities(
+    iterationId: string,
+    userIds: string[],
+    teamId: string | null,
+  ): Promise<Map<string, number>>;
 
   /** Upsert member capacity. */
   upsertCapacity(input: {
