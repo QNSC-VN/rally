@@ -665,6 +665,91 @@ describe('Phase 6 reports (e2e)', () => {
     expect(counted.totals.planned).toBe(2);
   });
 
+  it('pages the active bucket without moving a summary count or a total', async () => {
+    const release = await releases.createRelease(admin, projectId, 'P6 Release Paged', {
+      startDate: shift(localToday, -5),
+      releaseDate: shift(localToday, 5),
+    });
+
+    // Seven Features directly in the release, so a page size of 3 yields 3 pages.
+    const created = [];
+    for (let i = 1; i <= 7; i += 1) {
+      created.push(
+        await portfolio.createItem(admin, {
+          projectId,
+          type: 'feature',
+          name: `Paged Feature ${i}`,
+          releaseId: release.id,
+        }),
+      );
+    }
+
+    const unpaged = await reporting.getReleaseTracking(admin, {
+      projectId,
+      releaseId: release.id,
+      bucket: 'direct',
+      pageSize: 100,
+    });
+    expect(unpaged.rows).toHaveLength(7);
+
+    const first = await reporting.getReleaseTracking(admin, {
+      projectId,
+      releaseId: release.id,
+      bucket: 'direct',
+      page: 1,
+      pageSize: 3,
+    });
+    const last = await reporting.getReleaseTracking(admin, {
+      projectId,
+      releaseId: release.id,
+      bucket: 'direct',
+      page: 3,
+      pageSize: 3,
+    });
+
+    expect(first.rows).toHaveLength(3);
+    expect(last.rows).toHaveLength(1);
+    expect(first.page).toEqual({ page: 1, pageSize: 3, total: 7, pageCount: 3 });
+
+    // The whole point: a page bounds the ROWS, never the measured numbers. Classification and
+    // the Preliminary total run over the full population before the slice is taken.
+    expect(first.summary).toEqual(unpaged.summary);
+    expect(first.summary.direct).toBe(7);
+    expect(first.totals).toEqual(unpaged.totals);
+    expect(last.summary).toEqual(unpaged.summary);
+    expect(last.totals).toEqual(unpaged.totals);
+
+    // Rank is the absolute position in the bucket, so page 3 continues at 7 rather than
+    // restarting at 1 (RT-AC-04).
+    expect(first.rows.map((r) => r.rank)).toEqual([1, 2, 3]);
+    expect(last.rows.map((r) => r.rank)).toEqual([7]);
+
+    // Pages are disjoint and together cover the bucket exactly once.
+    const second = await reporting.getReleaseTracking(admin, {
+      projectId,
+      releaseId: release.id,
+      bucket: 'direct',
+      page: 2,
+      pageSize: 3,
+    });
+    const walked = [...first.rows, ...second.rows, ...last.rows].map((r) => r.id);
+    expect(new Set(walked).size).toBe(7);
+    expect(walked).toEqual(unpaged.rows.map((r) => r.id));
+
+    // A stale page number past the end clamps to the last page instead of erroring — the row
+    // count shifts under the reader as work is reassigned.
+    const overshoot = await reporting.getReleaseTracking(admin, {
+      projectId,
+      releaseId: release.id,
+      bucket: 'direct',
+      page: 99,
+      pageSize: 3,
+    });
+    expect(overshoot.page.page).toBe(3);
+    expect(overshoot.rows.map((r) => r.id)).toEqual(last.rows.map((r) => r.id));
+    expect(created).toHaveLength(7);
+  });
+
   it('writes a burnup row per team scope and reports missing history honestly', async () => {
     const release = await releases.createRelease(admin, projectId, 'P6 Release C', {
       startDate: shift(localToday, -1),

@@ -18,8 +18,8 @@ import { BRAND } from '@/shared/config/brand'
 import { useVelocity, type VelocityWindow } from '@/features/reporting/api'
 import { teamScopeLabel } from '@/features/reporting/scope'
 import { MetricCard } from '@/shared/ui/metric-card'
-import { NativeSelect } from '@/shared/ui/native-select'
-import { SkeletonList } from '@/shared/ui/skeleton'
+import { MetricStrip } from '@/shared/ui/metric-strip'
+import { CompactSelect } from '@/shared/ui/native-select'
 import {
   CHART_AXIS,
   CHART_GRID,
@@ -28,6 +28,8 @@ import {
   ChartLegendItem,
   axisLabel,
 } from '@/shared/ui/chart'
+
+import { ReportSurface } from './report-surface'
 
 const fmt = (value: number | null | undefined) => (value == null ? '--' : value.toFixed(2))
 
@@ -42,8 +44,6 @@ export function VelocityReport({
   const [window, setWindow] = useState<VelocityWindow>(5)
   const { data, isLoading } = useVelocity({ projectId, teamId, window })
 
-  if (isLoading && !data) return <SkeletonList rows={6} cols={3} />
-
   const bars = data?.bars ?? []
   const averages = data?.averages
   // A flat line at the window average: the SRS's Trend is one value repeated across the bars,
@@ -51,140 +51,151 @@ export function VelocityReport({
   const chartData = bars.map((bar) => ({ ...bar, trend: averages?.trend }))
 
   return (
-    <ChartFrame
+    <ReportSurface
       title={t('velocity.title')}
-      actions={
-        <div className="flex items-center gap-4">
-          <span className="text-ui-xs font-semibold text-muted-foreground">
-            {t('velocity.teamContext', {
-              team: teamScopeLabel(data?.context.teamName, t('common:allTeams')),
-            })}
-          </span>
-          <label className="flex items-center gap-2 text-ui-xs font-semibold text-foreground-subtle">
-            {t('velocity.window')}
-            <NativeSelect
-              value={String(window)}
-              onChange={(event) => setWindow(Number(event.target.value) as VelocityWindow)}
-              aria-label={t('velocity.window')}
-            >
-              <option value="5">{t('velocity.windowLast', { count: 5 })}</option>
-              <option value="10">{t('velocity.windowLast', { count: 10 })}</option>
-            </NativeSelect>
-          </label>
-        </div>
+      caption={t('velocity.teamContext', {
+        team: teamScopeLabel(data?.context.teamName, t('common:allTeams')),
+      })}
+      controls={
+        <label className="flex items-center gap-2 text-ui-xs font-semibold text-foreground-subtle">
+          {t('velocity.window')}
+          <CompactSelect
+            value={String(window)}
+            onChange={(event) => setWindow(Number(event.target.value) as VelocityWindow)}
+            aria-label={t('velocity.window')}
+          >
+            <option value="5">{t('velocity.windowLast', { count: 5 })}</option>
+            <option value="10">{t('velocity.windowLast', { count: 10 })}</option>
+          </CompactSelect>
+        </label>
       }
-      subtitle={
+      // The three averages were a centred block above the chart; every other summary in the app
+      // is a left-aligned MetricStrip under the header. Same numbers, same place as Team
+      // Capacity's four indicators.
+      strip={
         averages && averages.sampleSize > 0 ? (
-          <span className="flex flex-col items-center gap-2">
-            <span className="text-ui-xs font-semibold text-muted-foreground">
-              {t('velocity.averagesOver', { count: window })}
-              {/* The SRS requires the real sample size be exposed below three values, rather
-                  than two of them being averaged under a "Last 3" heading. */}
-              {averages.sampleSize < 3 &&
-                ` · ${t('velocity.sampleSize', { count: averages.sampleSize })}`}
-            </span>
-            <span className="flex justify-center gap-8">
-              <MetricCard
-                label={t('velocity.last3')}
-                value={fmt(averages.last3)}
-                caption={t('units.points')}
-                valueColor={BRAND.reportDuring}
-                minWidth={90}
-              />
-              <MetricCard
-                label={t('velocity.best3')}
-                value={fmt(averages.best3)}
-                caption={t('units.points')}
-                valueColor={BRAND.reportDuring}
-                minWidth={90}
-              />
-              <MetricCard
-                label={t('velocity.worst3')}
-                value={fmt(averages.worst3)}
-                caption={t('units.points')}
-                valueColor={BRAND.reportDuring}
-                minWidth={90}
-              />
-            </span>
-          </span>
+          <MetricStrip
+            actions={
+              <span className="text-ui-xs font-semibold text-muted-foreground">
+                {t('velocity.averagesOver', { count: window })}
+                {/* The SRS requires the real sample size be exposed below three values, rather
+                    than two of them being averaged under a "Last 3" heading. */}
+                {averages.sampleSize < 3 &&
+                  ` · ${t('velocity.sampleSize', { count: averages.sampleSize })}`}
+              </span>
+            }
+          >
+            <MetricCard
+              label={t('velocity.last3')}
+              value={fmt(averages.last3)}
+              caption={t('units.points')}
+              valueColor={BRAND.reportDuring}
+              minWidth={90}
+            />
+            <MetricCard
+              label={t('velocity.best3')}
+              value={fmt(averages.best3)}
+              caption={t('units.points')}
+              valueColor={BRAND.reportDuring}
+              minWidth={90}
+            />
+            <MetricCard
+              label={t('velocity.worst3')}
+              value={fmt(averages.worst3)}
+              caption={t('units.points')}
+              valueColor={BRAND.reportDuring}
+              minWidth={90}
+            />
+          </MetricStrip>
         ) : undefined
       }
-      isEmpty={bars.length === 0}
-      emptyTitle={t('velocity.empty.title')}
-      emptyDescription={t('velocity.empty.description')}
-      legend={
-        <>
-          <ChartLegendItem color={BRAND.reportDuring} label={t('velocity.series.during')} />
-          <ChartLegendItem color={BRAND.reportAfter} label={t('velocity.series.after')} />
-          <ChartLegendItem
-            color={BRAND.reportNotAccepted}
-            label={t('velocity.series.notAccepted')}
-          />
-          <ChartLegendItem
-            color={BRAND.reportTrend}
-            shape="line"
-            label={t('velocity.series.trend', { value: fmt(averages?.trend) })}
-          />
-        </>
-      }
-      dataTable={{
-        caption: t('velocity.tableCaption'),
-        noDataLabel: t('common:noData'),
-        columns: [
-          t('velocity.tableIteration'),
-          t('velocity.series.during'),
-          t('velocity.series.after'),
-          t('velocity.series.notAccepted'),
-        ],
-        // The Trend is deliberately absent: it is one repeated value, already stated in the legend,
-        // and a column of the same number on every row is noise to read aloud.
-        rows: bars.map((bar) => [bar.name, bar.acceptedDuring, bar.acceptedAfter, bar.notAccepted]),
-      }}
-      footer={
-        data && data.unclassifiedItems > 0 ? (
-          <p className="mt-2 flex items-center justify-center gap-1.5 text-ui-xs text-destructive">
-            <AlertTriangle size={12} />
-            {t('velocity.unclassified', { count: data.unclassifiedItems })}
-          </p>
-        ) : null
-      }
+      padBody
+      loading={isLoading && !data}
     >
-      <ComposedChart data={chartData} margin={{ top: 8, right: 18, left: 8, bottom: 14 }}>
-        <CartesianGrid {...CHART_GRID} vertical={false} />
-        <XAxis dataKey="name" {...CHART_AXIS} />
-        <YAxis {...CHART_AXIS} label={axisLabel(t('velocity.axis.points'), 'left')} />
-        <Tooltip contentStyle={CHART_TOOLTIP} />
-        <Bar
-          dataKey="acceptedDuring"
-          stackId="velocity"
-          name={t('velocity.series.during')}
-          fill={BRAND.reportDuring}
-          barSize={52}
-        />
-        <Bar
-          dataKey="acceptedAfter"
-          stackId="velocity"
-          name={t('velocity.series.after')}
-          fill={BRAND.reportAfter}
-          barSize={52}
-        />
-        <Bar
-          dataKey="notAccepted"
-          stackId="velocity"
-          name={t('velocity.series.notAccepted')}
-          fill={BRAND.reportNotAccepted}
-          barSize={52}
-          radius={[2, 2, 0, 0]}
-        />
-        <Line
-          type="monotone"
-          dataKey="trend"
-          name={t('velocity.series.trend', { value: fmt(averages?.trend) })}
-          stroke={BRAND.reportTrend}
-          strokeWidth={2}
-          dot={false}
-        />
-      </ComposedChart>
-    </ChartFrame>
+      <ChartFrame
+        bare
+        dataTable={{
+          caption: t('velocity.tableCaption'),
+          noDataLabel: t('common:noData'),
+          columns: [
+            t('velocity.tableIteration'),
+            t('velocity.series.during'),
+            t('velocity.series.after'),
+            t('velocity.series.notAccepted'),
+          ],
+          // The Trend is deliberately absent: it is one repeated value, already stated in the
+          // legend, and a column of the same number on every row is noise to read aloud.
+          rows: bars.map((bar) => [
+            bar.name,
+            bar.acceptedDuring,
+            bar.acceptedAfter,
+            bar.notAccepted,
+          ]),
+        }}
+        isEmpty={bars.length === 0}
+        emptyTitle={t('velocity.empty.title')}
+        emptyDescription={t('velocity.empty.description')}
+        legend={
+          <>
+            <ChartLegendItem color={BRAND.reportDuring} label={t('velocity.series.during')} />
+            <ChartLegendItem color={BRAND.reportAfter} label={t('velocity.series.after')} />
+            <ChartLegendItem
+              color={BRAND.reportNotAccepted}
+              label={t('velocity.series.notAccepted')}
+            />
+            <ChartLegendItem
+              color={BRAND.reportTrend}
+              shape="line"
+              label={t('velocity.series.trend', { value: fmt(averages?.trend) })}
+            />
+          </>
+        }
+        footer={
+          data && data.unclassifiedItems > 0 ? (
+            <p className="mt-2 flex items-center justify-center gap-1.5 text-ui-xs text-destructive">
+              <AlertTriangle size={12} />
+              {t('velocity.unclassified', { count: data.unclassifiedItems })}
+            </p>
+          ) : null
+        }
+      >
+        <ComposedChart data={chartData} margin={{ top: 8, right: 18, left: 8, bottom: 14 }}>
+          <CartesianGrid {...CHART_GRID} vertical={false} />
+          <XAxis dataKey="name" {...CHART_AXIS} />
+          <YAxis {...CHART_AXIS} label={axisLabel(t('velocity.axis.points'), 'left')} />
+          <Tooltip contentStyle={CHART_TOOLTIP} />
+          <Bar
+            dataKey="acceptedDuring"
+            stackId="velocity"
+            name={t('velocity.series.during')}
+            fill={BRAND.reportDuring}
+            barSize={52}
+          />
+          <Bar
+            dataKey="acceptedAfter"
+            stackId="velocity"
+            name={t('velocity.series.after')}
+            fill={BRAND.reportAfter}
+            barSize={52}
+          />
+          <Bar
+            dataKey="notAccepted"
+            stackId="velocity"
+            name={t('velocity.series.notAccepted')}
+            fill={BRAND.reportNotAccepted}
+            barSize={52}
+            radius={[2, 2, 0, 0]}
+          />
+          <Line
+            type="monotone"
+            dataKey="trend"
+            name={t('velocity.series.trend', { value: fmt(averages?.trend) })}
+            stroke={BRAND.reportTrend}
+            strokeWidth={2}
+            dot={false}
+          />
+        </ComposedChart>
+      </ChartFrame>
+    </ReportSurface>
   )
 }

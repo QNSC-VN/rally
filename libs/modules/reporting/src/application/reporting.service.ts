@@ -16,6 +16,7 @@ import {
   releaseTotals,
   trackedLeaves,
   unparentedItems,
+  RELEASE_TRACKING_PAGE_SIZE,
   type ChartUnit,
   type ReleaseBucket,
   type ReleaseChild,
@@ -216,12 +217,19 @@ export class ReportingService {
 
   async getReleaseTracking(
     actor: JwtPayload,
-    args: ScopeArgs & { releaseId: string; unit?: ChartUnit; bucket?: ReleaseBucket },
+    args: ScopeArgs & {
+      releaseId: string;
+      unit?: ChartUnit;
+      bucket?: ReleaseBucket;
+      page?: number;
+      pageSize?: number;
+    },
   ): Promise<ReleaseTrackingReport> {
     const { workspaceId } = actor;
     const scope = teamScope(args.teamId);
     const unit: ChartUnit = args.unit ?? 'points';
     const bucket: ReleaseBucket = args.bucket ?? 'direct';
+    const pageSize = args.pageSize ?? RELEASE_TRACKING_PAGE_SIZE;
     const settings = await this.repo.getWorkspaceSettings(workspaceId);
 
     const release = await this.repo.findRelease(workspaceId, args.releaseId);
@@ -252,16 +260,42 @@ export class ReportingService {
     const unparented = unparentedItems(children, release.id, scope);
     const leaves = trackedLeaves(children, release.id, scope);
 
+    const summary = {
+      direct: buckets.direct.length,
+      derived: buckets.derived.length,
+      unparented: unparented.length,
+    };
+
+    /**
+     * Page the ACTIVE bucket only, after classification.
+     *
+     * Classification needs the whole population by construction — a Derived Feature is one
+     * that is NOT in the release but has a scoped child that is, so it cannot be found by a
+     * `WHERE release_id = ...` — and `preliminaryTotal` sums Direct + Derived, so a paged
+     * feature set would quietly shrink the Preliminary line and the burnup's reference. The
+     * slice therefore happens here, and every number above it is already final.
+     *
+     * The index passed to each row builder is the ABSOLUTE position in the bucket, so Rank
+     * stays sequential across pages (RT-AC-04) instead of restarting at 1 on every page.
+     */
+    const total = summary[bucket];
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    // Clamp rather than 404 on an out-of-range page: the row count shifts under the reader as
+    // work is reassigned, and a stale page number should land on the last page, not an error.
+    const page = Math.min(Math.max(args.page ?? 1, 1), pageCount);
+    const offset = (page - 1) * pageSize;
+    const slice = <T>(items: readonly T[]): T[] => items.slice(offset, offset + pageSize);
+
     const rows =
       bucket === 'direct'
-        ? buckets.direct.map((f, i) =>
-            this.directRow(f, i, childrenByFeature.get(f.id) ?? [], release.id, unit),
+        ? slice(buckets.direct).map((f, i) =>
+            this.directRow(f, offset + i, childrenByFeature.get(f.id) ?? [], release.id, unit),
           )
         : bucket === 'derived'
-          ? buckets.derived.map((f, i) =>
-              this.derivedRow(f, i, buckets.derivedCause.get(f.id) ?? [], unit),
+          ? slice(buckets.derived).map((f, i) =>
+              this.derivedRow(f, offset + i, buckets.derivedCause.get(f.id) ?? [], unit),
             )
-          : unparented.map((c, i) => this.unparentedRow(c, i, unit));
+          : slice(unparented).map((c, i) => this.unparentedRow(c, offset + i, unit));
 
     return {
       context: await this.context(actor, args, settings.timeZone),
@@ -273,13 +307,11 @@ export class ReportingService {
       },
       unit,
       bucket,
-      // All three stay visible even when the active bucket is empty (§5.1).
-      summary: {
-        direct: buckets.direct.length,
-        derived: buckets.derived.length,
-        unparented: unparented.length,
-      },
+      // All three stay visible even when the active bucket is empty (§5.1), and all three are
+      // whole-population counts regardless of which page of rows travelled.
+      summary,
       rows,
+      page: { page, pageSize, total, pageCount },
       // Preliminary sums the Direct and Derived Features; Planned/Accepted use the tracked
       // leaves. Three totals, one population each, exactly as RT §4 splits them.
       totals: releaseTotals(leaves, [...buckets.direct, ...buckets.derived], unit),

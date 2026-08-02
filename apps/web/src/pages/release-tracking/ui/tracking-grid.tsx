@@ -8,7 +8,7 @@
  * Rank is the row's position INSIDE the active bucket (1, 2, 3…), not the stored lexorank — the
  * server numbers them, and the superseded `D` marker for Derived rows is deliberately absent.
  */
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 
@@ -20,6 +20,7 @@ import type {
 } from '@/features/reporting/api'
 import { CellLink } from '@/shared/ui/cell-link'
 import { EmptyState } from '@/shared/ui/empty-state'
+import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { RatioMeter } from '@/shared/ui/ratio-meter'
 import { SearchInput } from '@/shared/ui/search-input'
 import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
@@ -40,11 +41,22 @@ export function TrackingGrid({
   bucket,
   unit,
   isLoading,
+  isError = false,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
 }: {
   report: ReleaseTrackingReport | undefined
   bucket: ReleaseBucket
   unit: ChartUnit
   isLoading: boolean
+  isError?: boolean
+  /** 1-based page, owned by the page component because it drives the query. */
+  page: number
+  pageSize: number
+  onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
 }) {
   const { t } = useTranslation(['release-tracking', 'common'])
   const navigate = useNavigate()
@@ -146,6 +158,20 @@ export function TrackingGrid({
     },
   })
 
+  /**
+   * `report.rows` is ONE SERVER PAGE of the active bucket, not the whole bucket.
+   *
+   * The endpoint classifies Direct/Derived/Unparented and computes every total over the full
+   * population, then slices — so `summary` and `totals` are unaffected by which page arrived,
+   * while the rows that travel are bounded. That matters because the population grows with the
+   * PROJECT's feature count: a Derived Feature is by definition one OUTSIDE the release, so the
+   * query cannot be narrowed by the release, and this grid previously mounted every row of it.
+   *
+   * Search and sort therefore operate on the LOADED PAGE only. Both are page-local refinements,
+   * which is why the search box says so — silently searching one page while looking like it
+   * searches the bucket is the failure worth avoiding. Pushing either into the query is the
+   * natural next step and needs a BA decision, since §5 specifies neither.
+   */
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase()
     // Search applies WITHIN the active bucket (§5), never across all three.
@@ -168,6 +194,21 @@ export function TrackingGrid({
     }
     return [...filtered].sort(compare)
   }, [report, search, sortCol, sortDir])
+
+  // The server's own account of the slice. `total` is the whole bucket, so the footer reports
+  // the population even though only one page of rows is in memory.
+  const total = report?.page.total ?? 0
+  const pageCount = report?.page.pageCount ?? 1
+  const currentPage = report?.page.page ?? page
+  const rangeStart = (currentPage - 1) * pageSize + 1
+  const goPrevPage = useCallback(
+    () => onPageChange(Math.max(1, currentPage - 1)),
+    [currentPage, onPageChange],
+  )
+  const goNextPage = useCallback(
+    () => onPageChange(Math.min(pageCount, currentPage + 1)),
+    [currentPage, pageCount, onPageChange],
+  )
 
   const ctx: Ctx = {
     unit,
@@ -196,12 +237,39 @@ export function TrackingGrid({
       <DataTableFrame<ColKey>
         header={table.headerProps}
         loading={isLoading && !report}
+        // Without this a failed request fell through to the bucket's empty state, which asserts
+        // something about the release's contents ("no Features are directly assigned…") on the
+        // strength of a network fault.
+        error={
+          isError ? (
+            <EmptyState title={t('error.title')} description={t('error.description')} size="sm" />
+          ) : undefined
+        }
         empty={
           rows.length === 0 ? (
             <EmptyState
               title={t(`empty.${bucket}.title`)}
               description={t(`empty.${bucket}.description`)}
               size="sm"
+            />
+          ) : undefined
+        }
+        footer={
+          report && total > 0 ? (
+            <PaginationFooter
+              pageSize={pageSize}
+              setPageSize={onPageSizeChange}
+              currentPage={currentPage}
+              rangeStart={rangeStart}
+              // The page's own length, so a search that hides rows on this page narrows the
+              // range rather than claiming rows that are not on screen.
+              rangeEnd={rangeStart + rows.length - 1}
+              total={total}
+              pageCount={pageCount}
+              hasPrevPage={currentPage > 1}
+              hasNextPage={currentPage < pageCount}
+              onPrevPage={goPrevPage}
+              onNextPage={goNextPage}
             />
           ) : undefined
         }

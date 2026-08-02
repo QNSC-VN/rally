@@ -72,6 +72,12 @@
     "title": "Team Capacity - {{scope}}",
     "source": "Team Status hours",
     "expandTeam": "Expand {{team}}",
+    "memberCount_one": "({{count}} Member)",
+    "memberCount_other": "({{count}} Members)",
+    "error": {
+      "title": "Could not load team capacity",
+      "body": "The report failed to load. This is not an empty iteration - retry, and check the connection if it persists."
+    },
     "columns": {
       "member": "Team / Member",
       "capacity": "Capacity",

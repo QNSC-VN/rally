@@ -33,7 +33,25 @@ export type TeamCapacityReport = Json<'ReportingController_getTeamCapacity'>
 export type TeamCapacityTeam = TeamCapacityReport['teams'][number]
 export type TeamCapacityHours = TeamCapacityTeam['totals']
 
-export type ReleaseTrackingReport = Json<'ReportingController_getReleaseTracking'>
+/**
+ * Server-side paging over the active bucket.
+ *
+ * Declared here rather than read off the generated client because `pnpm codegen` needs a
+ * running API to regenerate `shared/api/generated/api.ts`, and hand-editing that file would
+ * fail `codegen:check` as drift. Delete this and take the field from `Json<...>` on the next
+ * codegen run against an API that includes the paged contract.
+ */
+export interface ReleaseTrackingPage {
+  page: number
+  pageSize: number
+  /** The active bucket's whole-population size — equals `summary[bucket]`, never the page. */
+  total: number
+  pageCount: number
+}
+
+export type ReleaseTrackingReport = Json<'ReportingController_getReleaseTracking'> & {
+  page: ReleaseTrackingPage
+}
 export type ReleaseTrackingRow = ReleaseTrackingReport['rows'][number]
 export type ReleaseMismatch = ReleaseTrackingRow['mismatches'][number]
 export type ReleaseBucket = ReleaseTrackingReport['bucket']
@@ -57,8 +75,22 @@ export const reportingKeys = {
     releaseId: string,
     unit: ChartUnit,
     bucket: ReleaseBucket,
+    page: number,
+    pageSize: number,
   ) =>
-    ['reports', 'release-tracking', projectId, teamId ?? 'all', releaseId, unit, bucket] as const,
+    [
+      'reports',
+      'release-tracking',
+      projectId,
+      teamId ?? 'all',
+      releaseId,
+      unit,
+      bucket,
+      // Page is part of the key: each page is a distinct server response, so reusing one
+      // page's cache entry for another would show stale rows under a new page number.
+      page,
+      pageSize,
+    ] as const,
   releaseBurnup: (
     projectId: string,
     teamId: string | undefined,
@@ -143,18 +175,47 @@ export function useReleaseTracking({
   releaseId,
   unit,
   bucket,
-}: Scope & { releaseId: string | undefined; unit: ChartUnit; bucket: ReleaseBucket }) {
+  page,
+  pageSize,
+}: Scope & {
+  releaseId: string | undefined
+  unit: ChartUnit
+  bucket: ReleaseBucket
+  page: number
+  pageSize: number
+}) {
   return useQuery({
-    queryKey: reportingKeys.releaseTracking(projectId ?? '', teamId, releaseId ?? '', unit, bucket),
+    queryKey: reportingKeys.releaseTracking(
+      projectId ?? '',
+      teamId,
+      releaseId ?? '',
+      unit,
+      bucket,
+      page,
+      pageSize,
+    ),
     queryFn: async () => {
       const { data, error, response } = await apiClient.GET('/v1/reports/release-tracking', {
-        params: { query: { projectId: projectId!, teamId, releaseId: releaseId!, unit, bucket } },
+        params: {
+          query: {
+            projectId: projectId!,
+            teamId,
+            releaseId: releaseId!,
+            unit,
+            bucket,
+            page,
+            pageSize,
+          },
+        },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as ReleaseTrackingReport
     },
     enabled: !!projectId && !!releaseId,
     staleTime: LIVE,
+    // Keep the previous page's rows on screen while the next one loads, so paging does not
+    // flash the grid's skeleton between clicks.
+    placeholderData: (previous) => previous,
   })
 }
 
