@@ -1,0 +1,22 @@
+-- `work.tasks` gains the `notes` column the SRS has always mapped for a Task.
+--
+-- Phase 1.6 lists Notes on a Task twice: "Task: Description, Notes, Attachments" (§ scope) and
+-- "Notes | Story/Defect/**Task** | `notes` | Nullable, sanitized rich text" (§ field mapping). The
+-- column was added to `work_items` and never to `work.tasks` when tasks moved into their own table.
+--
+-- Everything ABOVE the database already believed it existed:
+--   • `UpdateWorkItemSchema` accepts `notes` for any type;
+--   • the detail page renders the Notes editor for a Task with no `isTask` guard;
+--   • `activity-diff.ts` keeps `notes` in `TASK_FIELDS`, so an edit writes a revision entry saying
+--     Notes changed;
+--   • the repository hard-codes `notes: null` on every task read.
+--
+-- So a Task's Notes was a write-only hole that also LIED about itself: the edit returned 200, the
+-- history recorded a change, and the text was gone on the next read. It was unreachable in practice
+-- only because the guard 404'd every task id (fixed alongside this) — repairing the routes without
+-- this column would have turned a dead field into a live data-loss path.
+--
+-- Nullable with no default and no backfill: a Task that has never had notes has none, and inventing
+-- an empty string would be indistinguishable from a user clearing the field.
+ALTER TABLE "work"."tasks"
+  ADD COLUMN IF NOT EXISTS "notes" text;

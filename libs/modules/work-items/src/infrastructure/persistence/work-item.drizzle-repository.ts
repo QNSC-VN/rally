@@ -193,7 +193,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       todoHours: t.todoHours,
       actualHours: t.actualHours,
       acceptanceCriteria: null,
-      notes: null,
+      notes: t.notes,
       releaseNotes: null,
       isBlocked: false,
       blockedReason: null,
@@ -475,7 +475,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         todoHours: tasks.todoHours,
         actualHours: tasks.actualHours,
         acceptanceCriteria: sql<string | null>`null`.as('acceptance_criteria'),
-        notes: sql<string | null>`null`.as('notes'),
+        notes: tasks.notes,
         releaseNotes: sql<string | null>`null`.as('release_notes'),
         isBlocked: sql<boolean>`false`.as('is_blocked'),
         blockedReason: sql<string | null>`null`.as('blocked_reason'),
@@ -801,7 +801,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         todoHours: t.todoHours,
         actualHours: t.actualHours,
         acceptanceCriteria: null,
-        notes: null,
+        notes: t.notes,
         releaseNotes: null,
         isBlocked: false,
         blockedReason: null,
@@ -886,6 +886,10 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       const setFields: Record<string, unknown> = { updatedAt: new Date() };
       if (input.title !== undefined) setFields.title = input.title;
       if (input.description !== undefined) setFields.description = input.description;
+      // Writable since migration 0096 gave `work.tasks` the column. Omitting it was what made a
+      // Task's Notes a write-only field: the PATCH returned 200, the diff logged a Notes change,
+      // and the text was gone on the next read.
+      if (input.notes !== undefined) setFields.notes = input.notes;
       // TASK-FR-012: Work Product (parent) reassignment. tasks.parent_id is NOT
       // NULL, so only a concrete new parent is written; the service rejects null.
       if (input.parentId !== undefined && input.parentId !== null)

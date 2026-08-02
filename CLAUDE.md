@@ -54,6 +54,22 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   baselines had drifted below their true counts, so 39 new violations could have landed green. Measure
   by forcing the baselines to `-1` and reading the counts the failures report — a grep alongside gets
   it wrong (mine said 8 for `text-[` where the real count is 2).
+- **`ProjectScopeResolver`'s `work_item` kind spans TWO tables.** Tasks left `work_items` for
+  `work.tasks` at the Phase 3 split (migration 0072), but the ROUTES did not split with them —
+  `PATCH /work-items/:id`, `/:id/activity`, `/:id/attachments`, `/:id/watchers` and
+  `PATCH /team-status/tasks/:taskId` all take a TASK's own id. The resolver mapped the kind to
+  `work_items` alone, so the guard threw `WORK_ITEM_NOT_FOUND` for every task id before the handler
+  ran, as a Workspace Admin, regardless of permission. A Task was uneditable everywhere, its Revision
+  History permanently empty and its attachments unreachable — four Phase 1 contracts dead on one line
+  of table mapping. It now falls back to `work.tasks` on a miss, mirroring
+  `WorkItemDrizzleRepository.findById`, whose own docblock already described that fallback as what
+  task surfaces depend on. **Adding a `task` resource kind would NOT have worked**: the routes are
+  shared, so one kind has to cover both tables.
+- **A spec that calls a service directly cannot see a guard defect.** Every task spec called
+  `WorkItemsService` and the whole suite passed over the fault above for as long as it existed. Same
+  blind spot that hid the `report:view` bug. `test/e2e/task-routes.e2e.spec.ts` and
+  `report-authz.e2e.spec.ts` are the shape that catches it: real `AppModule`, `app.inject()`, a Bearer
+  token from `AuthService.devLogin` (Bearer callers are CSRF-exempt by design, so no token dance).
 - **A decorator-counting ratchet is not an authorization test.** `route-policy.ratchet.spec.ts` reads
   source text, so it cannot tell a correct `@RequirePermission` from a misspelled code or a
   project-tier code whose scope resolves from the wrong field. `test/e2e/report-authz.e2e.spec.ts` is

@@ -1036,6 +1036,9 @@ export const tasks = workSchema.table(
     itemKey: varchar('item_key', { length: 30 }).notNull(),
     title: varchar('title', { length: 500 }).notNull(),
     description: text('description'),
+    // Phase 1.6 maps Notes for Story/Defect/**Task**. Added by migration 0096; before it the
+    // column did not exist while the DTO, the editor and the activity diff all assumed it did.
+    notes: text('notes'),
     state: taskStateEnum('state').notNull().default('defined'),
     assigneeId: uuid('assignee_id'),
     teamId: uuid('team_id'),
