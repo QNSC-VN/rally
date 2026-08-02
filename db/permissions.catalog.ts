@@ -116,6 +116,22 @@ export const PERMISSION = {
   // planned dates, so it changes records outside the plan. Editing a draft does not.
   // Different blast radius, different grant.
   CAPACITY_PUBLISH: 'capacity:publish',
+  /**
+   * See DRAFT plans without being able to change them.
+   *
+   * The BA has ONE permission (`capacity_planning:manage`) with two settings where we have three
+   * codes, and that mismatch made two of its acceptance criteria unsatisfiable at once:
+   *
+   *   • AC-012 — a Project Admin set to `Read-only` keeps "opening Draft and Published plans while
+   *     changing nothing";
+   *   • AC-013 — a Project Member does not see Drafts at all.
+   *
+   * Draft visibility was `capacity:manage || capacity:publish`, so both roles were refused Drafts:
+   * AC-013 held and AC-012 did not, and no combination of the three existing codes could tell a
+   * read-only Project Admin from a Project Member. This is the fourth code that can. It grants
+   * READ only — every write still requires `capacity:manage` or `capacity:publish`.
+   */
+  CAPACITY_VIEW_DRAFT: 'capacity:view_draft',
 
   // ── report namespace (P6) ──────────────────────────────────────────────────
   // Iteration Burndown, Velocity and Team Capacity, plus Release Tracking's
@@ -211,6 +227,7 @@ export const PERMISSION_TIER = {
   [PERMISSION.PORTFOLIO_EDIT]: 'project',
   [PERMISSION.PORTFOLIO_ARCHIVE]: 'project',
   [PERMISSION.CAPACITY_VIEW]: 'project',
+  [PERMISSION.CAPACITY_VIEW_DRAFT]: 'project',
   [PERMISSION.CAPACITY_MANAGE]: 'project',
   [PERMISSION.CAPACITY_PUBLISH]: 'project',
   // Project tier: every report is bounded by one Project, and Team is a filter inside
@@ -322,6 +339,9 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.PORTFOLIO_EDIT,
     PERMISSION.PORTFOLIO_ARCHIVE,
     PERMISSION.CAPACITY_VIEW,
+    // A Project Admin turned Read-only keeps this and loses the two write codes, which is what
+    // makes AC-012 ("still opening Draft and Published plans") expressible at all.
+    PERMISSION.CAPACITY_VIEW_DRAFT,
     PERMISSION.CAPACITY_MANAGE,
     PERMISSION.CAPACITY_PUBLISH,
     PERMISSION.REPORT_VIEW,
@@ -356,6 +376,9 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.PORTFOLIO_EDIT,
     PERMISSION.PORTFOLIO_ARCHIVE,
     PERMISSION.CAPACITY_VIEW,
+    // A Project Admin turned Read-only keeps this and loses the two write codes, which is what
+    // makes AC-012 ("still opening Draft and Published plans") expressible at all.
+    PERMISSION.CAPACITY_VIEW_DRAFT,
     PERMISSION.CAPACITY_MANAGE,
     PERMISSION.CAPACITY_PUBLISH,
     PERMISSION.REPORT_VIEW,

@@ -157,6 +157,33 @@ difference is the whole design. Read this before changing a report or the snapsh
   weekend audit rows and a sparse burnup — production must never fabricate history, a dev seed
   must, and those shapes are the ones worth being able to see.
 
+## Capacity: what refuses, and why
+
+Three references into a capacity plan are now REFUSALS rather than silent repairs, all following
+`RELEASE_HAS_CAPACITY_PLAN` on release delete — the pattern this repo already chose:
+
+- **Moving a Feature to another project** while it is allocated
+  (`PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION`). A plan belongs to one project, so the Feature took
+  nothing with it: the rows stayed behind, kept feeding that team's Estimated, the plan total and
+  the cutline, and publish wrote the OLD project's Release onto it — the state `assertReferences`
+  itself rejects. Deleting the rows instead would destroy committed numbers on a plan the person
+  moving the Feature may not even be able to see. `applyPlanToFeature` also filters on the plan's
+  project now, so the write is incapable of crossing projects even for rows that predate the guard.
+- **Unlinking a team from a project** while it sits on one of that project's plans
+  (`PROJECT_TEAM_HAS_CAPACITY_PLAN`). `project_teams` is a soft status flip, so
+  `fk_capacity_plan_teams_team ON DELETE RESTRICT` never fires. `Remove Team` on the plan is the
+  deliberate action and it re-parks the demand (AC-005), so the refusal costs nothing.
+- **`assertTeamInProject` requires both the LINK and the TEAM to be active.** It checked neither, so
+  an unlinked or archived team could still be added to a plan — recreating exactly what migration
+  0085 was written to clean up.
+
+**`capacity:view_draft` is the fourth capacity code, and it exists because the BA's matrix needs
+it.** AC-012 keeps a read-only Project Admin "opening Draft and Published plans"; AC-013 hides
+Drafts from a Project Member. Visibility was `capacity:manage || capacity:publish`, which satisfied
+AC-013 and broke AC-012 — a read-only Project Admin holds neither write code. Granted to Project
+Admin and NOT to Project Member; the write grants still imply it. Backfilled by migration 0094 (see
+below for why a backfill is required at all).
+
 ## Permissions reach a workspace ONCE
 
 `db/permissions.catalog.ts` is the source of truth, but `db/seeds/bootstrap.ts` upserts the

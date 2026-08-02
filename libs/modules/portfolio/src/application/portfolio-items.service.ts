@@ -12,7 +12,13 @@ import { ActivityLogger, type ActivityLog } from '@modules/activity';
 import { PORTFOLIO_ACTIVITY_CONFIG } from './portfolio-activity-diff';
 import { PORTFOLIO_HEALTH_THRESHOLDS, computeHealth, type HealthResult } from '@shared-kernel';
 import type { CursorPayload, JwtPayload, PagedResult } from '@platform';
-import { projectTeams, releases, teams } from '../../../../../db/schema/work';
+import {
+  capacityPlanAllocations,
+  capacityPlans,
+  projectTeams,
+  releases,
+  teams,
+} from '../../../../../db/schema/work';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { and, eq } from 'drizzle-orm';
@@ -421,6 +427,43 @@ export class PortfolioItemsService {
     patch: UpdatePortfolioItemInput,
   ): Promise<void> {
     const destination = patch.projectId as string;
+
+    /**
+     * REFUSED while the Feature is allocated on a capacity plan, naming the plans.
+     *
+     * A plan belongs to one project, so a Feature that leaves takes nothing with it: the allocation
+     * rows stayed behind, `listAllocations` filtered on `plan_id` alone so they kept rendering and
+     * kept feeding the team's Estimated, the plan total and the cutline — for a Feature no longer in
+     * the plan's project. Publishing then wrote the OLD project's Release onto it, producing exactly
+     * the state `assertReferences` rejects (`PORTFOLIO_ITEM_PROJECT_MISMATCH`). Nothing enforced it:
+     * not the service, not the database.
+     *
+     * Refused rather than silently repaired, following `RELEASE_HAS_CAPACITY_PLAN` on release delete.
+     * The alternative — deleting the rows — destroys a planner's committed numbers on a plan the
+     * person moving the Feature may not even be able to see. Removing the Feature from the plan first
+     * is one deliberate action, and the message says which plan to look at.
+     */
+    const planned = await this.db
+      .selectDistinct({ planKey: capacityPlans.planKey, name: capacityPlans.name })
+      .from(capacityPlanAllocations)
+      .innerJoin(capacityPlans, eq(capacityPlans.id, capacityPlanAllocations.planId))
+      .where(
+        and(
+          eq(capacityPlanAllocations.portfolioItemId, existing.id),
+          eq(capacityPlans.workspaceId, workspaceId),
+        ),
+      )
+      // `id` breaks the tie: `plan_key` is unique per project, not per workspace, and the
+      // ordering ratchet requires the last column to be unique so two runs cannot disagree.
+      .orderBy(capacityPlans.planKey, capacityPlans.id)
+      .limit(3);
+    if (planned.length > 0) {
+      const named = planned.map((row) => `${row.planKey} (${row.name})`).join(', ');
+      throw new PreconditionFailedException(
+        'PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION',
+        `This Feature is allocated on ${named} — remove it from the plan before moving it to another project`,
+      );
+    }
 
     if (patch.teamId === undefined && existing.teamId !== null) {
       const [firstTeam] = await this.db

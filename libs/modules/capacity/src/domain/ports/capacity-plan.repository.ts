@@ -192,6 +192,8 @@ export interface ICapacityPlanRepository {
   applyPlanToFeature(
     portfolioItemId: string,
     workspaceId: string,
+    /** The PLAN's project — filtered on, so a publish can never write across projects. */
+    projectId: string,
     fields: { plannedStartDate: string | null; plannedEndDate: string | null; releaseId?: string },
     executor?: DbExecutor,
   ): Promise<boolean>;

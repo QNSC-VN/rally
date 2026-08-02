@@ -24,6 +24,7 @@ import { ReleasesService } from '@modules/releases';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { capacityPlanTeams, capacityPlans, projectTeams, teams } from '@db/schema/work';
+import { users } from '@db/schema/identity';
 
 import {
   VIEWER_ID,
@@ -441,6 +442,62 @@ describe('capacity plans (e2e)', () => {
       await expect(capacity.getPlan(reader, draft.id)).rejects.toMatchObject({
         code: 'CAPACITY_PLAN_NOT_FOUND',
       });
+    });
+
+    it('shows a DRAFT to a read-only PLANNER holding capacity:view_draft (AC-012)', async () => {
+      /**
+       * AC-012 and AC-013 pull apart here, and the permission split has to express both:
+       *
+       *   • AC-012 — a Project Admin set to `Read-only` still opens "Draft and Published plans"
+       *     while changing nothing;
+       *   • AC-013 — a Project Member does not see Drafts at all (the test above).
+       *
+       * Draft visibility was `capacity:manage || capacity:publish`, so a read-only Project Admin
+       * holds neither and was refused Drafts exactly as a Project Member is: AC-013 held, AC-012 did
+       * not, and no combination of the three existing codes could tell those roles apart.
+       * `capacity:view_draft` is the fourth code that can.
+       */
+      const access = app.get(AccessService);
+      const name = 'E2E Capacity Draft Reader';
+      const roles = await access.listRoles(WORKSPACE_ID);
+      const role =
+        roles.find((r) => r.name === name) ??
+        (await access.createRole(admin, {
+          name,
+          permissions: ['project:view', 'capacity:view', 'capacity:view_draft'],
+        }));
+
+      const readerId = randomUUID();
+      await db.insert(users).values({
+        id: readerId,
+        email: `capacity-draft-reader-${readerId.slice(0, 8)}@qnsc.dev`,
+        displayName: 'Read-only planner',
+      });
+      await access.assignRole(admin, readerId, role.id, 'workspace');
+      const draftReader = makeActor(readerId);
+
+      const releaseId = await newRelease();
+      const draft = await capacity.createPlan(admin, {
+        projectId: projectAId,
+        releaseId,
+        name: `Visible draft ${uniqueKey()}`,
+        unit: 'points',
+      });
+
+      // SEES the draft, in the list and by id…
+      const listed = await capacity.listPlans(draftReader, projectAId);
+      expect(listed.map((p) => p.id)).toContain(draft.id);
+      await expect(capacity.getPlan(draftReader, draft.id)).resolves.toMatchObject({
+        id: draft.id,
+      });
+
+      // …and changes nothing. Every write still needs `capacity:manage` or `capacity:publish`.
+      await expect(
+        capacity.updatePlan(draftReader, draft.id, { name: 'Renamed by a reader' }),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+      await expect(
+        capacity.publishPlan(draftReader, draft.id, { updateFields: false }),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
     });
 
     it('shows a PUBLISHED plan to the same reader', async () => {

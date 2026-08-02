@@ -84,10 +84,16 @@ describe('PortfolioItemsService', () => {
   let referenceRows: Array<{ id: string }>;
   /** Rows the destination-project team lookup in `applyProjectMove` should return. */
   let projectTeamRows: Array<{ id: string }>;
+  /**
+   * Capacity plans that BLOCK a project move. Empty by default: a Feature with no allocations is
+   * the ordinary case, and almost every test here is about something else.
+   */
+  let allocationPlanRows: Array<{ planKey: string; name: string }>;
 
   beforeEach(async () => {
     referenceRows = [{ id: 'ref-1' }];
     projectTeamRows = [];
+    allocationPlanRows = [];
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PortfolioItemsService,
@@ -150,10 +156,10 @@ describe('PortfolioItemsService', () => {
         },
         {
           provide: DRIZZLE,
-          // Two chains run through here: the Release/Team existence check in
-          // `assertReferences` (`select→from→where→limit`) and the destination-team lookup
-          // in `applyProjectMove` (`select→from→innerJoin→where→orderBy→limit`). The
-          // presence of `innerJoin` is what distinguishes them.
+          // Three chains run through here: the Release/Team existence check in `assertReferences`
+          // (`select→from→where→limit`), the destination-team lookup in `applyProjectMove`
+          // (`select→from→innerJoin→where→orderBy→limit` — the `innerJoin` distinguishes them), and
+          // that method's capacity-allocation guard, which uses `selectDistinct`.
           useValue: {
             select: () => ({
               from: () => ({
@@ -161,6 +167,18 @@ describe('PortfolioItemsService', () => {
                 innerJoin: () => ({
                   where: () => ({
                     orderBy: () => ({ limit: () => Promise.resolve(projectTeamRows) }),
+                  }),
+                }),
+              }),
+            }),
+            // The capacity-allocation guard in `applyProjectMove`. Its OWN entry point rather than
+            // sharing `select`, so a test can make a move blocked without also changing what the
+            // destination-team lookup answers.
+            selectDistinct: () => ({
+              from: () => ({
+                innerJoin: () => ({
+                  where: () => ({
+                    orderBy: () => ({ limit: () => Promise.resolve(allocationPlanRows) }),
                   }),
                 }),
               }),
@@ -719,6 +737,45 @@ describe('PortfolioItemsService', () => {
         await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
         // No rewrite at all — an unchanged set must not churn the link rows or the audit trail.
         expect(repo.setMilestones).not.toHaveBeenCalled();
+      });
+
+      it('REFUSES the move while the Feature is allocated on a capacity plan', async () => {
+        /**
+         * A plan belongs to one project, so a Feature that leaves takes nothing with it: the
+         * allocation rows stayed behind and kept feeding that team's Estimated, the plan total and
+         * the cutline for a Feature no longer in the plan's project. Publishing then wrote the OLD
+         * project's Release onto it — the state `assertReferences` itself rejects. Nothing enforced
+         * it: not the service, not the database.
+         *
+         * Refused rather than silently repaired, following `RELEASE_HAS_CAPACITY_PLAN`: deleting the
+         * rows would destroy committed numbers on a plan the person moving the Feature may not even
+         * be able to see.
+         */
+        allocationPlanRows = [{ planKey: 'CP-3', name: 'Q3 capacity' }];
+        repo.findById.mockResolvedValue(feature as never);
+
+        await expect(
+          service.updateItem(actor, 'pi-1', { projectId: 'proj-b' }),
+        ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION' });
+        // Nothing was written — the refusal comes before the patch is reconciled.
+        expect(repo.update).not.toHaveBeenCalled();
+      });
+
+      it('names the blocking plan, so the message is actionable', async () => {
+        // "Remove it from the plan first" is only actionable if you know which plan.
+        allocationPlanRows = [{ planKey: 'CP-3', name: 'Q3 capacity' }];
+        repo.findById.mockResolvedValue(feature as never);
+
+        await expect(service.updateItem(actor, 'pi-1', { projectId: 'proj-b' })).rejects.toThrow(
+          /CP-3 \(Q3 capacity\)/,
+        );
+      });
+
+      it('allows the move for a Feature that is on no plan', async () => {
+        // The ordinary case, asserted so the guard cannot quietly become a blanket refusal.
+        repo.findById.mockResolvedValue(feature as never);
+        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
+        expect(repo.update).toHaveBeenCalled();
       });
 
       it('clears the Release, because releases are per-project', async () => {
