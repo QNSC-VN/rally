@@ -33,26 +33,10 @@ export type TeamCapacityReport = Json<'ReportingController_getTeamCapacity'>
 export type TeamCapacityTeam = TeamCapacityReport['teams'][number]
 export type TeamCapacityHours = TeamCapacityTeam['totals']
 
-/**
- * Server-side paging over the active bucket.
- *
- * Declared here rather than read off the generated client because `pnpm codegen` needs a
- * running API to regenerate `shared/api/generated/api.ts`, and hand-editing that file would
- * fail `codegen:check` as drift. Delete this and take the field from `Json<...>` on the next
- * codegen run against an API that includes the paged contract.
- */
-export interface ReleaseTrackingPage {
-  page: number
-  pageSize: number
-  /** The active bucket's whole-population size — equals `summary[bucket]`, never the page. */
-  total: number
-  pageCount: number
-}
-
-export type ReleaseTrackingReport = Json<'ReportingController_getReleaseTracking'> & {
-  page: ReleaseTrackingPage
-}
+export type ReleaseTrackingReport = Json<'ReportingController_getReleaseTracking'>
 export type ReleaseTrackingRow = ReleaseTrackingReport['rows'][number]
+/** The active bucket's page window. `total` is the whole bucket, never the page. */
+export type ReleaseTrackingPage = ReleaseTrackingReport['page']
 export type ReleaseMismatch = ReleaseTrackingRow['mismatches'][number]
 export type ReleaseBucket = ReleaseTrackingReport['bucket']
 export type ChartUnit = ReleaseTrackingReport['unit']
