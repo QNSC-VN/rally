@@ -331,6 +331,12 @@ export const iterationDailySnapshots = workSchema.table(
     id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id').notNull(),
     iterationId: uuid('iteration_id').notNull(),
+    /**
+     * NULL is the ALL TEAMS row, and it is MEASURED rather than summed from the team
+     * rows — a task two teams both touch must be counted once (migration 0093). Same
+     * shape as `release_daily_snapshots`, for the same reason.
+     */
+    teamId: uuid('team_id'),
     snapshotDate: date('snapshot_date').notNull(),
     // ── Phase 6 Burndown (migration 0088) ─────────────────────────────────
     // The two series the approved chart actually plots. They are NOT the legacy
@@ -349,10 +355,19 @@ export const iterationDailySnapshots = workSchema.table(
   (t) => ({
     workspaceIdx: index('ix_ids_workspace').on(t.workspaceId),
     iterationIdx: index('ix_ids_iteration').on(t.iterationId),
-    uniqueDay: uniqueIndex('uq_ids_iteration_date').on(t.iterationId, t.snapshotDate),
-    // The daily job's own read: which dates do I have, and are they closed?
-    dateFinalIdx: index('ix_ids_iteration_date_final').on(
+    // COALESCE'd into the nil UUID in SQL (migration 0093) so ON CONFLICT targets one
+    // predicate and the daily job stays a single idempotent upsert for the team rows and
+    // the All Teams row alike. A plain unique index over a nullable column would not
+    // dedupe NULLs, and the All Teams row would double on the second tick.
+    uniqueDay: uniqueIndex('uq_ids_iteration_team_date').on(
       t.iterationId,
+      t.teamId,
+      t.snapshotDate,
+    ),
+    // The daily job's own read: which dates do I have for this scope, and are they closed?
+    dateFinalIdx: index('ix_ids_iteration_team_date_final').on(
+      t.iterationId,
+      t.teamId,
       t.snapshotDate,
       t.finalized,
     ),

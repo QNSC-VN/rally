@@ -93,17 +93,32 @@ export class ReportSnapshotService {
           result.baselinesCaptured += 1;
         }
 
-        const measured = await this.repo.measureIterationDay(
-          iteration.workspaceId,
-          iteration.id,
-          endOfWorkspaceDay(localDate, timeZone),
-        );
-        await this.repo.upsertIterationSnapshot({
-          workspaceId: iteration.workspaceId,
-          iterationId: iteration.id,
-          snapshotDate: localDate,
-          ...measured,
-        });
+        /**
+         * One row per SCOPE: All Teams, then each team with work in the iteration.
+         *
+         * Burndown is frozen history, so a team-scoped chart cannot be recomputed on read — the
+         * grain has to carry the team or the report simply cannot be served, which is what used to
+         * happen for the shared, team-less iterations that make up almost all of them. Each scope
+         * is MEASURED independently; the All Teams row is never the sum of the team rows, because
+         * a task two teams both touch would then be counted twice.
+         */
+        const endOfDay = endOfWorkspaceDay(localDate, timeZone);
+        const teamIds = await this.repo.teamsInIterationScope(iteration.workspaceId, iteration.id);
+        for (const teamId of [null, ...teamIds]) {
+          const measured = await this.repo.measureIterationDay(
+            iteration.workspaceId,
+            iteration.id,
+            endOfDay,
+            teamId,
+          );
+          await this.repo.upsertIterationSnapshot({
+            workspaceId: iteration.workspaceId,
+            iterationId: iteration.id,
+            teamId,
+            snapshotDate: localDate,
+            ...measured,
+          });
+        }
         result.iterationsSnapshotted += 1;
       } catch (err) {
         result.failures += 1;

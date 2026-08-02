@@ -216,6 +216,103 @@ describe('Phase 6 reports (e2e)', () => {
     expect(report.hasScheduledWork).toBe(true);
   });
 
+  it('serves a TEAM-scoped burndown from per-team snapshot rows', async () => {
+    /**
+     * Burndown is frozen history, so a team-scoped chart cannot be recomputed on read — the grain
+     * has to carry the team. It was `(iteration, date)` with no team dimension at all, so a
+     * team-scoped Burndown could not be served for a shared iteration and returned `missing` while
+     * the same iteration's All Teams chart was full (IB §2).
+     *
+     * Each scope is MEASURED independently. The All Teams row is never the sum of the team rows,
+     * because a task two teams both touch would then be counted twice.
+     */
+    const alpha = await newTeam('P6 Burndown Alpha');
+    const beta = await newTeam('P6 Burndown Beta');
+    await projects.linkTeam(WORKSPACE_ID, projectId, alpha);
+    await projects.linkTeam(WORKSPACE_ID, projectId, beta);
+
+    // One shared, team-less iteration holding one story per team, each with a task.
+    const shared = await iterationsSvc.createIteration(admin, projectId, 'P6 Burndown Shared', {
+      state: 'committed',
+      startDate: shift(localToday, -2),
+      endDate: shift(localToday, 4),
+    });
+    for (const [team, hours] of [
+      [alpha, '6'],
+      [beta, '4'],
+    ] as const) {
+      const story = await items.createWorkItem(admin, projectId, 'story', `P6 bd ${hours}h`, {
+        iterationId: shared.id,
+        teamId: team,
+        storyPoints: '3',
+      });
+      await items.createTask(admin, story.id, `P6 bd task ${hours}`, {
+        estimateHours: hours,
+        todoHours: hours,
+      });
+    }
+
+    await snapshots.takeSnapshots();
+
+    const todayOf = (report: { points: Array<{ date: string; remainingToDo: number | null }> }) =>
+      report.points.find((p) => p.date === localToday)?.remainingToDo;
+
+    const all = await reporting.getIterationBurndown(admin, {
+      projectId,
+      iterationId: shared.id,
+    });
+    const alphaReport = await reporting.getIterationBurndown(admin, {
+      projectId,
+      iterationId: shared.id,
+      teamId: alpha,
+    });
+    const betaReport = await reporting.getIterationBurndown(admin, {
+      projectId,
+      iterationId: shared.id,
+      teamId: beta,
+    });
+
+    // Weekends are off the axis, so today may not be plotted — in which case the rows still had
+    // to be WRITTEN per scope, which is the thing under test.
+    if (all.points.some((p) => p.date === localToday)) {
+      expect(todayOf(all)).toBe(10);
+      expect(todayOf(alphaReport)).toBe(6);
+      expect(todayOf(betaReport)).toBe(4);
+    }
+
+    const written = await db
+      .select({
+        teamId: iterationDailySnapshots.teamId,
+        todo: iterationDailySnapshots.remainingTodo,
+      })
+      .from(iterationDailySnapshots)
+      .where(
+        and(
+          eq(iterationDailySnapshots.iterationId, shared.id),
+          eq(iterationDailySnapshots.snapshotDate, localToday),
+        ),
+      );
+    // Three scopes: All Teams plus one row per team WITH work — never a row of zeros for a team
+    // that never touched the iteration.
+    expect(written).toHaveLength(3);
+    expect(new Set(written.map((r) => r.teamId))).toEqual(new Set([null, alpha, beta]));
+    expect(Number(written.find((r) => r.teamId === null)?.todo)).toBe(10);
+    expect(Number(written.find((r) => r.teamId === alpha)?.todo)).toBe(6);
+
+    // Idempotent per (iteration, team, date): a second tick rewrites, never duplicates.
+    await snapshots.takeSnapshots();
+    const again = await db
+      .select({ id: iterationDailySnapshots.id })
+      .from(iterationDailySnapshots)
+      .where(
+        and(
+          eq(iterationDailySnapshots.iterationId, shared.id),
+          eq(iterationDailySnapshots.snapshotDate, localToday),
+        ),
+      );
+    expect(again).toHaveLength(3);
+  });
+
   it('reports NO WINDOW for a dateless iteration instead of failing', async () => {
     /**
      * `startDate ?? ''` used to reach `workingDaysBetween`, where `'' < ''` slipped past the
