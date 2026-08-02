@@ -71,6 +71,10 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
        rows the test is waiting for. Stop `pnpm start:dev:worker` before a BE e2e run.
   Neither is a product defect, and both look exactly like one. Check
   `docker ps` first: localstack dying mid-session produces the same symptom.
+- **Run `pnpm lint`, not path-scoped `eslint`.** CI lints `{apps/api,apps/worker,libs,db}/**/*.ts` in one
+  pass; linting only the paths you touched misses rules that fire elsewhere in that glob — and
+  `no-unused-vars` exempts `^_` for ARGUMENTS only, not for destructured variables, so the
+  `const { X: _unused, ...rest }` idiom is an error here. That combination put a lint failure on `main`.
 - **`tsc -b` can pass on STALE build info.** Two things hid behind that in one session: an
   error code missing from the `ErrorCode` union, and a client that had never seen a new
   route (which surfaces only as `Cannot POST /v1/...` in the browser). When a change spans
