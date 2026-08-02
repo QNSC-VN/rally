@@ -73,8 +73,12 @@ export function PortfolioDetailPage() {
   const isEpic = server?.type === 'epic'
   // Only one of these fires — an Epic has child Features, a Feature has linked
   // work items. `enabled` is driven by passing undefined for the wrong shape.
-  const { data: childFeatures = [] } = usePortfolioChildFeatures(isEpic ? itemId : undefined)
-  const { data: children = [] } = usePortfolioChildren(isEpic ? undefined : itemId)
+  const { data: childFeatures = [], isLoading: featuresLoading } = usePortfolioChildFeatures(
+    isEpic ? itemId : undefined,
+  )
+  const { data: children = [], isLoading: childrenLoading } = usePortfolioChildren(
+    isEpic ? undefined : itemId,
+  )
   const { data: activityLogs = [], isLoading: activityLoading } =
     usePortfolioItemActivityLog(itemId)
 
@@ -319,9 +323,18 @@ export function PortfolioDetailPage() {
               Stories and Defects with priority and iteration, and one table taking a `kind` flag would
               be a switch statement in every cell. */}
           {isEpic ? (
-            <EpicChildrenTable features={childFeatures} />
+            <EpicChildrenTable
+              features={childFeatures}
+              canEdit={canEdit}
+              isLoading={featuresLoading}
+            />
           ) : (
-            <FeatureChildrenTable children={children} />
+            <FeatureChildrenTable
+              children={children}
+              projectId={server?.projectId}
+              canEdit={canEdit}
+              isLoading={childrenLoading}
+            />
           )}
         </div>
       )}

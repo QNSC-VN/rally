@@ -1,6 +1,7 @@
 export { type ColumnSpec, type ColStyleMap, toColumnDef } from './types'
 export { useDataTable } from './use-data-table'
 export { useRowRerank, type UseRowRerankOptions, type UseRowRerankResult } from './use-row-rerank'
+export { useDragRowStyle } from './use-drag-row-style'
 export { RankSortHeader } from './rank-sort-header'
 export {
   DataTableFrame,
