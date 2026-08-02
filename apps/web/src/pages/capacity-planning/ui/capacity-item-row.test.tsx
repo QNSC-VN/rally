@@ -54,7 +54,7 @@ describe('CapacityItemRow warnings', () => {
     expect(screen.getByRole('img', { name: 'Rollup exceeds Estimated' })).toBeTruthy()
   })
 
-  it("puts `Point Estimated missing` on the ESTIMATED column", () => {
+  it('puts `Point Estimated missing` on the ESTIMATED column', () => {
     renderRow({ warnings: ['feature_missing_estimate'], tier: 'none', estimated: 0 })
     expect(screen.getByRole('img', { name: 'Point Estimated missing' })).toBeTruthy()
   })

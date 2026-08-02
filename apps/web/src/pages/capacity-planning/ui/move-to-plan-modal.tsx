@@ -68,21 +68,23 @@ export function MoveToPlanModal({
 
   const eligible = useMemo(() => {
     const needle = search.trim().toLowerCase()
-    return plans
-      .filter((candidate) => candidate.id !== plan.id)
-      /**
-       * DRAFTS only. Moving into a published plan unpublishes it — Rally says so, and our API does it —
-       * but the BA's Invariant 8 is that "Published Plans are read-only until Revert to Draft". Offering
-       * one as a destination invited a planner to unpublish a plan as a side effect of moving a Feature,
-       * which is not a decision this dialog is for. Revert the target first, then move.
-       */
-      .filter((candidate) => candidate.status === 'draft')
-      .filter(
-        (candidate) =>
-          needle === '' ||
-          candidate.name.toLowerCase().includes(needle) ||
-          (candidate.planKey ?? '').toLowerCase().includes(needle),
-      )
+    return (
+      plans
+        .filter((candidate) => candidate.id !== plan.id)
+        /**
+         * DRAFTS only. Moving into a published plan unpublishes it — Rally says so, and our API does it —
+         * but the BA's Invariant 8 is that "Published Plans are read-only until Revert to Draft". Offering
+         * one as a destination invited a planner to unpublish a plan as a side effect of moving a Feature,
+         * which is not a decision this dialog is for. Revert the target first, then move.
+         */
+        .filter((candidate) => candidate.status === 'draft')
+        .filter(
+          (candidate) =>
+            needle === '' ||
+            candidate.name.toLowerCase().includes(needle) ||
+            (candidate.planKey ?? '').toLowerCase().includes(needle),
+        )
+    )
   }, [plans, plan.id, search])
 
   const target = eligible.find((candidate) => candidate.id === targetId) ?? null

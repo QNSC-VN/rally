@@ -2,6 +2,7 @@
   "title": "Portfolio",
   "loadError": "Failed to load portfolio items.",
   "empty": "No portfolio items yet.",
+  "filterNotShowItem": "Filter not show item",
   "emptySearch": "No portfolio items match your search.",
   "searchPlaceholder": "Search portfolio…",
   "types": {
@@ -50,7 +51,8 @@
     "loadingChildren": "Loading…",
     "noChildFeatures": "No child Features.",
     "noChildItems": "No linked Stories or Defects.",
-    "projectMoved": "Moved to another project — Team and Release were reset"
+    "projectMoved": "Moved to another project — Team and Release were reset",
+    "morePreviewItems": "+{{count}} more - see Children tab"
   },
   "health": {
     "state": {
@@ -162,7 +164,8 @@
     "message": "Archive {{count}} selected item(s)? They stay recoverable.",
     "confirm": "Archive",
     "archived": "{{count}} item(s) archived",
-    "failed": "Failed to archive"
+    "failed": "Failed to archive",
+    "skipped": "Skipped {{count}} item(s): {{items}}{{more}} — an Epic with active Features cannot be archived, and rows you cannot edit are left alone"
   },
   "columns": {
     "name": "Name"

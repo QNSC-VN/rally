@@ -34,6 +34,15 @@ export interface RowSelection {
   toggleAll: () => void
   /** Clear the entire selection. */
   clear: () => void
+  /**
+   * Replace the selection outright.
+   *
+   * For a partial bulk result: after "archive the rest and report the blocked ones" (Portfolio
+   * FR-037) the useful next state is the SKIPPED rows still selected, so the planner can act on
+   * exactly those. `clear()` would make them hunt for the failures again, and `toggle` per row
+   * cannot express it in one step.
+   */
+  replace: (ids: Set<string>) => void
 }
 
 export function useRowSelection<T extends { id: string }>(items: readonly T[]): RowSelection {
@@ -67,6 +76,8 @@ export function useRowSelection<T extends { id: string }>(items: readonly T[]): 
   }, [items])
 
   const clear = useCallback(() => setSelectedIds(new Set()), [])
+  // A COPY, so a caller cannot hold a reference to state and mutate it behind React's back.
+  const replace = useCallback((ids: Set<string>) => setSelectedIds(new Set(ids)), [])
 
   return useMemo(
     () => ({
@@ -78,7 +89,8 @@ export function useRowSelection<T extends { id: string }>(items: readonly T[]): 
       toggle,
       toggleAll,
       clear,
+      replace,
     }),
-    [selectedIds, allSelected, someSelected, isSelected, toggle, toggleAll, clear],
+    [selectedIds, allSelected, someSelected, isSelected, toggle, toggleAll, clear, replace],
   )
 }
