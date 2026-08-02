@@ -67,4 +67,36 @@ test.describe('P2.1 Backlog Enhancement', () => {
     await expect(page.getByRole('button', { name: 'Delete' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
   })
+
+  test('shows an ACCEPTED iteration’s name, not a dash', async ({ page }) => {
+    /**
+     * Merged from `backlog-accepted-iteration.e2e.ts`, which built its own accepted iteration through
+     * the UI on every run — create iteration, pick dates from the calendar popover, set state via the
+     * shared select, then create a work item into it — roughly twenty interactions to reach one
+     * assertion, and every run left another iteration behind.
+     *
+     * The fixture now carries it: `Sprint 25.12` is seeded `accepted` and holds `US-3`. The rule is
+     * unchanged — the Backlog resolves an iteration's NAME regardless of its state, where it once
+     * showed `—` for anything not currently active.
+     */
+    await loginAndSelectProject(page)
+    await page.goto('/backlog', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+
+    // Filter to the seeded story: the Backlog pages at 25 and the row would otherwise be off-page.
+    await page.getByRole('searchbox', { name: /Search backlog/i }).fill('Retire the legacy eslint')
+    await settle(page, 600)
+
+    const row = page.locator('div.group.flex').filter({ hasText: 'Retire the legacy eslint' })
+    await expect(row).toContainText('Sprint 25.12')
+
+    // Survives a reload, so the name came from the server rather than an optimistic cache.
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await settle(page)
+    await page.getByRole('searchbox', { name: /Search backlog/i }).fill('Retire the legacy eslint')
+    await settle(page, 600)
+    await expect(
+      page.locator('div.group.flex').filter({ hasText: 'Retire the legacy eslint' }),
+    ).toContainText('Sprint 25.12')
+  })
 })

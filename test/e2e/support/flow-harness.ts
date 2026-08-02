@@ -16,6 +16,32 @@
  */
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
+import {
+  NXP_CAPACITY_PLAN_2_ID,
+  NXP_CAPACITY_PLAN_ID,
+  NXP_DEFECT_1_ID,
+  NXP_EPIC_1_ID,
+  NXP_FEATURE_1_ID,
+  NXP_ITER_CURRENT_ID,
+  NXP_ITER_FUTURE_ID,
+  NXP_ITER_PAST_ID,
+  NXP_RELEASE_1_ID,
+  NXP_RELEASE_2_ID,
+  NXP_STORY_1_ID,
+  PAY_CAPACITY_PLAN_ID,
+  PAY_DEFECT_ID,
+  PAY_EPIC_ID,
+  PAY_FEATURE_ID,
+  PAY_ITER_ID,
+  PAY_MILESTONE_ID,
+  PAY_PROJECT_ID,
+  PAY_RELEASE_ID,
+  PAY_STORY_ID,
+  SEED_PROJECTS,
+  TEAM_ALPHA_ID,
+  TEAM_BETA_ID,
+  TEAM_GAMMA_ID,
+} from '../../../db/seeds/constants';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
@@ -184,6 +210,55 @@ export function uniqueKey(prefix = 'E'): string {
   const rand = randomUUID().replace(/-/g, '').slice(0, 9).toUpperCase();
   return `${prefix}${rand}`;
 }
+
+/**
+ * The TWO seeded projects and their contents, for tests that need fixtures rather than to build them.
+ *
+ * Re-exported from `db/seeds/constants.ts` so there is one source: a test that hard-codes a UUID
+ * drifts the moment the seed moves, and a test that CREATES its own project leaks it — the suite used
+ * to call `createProject` 84 times per run with no teardown anywhere, which twice pushed
+ * `portfolio_items.rank` into its `varchar(255)` ceiling and stopped the suite dead.
+ *
+ * Use `SEEDED.nxp` when the test needs depth (three iterations, two releases, an Epic with seven
+ * Features, a draft AND a published capacity plan, frozen report history, SCM links, attachments).
+ * Use `SEEDED.pay` when it needs a SECOND project — isolation, permission scoping, cross-project
+ * refusals, "that release belongs to another project". Create your own only when the test is about
+ * creation itself, and then clean it up.
+ */
+export const SEEDED = {
+  nxp: {
+    projectId: SEED_PROJECTS[0].id,
+    key: SEED_PROJECTS[0].key,
+    teamAlphaId: TEAM_ALPHA_ID,
+    teamBetaId: TEAM_BETA_ID,
+    iterationCurrentId: NXP_ITER_CURRENT_ID,
+    iterationPastId: NXP_ITER_PAST_ID,
+    iterationFutureId: NXP_ITER_FUTURE_ID,
+    releaseId: NXP_RELEASE_1_ID,
+    secondReleaseId: NXP_RELEASE_2_ID,
+    epicId: NXP_EPIC_1_ID,
+    featureId: NXP_FEATURE_1_ID,
+    storyId: NXP_STORY_1_ID,
+    defectId: NXP_DEFECT_1_ID,
+    /** DRAFT — safe to mutate. */
+    capacityPlanId: NXP_CAPACITY_PLAN_ID,
+    /** PUBLISHED — read-only until reverted, which is the point of having both. */
+    publishedCapacityPlanId: NXP_CAPACITY_PLAN_2_ID,
+  },
+  pay: {
+    projectId: PAY_PROJECT_ID,
+    key: 'PAY',
+    teamId: TEAM_GAMMA_ID,
+    iterationId: PAY_ITER_ID,
+    releaseId: PAY_RELEASE_ID,
+    milestoneId: PAY_MILESTONE_ID,
+    epicId: PAY_EPIC_ID,
+    featureId: PAY_FEATURE_ID,
+    storyId: PAY_STORY_ID,
+    defectId: PAY_DEFECT_ID,
+    capacityPlanId: PAY_CAPACITY_PLAN_ID,
+  },
+} as const;
 
 /** Paging args that fetch everything a small test project produces. */
 export const ALL = { limit: 200, cursor: null } as const;

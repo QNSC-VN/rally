@@ -96,7 +96,9 @@ test.describe('Golden journey', () => {
         .catch(() => {})
       await settle(page, 600)
       const rowAfter = page.locator('div.group.flex').filter({ hasText: storyTitle })
-      await expect(rowAfter.getByRole('group', { name: 'Schedule state' }).locator('button:disabled')).toHaveText('P')
+      await expect(
+        rowAfter.getByRole('group', { name: 'Schedule state' }).locator('button:disabled'),
+      ).toHaveText('P')
     }
 
     // ── 6. Open the seeded Release detail (shared DetailLayout chrome) ────────

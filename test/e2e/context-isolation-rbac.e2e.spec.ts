@@ -19,12 +19,13 @@ import type { JwtPayload } from '@platform';
 import {
   ALL,
   DEVELOPER_ID,
+  SEEDED,
   adminActor,
   bootRallyApp,
+  ensureViewerGrant,
   makeActor,
   uniqueKey,
   viewerActor,
-  ensureViewerGrant,
 } from './support/flow-harness';
 
 /**
@@ -94,32 +95,44 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
 
   // ── E2E-008: Project context isolation ──────────────────────────────────────
   describe('E2E-008 context isolation', () => {
-    it('does not leak project A work items into project B listings', async () => {
-      const projectA = await projects.createProject(admin, { key: uniqueKey(), name: 'Project A' });
-      const projectB = await projects.createProject(admin, { key: uniqueKey(), name: 'Project B' });
+    /**
+     * Both isolation tests run on the two SEEDED projects rather than building four of their own.
+     *
+     * Isolation needs two projects that differ, not two projects that are new — and every project a
+     * test creates is one the suite never deletes. `SEEDED.nxp` and `SEEDED.pay` are exactly that
+     * pair, seeded with a full graph each, so the assertions get stronger (real neighbours, not two
+     * empty shells) while four `createProject` calls disappear.
+     */
+    it('does not leak one project’s work items into the other’s listings', async () => {
+      const storyA = await workItems.createWorkItem(
+        admin,
+        SEEDED.nxp.projectId,
+        'story',
+        `Iso A ${uniqueKey()}`,
+      );
+      const storyB = await workItems.createWorkItem(
+        admin,
+        SEEDED.pay.projectId,
+        'story',
+        `Iso B ${uniqueKey()}`,
+      );
 
-      const storyA = await workItems.createWorkItem(admin, projectA.id, 'story', 'A-only story');
-      const storyB = await workItems.createWorkItem(admin, projectB.id, 'story', 'B-only story');
-
-      const listA = await workItems.listWorkItems(admin, projectA.id, NO_WI_FILTERS, ALL);
+      const listA = await workItems.listWorkItems(admin, SEEDED.nxp.projectId, NO_WI_FILTERS, ALL);
       const idsA = listA.data.map((w) => w.id);
       expect(idsA).toContain(storyA.id);
       expect(idsA).not.toContain(storyB.id);
 
-      const listB = await workItems.listWorkItems(admin, projectB.id, NO_WI_FILTERS, ALL);
+      const listB = await workItems.listWorkItems(admin, SEEDED.pay.projectId, NO_WI_FILTERS, ALL);
       const idsB = listB.data.map((w) => w.id);
       expect(idsB).toContain(storyB.id);
       expect(idsB).not.toContain(storyA.id);
     });
 
     it('rejects cross-project parenting (a defect cannot parent onto another project)', async () => {
-      const projectA = await projects.createProject(admin, { key: uniqueKey(), name: 'Cross A' });
-      const projectB = await projects.createProject(admin, { key: uniqueKey(), name: 'Cross B' });
-      const storyA = await workItems.createWorkItem(admin, projectA.id, 'story', 'A story');
-
+      // The seeded story in NXP is the parent a PAY defect must not be allowed to claim.
       await expect(
-        workItems.createWorkItem(admin, projectB.id, 'defect', 'Cross defect', {
-          parentId: storyA.id,
+        workItems.createWorkItem(admin, SEEDED.pay.projectId, 'defect', 'Cross defect', {
+          parentId: SEEDED.nxp.storyId,
         }),
       ).rejects.toMatchObject({ code: 'WORK_ITEM_PARENT_SCOPE_MISMATCH' });
     });

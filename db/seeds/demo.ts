@@ -64,6 +64,8 @@ import {
 import { userRoleAssignments } from '../schema/access';
 import { seedSystemRolesInto } from './reference';
 import { seedTenantBootstrapInto } from './bootstrap';
+import { seedSecondProject } from './second-project';
+import { seedReferenceExtras } from './reference-extras';
 import {
   type Db,
   DEFAULT_WORKFLOW_STATUSES,
@@ -1480,9 +1482,20 @@ export async function seed(connectionUrl?: string): Promise<void> {
       })
       .onConflictDoNothing();
 
-    // ── The one end-to-end demo flow (team, story+defect, tasks, iteration, ──
+    // ── NXP's deep reference data (team, story+defect, tasks, iteration, ─────
     // release, milestone — see seedFlow() for the full relation graph) ───────
     await seedFlow();
+
+    // ── PAY: the SECOND project, one row of every entity type ───────────────
+    // Every rule that needs "somewhere else" — isolation, permission scoping, cross-project
+    // refusals — now has a fixture instead of building its own. See second-project.ts.
+    await seedSecondProject(db);
+
+    // ── The reference data no seed reached ──────────────────────────────────
+    // Ten tables had zero rows on a freshly seeded database — attachments/files, every notification
+    // table, the whole SCM chain behind the Connections tab, audit logs, workflow transitions — plus
+    // NXP had one iteration, which cannot express Velocity or an unscheduled backlog.
+    await seedReferenceExtras(db);
 
     console.log(
       `✅  Test fixture seeded — 1 project (NXP), 3 users, 1 team, 1 iteration, 1 release, 1 milestone, 1 story + 1 defect + 2 tasks (one fully-linked flow)`,
