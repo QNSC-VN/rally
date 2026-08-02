@@ -273,6 +273,38 @@ difference is the whole design. Read this before changing a report or the snapsh
   weekend audit rows and a sparse burnup — production must never fabricate history, a dev seed
   must, and those shapes are the ones worth being able to see.
 
+## Team Status and Team Capacity are ONE population
+
+The Team Capacity SRS says it twice — the scoped Task set comes from "the Task's PARENT Story/Defect
+Project, Team and Iteration assignment", and Capacity "must use the same source/table/API domain as
+`Track > Team Status`". Three things had them disagreeing, all now pinned by
+`test/e2e/team-status-agreement.e2e.spec.ts`:
+
+- **The team predicate is three-tier on BOTH sides**: `coalesce(task.team_id, parent.team_id,
+iteration.team_id)`. Team Status used a strict `tasks.team_id = ?`, and a task's team only DEFAULTS
+  to its parent's (SRS P1-04) — so a Story that carries the team while its task does not is an ordinary
+  shape, and SQL equality never matches NULL. Those tasks vanished from Team Status while Team Capacity
+  counted them. The reporting file's comment already claimed parity; it was true of the
+  iteration-membership half and false of the team half.
+- **A soft delete does not cascade to `work.tasks`** (the FK is `ON DELETE cascade`, which a soft
+  delete never fires). Team Status LEFT-joined the parent, so orphaned tasks were still counted with a
+  blank Work Product column, while Iteration Status and the Phase 6 projection inner-join and exclude
+  them. Both surfaces now inner-join.
+- **`member_capacity` is unique on `(project_id, team_id, iteration_id, user_id)`**, so a member on two
+  teams has two legitimate rows in one iteration. `getCapacities` filtered on iteration + user only and
+  collapsed into a `Map<userId, hours>` — last row won, non-deterministically, and `upsertCapacity`
+  re-resolves its team from the iteration, so an edit could overwrite a different team's number than
+  the one displayed. It now takes the team key and SUMs per member (under All Teams, where the screen
+  groups by MEMBER, the total of their per-team allocations is the honest answer).
+
+**Editing Estimate on Team Status must send `estimateHours` ALONE.** It used to also set `todoHours`
+whenever the caller had not, which defined the field before `WorkItemsService` saw it and so bypassed
+the once-only gate (`input.todoHours === undefined && item.todoHours === null`) — the copy then
+happened on every estimate edit, re-inflating a completed task's auto-zeroed To Do and moving the
+Iteration Status total, the Tasks-tab total and the next Burndown snapshot with it. The rule lives in
+the service; the other two edit surfaces already did this correctly, and this screen's own UI comment
+described the behaviour it did not have.
+
 ## Task hours are THREE independent fields
 
 `Estimate`, `To Do` and `Actual` never derive from each other (Portfolio SRS:141-147), with exactly
