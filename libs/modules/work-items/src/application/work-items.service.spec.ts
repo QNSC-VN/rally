@@ -894,6 +894,56 @@ describe('WorkItemsService', () => {
       expect(call?.[1]).toMatchObject({ todoHours: '4' });
     });
 
+    /**
+     * The BA's first clause, on the UPDATE path: "If the Owner enters `Estimate` first, the system
+     * copies the same number of hours to `To Do` once" (Portfolio SRS:143).
+     *
+     * The create path did this and the update path did not, so estimating a task that already existed
+     * left To Do empty and the planner typed the same number twice.
+     */
+    it('copies a FIRST Estimate into To Do, once', async () => {
+      const task = mockWorkItem({ id: 'task-1', type: 'task', todoHours: null });
+      workItemRepo.findById.mockResolvedValue(task);
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
+
+      await service.updateWorkItem(mockActor, 'task-1', { estimateHours: '6' });
+
+      const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
+      expect(call?.[1]).toMatchObject({ estimateHours: '6', todoHours: '6' });
+    });
+
+    it('does NOT re-copy once To Do has a value — including a deliberate 0', async () => {
+      // "After that first copy, `Estimate`, `To Do` and `Actual` do not auto-recalculate each other"
+      // (SRS:144). `0` is the case worth pinning: a completed task has exactly that, so treating it as
+      // "unset" would undo the auto-zero, or overwrite a planner who typed 0 on purpose.
+      for (const existingTodo of ['4', '0']) {
+        workItemRepo.update.mockClear();
+        workItemRepo.findById.mockResolvedValue(
+          mockWorkItem({ id: 'task-1', type: 'task', todoHours: existingTodo }),
+        );
+        workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
+
+        await service.updateWorkItem(mockActor, 'task-1', { estimateHours: '9' });
+
+        const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
+        expect(call?.[1]).toMatchObject({ estimateHours: '9' });
+        expect(call?.[1]).not.toHaveProperty('todoHours');
+      }
+    });
+
+    it('lets the same patch set BOTH, without the copy interfering', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'task-1', type: 'task', todoHours: null }),
+      );
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
+
+      await service.updateWorkItem(mockActor, 'task-1', { estimateHours: '8', todoHours: '3' });
+
+      const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
+      // An explicit To Do wins: the copy is a convenience for the field being LEFT OUT.
+      expect(call?.[1]).toMatchObject({ estimateHours: '8', todoHours: '3' });
+    });
+
     // ── Real Rally: completing a task auto-zeroes To Do; Estimate untouched ──
     it('auto-zeroes To Do when a task is completed, leaving Estimate untouched', async () => {
       const task = mockWorkItem({

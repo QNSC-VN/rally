@@ -772,6 +772,25 @@ export class WorkItemsService {
       if (completing && input.todoHours === undefined) {
         input.todoHours = '0';
       }
+
+      /**
+       * The FIRST Estimate copies itself to To Do — once, and only while To Do is unset.
+       *
+       * "If the Owner enters `Estimate` first, the system copies the same number of hours to `To Do`
+       * once. After that first copy, `Estimate`, `To Do` and `Actual` do not auto-recalculate each
+       * other" (Portfolio SRS:143-144). The create path did this (`todoHours ?? estimateHours`) and
+       * the update path did not, so estimating a task that already existed left To Do empty and the
+       * planner had to type the same number twice.
+       *
+       * `null` is the gate, not falsiness: a To Do of `0` is a real answer — a completed task has
+       * exactly that — and re-copying the estimate over it would undo the auto-zero above, or
+       * silently overwrite a planner who deliberately typed 0.
+       */
+      const firstEstimate =
+        input.estimateHours !== undefined && input.todoHours === undefined && item.todoHours === null;
+      if (firstEstimate) {
+        input.todoHours = input.estimateHours;
+      }
     }
 
     const entries = diffWorkItem(item, input, isTask);

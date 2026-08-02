@@ -728,6 +728,33 @@ describe('Phase 6 reports (e2e)', () => {
     expect(later.idealTarget).toBe(13);
   });
 
+  it('validates the SCOPE on the burnup route, which returns no context', async () => {
+    /**
+     * Four of the five report routes build a `context` and get the project/team existence checks with
+     * it. `getReleaseBurnup` returns no context, so it skipped them entirely: an unknown `teamId`
+     * narrowed every query to nothing and still answered 200, and a soft-deleted project served a
+     * burnup. The release check it did have proves the release belongs to the project — not that the
+     * project is still there.
+     */
+    const release = await releases.createRelease(admin, projectId, `Scope ${uniqueKey()}`, {
+      startDate: localToday,
+      releaseDate: shift(localToday, 7),
+    });
+
+    await expect(
+      reporting.getReleaseBurnup(admin, {
+        projectId,
+        releaseId: release.id,
+        teamId: randomUUID(),
+      }),
+    ).rejects.toThrow(/TEAM_NOT_FOUND|not found/i);
+
+    // And an unknown project is refused before the release is even looked up.
+    await expect(
+      reporting.getReleaseBurnup(admin, { projectId: randomUUID(), releaseId: release.id }),
+    ).rejects.toThrow(/PROJECT_NOT_FOUND|not found/i);
+  });
+
   it('refuses an iteration from another project even with a project the caller can read', async () => {
     const other = await projects.createProject(admin, {
       key: uniqueKey(),

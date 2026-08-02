@@ -201,6 +201,27 @@ difference is the whole design. Read this before changing a report or the snapsh
   weekend audit rows and a sparse burnup — production must never fabricate history, a dev seed
   must, and those shapes are the ones worth being able to see.
 
+## Task hours are THREE independent fields
+
+`Estimate`, `To Do` and `Actual` never derive from each other (Portfolio SRS:141-147), with exactly
+two automatic moves:
+
+- **The FIRST Estimate copies itself to To Do, once** — and only while To Do is `null`. `0` is not
+  "unset": a completed task has exactly that, so re-copying would undo the auto-zero below or
+  overwrite a planner who typed 0 deliberately. The create path always did this; the update path did
+  not, so estimating an existing task left To Do empty and the number had to be typed twice.
+- **Completing a task sets To Do to 0**, and **reopening does NOT restore it** — the owner enters a new
+  remaining value if there is one. This replaces the older `Estimate = To Do + Actual` display rule.
+
+## Archive ordering cuts both ways
+
+An Epic with active child Features cannot be archived — and a Feature whose Epic is archived cannot be
+RESTORED (`PORTFOLIO_PARENT_ARCHIVED`). The second half was missing, so the forbidden state was
+reachable in three legal steps: archive the Feature, archive the now-childless Epic, restore the
+Feature. That leaves an active Feature under a hidden parent, which is what `assertReferences` refuses
+on every other write. The message names the Epic's key, because an archived parent is invisible in
+every list.
+
 ## Capacity: what refuses, and why
 
 Three references into a capacity plan are now REFUSALS rather than silent repairs, all following

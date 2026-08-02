@@ -368,6 +368,45 @@ describe('portfolio write paths (e2e)', () => {
       expect(archivedEpic.archivedAt).not.toBeNull();
     });
 
+    it('REFUSES to restore a Feature whose Epic is still archived', async () => {
+      /**
+       * The forbidden state was reachable in three legal steps: archive the Feature, archive the
+       * now-childless Epic, restore the Feature — leaving an ACTIVE Feature under a hidden parent.
+       * `setArchived`'s own docstring says that is what it exists to prevent, and `assertReferences`
+       * refuses the same link on every other write ("Cannot attach a Feature to an archived Epic"),
+       * but the guard only looked in the archiving direction.
+       */
+      const epic = await portfolio.createItem(admin, {
+        projectId: projectAId,
+        type: 'epic',
+        name: 'Restore-order epic',
+      });
+      const child = await portfolio.createItem(admin, {
+        projectId: projectAId,
+        type: 'feature',
+        name: 'Restore-order feature',
+        parentId: epic.id,
+      });
+
+      // The three legal steps.
+      await portfolio.setArchived(admin, child.id, true);
+      await portfolio.setArchived(admin, epic.id, true);
+      await expect(portfolio.setArchived(admin, child.id, false)).rejects.toMatchObject({
+        code: 'PORTFOLIO_PARENT_ARCHIVED',
+      });
+
+      // The Epic's KEY is in the message: an archived parent is invisible in every list, so
+      // "restore the Epic first" is unactionable without knowing which one.
+      await expect(portfolio.setArchived(admin, child.id, false)).rejects.toThrow(
+        new RegExp(epic.itemKey),
+      );
+
+      // Restore the Epic, and the Feature goes through — the order is the whole rule.
+      await portfolio.setArchived(admin, epic.id, false);
+      const restored = await portfolio.setArchived(admin, child.id, false);
+      expect(restored.archivedAt).toBeNull();
+    });
+
     it('stops a new Feature attaching to an archived Epic', async () => {
       const epic = await portfolio.createItem(admin, {
         projectId: projectAId,

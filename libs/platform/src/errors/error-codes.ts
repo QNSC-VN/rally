@@ -95,6 +95,8 @@ export const ErrorCodes = {
   PORTFOLIO_ITEM_PROJECT_MISMATCH: 'PORTFOLIO_ITEM_PROJECT_MISMATCH',
   /** A project move is refused while the Feature is allocated on a capacity plan. */
   PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION: 'PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION',
+  /** Restoring a Feature is refused while its Epic is still archived. */
+  PORTFOLIO_PARENT_ARCHIVED: 'PORTFOLIO_PARENT_ARCHIVED',
   PORTFOLIO_ITEM_TEAM_MISMATCH: 'PORTFOLIO_ITEM_TEAM_MISMATCH',
   PORTFOLIO_ITEM_INVALID_PARENT: 'PORTFOLIO_ITEM_INVALID_PARENT',
   /** Archiving an Epic that still has active child Features would orphan them. */
