@@ -9,14 +9,24 @@ vi.mock('@/shared/api/http-client', () => ({
   apiClient: { GET: vi.fn(), POST: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() },
 }))
 
-// The Feature's project scopes these two option lists; the rows under test do not depend on their
-// contents, only on the cells being wired to them.
+// The Feature's project scopes these two option lists. The fixtures are partial on purpose — the
+// cells read only these fields — but they are cast through the real types, so a rename in `Release`
+// or `ProjectMember` fails here rather than silently leaving the mock describing a shape the
+// component no longer receives.
 vi.mock('@/features/releases/api', () => ({
-  useReleases: () => ({ data: [{ id: 'r1', name: 'v2.0', releaseKey: 'REL-1' }] }),
+  useReleases: () => ({
+    data: [{ id: 'r1', name: 'v2.0', releaseKey: 'REL-1' } as unknown as Release],
+  }),
 }))
 vi.mock('@/features/teams/api', () => ({
   useProjectMembers: () => ({
-    data: [{ userId: 'u1', displayName: 'Admin User', email: 'admin@qnsc.dev' }],
+    data: [
+      {
+        userId: 'u1',
+        displayName: 'Admin User',
+        email: 'admin@qnsc.dev',
+      } as unknown as ProjectMember,
+    ],
   }),
 }))
 
@@ -24,6 +34,9 @@ import '@/shared/i18n/i18n'
 import { apiClient } from '@/shared/api/http-client'
 import { FeatureChildrenTable } from './feature-children-table'
 import type { PortfolioChild } from '@/features/portfolio/api'
+import type { Release } from '@/features/releases/api'
+import type { ProjectMember } from '@/features/teams/api'
+import { PRIORITY_LABEL, PRIORITY_VALUES } from '@/entities/work-item/model/types'
 
 const mockGET = apiClient.GET as ReturnType<typeof vi.fn>
 const mockPATCH = apiClient.PATCH as ReturnType<typeof vi.fn>
@@ -170,6 +183,25 @@ describe('FeatureChildrenTable', () => {
       <FeatureChildrenTable children={[child({ type: 'story' })]} projectId="p1" canEdit />,
     )
     expect(screen.queryByRole('button', { name: 'US-1 priority' })).toBeNull()
+  })
+
+  it('offers exactly the shared priority enum, not a locally-written list', async () => {
+    // This cell first shipped with a hand-written `['none','low','normal','high','urgent']`. It
+    // happened to match, but it was a second copy of `work_item_priority` to keep in step — and the
+    // `work-items:priority.*` i18n block it drew labels from still carries a `critical` key that
+    // migration 0011 remapped to `urgent`, so a label-driven list would have offered a dead value.
+    renderTable(
+      <FeatureChildrenTable children={[child({ type: 'defect' })]} projectId="p1" canEdit />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'US-1 priority' }))
+
+    // The popover renders each option as a plain button, so assert on the labels themselves.
+    const popover = await screen.findByRole('dialog')
+    for (const label of PRIORITY_VALUES.map((p) => PRIORITY_LABEL[p])) {
+      expect(within(popover).getByText(label)).toBeTruthy()
+    }
+    expect(within(popover).queryByText('Critical')).toBeNull()
   })
 
   it('does not edit without portfolio:edit — FR-011 gates on it', async () => {

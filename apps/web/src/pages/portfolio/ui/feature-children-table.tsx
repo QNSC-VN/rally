@@ -16,11 +16,11 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
-import { ScheduleState } from '@/entities/work-item/model/types'
+import { PRIORITY_LABEL, PRIORITY_VALUES, ScheduleState } from '@/entities/work-item/model/types'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useTableSort, type SortDir } from '@/shared/lib/hooks/use-table-sort'
-import { useReleases } from '@/features/releases/api'
-import { useProjectMembers } from '@/features/teams/api'
+import { useReleases, type Release } from '@/features/releases/api'
+import { useProjectMembers, type ProjectMember } from '@/features/teams/api'
 import {
   useTasks,
   useUpdateWorkItem,
@@ -29,9 +29,6 @@ import {
 } from '@/features/work-items/api'
 import type { PortfolioChild } from '@/features/portfolio/api'
 import { PORTFOLIO_CHILD_COLUMNS, type ChildColKey } from '../model/children-columns'
-
-/** The BA's Priority column is Defect-only (§5.2); these are the values it offers. */
-const PRIORITY_VALUES = ['none', 'low', 'normal', 'high', 'urgent'] as const
 
 /** Which field each sortable column compares on. */
 type ChildSortField =
@@ -270,8 +267,11 @@ function ChildRow({
   expanded: boolean
   onToggleExpand: () => void
   expandLabel: string
-  releases: { id: string; name: string; releaseKey?: string | null }[]
-  members: { userId: string; displayName?: string | null; email?: string | null }[]
+  // The real query types, not structural stand-ins: `OwnerSelectCell` takes `ProjectMember[]`, and
+  // a hand-written `{ userId; displayName?; email? }` would silently accept a roster missing the
+  // fields that component reads.
+  releases: Release[]
+  members: ProjectMember[]
   onOpen: () => void
 }) {
   const { t } = useTranslation(['portfolio', 'work-items'])
@@ -337,10 +337,15 @@ function ChildRow({
               value={child.priority ?? ''}
               readOnly={!canEdit}
               ariaLabel={t('detail.children.editPriority', { key: child.itemKey })}
-              options={PRIORITY_VALUES.map((p) => ({
-                value: p,
-                label: t(`work-items:priority.${p}`, { defaultValue: p }),
-              }))}
+              // `PRIORITY_VALUES` / `PRIORITY_LABEL` from the entity layer — the SAME source the
+              // Backlog's priority cell uses. A local list here would be a second enum to keep in
+              // step with `work_item_priority`, and the `work-items:priority.*` i18n block is not
+              // that source: it still carries a `critical` key that migration 0011 remapped to
+              // `urgent`, so it would have offered a value the column no longer has.
+              options={PRIORITY_VALUES.map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))}
+              // Cast to the UPDATE input's union, not to `WorkItem['priority']`: the read model
+              // types this field as a bare `string` (the response DTO does not narrow it), so
+              // `WiPriority` would not constrain anything. Same cast the Backlog cell uses.
               onChange={(v) => patch({ priority: v as UpdateWorkItemInput['priority'] })}
             />
           ) : (
@@ -444,7 +449,7 @@ function ChildTaskRows({
   workItemId: string
   colStyles: Record<ChildColKey, CSSProperties>
   /** A task carries `assigneeId`, not a name — the roster resolves it, as the Tasks tab does. */
-  members: { userId: string; displayName?: string | null; email?: string | null }[]
+  members: ProjectMember[]
 }) {
   const { t } = useTranslation('portfolio')
   const { data: tasks = [], isLoading } = useTasks(workItemId)
