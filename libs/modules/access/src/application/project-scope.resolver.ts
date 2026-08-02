@@ -4,6 +4,7 @@ import { InjectDrizzle, NotFoundException } from '@platform';
 import type { DrizzleDB, ErrorCode } from '@platform';
 import {
   workItems,
+  tasks,
   iterations,
   releases,
   milestones,
@@ -14,8 +15,15 @@ import {
 /**
  * Resource kinds whose project scope the PolicyGuard resolves by LOADING the row
  * (for endpoints where the project id is only reachable via `:id`, not the
- * request body/query). Tasks are nested under work-items (`/:id/tasks`), so a
- * task endpoint resolves via its parent's `work_item` id — no `task` kind needed.
+ * request body/query).
+ *
+ * `work_item` spans TWO tables. Tasks moved out of `work_items` into `work.tasks`
+ * at the Phase 3 split (migration 0072: "nothing inserts a task into work_items"),
+ * but the routes did not split with them — `PATCH /work-items/:id`,
+ * `/:id/activity`, `/:id/attachments`, `/:id/watchers` and
+ * `PATCH /team-status/tasks/:taskId` all take a TASK's own id. So there is no
+ * separate `task` kind to add: one kind has to cover both tables, exactly as
+ * `WorkItemDrizzleRepository.findById` already does.
  */
 export type ScopedResource =
   'work_item' | 'iteration' | 'release' | 'milestone' | 'portfolio_item' | 'capacity_plan';
@@ -50,17 +58,48 @@ export class ProjectScopeResolver {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
   async resolve(resource: ScopedResource, id: string, workspaceId: string): Promise<string> {
-    const table = TABLES[resource];
-    const rows = await this.db
-      .select({ projectId: table.projectId })
-      .from(table)
-      .where(and(eq(table.id, id), eq(table.workspaceId, workspaceId)))
-      .limit(1);
-    const projectId = rows[0]?.projectId;
+    const projectId =
+      (await this.lookup(TABLES[resource], id, workspaceId)) ??
+      /**
+       * A task's id, on a `work_item` route.
+       *
+       * Without this fallback the guard threw WORK_ITEM_NOT_FOUND for every task id — before the
+       * handler ran, and regardless of permission. Measured as a Workspace Admin: `GET`, `/activity`
+       * and `/attachments` on a task all answered 404 while the parent story answered 200. That made
+       * a Task uneditable everywhere (Tasks tab, Task Detail, Team Status), its Revision History
+       * permanently empty, and its attachments unreachable — four Phase 1 SRS contracts dead on one
+       * line of table mapping.
+       *
+       * Second query, not a join or a union: the common case is a story or defect and pays nothing,
+       * and only a miss reaches the tasks table. Mirrors `findById`, whose own docblock already
+       * describes this fallback as the thing task surfaces depend on.
+       */
+      (resource === 'work_item' ? await this.lookup(tasks, id, workspaceId) : null);
+
     if (!projectId) {
       const [code, message] = NOT_FOUND[resource];
       throw new NotFoundException(code, message);
     }
     return projectId;
+  }
+
+  /**
+   * One indexed `(id, workspace_id)` read, or null.
+   *
+   * Deliberately does NOT filter `deleted_at`: the guard's job is to find the owning project so a
+   * permission can be checked, and a soft-deleted row still has one. The services reject the
+   * deleted item themselves, with the error that actually describes the situation.
+   */
+  private async lookup(
+    table: (typeof TABLES)[ScopedResource] | typeof tasks,
+    id: string,
+    workspaceId: string,
+  ): Promise<string | null> {
+    const rows = await this.db
+      .select({ projectId: table.projectId })
+      .from(table)
+      .where(and(eq(table.id, id), eq(table.workspaceId, workspaceId)))
+      .limit(1);
+    return rows[0]?.projectId ?? null;
   }
 }
