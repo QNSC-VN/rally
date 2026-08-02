@@ -93,6 +93,8 @@ export const ErrorCodes = {
   PORTFOLIO_ITEM_NOT_FOUND: 'PORTFOLIO_ITEM_NOT_FOUND',
   PORTFOLIO_ITEM_INVALID_TYPE: 'PORTFOLIO_ITEM_INVALID_TYPE',
   PORTFOLIO_ITEM_PROJECT_MISMATCH: 'PORTFOLIO_ITEM_PROJECT_MISMATCH',
+  /** A project move is refused while the Feature is allocated on a capacity plan. */
+  PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION: 'PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION',
   PORTFOLIO_ITEM_TEAM_MISMATCH: 'PORTFOLIO_ITEM_TEAM_MISMATCH',
   PORTFOLIO_ITEM_INVALID_PARENT: 'PORTFOLIO_ITEM_INVALID_PARENT',
   /** Archiving an Epic that still has active child Features would orphan them. */
@@ -137,6 +139,8 @@ export const ErrorCodes = {
   CAPACITY_ALLOCATION_ALREADY_UNASSIGNED: 'CAPACITY_ALLOCATION_ALREADY_UNASSIGNED',
   /** A release cannot be deleted while a capacity plan is built on it. */
   RELEASE_HAS_CAPACITY_PLAN: 'RELEASE_HAS_CAPACITY_PLAN',
+  /** Unlinking a team from a project is refused while it sits on one of that project's plans. */
+  PROJECT_TEAM_HAS_CAPACITY_PLAN: 'PROJECT_TEAM_HAS_CAPACITY_PLAN',
   /**
    * An Unallocated row cannot be a Feature's primary team assignment.
    *

@@ -56,12 +56,21 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   `pnpm --filter rally-web codegen` against a running local API, then a commit. The
   `OpenAPI contract` job regenerates from the spec it captured and diffs
   (`codegen:check`), so drift fails CI instead of failing at runtime.
-- **Do NOT run the worker while running the BE e2e suite.** `test/e2e/notification-flow.e2e.spec.ts`
-  drives the notification relay directly, and a live `pnpm start:dev:worker` is a competing consumer
-  of `messaging.notification_outbox` — it claims the rows the test is waiting for, which surfaces as
-  `waitFor() timed out after 10000ms` and looks like a product bug. Stop the worker first. (That
-  spec also has an in-suite ordering flake independent of the worker: it passes alone and can fail
-  in a full run. Reproducible on a clean checkout, so it is not yours.)
+- **`waitFor() timed out` in `notification-flow.e2e.spec.ts` is an ENVIRONMENT fault, not a flake.**
+  Two independent causes, both seen in one session:
+    1. **Email is unconfigured.** `.env` ships `EMAIL_PROVIDER=ses`, but `MAIL_FROM_EMAIL` is
+       `.optional()` in `env.schema.ts` despite its own comment saying "Required when
+       EMAIL_PROVIDER != 'dev'". Unset, `resolveFromEmail` returns `''`, every send fails with
+       `Email address not verified "Mini Rally" <>`, and after three failures the email circuit
+       breaker opens and stays open for the process — so the relay never delivers and the test waits
+       out its 10s. Set `MAIL_FROM_EMAIL` and verify it in localstack:
+       `docker exec -i rally-localstack awslocal ses verify-email-identity --email-address <addr>`.
+       (The breaker is in-process, so restarting the API clears it; the failed rows are not retried
+       and can be deleted.)
+    2. **A live worker is a competing consumer** of `messaging.notification_outbox` and claims the
+       rows the test is waiting for. Stop `pnpm start:dev:worker` before a BE e2e run.
+  Neither is a product defect, and both look exactly like one. Check
+  `docker ps` first: localstack dying mid-session produces the same symptom.
 - **`tsc -b` can pass on STALE build info.** Two things hid behind that in one session: an
   error code missing from the `ErrorCode` union, and a client that had never seen a new
   route (which surfaces only as `Cannot POST /v1/...` in the browser). When a change spans
@@ -156,6 +165,33 @@ difference is the whole design. Read this before changing a report or the snapsh
   Phase 6 chart shows its empty state on a fresh database. The rows deliberately include a GAP,
   weekend audit rows and a sparse burnup — production must never fabricate history, a dev seed
   must, and those shapes are the ones worth being able to see.
+
+## Capacity: what refuses, and why
+
+Three references into a capacity plan are now REFUSALS rather than silent repairs, all following
+`RELEASE_HAS_CAPACITY_PLAN` on release delete — the pattern this repo already chose:
+
+- **Moving a Feature to another project** while it is allocated
+  (`PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION`). A plan belongs to one project, so the Feature took
+  nothing with it: the rows stayed behind, kept feeding that team's Estimated, the plan total and
+  the cutline, and publish wrote the OLD project's Release onto it — the state `assertReferences`
+  itself rejects. Deleting the rows instead would destroy committed numbers on a plan the person
+  moving the Feature may not even be able to see. `applyPlanToFeature` also filters on the plan's
+  project now, so the write is incapable of crossing projects even for rows that predate the guard.
+- **Unlinking a team from a project** while it sits on one of that project's plans
+  (`PROJECT_TEAM_HAS_CAPACITY_PLAN`). `project_teams` is a soft status flip, so
+  `fk_capacity_plan_teams_team ON DELETE RESTRICT` never fires. `Remove Team` on the plan is the
+  deliberate action and it re-parks the demand (AC-005), so the refusal costs nothing.
+- **`assertTeamInProject` requires both the LINK and the TEAM to be active.** It checked neither, so
+  an unlinked or archived team could still be added to a plan — recreating exactly what migration
+  0085 was written to clean up.
+
+**`capacity:view_draft` is the fourth capacity code, and it exists because the BA's matrix needs
+it.** AC-012 keeps a read-only Project Admin "opening Draft and Published plans"; AC-013 hides
+Drafts from a Project Member. Visibility was `capacity:manage || capacity:publish`, which satisfied
+AC-013 and broke AC-012 — a read-only Project Admin holds neither write code. Granted to Project
+Admin and NOT to Project Member; the write grants still imply it. Backfilled by migration 0094 (see
+below for why a backfill is required at all).
 
 ## Permissions reach a workspace ONCE
 
