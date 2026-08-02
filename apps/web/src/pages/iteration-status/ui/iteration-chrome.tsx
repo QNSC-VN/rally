@@ -293,8 +293,13 @@ export function MetricsStrip({
           caption={
             metrics?.plannedVelocity == null
               ? t('metrics.noVelocityTarget')
-              : t('metrics.points', {
-                  current: metrics.totalPlanEstimate ?? 0,
+              : // `acceptedPoints`, the same numerator the percentage above is computed from. It used to
+                // print `totalPlanEstimate`, so 34 accepted of 47 planned rendered "72% · 47 of 47
+                // Points" — a caption contradicting its own percentage, which reads as 100%
+                // attainment. IB/Iteration Status SRS: "accepted points compared with the Iteration
+                // planned velocity".
+                t('metrics.points', {
+                  current: metrics.acceptedPoints ?? 0,
                   total: metrics.plannedVelocity,
                 })
           }

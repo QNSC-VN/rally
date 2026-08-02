@@ -6,6 +6,7 @@ import {
   tasks,
   workItems,
   releases,
+  iterations,
   memberCapacity,
   teamMembers,
   projectMembers,
@@ -31,6 +32,25 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
     // this replaced correlated subqueries).
     const parent = alias(workItems, 'parent');
     const release = alias(releases, 'parent_release');
+    const iteration = alias(iterations, 'task_iteration');
+
+    /**
+     * Whose work this is, in THREE tiers — the same expression the Phase 6 Team Capacity projection
+     * uses (`reporting.drizzle-repository.ts`).
+     *
+     * This was a strict `tasks.team_id = ?`. A task's team only DEFAULTS to its parent's (SRS P1-04),
+     * so a Story with no team of its own produces tasks with `team_id IS NULL` — and SQL equality
+     * never matches NULL. With a Team selected, Team Status dropped exactly those tasks while Team
+     * Capacity kept them through the iteration's team, so the two screens reported different
+     * Estimate/ToDo/Actual totals for the same Project + Team + Iteration. The Team Capacity SRS is
+     * explicit that the scoped Task set comes from "the Task's PARENT Story/Defect Project, Team and
+     * Iteration assignment", and that Capacity "must use the same source/table/API domain as
+     * Track > Team Status".
+     *
+     * The comment in the reporting repository already claimed parity with this method. That was true
+     * of the iteration-membership half below and false of the team half.
+     */
+    const resolvedTeam = sql`coalesce(${tasks.teamId}, ${parent.teamId}, ${iteration.teamId})`;
 
     const conditions = [
       eq(tasks.workspaceId, workspaceId),
@@ -39,7 +59,7 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
       sql`(${tasks.iterationId} = ${iterationId} OR ${parent.iterationId} = ${iterationId})`,
     ];
     if (teamId) {
-      conditions.push(eq(tasks.teamId, teamId));
+      conditions.push(sql`${resolvedTeam} = ${teamId}::uuid`);
     }
 
     // Fetch tasks with parent (work product) info via lateral subqueries.
@@ -69,7 +89,21 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
         rank: tasks.rank,
       })
       .from(tasks)
-      .leftJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
+      /**
+       * INNER, not LEFT.
+       *
+       * A soft delete stamps `deleted_at` on the one row and never cascades to `work.tasks` (the FK is
+       * `ON DELETE cascade`, which a soft delete does not fire). Under a LEFT join those orphaned tasks
+       * still matched on `tasks.iteration_id` and were counted here, with a blank Work Product column —
+       * while Iteration Status and the Phase 6 projection both inner-join the parent and exclude them.
+       * So deleting a Story silently moved the two screens' Estimate/ToDo/Actual totals apart, and the
+       * surviving rows were unreachable from any Work Item detail.
+       */
+      .innerJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
+      .leftJoin(
+        iteration,
+        sql`${iteration.id} = coalesce(${tasks.iterationId}, ${parent.iterationId})`,
+      )
       .leftJoin(release, eq(release.id, parent.releaseId))
       .where(and(...conditions))
       .orderBy(asc(tasks.rank), asc(tasks.createdAt), asc(tasks.id));
@@ -154,18 +188,44 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
       .orderBy(asc(users.displayName), asc(users.id));
   }
 
-  async getCapacities(iterationId: string, userIds: string[]): Promise<Map<string, number>> {
+  async getCapacities(
+    iterationId: string,
+    userIds: string[],
+    teamId: string | null,
+  ): Promise<Map<string, number>> {
     if (userIds.length === 0) return new Map();
 
+    /**
+     * Keyed on the TEAM as well as the member, and summed rather than overwritten.
+     *
+     * `uq_member_capacity` is `(project_id, team_id, iteration_id, user_id)`, so a member on two teams
+     * has two legitimate rows for one iteration — and a shared, team-less iteration is the normal case
+     * here. This read filtered on `iterationId` + `userIds` only and then collapsed the rows into a
+     * `Map<userId, hours>`, so the LAST row won, non-deterministically. `upsertCapacity` writes
+     * against a team it re-resolves from the iteration, which need not be the row that was displayed,
+     * so an edit could overwrite a different team's number than the one on screen. The Phase 6
+     * projection already filters by team (`reporting.drizzle-repository.ts`), which is how the two
+     * surfaces came to disagree.
+     *
+     * With a team selected the unique index makes this at most one row per member, so the SUM is that
+     * row. Under All Teams — where Team Status groups by MEMBER, not by team — the member's capacity
+     * for the iteration is genuinely the total of their per-team allocations, and summing says so
+     * instead of picking one at random.
+     */
     const rows = await this.db
       .select({
         userId: memberCapacity.userId,
-        capacityHours: memberCapacity.capacityHours,
+        capacityHours: sql<string>`sum(${memberCapacity.capacityHours})`.as('capacity_hours'),
       })
       .from(memberCapacity)
       .where(
-        and(eq(memberCapacity.iterationId, iterationId), inArray(memberCapacity.userId, userIds)),
-      );
+        and(
+          eq(memberCapacity.iterationId, iterationId),
+          inArray(memberCapacity.userId, userIds),
+          teamId ? eq(memberCapacity.teamId, teamId) : undefined,
+        ),
+      )
+      .groupBy(memberCapacity.userId);
 
     const map = new Map<string, number>();
     for (const row of rows) {

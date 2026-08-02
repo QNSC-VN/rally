@@ -104,7 +104,9 @@ export class TeamStatusService {
     const memberIds = [...memberInfo.keys()];
     const capacities =
       memberIds.length > 0
-        ? await this.repo.getCapacities(iterationId, memberIds)
+        // `rosterTeamId`, the same key the roster and `upsertCapacity` use — so the number shown is
+        // the number an edit will write.
+        ? await this.repo.getCapacities(iterationId, memberIds, rosterTeamId)
         : new Map<string, number>();
 
     // One group per member (empty task list when they have none), plus an
@@ -240,10 +242,22 @@ export class TeamStatusService {
     if (input.estimateHours !== undefined) {
       updateInput.estimateHours =
         input.estimateHours === null ? null : input.estimateHours.toFixed(2);
-      // Auto-sync: editing estimate also sets To Do, unless caller explicitly sent one.
-      if (input.todoHours === undefined) {
-        updateInput.todoHours = updateInput.estimateHours;
-      }
+      /**
+       * Estimate is sent ALONE. There is no auto-sync here.
+       *
+       * This used to set `todoHours` to the new estimate whenever the caller had not sent one — which
+       * defined `input.todoHours` before `WorkItemsService` saw it, and so bypassed the once-only gate
+       * (`input.todoHours === undefined && item.todoHours === null`) entirely. The copy then happened
+       * on EVERY estimate edit rather than the first, re-inflating a completed task's auto-zeroed To
+       * Do and moving the Iteration Status To Do total, the Tasks-tab total and the next Burndown
+       * snapshot with it.
+       *
+       * The rule is one rule, and it lives in the service: the first Estimate copies to To Do once,
+       * while To Do is still null (RECONCILED_SOURCE_OF_TRUTH: three independent hour fields). The
+       * other two edit surfaces — Iteration Status and the Work Item Tasks tab — already send
+       * `estimateHours` alone and behave correctly; this screen was the outlier, and its own UI comment
+       * ("editing it does NOT touch To Do") described the behaviour it did not have.
+       */
     }
     if (input.todoHours !== undefined) {
       updateInput.todoHours = input.todoHours === null ? null : input.todoHours.toFixed(2);
