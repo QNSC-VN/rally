@@ -16,6 +16,7 @@ import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from '
 import { BRAND } from '@/shared/config/brand'
 import { useIterations } from '@/features/iterations/api'
 import { useIterationBurndown } from '@/features/reporting/api'
+import { iterationsInScope, reportScopeLabel } from '@/features/reporting/scope'
 import { IterationPicker } from '@/shared/ui/timebox-picker'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import {
@@ -36,8 +37,10 @@ export function IterationBurndownReport({
   projectId: string
   teamId: string | undefined
 }) {
-  const { t } = useTranslation('reports')
-  const { data: iterations = [] } = useIterations(projectId)
+  const { t } = useTranslation(['reports', 'common'])
+  const { data: allIterations = [] } = useIterations(projectId)
+  // The picker offers what the report can serve — the team's own timeboxes plus the shared ones.
+  const iterations = iterationsInScope(allIterations, teamId)
   const { selectedId, select } = useSelectedIteration(projectId, iterations)
   const { data, isLoading } = useIterationBurndown({ projectId, teamId, iterationId: selectedId })
 
@@ -93,7 +96,9 @@ export function IterationBurndownReport({
     <ChartFrame
       title={t('burndown.title')}
       subtitle={
-        data ? `${data.context.projectName} - ${data.context.teamName ?? ''}` : t('burndown.title')
+        data
+          ? reportScopeLabel(data.context.projectName, data.context.teamName, t('common:allTeams'))
+          : t('burndown.title')
       }
       actions={
         <div className="flex items-center gap-3">
@@ -125,6 +130,24 @@ export function IterationBurndownReport({
           <ChartLegendItem color={BRAND.reportAccepted} label={t('burndown.series.accepted')} />
         </>
       }
+      dataTable={{
+        caption: t('burndown.tableCaption'),
+        noDataLabel: t('common:noData'),
+        columns: [
+          t('burndown.axis.date'),
+          t('burndown.series.todo'),
+          t('burndown.series.ideal'),
+          t('burndown.series.accepted'),
+        ],
+        // The SAME array recharts plots, so the table cannot drift from the chart — and the nulls
+        // travel through untouched, which is how a gap stays a gap here too.
+        rows: points.map((point) => [
+          point.date,
+          point.remainingToDo,
+          point.ideal,
+          point.acceptedPoints,
+        ]),
+      }}
       footer={
         notes.length > 0 ? (
           <p className="mt-2 text-center text-ui-xs text-foreground-subtle">{notes.join(' ')}</p>

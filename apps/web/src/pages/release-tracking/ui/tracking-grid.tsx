@@ -20,7 +20,7 @@ import type {
 } from '@/features/reporting/api'
 import { CellLink } from '@/shared/ui/cell-link'
 import { EmptyState } from '@/shared/ui/empty-state'
-import { ProgressBar } from '@/shared/ui/progress-bar'
+import { RatioMeter } from '@/shared/ui/ratio-meter'
 import { SearchInput } from '@/shared/ui/search-input'
 import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 
@@ -46,7 +46,7 @@ export function TrackingGrid({
   unit: ChartUnit
   isLoading: boolean
 }) {
-  const { t } = useTranslation('release-tracking')
+  const { t } = useTranslation(['release-tracking', 'common'])
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [sortCol, setSortCol] = useState<string | null>('rank')
@@ -57,7 +57,10 @@ export function TrackingGrid({
       {
         key: 'rank',
         label: t('columns.rank'),
-        defaultWidth: 56,
+        // 72, not 56: at 56 the cell has 40px of content box after its padding, and "Rank" plus the
+        // sort caret does not fit — the header truncated to "Ran…" on the column RT-AC-04 makes the
+        // default sort. The values are single or double digits, so the extra 16px costs nothing.
+        defaultWidth: 72,
         align: 'right',
         sortCol: 'rank',
         locked: true,
@@ -80,7 +83,11 @@ export function TrackingGrid({
         // (§5), which is why this is a joined list rather than a single Team cell.
         cell: (row) => (
           <span className="truncate text-ui-md text-muted-foreground">
-            {row.teams.map((team) => team.name).join(', ')}
+            {/* An Unparented Story with no Team rendered as an empty cell, which reads as a value
+                that failed to load. Every other grid in the app names it. */}
+            {row.teams.length > 0
+              ? row.teams.map((team) => team.name).join(', ')
+              : t('common:unassigned')}
           </span>
         ),
       },
@@ -227,17 +234,27 @@ function StatusCell({ row, unit }: { row: ReleaseTrackingRow; unit: ChartUnit })
     total: row.status.total,
   })
 
+  /**
+   * `RatioMeter`, the shared percentage-over-bar primitive, rather than a fourth hand-rolled copy of
+   * it. This cell had assembled its own — percentage and ratio on one line, thin bar under — with two
+   * differences that were bugs rather than choices:
+   *
+   *   • the percentage was ALWAYS `text-primary-light`, the colour this product reserves for done, so
+   *     a Feature at 0% was printed in the same blue as one at 100%;
+   *   • `percent` came from the server (floored, RT-BR-05) while nothing tied the bar to it.
+   *
+   * `percent` is passed through explicitly so the floor survives — the meter would otherwise round,
+   * and 99.6% must read 99, not 100.
+   */
   return (
-    <div className="min-w-0">
-      <div className="flex items-baseline gap-2">
-        {row.status.percent !== null && (
-          <span className="text-ui-md font-semibold text-primary-light tabular-nums">
-            {row.status.percent}%
-          </span>
-        )}
-        <span className="truncate text-ui-xs text-muted-foreground">{label}</span>
-      </div>
-      <ProgressBar ratio={ratio} showLabel={false} title={label} />
-    </div>
+    <RatioMeter
+      ratio={ratio}
+      percent={row.status.percent}
+      hidePercent={row.status.percent === null}
+      accepted={row.status.accepted}
+      total={row.status.total}
+      label={label}
+      title={label}
+    />
   )
 }

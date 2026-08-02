@@ -36,7 +36,8 @@
     },
     "noBaselineNote": "No start baseline was recorded, so the Ideal line is not drawn.",
     "partialCapture": "One day was recorded before it closed ({{dates}}), so its value is not an end-of-day figure.",
-    "partialCapture_plural": "{{count}} days were recorded before they closed ({{dates}}), so those values are not end-of-day figures."
+    "partialCapture_plural": "{{count}} days were recorded before they closed ({{dates}}), so those values are not end-of-day figures.",
+    "tableCaption": "Iteration Burndown as a table: Task To Do hours, the Ideal baseline and cumulative Accepted points, per day of the iteration."
   },
   "velocity": {
     "title": "Velocity - Accepted Iterations",
@@ -63,12 +64,13 @@
     "empty": {
       "title": "No completed iterations",
       "description": "No completed iteration with scheduled work exists in this project and team scope."
-    }
+    },
+    "tableCaption": "Velocity as a table: Accepted During Iteration, Accepted After Iteration and Not Accepted points, per completed iteration.",
+    "tableIteration": "Iteration"
   },
   "capacity": {
     "title": "Team Capacity - {{scope}}",
     "source": "Team Status hours",
-    "totals": "Totals",
     "expandTeam": "Expand {{team}}",
     "columns": {
       "member": "Team / Member",

@@ -16,6 +16,7 @@ import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { BRAND } from '@/shared/config/brand'
 import { useReleaseBurnup, type ChartUnit } from '@/features/reporting/api'
+import { formatDate } from '@/shared/lib/utils'
 import { MetricCard } from '@/shared/ui/metric-card'
 import {
   CHART_AXIS,
@@ -56,7 +57,7 @@ export function ReleaseBurnup({
   unit: ChartUnit
   totals: { planned: number; accepted: number; preliminary: number } | undefined
 }) {
-  const { t } = useTranslation('release-tracking')
+  const { t } = useTranslation(['release-tracking', 'common'])
   const { data } = useReleaseBurnup({ projectId, teamId, releaseId, unit })
 
   const points = data?.points ?? []
@@ -79,11 +80,53 @@ export function ReleaseBurnup({
     <ChartFrame
       title={t('burnup.title', {
         release: releaseName,
-        from: releaseStart ?? '—',
-        to: releaseEnd ?? '—',
+        from: formatDate(releaseStart),
+        to: formatDate(releaseEnd),
       })}
       height={320}
       isEmpty={points.length === 0 || !hasMeasuredDay}
+      /**
+       * The secondary iteration row, directly under the dates it labels.
+       *
+       * §7 and RT-AC-09 put it on the x-axis: "X-axis shows dates and a secondary iteration-name row
+       * for the iterations crossed by the selected Release". It was rendered from `footer`, which put
+       * the legend strip and up to two history notes between it and the axis — roughly 90px away, and
+       * below a bordered box, so it read as a third summary block rather than as part of the axis.
+       */
+      underAxis={
+        data && data.iterations.length > 0 ? (
+          <div className="mt-1 flex items-start justify-between gap-2">
+            {data.iterations.map((iteration) => (
+              <div key={iteration.id} className="min-w-0 flex-1 text-center">
+                <p className="truncate text-ui-xs font-semibold text-foreground">
+                  {iteration.name}
+                </p>
+                <p className="text-ui-xs text-foreground-subtle">
+                  {formatDate(iteration.startDate)} - {formatDate(iteration.endDate)}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : undefined
+      }
+      dataTable={{
+        caption: t('burnup.tableCaption', { release: releaseName }),
+        noDataLabel: t('common:noData'),
+        columns: [
+          t('burnup.tableDate'),
+          t('burnup.series.accepted', { unit: unitLabel }),
+          t('burnup.series.planned', { unit: unitLabel }),
+          t('burnup.series.preliminary'),
+          ...(hasIdealTarget ? [t('burnup.series.ideal')] : []),
+        ],
+        rows: points.map((point) => [
+          point.date,
+          point.accepted,
+          point.planned,
+          point.preliminary,
+          ...(hasIdealTarget ? [point.ideal] : []),
+        ]),
+      }}
       emptyTitle={t('burnup.empty.title')}
       emptyDescription={t('burnup.empty.description')}
       legend={
@@ -127,21 +170,6 @@ export function ReleaseBurnup({
             <p className="mt-2 text-center text-ui-xs text-foreground-subtle">
               {t('burnup.noBaseline')}
             </p>
-          )}
-
-          {data && data.iterations.length > 0 && (
-            <div className="mt-3 flex items-start justify-between gap-2 border-t border-border-inner pt-2">
-              {data.iterations.map((iteration) => (
-                <div key={iteration.id} className="min-w-0 flex-1 text-center">
-                  <p className="truncate text-ui-xs font-semibold text-foreground">
-                    {iteration.name}
-                  </p>
-                  <p className="text-ui-xs text-foreground-subtle">
-                    {iteration.startDate ?? '—'} - {iteration.endDate ?? '—'}
-                  </p>
-                </div>
-              ))}
-            </div>
           )}
 
           {totals && (

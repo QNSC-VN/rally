@@ -33,5 +33,8 @@
   "notifications": "Notifications",
   "appName": "Mini Rally",
   "platformTagline": "Work Management Platform",
-  "addNew": "Add New"
+  "addNew": "Add New",
+  "allTeams": "All Teams",
+  "unassigned": "Unassigned",
+  "noData": "no data"
 }

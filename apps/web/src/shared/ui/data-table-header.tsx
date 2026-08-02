@@ -217,11 +217,35 @@ interface SortHeaderProps {
 
 function SortHeader({ label, col, activeCol, dir, onSort, rightAlign }: SortHeaderProps) {
   const isActive = activeCol === col
+  /**
+   * The current state, spoken.
+   *
+   * A caret is the only thing that conveyed the sort direction, so a screen-reader user was told
+   * "Rank" and nothing else — not that the column was sortable, and not which way it was sorted.
+   * `aria-sort` is the usual answer and is deliberately NOT used: it is only meaningful on a
+   * `columnheader`, and these grids are divs with no `table`/`row` ancestry (`DataTableFrame` renders
+   * a scroll container and each page renders its own rows). Adding the role here alone would
+   * announce a one-row table, which is worse than no table semantics. The label carries the state
+   * instead, which is true regardless of the surrounding structure.
+   */
+  const state = isActive ? (dir === 'asc' ? 'sorted ascending' : 'sorted descending') : 'not sorted'
+
   return (
-    <div
-      className="group/sort flex cursor-pointer items-center gap-1 select-none"
+    <button
+      type="button"
+      /**
+       * A real `<button>`, because this is the only control for a documented feature (RT-AC-05:
+       * "Rank, ID and Team sort both directions") and it was a `div` with `onClick` — unreachable by
+       * Tab, unusable by Enter or Space, and invisible to assistive tech. Every grid in the app
+       * shares this header, so every sortable column was mouse-only.
+       *
+       * `bg-transparent border-none p-0` keeps the rendered result pixel-identical to the div it
+       * replaces; the header cell owns the padding.
+       */
+      className="group/sort flex cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-left select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current"
       style={{ justifyContent: rightAlign ? 'flex-end' : 'flex-start', width: '100%' }}
       onClick={() => onSort(col)}
+      aria-label={`${label}, ${state}. Activate to sort.`}
     >
       {/* TRUNCATES, like the non-sortable branch above. Without `min-w-0` + `truncate` a long label
           (`Planned Team Assignment` at 160px) overflowed its own column and printed on top of the
@@ -246,6 +270,6 @@ function SortHeader({ label, col, activeCol, dir, onSort, rightAlign }: SortHead
           className="shrink-0 text-slate-400 transition-colors duration-150 group-hover/sort:text-slate-600"
         />
       )}
-    </div>
+    </button>
   )
 }

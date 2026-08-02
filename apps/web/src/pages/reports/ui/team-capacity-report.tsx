@@ -3,27 +3,26 @@
  *
  * A read-only projection of the Team Status hours: four indicators, then a Team → Member table
  * where each Team row expands. Deliberately built from the same primitives as Team Status
- * (`useDataTable` for the header + column widths, `TableTotalsRow` alignment contract,
- * `RowExpandToggle`, `NESTED_ROW_INDENT`) so the two screens read as one system — they show the
- * same numbers and must not look like different products.
+ * (`useDataTable` for the header + column widths, `RowExpandToggle`, `NESTED_ROW_INDENT`) so the
+ * two screens read as one system — they show the same numbers and must not look like different
+ * products.
  *
- * No editable capacity control, no utilisation card, no progress bar: §6 lists what the
- * approved report contains, and those are explicitly not in it. Capacity is still edited on
- * Team Status, which owns `team_status:edit`.
+ * No editable capacity control, no utilisation card, no progress bar, no totals row and no status
+ * colours on the indicators: §6 lists what the approved report contains, and none of those are in
+ * it. Capacity is still edited on Team Status, which owns `team_status:edit`.
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { BRAND } from '@/shared/config/brand'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { useIterations } from '@/features/iterations/api'
 import { useTeamCapacityReport, type TeamCapacityTeam } from '@/features/reporting/api'
+import { iterationsInScope, teamScopeLabel } from '@/features/reporting/scope'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { IterationPicker } from '@/shared/ui/timebox-picker'
 import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
-import { TableTotalsRow } from '@/shared/ui/table-totals-row'
 
 import { useSelectedIteration } from '../model/use-selected-iteration'
 
@@ -39,8 +38,10 @@ export function TeamCapacityReport({
   projectId: string
   teamId: string | undefined
 }) {
-  const { t } = useTranslation('reports')
-  const { data: iterations = [] } = useIterations(projectId)
+  const { t } = useTranslation(['reports', 'common'])
+  const { data: allIterations = [] } = useIterations(projectId)
+  // Same scope rule as the report itself: the team's own timeboxes plus the project's shared ones.
+  const iterations = iterationsInScope(allIterations, teamId)
   const { selectedId, select } = useSelectedIteration(projectId, iterations)
   const { data, isLoading } = useTeamCapacityReport({ projectId, teamId, iterationId: selectedId })
 
@@ -83,7 +84,9 @@ export function TeamCapacityReport({
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <p className="text-ui-sm font-semibold text-foreground">
-            {t('capacity.title', { scope: data?.context.teamName ?? '' })}
+            {t('capacity.title', {
+              scope: teamScopeLabel(data?.context.teamName, t('common:allTeams')),
+            })}
           </p>
           <span className="text-ui-sm font-semibold text-foreground">{t('iteration')}</span>
           <IterationPicker iterations={iterations} selectedId={selectedId} onSelect={select} />
@@ -102,16 +105,18 @@ export function TeamCapacityReport({
           value={formatHours(totals?.estimateHours ?? 0)}
           minWidth={120}
         />
+        {/* No `valueColor` on any of the four. ToDo was amber and Actual green, which reads as a
+            verdict — amber says "look at this" about a number that is simply the remaining work, and
+            §6 gives these indicators no status meaning to report. Capacity and Estimate were already
+            neutral, so three of the four values also disagreed about what a colour meant. */}
         <MetricCard
           label={t('capacity.indicators.todo')}
           value={formatHours(totals?.todoHours ?? 0)}
-          valueColor={BRAND.warning}
           minWidth={120}
         />
         <MetricCard
           label={t('capacity.indicators.actual')}
           value={formatHours(totals?.actualHours ?? 0)}
-          valueColor={BRAND.success}
           minWidth={120}
         />
       </div>
@@ -120,23 +125,10 @@ export function TeamCapacityReport({
         header={table.headerProps}
         leading={<div className="w-6 shrink-0" />}
         loading={isLoading && !data}
-        totals={
-          totals ? (
-            <TableTotalsRow
-              columns={table.headerProps.columns}
-              colStyles={table.colStyles}
-              leading={<div className="w-6 shrink-0" />}
-              label={t('capacity.totals')}
-              labelColKey="member"
-              values={{
-                capacity: formatHours(totals.capacityHours),
-                estimate: formatHours(totals.estimateHours),
-                todo: formatHours(totals.todoHours),
-                actual: formatHours(totals.actualHours),
-              }}
-            />
-          ) : undefined
-        }
+        /* No totals row. It printed `capacityHours / estimateHours / todoHours / actualHours` — the
+           same four numbers from the same `totals` object as the four indicator cards directly above
+           it, on the same screen. §6 lists what the approved report contains and a table footer is
+           not in it; the indicators ARE the totals. */
         empty={
           teams.length === 0 ? (
             <EmptyState

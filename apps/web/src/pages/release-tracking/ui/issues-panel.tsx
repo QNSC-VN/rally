@@ -11,15 +11,16 @@
  * against.
  */
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, X } from 'lucide-react'
 import { Popover as PopoverPrimitive } from 'radix-ui'
 
 import type { ReleaseTrackingRow } from '@/features/reporting/api'
 import { AppPopoverContent } from '@/shared/ui/app-popover'
 import { useNavigate } from '@tanstack/react-router'
-import { ProgressBar } from '@/shared/ui/progress-bar'
+import { IconButton } from '@/shared/ui/icon-button'
+import { RatioMeter } from '@/shared/ui/ratio-meter'
 import { WarningCountBadge } from '@/shared/ui/warning-count-badge'
-import { formatDateIso } from '@/shared/lib/utils'
+import { EMPTY_VALUE, formatDate } from '@/shared/lib/utils'
 import { CellLink } from '@/shared/ui/cell-link'
 
 export function IssuesPanel({
@@ -33,7 +34,7 @@ export function IssuesPanel({
   releaseStart: string | null
   releaseEnd: string | null
 }) {
-  const { t } = useTranslation('release-tracking')
+  const { t } = useTranslation(['release-tracking', 'common'])
   const navigate = useNavigate()
   if (row.mismatches.length === 0) return null
 
@@ -41,8 +42,8 @@ export function IssuesPanel({
   // the reader is asking "against what am I mismatched", and that is this release.
   const comparison = t('issues.comparison', {
     release: releaseName,
-    from: releaseStart ?? '—',
-    to: releaseEnd ?? '—',
+    from: formatDate(releaseStart),
+    to: formatDate(releaseEnd),
   })
 
   return (
@@ -64,23 +65,32 @@ export function IssuesPanel({
         <div className="max-h-[70vh] overflow-y-auto p-4">
           <div className="mb-3 flex items-start gap-2">
             <AlertTriangle size={14} className="mt-0.5 shrink-0 text-destructive" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate text-ui-lg font-semibold text-foreground">{row.name}</p>
               <p className="text-ui-xs text-foreground-subtle">{comparison}</p>
             </div>
+            {/* RT-AC-10 is satisfied by outside-click, and that stays the behaviour — but it is not
+                DISCOVERABLE, and it is not reachable at all for someone who opened this from the
+                keyboard. Radix's `Close` returns focus to the trigger, which a click on the backdrop
+                does not. */}
+            <PopoverPrimitive.Close asChild>
+              <IconButton aria-label={t('common:close')} size="sm">
+                <X size={14} />
+              </IconButton>
+            </PopoverPrimitive.Close>
           </div>
 
           <dl className="mb-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-ui-sm">
             <dt className="text-muted-foreground">{t('issues.plannedStart')}</dt>
-            <dd className="text-foreground">
-              {row.plannedStartDate ? formatDateIso(row.plannedStartDate) : '—'}
-            </dd>
+            <dd className="text-foreground">{formatDate(row.plannedStartDate)}</dd>
             <dt className="text-muted-foreground">{t('issues.plannedEnd')}</dt>
-            <dd className="text-foreground">
-              {row.plannedEndDate ? formatDateIso(row.plannedEndDate) : '—'}
-            </dd>
+            <dd className="text-foreground">{formatDate(row.plannedEndDate)}</dd>
             <dt className="text-muted-foreground">{t('issues.teams')}</dt>
-            <dd className="text-foreground">{row.teams.map((team) => team.name).join(', ')}</dd>
+            <dd className="text-foreground">
+              {row.teams.length > 0
+                ? row.teams.map((team) => team.name).join(', ')
+                : t('common:unassigned')}
+            </dd>
           </dl>
 
           {/* Progress is calculated from ALL direct children and stays independent of mismatch
@@ -137,7 +147,7 @@ export function IssuesPanel({
                 </p>
                 <p className="mt-0.5 text-ui-xs text-destructive">{comparison}</p>
                 <p className="text-ui-xs text-foreground-subtle">
-                  {t('issues.itemRelease', { release: issue.itemReleaseName ?? '—' })}
+                  {t('issues.itemRelease', { release: issue.itemReleaseName ?? EMPTY_VALUE })}
                 </p>
               </li>
             ))}
@@ -148,6 +158,15 @@ export function IssuesPanel({
   )
 }
 
+/**
+ * One progress line, from the shared meter.
+ *
+ * This was a second hand-rolled copy of `RatioMeter` inside the same feature as the first — same
+ * percentage-and-ratio row over a thin bar, and the same always-blue percentage, so a Feature at 0%
+ * was printed in the colour reserved for finished work.
+ *
+ * `percent` is the server's floored value and is passed through rather than re-derived (RT-BR-05).
+ */
 function ProgressLine({
   label,
   accepted,
@@ -161,18 +180,12 @@ function ProgressLine({
 }) {
   const { t } = useTranslation('release-tracking')
   return (
-    <div>
-      <div className="mb-0.5 flex items-baseline justify-between text-ui-xs">
-        <span className="font-semibold text-primary-light">
-          {percent === null ? '—' : `${percent}%`}
-        </span>
-        <span className="text-muted-foreground">
-          {t('issues.progress.ratio', { accepted, total, label })}
-        </span>
-      </div>
-      {/* A ratio, not a percentage — and null when there is no denominator, which the bar
-          renders as a placeholder rather than as an empty track reading 0%. */}
-      <ProgressBar ratio={total > 0 ? accepted / total : null} showLabel={false} />
-    </div>
+    <RatioMeter
+      ratio={total > 0 ? accepted / total : null}
+      percent={percent}
+      accepted={accepted}
+      total={total}
+      label={t('issues.progress.ratio', { accepted, total, label })}
+    />
   )
 }
