@@ -1226,20 +1226,31 @@ async function seedReportHistory() {
     })
     .where(eq(iterations.id, NXP_ITER_CURRENT_ID));
 
+  /**
+   * Two series per day: All Teams (`teamId: null`) and Team Alpha's own.
+   *
+   * Burndown history carries a team dimension from migration 0093, because a team-scoped chart
+   * cannot be recomputed on read. Every task in this sprint belongs to Team Alpha, so the two
+   * series carry the same numbers — that is what MEASURING each scope independently produces, and
+   * it is what lets a reviewer switch the team selector and still see a chart.
+   */
   await db
     .insert(iterationDailySnapshots)
     .values(
-      burndown.map((row) => ({
-        id: uuidv7(),
-        workspaceId: WORKSPACE_ID,
-        iterationId: NXP_ITER_CURRENT_ID,
-        snapshotDate: row.date,
-        remainingTodo: row.todo,
-        acceptedPoints: row.accepted,
-        capturedAt: new Date(`${row.date}T17:00:00Z`),
-        // Every seeded day is a CLOSED day, so the job will not try to rewrite one.
-        finalized: true,
-      })),
+      burndown.flatMap((row) =>
+        [null, TEAM_ALPHA_ID].map((teamId) => ({
+          id: uuidv7(),
+          workspaceId: WORKSPACE_ID,
+          iterationId: NXP_ITER_CURRENT_ID,
+          teamId,
+          snapshotDate: row.date,
+          remainingTodo: row.todo,
+          acceptedPoints: row.accepted,
+          capturedAt: new Date(`${row.date}T17:00:00Z`),
+          // Every seeded day is a CLOSED day, so the job will not try to rewrite one.
+          finalized: true,
+        })),
+      ),
     )
     .onConflictDoNothing();
 

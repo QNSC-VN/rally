@@ -89,7 +89,7 @@ export class ReportingService {
     const iterationIds = participating.map((i) => i.id);
 
     const [snapshots, scheduled] = await Promise.all([
-      this.repo.getIterationSnapshots(workspaceId, iterationIds),
+      this.repo.getIterationSnapshots(workspaceId, iterationIds, scope),
       this.repo.countScheduledWork(workspaceId, iterationIds),
     ]);
 
