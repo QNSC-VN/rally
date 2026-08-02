@@ -30,6 +30,13 @@ export interface BurndownPoint {
    * a zero line would be plotted and read as "the plan was to do nothing".
    */
   ideal: number | null;
+  /**
+   * True when this day's value was captured at the END of that local day.
+   *
+   * Null when nothing was measured — there is no capture to judge. False is the interesting case: a
+   * real number, frozen, that is not the closing figure the chart implies.
+   */
+  endOfDay: boolean | null;
 }
 
 /**
@@ -83,6 +90,16 @@ export interface StoredSnapshot {
   date: string;
   remainingToDo: number;
   acceptedPoints: number;
+  /**
+   * When the row was written, and whether that was the day's LAST write.
+   *
+   * `endOfDay: false` means the job stopped before local midnight, so this is a partway-through
+   * reading frozen as the closing figure — IB-BR-01 asks for an end-of-day snapshot, and a day the job
+   * died in cannot supply one. Reported rather than hidden or interpolated: the number is real, it just
+   * does not mean what the axis implies.
+   */
+  capturedAt: Date | null;
+  endOfDay: boolean;
 }
 
 export interface BurndownSeries {
@@ -93,6 +110,13 @@ export interface BurndownSeries {
   totalTaskEstimateAtStart: number | null;
   /** The latest date that actually has a snapshot, or null when none do. */
   latestSnapshotDate: string | null;
+  /**
+   * Plotted days whose value was NOT captured at the end of that day.
+   *
+   * A list rather than a count, so the client can name them — "2026-06-18 was captured at 10:04" is
+   * actionable where "1 partial day" is not. Empty is the normal state.
+   */
+  partialCaptureDates: string[];
 }
 
 /**
@@ -123,6 +147,7 @@ export function buildBurndownSeries(input: {
       remainingToDo: snap ? roundForDisplay(snap.remainingToDo) : null,
       acceptedPoints: snap ? roundForDisplay(snap.acceptedPoints) : null,
       ideal: ideal === null ? null : (ideal[i] ?? null),
+      endOfDay: snap ? snap.endOfDay : null,
     };
   });
 
@@ -146,6 +171,9 @@ export function buildBurndownSeries(input: {
 
   return {
     points,
+    // Only PLOTTED days: a weekend row captured mid-morning is stored for audit and never charted, so
+    // flagging it would send a reader looking for something the axis does not show.
+    partialCaptureDates: points.filter((p) => p.endOfDay === false).map((p) => p.date),
     historyState,
     // "if remainingToDo(d) > ideal(d): Behind plan else: On track" for the LATEST
     // available snapshot date — equality is On track (IB §8 example 5). Unknown when
@@ -199,6 +227,20 @@ export function combineTeamSnapshots(rows: readonly StoredSnapshot[]): StoredSna
             date: row.date,
             remainingToDo: existing.remainingToDo + row.remainingToDo,
             acceptedPoints: existing.acceptedPoints + row.acceptedPoints,
+            /**
+             * The fused day is end-of-day only if EVERY contributing row was.
+             *
+             * One team's job dying early makes the summed total a partial reading of that day, even
+             * though the other teams closed theirs properly — so the weakest capture decides, and the
+             * timestamp reported is the earliest, which is the one that explains why.
+             */
+            endOfDay: existing.endOfDay && row.endOfDay,
+            capturedAt:
+              existing.capturedAt !== null &&
+              row.capturedAt !== null &&
+              row.capturedAt > existing.capturedAt
+                ? existing.capturedAt
+                : (row.capturedAt ?? existing.capturedAt),
           }
         : { ...row },
     );

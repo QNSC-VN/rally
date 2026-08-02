@@ -146,7 +146,24 @@ export class ReportSnapshotService {
       }
     }
 
-    for (const [workspaceId, localDate] of localDates) {
+    /**
+     * Finalize over every workspace with an OPEN snapshot, not just the ones that are busy today.
+     *
+     * `localDates` only holds workspaces with an active iteration or release — the set the snapshot
+     * loop above needed. Running the finalization pass over that same map meant the final day of a
+     * workspace's last timebox never got frozen: nothing was active any more, so the workspace never
+     * reappeared. Those days stayed `finalized = false` indefinitely, which is the flag a reader (or
+     * an operator running a correction) uses to tell a finished day from one still being written.
+     *
+     * Timezones are resolved lazily here because most of these workspaces are already in the map; only
+     * the newly-quiet ones cost an extra settings read.
+     */
+    for (const workspaceId of await this.repo.findWorkspacesWithOpenSnapshots()) {
+      let localDate = localDates.get(workspaceId);
+      if (!localDate) {
+        const settings = await this.repo.getWorkspaceSettings(workspaceId);
+        localDate = workspaceLocalDate(now, settings.timeZone);
+      }
       await this.repo.finalizeSnapshotsBefore(workspaceId, localDate);
     }
 

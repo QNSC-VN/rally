@@ -4239,6 +4239,7 @@ export interface components {
       totalTaskEstimateAtStart: number | null
       /** @enum {string} */
       historyState: 'complete' | 'partial' | 'missing' | 'no-window'
+      partialCaptureDates: string[]
       /** @enum {string} */
       status: 'on-track' | 'behind-plan' | 'unknown'
       latestSnapshotDate: string | null

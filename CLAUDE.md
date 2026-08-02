@@ -151,7 +151,12 @@ difference is the whole design. Read this before changing a report or the snapsh
   to guess about. The trigger never invents a date for a row that was already accepted before
   0087 — those stay NULL and Velocity reports them as `unclassified`. Verified by experiment:
   `accepted` sets it, `release` RETAINS it (accepted-equivalent), reopening clears it, and a
-  later re-acceptance writes a fresh, later timestamp.
+  later re-acceptance writes a fresh, later timestamp. Velocity SRS §3 gives DEV a backfill for the
+  pre-0087 rows and `pnpm db:backfill:accepted-date` (`--dry-run` to report only) is it: the date comes
+  from the LATEST `work_item.schedule_state_changed` activity row into an accepted state — latest, not
+  earliest, because an item can be accepted, reopened and accepted again. It refuses to touch a row that
+  already has a timestamp, and a row with no such history is REPORTED and left NULL rather than dated on
+  no evidence.
 - **The timebox says WHICH window; the WORK says whose it is.** `iterations.team_id` is optional
   here (real Rally collapses project and team, we do not), so a project may run one shared sprint
   every team works inside — 195 of 206 local iterations name no team. Filtering reports on

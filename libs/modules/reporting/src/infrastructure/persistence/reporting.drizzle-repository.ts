@@ -20,7 +20,7 @@ import { workspaceSettings } from '../../../../../../db/schema/workspace';
 import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
 import type { StoredSnapshot } from '../../domain/burndown';
 import type { ReleaseChild, ReleaseFeature, StoredBurnupRow } from '../../domain/release-tracking';
-import { DEFAULT_WORKING_DAYS, type TeamScope } from '../../domain/report-scope';
+import { DEFAULT_WORKING_DAYS, isEndOfDayCapture, type TeamScope } from '../../domain/report-scope';
 import type { CapacityRecord, ScopedTaskHours } from '../../domain/team-capacity';
 import type { VelocityItem } from '../../domain/velocity';
 import {
@@ -128,6 +128,8 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     workspaceId: string,
     iterationIds: string[],
     scope: TeamScope,
+    /** The workspace's calendar — needed to say whether a capture closed its own local day. */
+    timeZone: string,
   ): Promise<StoredSnapshot[]> {
     if (iterationIds.length === 0) return [];
     const rows = await this.db
@@ -135,6 +137,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         date: iterationDailySnapshots.snapshotDate,
         remainingToDo: iterationDailySnapshots.remainingTodo,
         acceptedPoints: iterationDailySnapshots.acceptedPoints,
+        capturedAt: iterationDailySnapshots.capturedAt,
       })
       .from(iterationDailySnapshots)
       .where(
@@ -161,6 +164,11 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       date: r.date,
       remainingToDo: num(r.remainingToDo),
       acceptedPoints: num(r.acceptedPoints),
+      capturedAt: r.capturedAt,
+      // Whether this row is the day's CLOSING figure or a reading the job left behind when it stopped
+      // early. `finalizeSnapshotsBefore` freezes a closed day either way — it cannot be re-measured —
+      // so the difference has to travel with the number instead of being lost.
+      endOfDay: isEndOfDayCapture(r.capturedAt, r.date, timeZone),
     }));
   }
 
@@ -618,6 +626,29 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       startDate: r.startDate as string,
       releaseDate: r.releaseDate as string,
     }));
+  }
+
+  async findWorkspacesWithOpenSnapshots(): Promise<string[]> {
+    /**
+     * Both snapshot tables, unioned and de-duplicated.
+     *
+     * Asks about the ROWS rather than about what is currently active: a workspace whose last iteration
+     * has closed has nothing active, so it never reappeared in the snapshot loop's workspace set and
+     * its final day stayed unfinalized forever. Indexed on `finalized` in both tables, so this is a
+     * partial-index scan rather than a table walk.
+     */
+    const [iterationRows, releaseRows] = await Promise.all([
+      this.db
+        .selectDistinct({ workspaceId: iterationDailySnapshots.workspaceId })
+        .from(iterationDailySnapshots)
+        .where(eq(iterationDailySnapshots.finalized, false)),
+      this.db
+        .selectDistinct({ workspaceId: releaseDailySnapshots.workspaceId })
+        .from(releaseDailySnapshots)
+        .where(eq(releaseDailySnapshots.finalized, false)),
+    ]);
+
+    return [...new Set([...iterationRows, ...releaseRows].map((row) => row.workspaceId))];
   }
 
   async sumTaskEstimate(workspaceId: string, iterationId: string): Promise<number> {

@@ -32,6 +32,7 @@
     "db:roles:enable": "tsx db/enable-least-privilege-roles.ts",
     "db:seed": "tsx db/seeds/seed.ts",
     "db:seed:test": "tsx db/seeds/seed.ts --fixtures",
+    "db:backfill:accepted-date": "tsx db/backfill-accepted-date.ts",
     "db:studio": "drizzle-kit studio",
     "prepare": "husky"
   },

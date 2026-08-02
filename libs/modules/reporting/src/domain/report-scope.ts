@@ -162,6 +162,34 @@ export function endOfWorkspaceDay(localDate: string, timeZone: string): Date {
   return new Date(naive - zoneOffsetMs(firstGuess, timeZone));
 }
 
+/**
+ * Was this snapshot taken at the END of its own local day, or partway through it?
+ *
+ * IB-BR-01 calls the Burndown source an "end-of-day snapshot", and the job is what makes that true:
+ * it writes TODAY repeatedly and the last write before local midnight is the value that survives. If
+ * the job stops early — a crash, a deploy, a paused schedule — the surviving value is whatever the
+ * morning looked like, and `finalizeSnapshotsBefore` freezes it anyway, because a closed day cannot be
+ * re-measured. Freezing is right; presenting a 10:00 reading as the closing figure is not.
+ *
+ * The cron runs hourly, so a genuine end-of-day capture lands within an hour of local midnight. A
+ * wider window would call a mid-afternoon crash "end of day"; a narrower one would flag a tick that
+ * merely ran a few minutes early. `windowHours` is a parameter so a different schedule can say so
+ * rather than silently inheriting an assumption about this one.
+ */
+export function isEndOfDayCapture(
+  capturedAt: Date,
+  localDate: string,
+  timeZone: string,
+  windowHours = 1,
+): boolean {
+  const closes = endOfWorkspaceDay(localDate, timeZone).getTime();
+  const opensWindow = closes - windowHours * 60 * 60 * 1000;
+  const at = capturedAt.getTime();
+  // `<= closes` and not `< closes`: the final tick can land inside the same millisecond as the
+  // boundary, and a capture AFTER the day closed belongs to the next day, not this one.
+  return at >= opensWindow && at <= closes;
+}
+
 /** The instant a workspace-local day BEGINS. */
 export function startOfWorkspaceDay(localDate: string, timeZone: string): Date {
   const naive = new Date(`${localDate}T00:00:00.000Z`).getTime();
