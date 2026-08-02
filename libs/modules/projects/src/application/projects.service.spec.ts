@@ -23,6 +23,7 @@ import {
   PreconditionFailedException,
   UnitOfWork,
   AuditProducer,
+  DRIZZLE,
 } from '@platform';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -149,8 +150,11 @@ describe('ProjectsService', () => {
   let workspaceMemberRepo: ReturnType<typeof makeWorkspaceMemberRepo>;
   let teamService: { listTeams: ReturnType<typeof vi.fn> };
   let uow: ReturnType<typeof makeUow>;
+  /** Capacity plans that BLOCK an unlink. Empty unless a test is about that refusal. */
+  let capacityPlanRows: Array<{ planKey: string; name: string }>;
 
   beforeEach(async () => {
+    capacityPlanRows = [];
     projectRepo = makeProjectRepo();
     statusRepo = makeStatusRepo();
     labelRepo = makeLabelRepo();
@@ -173,6 +177,25 @@ describe('ProjectsService', () => {
         { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         { provide: ActivityLogger, useValue: activityMock() },
+        {
+          provide: DRIZZLE,
+          /**
+           * One chain: `unlinkTeam`'s capacity-plan guard
+           * (`select→from→innerJoin→where→orderBy→limit`). Empty by default — a team on no plan is
+           * the ordinary case — and a test that wants the unlink refused sets `capacityPlanRows`.
+           */
+          useValue: {
+            select: () => ({
+              from: () => ({
+                innerJoin: () => ({
+                  where: () => ({
+                    orderBy: () => ({ limit: () => Promise.resolve(capacityPlanRows) }),
+                  }),
+                }),
+              }),
+            }),
+          },
+        },
       ],
     }).compile();
 
@@ -307,6 +330,44 @@ describe('ProjectsService', () => {
       projectTeamRepo.linkTeam.mockResolvedValue({ id: 'link-1', teamId: 'team-1' });
       await service.linkTeam('ws-1', 'proj-1', 'team-1');
       expect(projectTeamRepo.linkTeam).toHaveBeenCalled();
+    });
+  });
+
+  describe('unlinkTeam', () => {
+    it("REFUSES while the team is on one of this project's capacity plans", async () => {
+      /**
+       * `project_teams` is a soft status flip, so `fk_capacity_plan_teams_team ON DELETE RESTRICT`
+       * never fires: nothing stopped an unlink from leaving the team's plan row and its allocations
+       * behind, which is exactly the state migration 0085 had to clean up. Releases already refuse
+       * deletion for a dependent plan; this is the same rule for the other reference.
+       */
+      projectRepo.findById.mockResolvedValue(mockProject());
+      projectTeamRepo.findLink.mockResolvedValue({ id: 'link-1', teamId: 'team-1' });
+      capacityPlanRows = [{ planKey: 'CP-2', name: 'Q3 capacity' }];
+
+      await expect(service.unlinkTeam('ws-1', 'proj-1', 'team-1')).rejects.toMatchObject({
+        code: 'PROJECT_TEAM_HAS_CAPACITY_PLAN',
+      });
+      expect(projectTeamRepo.unlinkTeam).not.toHaveBeenCalled();
+    });
+
+    it('names the plan, because "remove it from the plan" needs a plan', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      projectTeamRepo.findLink.mockResolvedValue({ id: 'link-1', teamId: 'team-1' });
+      capacityPlanRows = [{ planKey: 'CP-2', name: 'Q3 capacity' }];
+
+      await expect(service.unlinkTeam('ws-1', 'proj-1', 'team-1')).rejects.toThrow(
+        /CP-2 \(Q3 capacity\)/,
+      );
+    });
+
+    it('unlinks a team that is on no plan', async () => {
+      // The ordinary case, asserted so the guard cannot quietly become a blanket refusal.
+      projectRepo.findById.mockResolvedValue(mockProject());
+      projectTeamRepo.findLink.mockResolvedValue({ id: 'link-1', teamId: 'team-1' });
+
+      await service.unlinkTeam('ws-1', 'proj-1', 'team-1');
+      expect(projectTeamRepo.unlinkTeam).toHaveBeenCalledWith('proj-1', 'team-1');
     });
   });
 

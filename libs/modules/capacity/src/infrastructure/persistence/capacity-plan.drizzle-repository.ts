@@ -575,6 +575,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
   async applyPlanToFeature(
     portfolioItemId: string,
     workspaceId: string,
+    projectId: string,
     fields: {
       plannedStartDate: string | null;
       plannedEndDate: string | null;
@@ -599,6 +600,17 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         and(
           eq(portfolioItems.id, portfolioItemId),
           eq(portfolioItems.workspaceId, workspaceId),
+          /**
+           * The PLAN's project, so a publish can never write across projects.
+           *
+           * A Feature moved to another project used to leave its allocation rows behind, and this
+           * update filtered on id + workspace only — so publish wrote the old project's `release_id`
+           * onto a Feature that now lives elsewhere, producing exactly the state
+           * `assertReferences` rejects with `PORTFOLIO_ITEM_PROJECT_MISMATCH`. The move is refused
+           * outright now; this makes the write itself incapable of it, including for rows that
+           * predate the guard.
+           */
+          eq(portfolioItems.projectId, projectId),
           isNull(portfolioItems.archivedAt),
         ),
       )

@@ -232,7 +232,7 @@ export class CapacityPlansService {
    */
   async listPlans(actor: JwtPayload, projectId: string): Promise<CapacityPlanView[]> {
     const plans = await this.repo.listByProject(projectId, actor.workspaceId);
-    if (await this.isPlanner(actor, projectId)) return plans;
+    if (await this.canSeeDrafts(actor, projectId)) return plans;
     // AC-013: "Draft plans do not appear in the Capacity Plan list" for a reader who cannot plan.
     return plans.filter((plan) => plan.status === 'published');
   }
@@ -250,21 +250,29 @@ export class CapacityPlansService {
      * Read paths only. Every write already calls `requireDraft`, which loads the plan itself and is
      * gated on `capacity:manage` — so a non-planner cannot reach one by writing either.
      */
-    if (plan.status !== 'published' && !(await this.isPlanner(actor, plan.projectId))) {
+    if (plan.status !== 'published' && !(await this.canSeeDrafts(actor, plan.projectId))) {
       throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
     }
     return plan;
   }
 
   /**
-   * Whether this caller is a PLANNER on the project — the role the BA gates draft visibility on.
+   * May this caller SEE draft plans?
    *
-   * The BA has one permission (`capacity_planning:manage`) where we have three, so either of the two
-   * write grants marks a planner: `capacity:publish` without `capacity:manage` is a state our split
-   * allows and the BA's model cannot express, and someone trusted to publish a plan is certainly meant
-   * to see it beforehand. `capacity:view` alone is a reader, and readers see published plans only.
+   * The BA's two acceptance criteria pull apart here, and our permission split has to express both:
+   *
+   *   • AC-012 — a Project Admin set to `Read-only` still opens "Draft and Published plans" while
+   *     changing nothing;
+   *   • AC-013 — a Project Member does not see Drafts at all.
+   *
+   * This used to be `capacity:manage || capacity:publish`, which satisfied AC-013 and broke AC-012:
+   * a read-only Project Admin holds neither write code, so Drafts 404'd for them exactly as they do
+   * for a Project Member. `capacity:view_draft` is the fourth code that separates the two, granted
+   * to Project Admin and not to Project Member. The write grants still imply it — someone trusted to
+   * edit or publish a plan is certainly meant to see it — so no role needs all three listed.
    */
-  private async isPlanner(actor: JwtPayload, projectId: string): Promise<boolean> {
+  private async canSeeDrafts(actor: JwtPayload, projectId: string): Promise<boolean> {
+    if (await this.access.hasProjectPermission(actor, projectId, 'capacity:view_draft')) return true;
     if (await this.access.hasProjectPermission(actor, projectId, 'capacity:manage')) return true;
     return this.access.hasProjectPermission(actor, projectId, 'capacity:publish');
   }
@@ -461,6 +469,9 @@ export class CapacityPlansService {
           const written = await this.repo.applyPlanToFeature(
             row.portfolioItemId,
             actor.workspaceId,
+            // The PLAN's project: a Feature that has moved elsewhere must not receive this
+            // plan's Release, which is the state `assertReferences` rejects on the next save.
+            plan.projectId,
             {
               plannedStartDate: plan.plannedStartDate,
               plannedEndDate: plan.plannedEndDate,
@@ -1426,7 +1437,7 @@ export class CapacityPlansService {
      * A planner sees everything. A reader who belongs to no team on the plan sees no team rows, which
      * is the honest answer rather than an empty-looking error.
      */
-    if (!(await this.isPlanner(actor, plan.projectId))) {
+    if (!(await this.canSeeDrafts(actor, plan.projectId))) {
       const mine = await this.teamIdsFor(actor);
       const visibleTeams = teams.filter((team) => mine.has(team.teamId));
       return {
@@ -1621,6 +1632,17 @@ export class CapacityPlansService {
           eq(teams.id, teamId),
           eq(teams.workspaceId, workspaceId),
           eq(projectTeams.projectId, projectId),
+          /**
+           * Both the LINK and the TEAM must be live.
+           *
+           * `project_teams` is a soft status flip, so an unlinked team keeps its row and this check
+           * kept passing — an unlinked or archived team could still be added to a plan, which is
+           * exactly the state migration 0085 was written to clean up ("11 `capacity_plan_teams` rows
+           * and 12 allocations referenced teams with no link to their plan's project").
+           * `applyProjectMove` in the portfolio service already required both; this is the same rule.
+           */
+          eq(projectTeams.status, 'active'),
+          eq(teams.status, 'active'),
         ),
       )
       .limit(1);

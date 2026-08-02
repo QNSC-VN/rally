@@ -872,6 +872,9 @@ describe('CapacityPlansService', () => {
       expect(repo.applyPlanToFeature).toHaveBeenCalledWith(
         'fe-1',
         WORKSPACE,
+        // The PLAN's project: the write is filtered on it, so a Feature that has since moved
+        // elsewhere cannot receive this plan's Release.
+        'proj-a',
         {
           plannedStartDate: '2026-07-01',
           plannedEndDate: '2026-07-31',
@@ -899,6 +902,7 @@ describe('CapacityPlansService', () => {
       expect(repo.applyPlanToFeature).toHaveBeenCalledWith(
         'fe-1',
         WORKSPACE,
+        'proj-a',
         { plannedStartDate: '2026-07-05', plannedEndDate: '2026-07-20' },
         expect.anything(),
       );
@@ -921,12 +925,15 @@ describe('CapacityPlansService', () => {
       expect(repo.applyPlanToFeature).toHaveBeenCalledWith(
         'fe-1',
         WORKSPACE,
+        // The PLAN's project: the write is filtered on it, so a Feature that has since moved
+        // elsewhere cannot receive this plan's Release.
+        'proj-a',
         { plannedStartDate: '2026-06-01', plannedEndDate: '2026-08-31' },
         expect.anything(),
       );
       // No `releaseId` key at all — `undefined` would be a different instruction.
       expect(
-        'releaseId' in (repo.applyPlanToFeature.mock.calls[0][2] as Record<string, unknown>),
+        'releaseId' in (repo.applyPlanToFeature.mock.calls[0][3] as Record<string, unknown>),
       ).toBe(false);
       expect(result.featuresUpdated).toBe(1);
       expect(result.skipped).toEqual([
@@ -1009,7 +1016,9 @@ describe('CapacityPlansService', () => {
       // A partial publish must not leave Features carrying a plan that is still a draft.
       await service.publishPlan(actor, 'plan-1', { updateFields: true });
       const statusTx = repo.setStatus.mock.calls[0][4];
-      const featureTx = repo.applyPlanToFeature.mock.calls[0][3];
+      // Index 4, not 3: the executor moved along when the plan's project id was added ahead of the
+      // fields object.
+      const featureTx = repo.applyPlanToFeature.mock.calls[0][4];
       expect(statusTx).toBeDefined();
       expect(statusTx).toBe(featureTx);
     });
