@@ -33,6 +33,7 @@ import { ADMIN_USER_ID, WORKSPACE_ID } from './constants';
 import { seed } from './demo';
 import { seedSystemRolesInto } from './reference';
 import { seedTenantBootstrapInto } from './bootstrap';
+import { resetFixtureTables } from './reset';
 
 export { seed } from './demo';
 export { seedSystemRoles } from './reference';
@@ -108,11 +109,24 @@ export async function seedBaseline(connectionUrl?: string): Promise<void> {
   }
 }
 
-// Run directly. Default = clean baseline; `--fixtures` (pnpm db:seed:test) loads
-// the one-project E2E fixture on top.
+/**
+ * Run directly. Default = the prod-safe baseline; `--fixtures` (pnpm db:seed:test) RESETS the delivery
+ * tables and loads the two-project fixture on top.
+ *
+ * The reset is here rather than inside `seed()` on purpose. `db/migrate.ts` calls `seed()` when
+ * `SEED_ON_DEPLOY` is set, and truncating a deployed database because a migration ran would be
+ * catastrophic — so the destructive step belongs to the explicit fixture ENTRYPOINT, never to the
+ * function a deploy can reach.
+ *
+ * Why reset at all: the fixtures use fixed UUIDs with `onConflictDoNothing`, which survives a re-run
+ * but NOT a database other things have written to. Item keys are unique per workspace and tests mint
+ * them from a counter, so a leftover `US-3` makes the fixture's `US-3` conflict and silently vanish —
+ * observed twice, once taking an entire project's portfolio with it.
+ */
 if (process.argv[1]?.endsWith('seed.ts') || process.argv[1]?.endsWith('seed.js')) {
   const withFixtures = process.argv.includes('--fixtures') || process.argv.includes('--test');
-  (withFixtures ? seed() : seedBaseline()).catch((e) => {
+  const run = withFixtures ? resetFixtureTables().then(() => seed()) : seedBaseline();
+  run.catch((e) => {
     console.error(e);
     process.exit(1);
   });

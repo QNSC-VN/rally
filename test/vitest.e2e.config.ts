@@ -23,6 +23,13 @@ export default defineConfig({
     include: ['test/e2e/**/*.e2e.spec.ts'],
     passWithNoTests: true,
     setupFiles: ['./test/setup.ts'],
+    /**
+     * ONE database reset for the whole run — truncate the delivery tables, then re-seed the two
+     * fixture projects. The suite used to leak ~84 projects per pass with no teardown anywhere,
+     * which twice pushed `portfolio_items.rank` into its `varchar(255)` ceiling and stopped the
+     * suite dead. `E2E_SKIP_RESET=true` opts out when bisecting one file.
+     */
+    globalSetup: ['./test/e2e/support/global-setup.ts'],
     testTimeout: 30_000,
     hookTimeout: 30_000,
     // Run spec FILES one at a time. These specs share ONE Postgres and ONE

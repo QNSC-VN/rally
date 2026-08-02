@@ -76,6 +76,41 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   route (which surfaces only as `Cannot POST /v1/...` in the browser). When a change spans
   packages, verify with `tsc -b --force`.
 
+## Fixtures: two projects, one reset, no leaks
+
+**The seed produces EXACTLY two projects, and that is load-bearing.** `SEEDED.nxp` carries the depth —
+three iterations (finished / active / future), two releases, an Epic with seven Features, a draft AND a
+published capacity plan, frozen Burndown + burnup history, SCM links, attachments, notifications.
+`SEEDED.pay` mirrors every entity TYPE with one row each, so anything needing a *second* project
+(isolation, permission scoping, cross-project refusals, "another release") has one waiting. Both are
+exported from `test/e2e/support/flow-harness.ts`.
+
+- **`pnpm db:seed:test` RESETS before seeding**, via `db/seeds/reset.ts`. The BE e2e suite does the same
+  once per run (`test/e2e/support/global-setup.ts`, one shared table list). `E2E_SKIP_RESET=true` opts
+  out when bisecting.
+- **The reset is on the fixture ENTRYPOINT, never inside `seed()`.** `db/migrate.ts` calls `seed()` when
+  `SEED_ON_DEPLOY` is set, and truncating a deployed database because a migration ran would be
+  catastrophic.
+- **Why a reset and not idempotent upserts.** The fixtures use fixed UUIDs with `onConflictDoNothing`,
+  which survives a re-run but not a database other things wrote to. **Item keys are unique per
+  WORKSPACE** (`uq_portfolio_item_key`, `uq_work_item_key`), not per project, and tests mint them from
+  `workspace_item_counters` — so a leftover `US-3` makes the fixture's `US-3` conflict and vanish
+  SILENTLY. That happened twice while this was written: once `EP-1`/`FE-1` took an entire project's
+  portfolio with them, surfacing three steps later as a foreign-key error on an allocation.
+- **A seeded key must also advance the counter**, or the app mints it again and collides on the next
+  create.
+- **Do NOT run the BE e2e suite while Playwright or a manual session is live.** The reset truncates
+  under them. Eight Playwright specs failed at ~21s each exactly that way.
+- **The e2e suite used to leak ~84 projects per run with no teardown anywhere** — 37 files, every
+  `afterAll` closing the app and cleaning nothing. Twice that pushed `portfolio_items.rank`
+  (`varchar(255)`, extended by appending) to exactly 255 characters at ~1,900 items, after which every
+  insert failed with `value too long for type character varying(255)` and the suite could not run at
+  all. `test/e2e-fixtures.ratchet.spec.ts` caps the `createProject` count so it can only fall.
+- **Playwright is per-SURFACE journeys, not per-page smoke checks.** Six files holding one or two
+  assertions each — and each paying a full login — were merged into the surface they belong to. A test
+  named "header, tabs and shared Artifacts tab render" is a smoke check; the merged spec walks list → ID
+  column → detail → tabs in one navigation.
+
 ## Reporting (Phase 6) — what is frozen, what is live
 
 Four surfaces share one module (`libs/modules/reporting`) but not one data strategy, and the

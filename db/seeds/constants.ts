@@ -101,8 +101,20 @@ export const NXP_STORY_3_ID = '00000000-0000-7000-8000-0000000000a3';
 // Format: { id, key, name, description }
 // All are owned by ADMIN_USER_ID and belong to the default workspace.
 //
-// NXP carries the full one-flow fixture (Team/Story/Defect/Tasks/Iteration/
-// Release/Milestone) — the single project used by dev fixtures + E2E.
+/**
+ * EXACTLY TWO projects, and that is a decision rather than an accident.
+ *
+ * NXP carries the deep reference data — several iterations, two releases, an Epic with Features,
+ * capacity plans in both states, frozen report history, SCM links, attachments, notifications.
+ * PAY mirrors every entity TYPE with one row each, so anything that needs a *second* project
+ * (isolation, permission scoping, cross-project refusals, "another release", All-Teams fusion) has
+ * one waiting instead of building its own.
+ *
+ * That second project is the point: the BE e2e suite used to call `createProject` 84 times per run
+ * and clean up none of it, which is how a dev database reached 1,900 portfolio items and pushed
+ * `portfolio_items.rank` into its `varchar(255)` ceiling — after which every insert failed and the
+ * suite could not run at all. Fixtures that already exist cannot leak.
+ */
 export const SEED_PROJECTS = [
   {
     id: '00000000-0000-7000-8000-000000000010',
@@ -110,4 +122,42 @@ export const SEED_PROJECTS = [
     name: 'NX Platform',
     description: 'Core NX mono-repo platform upgrades and tooling improvements.',
   },
+  {
+    id: '00000000-0000-7000-8000-000000000011',
+    key: 'PAY',
+    name: 'Payments Platform',
+    description: 'The SECOND project: one of every entity type, for cross-project rules.',
+  },
 ] as const;
+
+// ── PAY: one of every entity type ────────────────────────────────────────────
+export const PAY_PROJECT_ID = '00000000-0000-7000-8000-000000000011';
+export const TEAM_GAMMA_ID = '00000000-0000-7000-8000-000000000042';
+export const PAY_RELEASE_ID = '00000000-0000-7000-8000-000000000052';
+export const PAY_ITER_ID = '00000000-0000-7000-8000-000000000062';
+export const PAY_MILESTONE_ID = '00000000-0000-7000-8000-0000000000b1';
+export const PAY_EPIC_ID = '00000000-0000-7000-8000-0000000000c8';
+export const PAY_FEATURE_ID = '00000000-0000-7000-8000-0000000000c9';
+export const PAY_STORY_ID = '00000000-0000-7000-8000-0000000000a4';
+export const PAY_DEFECT_ID = '00000000-0000-7000-8000-0000000000a5';
+export const PAY_TASK_ID = '00000000-0000-7000-8000-000000000034';
+export const PAY_CAPACITY_PLAN_ID = '00000000-0000-7000-8000-0000000000d2';
+
+// ── NXP: the extra timeboxes the reports need ────────────────────────────────
+/** FINISHED, so Velocity has a completed bar and the Burndown has closed history. */
+export const NXP_ITER_PAST_ID = '00000000-0000-7000-8000-000000000063';
+/** PLANNING and future — the backlog's "not yet scheduled" side. */
+export const NXP_ITER_FUTURE_ID = '00000000-0000-7000-8000-000000000064';
+/**
+ * An ACCEPTED story inside the finished iteration.
+ *
+ * Velocity needs accepted points in a completed timebox to draw anything, and the Backlog has to show
+ * an `accepted` iteration's NAME — a rule a Playwright spec used to create an iteration through the UI
+ * on every run to test.
+ */
+export const NXP_ACCEPTED_STORY_ID = '00000000-0000-7000-8000-0000000000a6';
+
+// ── Cross-cutting fixtures (one per empty table) ─────────────────────────────
+export const SEED_FILE_ID = '00000000-0000-7000-8000-0000000000e0';
+export const SEED_SCM_INSTALLATION_ID = '00000000-0000-7000-8000-0000000000e1';
+export const SEED_SCM_REPOSITORY_ID = '00000000-0000-7000-8000-0000000000e2';
