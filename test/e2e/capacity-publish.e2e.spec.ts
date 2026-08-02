@@ -117,7 +117,9 @@ describe('capacity publish (e2e)', () => {
   });
 
   it('writes the window AND the Release onto an assigned Feature', async () => {
-    const { planId, releaseId } = await newPlan({ start: '2026-07-05', end: '2026-07-20' });
+    // Window EQUAL to the release's (the helper's release runs 2026-07-01..07-31): AC-019 writes
+    // the Release field only on an exact match.
+    const { planId, releaseId } = await newPlan({ start: '2026-07-01', end: '2026-07-31' });
     const featureId = await newFeature();
     await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId, value: 20 });
 
@@ -131,8 +133,8 @@ describe('capacity publish (e2e)', () => {
     expect(result.skipped).toEqual([]);
     expect(await featureRow(featureId)).toEqual({
       releaseId,
-      plannedStartDate: '2026-07-05',
-      plannedEndDate: '2026-07-20',
+      plannedStartDate: '2026-07-01',
+      plannedEndDate: '2026-07-31',
     });
   });
 
@@ -156,6 +158,34 @@ describe('capacity publish (e2e)', () => {
         reason: 'release_span_mismatch',
       },
     ]);
+  });
+
+  it('reports a skip when the plan sits INSIDE its release — AC-019 requires equality', async () => {
+    /**
+     * The ruled boundary, against the real publish path. The condition was containment, reasoned
+     * from Broadcom's "do not span releases" wording, so a two-week plan inside a month-long
+     * release wrote the Release field. AC-019 says the dates must MATCH — it says so in SRS §3.12,
+     * in AC-019 itself and in `BUSINESS_FLOW:205` — and no ruling covered the deviation.
+     *
+     * The consequence still follows Rally: the DATES are written, the skip is reported, and the
+     * rest of the publish stands.
+     */
+    const { planId } = await newPlan({ start: '2026-07-05', end: '2026-07-20' });
+    const featureId = await newFeature();
+    await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId, value: 20 });
+
+    const result = await capacity.publishPlan(admin, planId, { updateFields: true });
+
+    const row = await featureRow(featureId);
+    expect(row.plannedStartDate).toBe('2026-07-05');
+    expect(row.plannedEndDate).toBe('2026-07-20');
+    expect(row.releaseId).toBeNull();
+    expect(result.skipped[0]).toMatchObject({
+      portfolioItemId: featureId,
+      reason: 'release_span_mismatch',
+    });
+    // The plan still published: a skip is a report, never a refusal.
+    expect(result.plan.status).toBe('published');
   });
 
   it('leaves an UNALLOCATED Feature alone and reports it', async () => {
@@ -194,7 +224,9 @@ describe('capacity publish (e2e)', () => {
   it('does NOT roll written values back on revert — the dangerous assumption, pinned', async () => {
     // Rally: "No changes are made to the field values in the portfolio items." Anyone reading
     // "revert" as an undo would build a UI that lies about what just happened.
-    const { planId, releaseId } = await newPlan({ start: '2026-07-05', end: '2026-07-20' });
+    // Window EQUAL to the release's (the helper's release runs 2026-07-01..07-31): AC-019 writes
+    // the Release field only on an exact match.
+    const { planId, releaseId } = await newPlan({ start: '2026-07-01', end: '2026-07-31' });
     const featureId = await newFeature();
     await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId, value: 20 });
     await capacity.publishPlan(admin, planId, { updateFields: true });
@@ -206,8 +238,8 @@ describe('capacity publish (e2e)', () => {
     // Still carrying everything the publish wrote.
     expect(await featureRow(featureId)).toEqual({
       releaseId,
-      plannedStartDate: '2026-07-05',
-      plannedEndDate: '2026-07-20',
+      plannedStartDate: '2026-07-01',
+      plannedEndDate: '2026-07-31',
     });
   });
 

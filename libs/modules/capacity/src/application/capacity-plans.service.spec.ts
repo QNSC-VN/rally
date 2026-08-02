@@ -854,30 +854,55 @@ describe('CapacityPlansService', () => {
       ...over,
     });
 
-    /** A plan whose window sits INSIDE the release's — the case that writes the Release. */
-    const insideRelease = { plannedStartDate: '2026-07-05', plannedEndDate: '2026-07-20' };
+    /**
+     * A plan whose window MATCHES the release's (the stub release runs 2026-07-01..07-31) — the
+     * only case that writes the Release field, per AC-019.
+     */
+    const matchesRelease = { plannedStartDate: '2026-07-01', plannedEndDate: '2026-07-31' };
 
     beforeEach(() => {
       repo.listAllocations.mockResolvedValue([allocation()]);
-      repo.findById.mockResolvedValue(plan(insideRelease));
-      repo.findViewById.mockResolvedValue(view(insideRelease));
+      repo.findById.mockResolvedValue(plan(matchesRelease));
+      repo.findViewById.mockResolvedValue(view(matchesRelease));
     });
 
-    it('writes the window AND the release when the plan fits inside its release', async () => {
+    it('writes the window AND the release when the plan window MATCHES the release', async () => {
       const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
 
       expect(repo.applyPlanToFeature).toHaveBeenCalledWith(
         'fe-1',
         WORKSPACE,
         {
-          plannedStartDate: '2026-07-05',
-          plannedEndDate: '2026-07-20',
+          plannedStartDate: '2026-07-01',
+          plannedEndDate: '2026-07-31',
           releaseId: 'rel-1',
         },
         expect.anything(),
       );
       expect(result.featuresUpdated).toBe(1);
       expect(result.skipped).toEqual([]);
+    });
+
+    it('writes the DATES ONLY when the plan sits INSIDE the release — AC-019 wants equality', async () => {
+      /**
+       * The ruling this encodes. The condition used to be containment, reasoned from Broadcom's
+       * "do not span releases" wording, so this plan wrote the Release field. AC-019 says the dates
+       * must MATCH, three separate times, and the deviation had no ruling behind it — so a plan
+       * narrower than its release now reports a skip instead.
+       */
+      const inside = { plannedStartDate: '2026-07-05', plannedEndDate: '2026-07-20' };
+      repo.findById.mockResolvedValue(plan(inside));
+      repo.findViewById.mockResolvedValue(view(inside));
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(repo.applyPlanToFeature).toHaveBeenCalledWith(
+        'fe-1',
+        WORKSPACE,
+        { plannedStartDate: '2026-07-05', plannedEndDate: '2026-07-20' },
+        expect.anything(),
+      );
+      expect(result.skipped[0].reason).toBe('release_span_mismatch');
     });
 
     it('writes the DATES ONLY when the window spans outside the release, and says why', async () => {
@@ -953,7 +978,7 @@ describe('CapacityPlansService', () => {
     it('refuses a plan that has never been published and holds nothing', async () => {
       // Rally blocks only when ALL THREE hold: never published, no items, no projects.
       repo.listAllocations.mockResolvedValue([]);
-      repo.findViewById.mockResolvedValue(view({ ...insideRelease, teams: [] }));
+      repo.findViewById.mockResolvedValue(view({ ...matchesRelease, teams: [] }));
 
       await expect(
         service.publishPlan(actor, 'plan-1', { updateFields: true }),
@@ -963,9 +988,9 @@ describe('CapacityPlansService', () => {
     it('allows re-publishing an emptied plan that HAS been published before', async () => {
       // How a planner undoes an over-eager clear-out.
       repo.listAllocations.mockResolvedValue([]);
-      repo.findById.mockResolvedValue(plan({ ...insideRelease, publishedAt: new Date() }));
+      repo.findById.mockResolvedValue(plan({ ...matchesRelease, publishedAt: new Date() }));
       repo.findViewById.mockResolvedValue(
-        view({ ...insideRelease, publishedAt: new Date(), teams: [] }),
+        view({ ...matchesRelease, publishedAt: new Date(), teams: [] }),
       );
 
       await expect(
@@ -1661,11 +1686,36 @@ describe('CapacityPlansService', () => {
       expect(result.carried).toBe(0);
       expect(result.parked).toBe(1);
       expect(repo.createAllocation).toHaveBeenCalledTimes(1);
+      /**
+       * The parked row carries the SUM of what the lost rows stated — 8 + 5.
+       *
+       * This assertion used to read `value: null`, which pinned a defect rather than catching it:
+       * every number the planner had typed was destroyed by the move, and the placeholder then
+       * resolved through Refined → Preliminary so the plan reported an estimate nobody entered.
+       * `mergeParkedValue` is the same helper `removeTeam` uses for the same situation.
+       */
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        { planId: 'plan-2', portfolioItemId: 'fe-1', teamId: null, value: '13' },
+        TX,
+      );
+      expect(repo.deleteAllocation).toHaveBeenCalledTimes(2);
+    });
+
+    it('parks a valueless row as valueless, rather than as zero', async () => {
+      // "Planned, but not yet estimated" is a real state: the Feature's own estimate answers for it
+      // (AC-014), and a 0 would claim a planner had committed to nothing.
+      arrange({ rows: [alloc({ value: null })], teamOnTarget: false });
+      await service.moveItemToPlan(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        targetPlanId: 'plan-2',
+        updateRelease: false,
+        republish: false,
+      });
+
       expect(repo.createAllocation).toHaveBeenCalledWith(
         { planId: 'plan-2', portfolioItemId: 'fe-1', teamId: null, value: null },
         TX,
       );
-      expect(repo.deleteAllocation).toHaveBeenCalledTimes(2);
     });
 
     it('refuses a move between releases unless the Release is updated with it', async () => {
@@ -2079,14 +2129,38 @@ describe('CapacityPlansService', () => {
       // the team's Rollup and Complete, so a team's load, its warnings and the cutline all moved on
       // work nobody plans to do. The row stays visible — it is the only way to see and remove the
       // stale commitment.
+      /**
+       * `itemRollup` / `itemComplete` are set NON-ZERO deliberately.
+       *
+       * They default to 0 in the `row()` helper, so this test used to pass without exercising the
+       * item path at all: `rollup: row.itemRollup` was assigned unconditionally, and the Features
+       * tab showed Rollup 21 beside Estimated 0 — plus a `rollup_exceeds_estimated` warning — for a
+       * Feature the team grid excludes entirely. Two tabs, two numbers, one warning about the other.
+       */
       repo.listAllocations.mockResolvedValue([
-        row({ teamId: 'team-1', value: '5', rollup: 21, complete: 8, itemArchivedAt: new Date() }),
+        row({
+          teamId: 'team-1',
+          value: '5',
+          rollup: 21,
+          complete: 8,
+          itemRollup: 21,
+          itemComplete: 8,
+          itemArchivedAt: new Date(),
+        }),
       ]);
       const detail = await service.getPlanDetail(actor, 'plan-1');
       expect(detail.allocations).toHaveLength(1);
       expect(detail.allocations[0].archived).toBe(true);
       expect(detail.allocations[0].metrics).toMatchObject({ estimated: 0, rollup: 0, complete: 0 });
-      expect(detail.items[0]?.estimated).toBe(0);
+      expect(detail.items[0]).toMatchObject({
+        estimated: 0,
+        rollup: 0,
+        complete: 0,
+        archived: true,
+      });
+      // And no warning: nothing can exceed nothing, and the planner is not asked to act on work
+      // that has been archived.
+      expect(detail.items[0]?.warnings).toEqual([]);
     });
 
     it('reports the BA’s two Feature-level warnings on the item row', async () => {

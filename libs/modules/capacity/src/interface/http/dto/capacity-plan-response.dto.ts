@@ -137,6 +137,11 @@ const CapacityPlanItemSchema = z.object({
   estimated: z.number().describe('Committed demand summed over this Feature’s allocations'),
   rollup: z.number().describe('The Feature’s OWN rollup, across every team'),
   complete: z.number(),
+  archived: z
+    .boolean()
+    .describe(
+      'The Feature is archived, so it charges 0 here as it already does on the team grid — the two tabs must not disagree about the same Feature',
+    ),
   tier: z.enum(['allocated', 'refined', 'preliminary', 'none']),
   warnings: z
     .array(CapacityWarningEnum)
