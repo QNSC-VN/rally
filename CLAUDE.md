@@ -56,12 +56,21 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   `pnpm --filter rally-web codegen` against a running local API, then a commit. The
   `OpenAPI contract` job regenerates from the spec it captured and diffs
   (`codegen:check`), so drift fails CI instead of failing at runtime.
-- **Do NOT run the worker while running the BE e2e suite.** `test/e2e/notification-flow.e2e.spec.ts`
-  drives the notification relay directly, and a live `pnpm start:dev:worker` is a competing consumer
-  of `messaging.notification_outbox` — it claims the rows the test is waiting for, which surfaces as
-  `waitFor() timed out after 10000ms` and looks like a product bug. Stop the worker first. (That
-  spec also has an in-suite ordering flake independent of the worker: it passes alone and can fail
-  in a full run. Reproducible on a clean checkout, so it is not yours.)
+- **`waitFor() timed out` in `notification-flow.e2e.spec.ts` is an ENVIRONMENT fault, not a flake.**
+  Two independent causes, both seen in one session:
+    1. **Email is unconfigured.** `.env` ships `EMAIL_PROVIDER=ses`, but `MAIL_FROM_EMAIL` is
+       `.optional()` in `env.schema.ts` despite its own comment saying "Required when
+       EMAIL_PROVIDER != 'dev'". Unset, `resolveFromEmail` returns `''`, every send fails with
+       `Email address not verified "Mini Rally" <>`, and after three failures the email circuit
+       breaker opens and stays open for the process — so the relay never delivers and the test waits
+       out its 10s. Set `MAIL_FROM_EMAIL` and verify it in localstack:
+       `docker exec -i rally-localstack awslocal ses verify-email-identity --email-address <addr>`.
+       (The breaker is in-process, so restarting the API clears it; the failed rows are not retried
+       and can be deleted.)
+    2. **A live worker is a competing consumer** of `messaging.notification_outbox` and claims the
+       rows the test is waiting for. Stop `pnpm start:dev:worker` before a BE e2e run.
+  Neither is a product defect, and both look exactly like one. Check
+  `docker ps` first: localstack dying mid-session produces the same symptom.
 - **`tsc -b` can pass on STALE build info.** Two things hid behind that in one session: an
   error code missing from the `ErrorCode` union, and a client that had never seen a new
   route (which surfaces only as `Cannot POST /v1/...` in the browser). When a change spans

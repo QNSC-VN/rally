@@ -902,6 +902,7 @@ describe('CapacityPlansService', () => {
       expect(repo.applyPlanToFeature).toHaveBeenCalledWith(
         'fe-1',
         WORKSPACE,
+        'proj-a',
         { plannedStartDate: '2026-07-05', plannedEndDate: '2026-07-20' },
         expect.anything(),
       );
