@@ -32,7 +32,7 @@ import { describe, expect, it } from 'vitest'
  * said 8 for `text-[` where the real count is 2).
  */
 const MAX_RAW_BUTTON = 60 // occurrences in pages/features/entities/widgets
-const MAX_INLINE_STYLE = 183 // `style={{` in pages/features/entities/widgets (remainder is data-driven/dynamic)
+const MAX_INLINE_STYLE = 182 // `style={{` in pages/features/entities/widgets (remainder is data-driven/dynamic)
 const MAX_ARBITRARY_TEXT = 2 // `text-[` app-wide (only text-[0] + one navy placeholder rgba remain)
 const MAX_RAW_FONT_SIZE = 12 // raw Tailwind text-{xs,sm,base,lg,xl,2xl,3xl} in consumer layers; use the text-ui-* scale. Residual = deliberate display text (login hero, big numbers, entity-title inputs)
 const MAX_HARDCODED_TEXT = 15 // capitalized JSX text nodes in consumer layers (P4 fleet done; residual = enum <option> labels)

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus, ListChecks } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 
 import { toast } from 'sonner'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -16,7 +15,6 @@ import {
   useRankAnyWorkItem,
   type WorkItem,
 } from '@/features/work-items/api'
-import { BRAND } from '@/shared/config/brand'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
 import { useProjectMembers, useProjectTeams } from '@/features/teams/api'
 import {
@@ -33,7 +31,13 @@ import { EmptyState } from '@/shared/ui/empty-state'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { TableTotalsRow } from '@/shared/ui/table-totals-row'
-import { useDataTable, SelectableTable, useRowRerank, type ColumnSpec } from '@/shared/ui/table'
+import {
+  useDataTable,
+  SelectableTable,
+  useRowRerank,
+  useDragRowStyle,
+  type ColumnSpec,
+} from '@/shared/ui/table'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
 
@@ -345,6 +349,7 @@ function TaskRow({
     transition,
     isDragging,
   } = useSortable({ id: task.id, disabled: dragDisabled })
+  const dragStyle = useDragRowStyle({ transform, transition, isDragging })
 
   const commitTitle = (raw: string) => {
     const next = raw.trim()
@@ -366,16 +371,8 @@ function TaskRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex min-h-[36px] items-center border-b border-border-inner bg-card px-3 text-ui-md text-foreground transition-colors hover:bg-primary-lighter"
-      style={{
-        minWidth: 'max-content',
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.5 : 1,
-        backgroundColor: isDragging ? BRAND.primaryLighter : undefined,
-        zIndex: isDragging ? 1 : undefined,
-        position: isDragging ? 'relative' : undefined,
-      }}
+      className="group flex min-h-[36px] min-w-max items-center border-b border-border-inner bg-card px-3 text-ui-md text-foreground transition-colors hover:bg-primary-lighter"
+      style={dragStyle}
       {...(dragDisabled ? {} : attributes)}
     >
       <RowGutter

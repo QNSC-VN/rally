@@ -132,7 +132,11 @@
       "search": "Search linked items",
       "searchFeatures": "Search child Features",
       "noMatches": "No linked item matches that search.",
-      "totals": "Totals ({{count}})"
+      "totals": "Totals ({{count}})",
+      "selectAll": "Select all linked items",
+      "selectAllFeatures": "Select all child Features",
+      "selectChild": "Select linked item {{key}}",
+      "selectFeature": "Select Feature {{key}}"
     },
     "notFound": "Portfolio item not found.",
     "history": {

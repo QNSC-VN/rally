@@ -1,15 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
+import { useSortable } from '@dnd-kit/sortable'
+import { toast } from 'sonner'
 
-import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
-import { useDataTable } from '@/shared/ui/table'
+import { useDataTable, useRowRerank, useDragRowStyle, SelectableTable } from '@/shared/ui/table'
 import { TableTotalsRow } from '@/shared/ui/table-totals-row'
 import { SearchInput } from '@/shared/ui/search-input'
 import { EmptyState } from '@/shared/ui/empty-state'
+import { RowGutter } from '@/shared/ui/row-gutter'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useTableSort, type SortDir } from '@/shared/lib/hooks/use-table-sort'
-import type { PortfolioItem } from '@/features/portfolio/api'
+import { useRankPortfolioItem, type PortfolioItem } from '@/features/portfolio/api'
 import { EPIC_CHILD_COLUMNS, type EpicChildColKey } from '../model/children-columns'
 
 type EpicSortField = 'itemKey' | 'name' | 'team' | 'state' | 'owner'
@@ -25,6 +28,12 @@ const text = (value: string | null): string => value ?? ''
  * its Features' roll-ups, which is why Complete/Rollup/Estimated appear here where the Feature's tab
  * shows Priority/Iteration.
  *
+ * The SHELL, though, is the one every complex grid uses: `SelectableTable` owns the select-all
+ * gutter, the bulk bar and the dnd wrapper, exactly as it does for Backlog, Iteration Status and the
+ * Work Item Tasks tab. This tab used a bare `DataTableFrame` instead, so it had no selection, no
+ * drag and no skeleton — while the Portfolio LIST, rendering the same entity through the same rank
+ * endpoint, had all three.
+ *
  * `Complete` is `completedPoints` (COMPLETED_SCHEDULE_STATES) rather than `acceptedPoints`: on a
  * capacity-shaped reading, Complete means the team FINISHED it. The Portfolio's own Percent Done
  * columns use the accepted-only rule, and the two are documented as the D1 distinction — mixing them
@@ -33,7 +42,15 @@ const text = (value: string | null): string => value ?? ''
  * `Rank` is the row's position in the list, not the LexoRank string, which sorts as text and means
  * nothing to a reader.
  */
-export function EpicChildrenTable({ features }: { features: PortfolioItem[] }) {
+export function EpicChildrenTable({
+  features,
+  canEdit = false,
+  isLoading = false,
+}: {
+  features: PortfolioItem[]
+  canEdit?: boolean
+  isLoading?: boolean
+}) {
   const { t } = useTranslation('portfolio')
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
@@ -41,12 +58,33 @@ export function EpicChildrenTable({ features }: { features: PortfolioItem[] }) {
 
   const table = useDataTable<PortfolioItem, unknown, EpicChildColKey>(EPIC_CHILD_COLUMNS, {
     storageKey: 'rally-portfolio-epic-children-columns',
+    // The select/drag gutter is 48px wide and sits before every column; without it the computed
+    // table width is short by exactly that, and the horizontal scroll region ends early.
+    leadingWidth: 48,
     sort: {
       col: sortField ?? '',
       dir: sortDir ?? 'asc',
       onSort: (c) => toggle(c as EpicSortField),
     },
   })
+
+  /**
+   * Column styles computed ONCE per layout change, not per cell.
+   *
+   * Every cell used to call `table.styleFor(key, { flexShrink: 0 })` inline, which allocates a fresh
+   * style object per cell per render and pins every column — including `name`, which the column spec
+   * declares as `grow`. It now flexes to fill like the Tasks tab's Name column does.
+   */
+  const colStyles = useMemo(
+    () =>
+      Object.fromEntries(
+        EPIC_CHILD_COLUMNS.map((c) => [
+          c.key,
+          table.styleFor(c.key, c.key === 'name' ? { flex: 1, minWidth: 150 } : { flexShrink: 0 }),
+        ]),
+      ) as Record<EpicChildColKey, CSSProperties>,
+    [table],
+  )
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -58,6 +96,25 @@ export function EpicChildrenTable({ features }: { features: PortfolioItem[] }) {
     )
     return sortFeatures(rows, sortField, sortDir)
   }, [features, search, sortField, sortDir])
+
+  const selection = useRowSelection(visible)
+
+  /**
+   * Drag-to-rank, through the same endpoint the Portfolio list uses.
+   *
+   * Disabled while a column sort is active — the visible order would no longer be rank, so a drop
+   * would compute neighbours from a list the server does not share — and disabled without
+   * `portfolio:edit`. The Rank column numbers rows 1..N; before this it numbered an order the
+   * reader could not change from here.
+   */
+  const rank = useRankPortfolioItem()
+  const dragDisabled = sortField !== null || !canEdit
+  const rerank = useRowRerank({
+    items: visible,
+    disabled: dragDisabled,
+    onReorder: ({ id, beforeId, afterId }) =>
+      rank.mutate({ id, beforeId, afterId }, { onError: (err) => toast.error(err.message) }),
+  })
 
   /** Footed over the VISIBLE rows, so the totals cannot disagree with the rows above them. */
   const totals = visible.reduce(
@@ -79,9 +136,41 @@ export function EpicChildrenTable({ features }: { features: PortfolioItem[] }) {
         width={240}
       />
 
-      <DataTableFrame
-        header={table.headerProps}
-        padClassName="px-3"
+      <SelectableTable
+        className="rounded border border-border-strong"
+        rows={rerank.items}
+        selection={selection}
+        selectAllAriaLabel={t('detail.children.selectAllFeatures')}
+        headerProps={{ ...table.headerProps, colStyles }}
+        sort={{
+          col: sortField ?? '',
+          dir: sortDir ?? 'asc',
+          onSort: (c) => toggle(c as EpicSortField),
+        }}
+        dnd={{
+          dndContextProps: rerank.dndContextProps,
+          sortableContextProps: rerank.sortableContextProps,
+        }}
+        loading={isLoading}
+        skeleton={{ rows: 4, cols: EPIC_CHILD_COLUMNS.length }}
+        // Inside the frame, not after it: rendered as a sibling the row scrolled horizontally
+        // while the totals stayed put, so the numbers drifted out from under their columns.
+        totals={
+          visible.length > 0 ? (
+            <TableTotalsRow
+              columns={EPIC_CHILD_COLUMNS}
+              colStyles={colStyles}
+              leading={<RowGutter dragDisabled />}
+              label={t('detail.children.totals', { count: visible.length })}
+              labelColKey="name"
+              values={{
+                complete: String(totals.complete),
+                rollup: String(totals.rollup),
+                estimated: String(totals.estimated),
+              }}
+            />
+          ) : undefined
+        }
         empty={
           visible.length === 0 ? (
             <EmptyState
@@ -91,84 +180,118 @@ export function EpicChildrenTable({ features }: { features: PortfolioItem[] }) {
             />
           ) : undefined
         }
-      >
-        {visible.map((feature, index) => (
-          <div
+        renderRow={(feature, { selected, onToggleSelect }) => (
+          <EpicChildRow
             key={feature.id}
-            className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
-          >
-            <div
-              style={table.styleFor('rank', { flexShrink: 0 })}
-              className="px-2 text-right text-muted-foreground tabular-nums"
-            >
-              {index + 1}
-            </div>
-            <div style={table.styleFor('id', { flexShrink: 0 })} className="flex items-center px-2">
-              <IdCell
-                type={feature.type}
-                itemKey={feature.itemKey}
-                onOpen={() =>
-                  void navigate({ to: '/portfolio/$itemId', params: { itemId: feature.id } })
-                }
-              />
-            </div>
-            <div
-              style={table.styleFor('name', { flexShrink: 0 })}
-              className="min-w-0 px-2"
-              title={feature.name}
-            >
-              <span className="break-words whitespace-normal text-foreground">{feature.name}</span>
-            </div>
-            <div style={table.styleFor('team', { flexShrink: 0 })} className="min-w-0 px-2">
-              <span className="break-words whitespace-normal text-muted-foreground">
-                {feature.teamName ?? '—'}
-              </span>
-            </div>
-            <div style={table.styleFor('state', { flexShrink: 0 })} className="min-w-0 px-2">
-              <span className="break-words whitespace-normal text-muted-foreground">
-                {t(`states.${feature.state}`, { defaultValue: feature.state })}
-              </span>
-            </div>
-            <div
-              style={table.styleFor('complete', { flexShrink: 0 })}
-              className="px-2 text-right text-muted-foreground tabular-nums"
-            >
-              {feature.rollup.completedPoints}
-            </div>
-            <div
-              style={table.styleFor('rollup', { flexShrink: 0 })}
-              className="px-2 text-right text-muted-foreground tabular-nums"
-            >
-              {feature.rollup.rollupPoints}
-            </div>
-            <div
-              style={table.styleFor('estimated', { flexShrink: 0 })}
-              className="px-2 text-right text-muted-foreground tabular-nums"
-            >
-              {feature.refinedEstimate}
-            </div>
-            <div style={table.styleFor('owner', { flexShrink: 0 })} className="min-w-0 px-2">
-              <span className="break-words whitespace-normal text-muted-foreground">
-                {feature.ownerName ?? '—'}
-              </span>
-            </div>
-          </div>
-        ))}
-      </DataTableFrame>
+            feature={feature}
+            rowNum={rerank.items.indexOf(feature) + 1}
+            colStyles={colStyles}
+            dragDisabled={dragDisabled}
+            selected={selected}
+            onToggleSelect={onToggleSelect}
+            onOpen={() =>
+              void navigate({ to: '/portfolio/$itemId', params: { itemId: feature.id } })
+            }
+            stateLabel={t(`states.${feature.state}`, { defaultValue: feature.state })}
+            selectLabel={t('detail.children.selectFeature', { key: feature.itemKey })}
+          />
+        )}
+      />
+    </div>
+  )
+}
 
-      {visible.length > 0 && (
-        <TableTotalsRow
-          columns={table.headerProps.columns}
-          colStyles={table.colStyles}
-          label={t('detail.children.totals', { count: visible.length })}
-          labelColKey="name"
-          values={{
-            complete: String(totals.complete),
-            rollup: String(totals.rollup),
-            estimated: String(totals.estimated),
-          }}
-        />
-      )}
+/**
+ * One child Feature.
+ *
+ * Owns its `useSortable` + `<RowGutter>` the way every other `SelectableTable` row does, so the grip
+ * and checkbox line up with the header's select-all across all of them.
+ */
+function EpicChildRow({
+  feature,
+  rowNum,
+  colStyles,
+  dragDisabled,
+  selected,
+  onToggleSelect,
+  onOpen,
+  stateLabel,
+  selectLabel,
+}: {
+  feature: PortfolioItem
+  rowNum: number
+  colStyles: Record<EpicChildColKey, CSSProperties>
+  dragDisabled: boolean
+  selected: boolean
+  onToggleSelect: () => void
+  onOpen: () => void
+  stateLabel: string
+  selectLabel: string
+}) {
+  const {
+    setNodeRef,
+    setActivatorNodeRef,
+    listeners,
+    attributes,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: feature.id, disabled: dragDisabled })
+  const dragStyle = useDragRowStyle({ transform, transition, isDragging })
+
+  return (
+    <div
+      ref={setNodeRef}
+      // `min-w-max` is a class; the drag style is genuinely dynamic and comes from the shared
+      // `useDragRowStyle`, so this row cannot drift from the other six drag grids.
+      className="group flex min-h-[34px] min-w-max items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
+      style={dragStyle}
+      {...(dragDisabled ? {} : attributes)}
+    >
+      <RowGutter
+        ref={setActivatorNodeRef}
+        dragListeners={dragDisabled ? undefined : listeners}
+        dragDisabled={dragDisabled}
+        stopPropagation
+        checkbox={{ checked: selected, onChange: onToggleSelect, ariaLabel: selectLabel }}
+      />
+      <div style={colStyles.rank} className="px-2 text-right text-muted-foreground tabular-nums">
+        {rowNum}
+      </div>
+      <div style={colStyles.id} className="flex items-center px-2">
+        <IdCell type={feature.type} itemKey={feature.itemKey} onOpen={onOpen} />
+      </div>
+      <div style={colStyles.name} className="min-w-0 px-2" title={feature.name}>
+        <span className="break-words whitespace-normal text-foreground">{feature.name}</span>
+      </div>
+      <div style={colStyles.team} className="min-w-0 px-2">
+        <span className="break-words whitespace-normal text-muted-foreground">
+          {feature.teamName ?? '—'}
+        </span>
+      </div>
+      <div style={colStyles.state} className="min-w-0 px-2">
+        <span className="break-words whitespace-normal text-muted-foreground">{stateLabel}</span>
+      </div>
+      <div
+        style={colStyles.complete}
+        className="px-2 text-right text-muted-foreground tabular-nums"
+      >
+        {feature.rollup.completedPoints}
+      </div>
+      <div style={colStyles.rollup} className="px-2 text-right text-muted-foreground tabular-nums">
+        {feature.rollup.rollupPoints}
+      </div>
+      <div
+        style={colStyles.estimated}
+        className="px-2 text-right text-muted-foreground tabular-nums"
+      >
+        {feature.refinedEstimate}
+      </div>
+      <div style={colStyles.owner} className="min-w-0 px-2">
+        <span className="break-words whitespace-normal text-muted-foreground">
+          {feature.ownerName ?? '—'}
+        </span>
+      </div>
     </div>
   )
 }
