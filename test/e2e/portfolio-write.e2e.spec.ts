@@ -121,6 +121,34 @@ describe('portfolio write paths (e2e)', () => {
       expect(inB.itemKey).not.toBe(inA.itemKey);
     });
 
+    it('stores every rich-text block it ACCEPTS on create', async () => {
+      // The create schema took `notes` and `releaseNotes` and the insert dropped both, so a
+      // caller supplying either got a 201 with an empty field and no way to tell. Asserted for
+      // all four blocks at once: any future field added to the schema and not to the insert
+      // fails here rather than in a user's browser.
+      const created = await portfolio.createItem(admin, {
+        projectId: projectAId,
+        type: 'feature',
+        name: 'Every block',
+        description: '<p>d</p>',
+        notes: '<p>n</p>',
+        releaseNotes: '<p>rn</p>',
+        whatSuccessLooksLike: '<p>s</p>',
+      });
+
+      expect({
+        description: created.description,
+        notes: created.notes,
+        releaseNotes: created.releaseNotes,
+        whatSuccessLooksLike: created.whatSuccessLooksLike,
+      }).toEqual({
+        description: '<p>d</p>',
+        notes: '<p>n</p>',
+        releaseNotes: '<p>rn</p>',
+        whatSuccessLooksLike: '<p>s</p>',
+      });
+    });
+
     it('creates a Feature under an Epic and reports it as a child', async () => {
       const epic = await portfolio.createItem(admin, {
         projectId: projectAId,
@@ -214,6 +242,37 @@ describe('portfolio write paths (e2e)', () => {
       // Untouched by an update that only mentioned description.
       expect(updated.name).toBe('Editable');
       expect(updated.preliminaryEstimate).toBe('l');
+    });
+
+    it('persists What Success Looks Like, on an Epic as well as a Feature', async () => {
+      /**
+       * The BA's fourth rich-text block (SRS §5.1 for a Feature, §11.4 for an Epic) and
+       * P5-PI-FR-019: it must be "backed by the shared Feature record rather than
+       * display-only placeholders". Nothing backed it at all until migration 0086, so this
+       * drives it through the service against a real column — create, read back, clear.
+       */
+      for (const type of ['feature', 'epic'] as const) {
+        const created = await portfolio.createItem(admin, {
+          projectId: projectAId,
+          type,
+          name: `Success on a ${type}`,
+          whatSuccessLooksLike: '<p>Checkout converts above 60%.</p>',
+        });
+        expect(created.whatSuccessLooksLike).toBe('<p>Checkout converts above 60%.</p>');
+
+        const edited = await portfolio.updateItem(admin, created.id, {
+          whatSuccessLooksLike: '<p>Revised.</p>',
+        });
+        expect(edited.whatSuccessLooksLike).toBe('<p>Revised.</p>');
+
+        // Null CLEARS it, and clearing it does not disturb the field beside it — the same
+        // undefined-vs-null distinction every other writable field here follows.
+        const cleared = await portfolio.updateItem(admin, created.id, {
+          whatSuccessLooksLike: null,
+        });
+        expect(cleared.whatSuccessLooksLike).toBeNull();
+        expect(cleared.name).toBe(`Success on a ${type}`);
+      }
     });
 
     it('recomputes progress when the refined estimate changes', async () => {

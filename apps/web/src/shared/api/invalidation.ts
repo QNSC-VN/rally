@@ -45,7 +45,7 @@ export const WORK_ITEM_VIEW_ROOTS: readonly QueryKey[] = [
   ['team-status'], // Team Status
   ['quality'], // Quality / Defects
   ['portfolio'], // Portfolio tree
-  ['reports'], // burndown / velocity
+  ['reports'], // every Phase 6 report — burndown, velocity, team capacity, release tracking
   ['child-defects'], // child defects under a story
 ]
 
@@ -90,7 +90,10 @@ const ITERATION_ROOTS: readonly QueryKey[] = [
   ['iteration-options'], // compact picker feed (was the forgotten root)
   ['iteration-status'], // status read-model
 ]
-const RELEASE_ROOTS: readonly QueryKey[] = [['releases'], ['release']]
+// `reports` is here because Release Tracking classifies from `Release.id` on Features and their
+// children: renaming, re-dating or deleting a release changes the page's buckets and its burnup
+// window, not just the release list.
+const RELEASE_ROOTS: readonly QueryKey[] = [['releases'], ['release'], ['reports']]
 const MILESTONE_ROOTS: readonly QueryKey[] = [['milestones'], ['milestone']]
 const PROJECT_ROOTS: readonly QueryKey[] = [
   ['projects'],
@@ -98,7 +101,8 @@ const PROJECT_ROOTS: readonly QueryKey[] = [
   ['project-labels'],
   ['status-map'],
 ]
-const TEAM_ROOTS: readonly QueryKey[] = [['teams'], ['team-status']]
+// Team Capacity is a projection of Team Status, so a capacity edit there has to refresh it.
+const TEAM_ROOTS: readonly QueryKey[] = [['teams'], ['team-status'], ['reports']]
 const WORKSPACE_ROOTS: readonly QueryKey[] = [
   ['workspaces'],
   ['workspace-settings'],
@@ -157,7 +161,9 @@ export const INVALIDATION_MAP: Record<EntityTag, QueryKey[]> = {
   project: dedup([...PROJECT_ROOTS, ...WORK_ITEM_DASHBOARD_ROOTS]),
   team: dedup([...TEAM_ROOTS, ...WORK_ITEM_DASHBOARD_ROOTS, ...CAPACITY_ROOTS]),
   quality: dedup([['quality'], ...WORK_ITEM_DASHBOARD_ROOTS]),
-  portfolio: dedup([['portfolio'], ...CAPACITY_ROOTS]),
+  // A Feature's release, team or top-down estimate all move Release Tracking's buckets and its
+  // Preliminary Estimate line.
+  portfolio: dedup([['portfolio'], ...CAPACITY_ROOTS, ['reports']]),
   capacity: dedup(CAPACITY_ROOTS),
   workspace: dedup(WORKSPACE_ROOTS),
   access: dedup([...ACCESS_ROOTS, ['workspace-members-profile']]),

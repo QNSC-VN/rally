@@ -147,6 +147,16 @@ export const workItems = workSchema.table(
     // per-task inputs live. Iteration Status already read them that way, so storing
     // them here as well let two surfaces disagree about the same story — and in
     // practice every stored value was NULL.
+    // The timestamp that established the item's CURRENT Accepted outcome (Phase 6
+    // Velocity SRS §8). Set on entering `accepted`, retained through `release`,
+    // cleared on reopen, set again on re-acceptance — enforced by the
+    // `trg_sync_accepted_date` trigger (migration 0087) so seeds and raw SQL cannot
+    // produce an Accepted row without one. `activity_logs` keeps every transition;
+    // this column is only ever the current outcome.
+    //
+    // NULL while accepted is a data-quality error, not "accepted at an unknown time":
+    // the reports report it rather than guessing During vs After.
+    acceptedDate: timestamp('accepted_date', { withTimezone: true }),
     acceptanceCriteria: text('acceptance_criteria'),
     // Dedicated rich-text fields (sanitized server-side), distinct from comments.
     notes: text('notes'),
@@ -201,6 +211,11 @@ export const workItems = workSchema.table(
     teamIdx: index('ix_wi_team').on(t.teamId),
     iterationIdx: index('ix_wi_iteration').on(t.iterationId),
     releaseIdx: index('ix_wi_release').on(t.releaseId),
+    // Velocity groups by iteration and classifies on the timestamp; Burndown filters
+    // it by date. Partial — only Story/Defect are ever classified.
+    acceptedDateIdx: index('ix_wi_accepted_date')
+      .on(t.iterationId, t.acceptedDate)
+      .where(sql`type IN ('story', 'defect') AND deleted_at IS NULL`),
     blockedIdx: index('ix_wi_blocked')
       .on(t.workspaceId, t.isBlocked)
       .where(sql`is_blocked = true`),
@@ -272,6 +287,26 @@ export const iterations = workSchema.table(
     plannedVelocity: integer('planned_velocity'),
     startDate: date('start_date'),
     endDate: date('end_date'),
+    // The stable shared timebox identity (migration 0088). Team-specific iterations
+    // covering the same timebox share one group, which is how `All Teams` fuses them
+    // into a single Burndown/Velocity bar. Assigned at CREATE by matching an existing
+    // group for the same project and date range, and never reassigned when dates later
+    // move — so replanning cannot silently split a bar in two, which is what a key
+    // derived from the dates themselves would do.
+    //
+    // NULL for a dateless iteration: it belongs to no timebox and is excluded from
+    // All Teams aggregation rather than collapsed into a shared bucket.
+    timeboxGroupId: uuid('timebox_group_id'),
+    // Burndown Ideal baseline (IB-BR-03): SUM(task.estimate) frozen ONCE at iteration
+    // start. Adding, removing or re-estimating tasks afterwards must NOT move the
+    // line, so this is a capture, never a computed-on-read value.
+    totalTaskEstimateAtStart: numeric('total_task_estimate_at_start', {
+      precision: 10,
+      scale: 2,
+    }),
+    totalTaskEstimateCapturedAt: timestamp('total_task_estimate_captured_at', {
+      withTimezone: true,
+    }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -281,6 +316,7 @@ export const iterations = workSchema.table(
     projectIdx: index('ix_iterations_project').on(t.projectId),
     teamIdx: index('ix_iterations_team').on(t.teamId),
     keyIdx: uniqueIndex('uq_iterations_key').on(t.projectId, t.iterationKey),
+    timeboxGroupIdx: index('ix_iterations_timebox_group').on(t.projectId, t.timeboxGroupId),
     committedIdx: index('ix_iterations_committed')
       .on(t.projectId, t.state)
       .where(sql`state = 'committed'`),
@@ -295,20 +331,46 @@ export const iterationDailySnapshots = workSchema.table(
     id: uuid('id').primaryKey().defaultRandom(),
     workspaceId: uuid('workspace_id').notNull(),
     iterationId: uuid('iteration_id').notNull(),
+    /**
+     * NULL is the ALL TEAMS row, and it is MEASURED rather than summed from the team
+     * rows — a task two teams both touch must be counted once (migration 0093). Same
+     * shape as `release_daily_snapshots`, for the same reason.
+     */
+    teamId: uuid('team_id'),
     snapshotDate: date('snapshot_date').notNull(),
-    // numeric(8,2) mirrors release_daily_snapshots so fractional story points
-    // survive the burndown read model (matches work_items.story_points).
-    totalPoints: numeric('total_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    completedPoints: numeric('completed_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    remainingPoints: numeric('remaining_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    totalItems: integer('total_items').notNull().default(0),
-    completedItems: integer('completed_items').notNull().default(0),
+    // ── Phase 6 Burndown (migration 0088) ─────────────────────────────────
+    // The two series the approved chart actually plots. They are NOT the legacy
+    // point columns above renamed: Remaining To Do is SUM(task.todo) in HOURS on
+    // the left axis, Accepted Points is cumulative SUM(planEstimate) of items whose
+    // `accepted_date` fell on or before this date, on the right axis.
+    remainingTodo: numeric('remaining_todo', { precision: 10, scale: 2 }).notNull().default('0'),
+    acceptedPoints: numeric('accepted_points', { precision: 8, scale: 2 }).notNull().default('0'),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+    // What makes history frozen: once the workspace-local day has closed the daily job
+    // stops rewriting that date, so a later task edit cannot rewrite the past. A
+    // correction is an audited operational action, not an application write.
+    finalized: boolean('finalized').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     workspaceIdx: index('ix_ids_workspace').on(t.workspaceId),
     iterationIdx: index('ix_ids_iteration').on(t.iterationId),
-    uniqueDay: uniqueIndex('uq_ids_iteration_date').on(t.iterationId, t.snapshotDate),
+    // COALESCE'd into the nil UUID in SQL (migration 0093) so ON CONFLICT targets one
+    // predicate and the daily job stays a single idempotent upsert for the team rows and
+    // the All Teams row alike. A plain unique index over a nullable column would not
+    // dedupe NULLs, and the All Teams row would double on the second tick.
+    uniqueDay: uniqueIndex('uq_ids_iteration_team_date').on(
+      t.iterationId,
+      t.teamId,
+      t.snapshotDate,
+    ),
+    // The daily job's own read: which dates do I have for this scope, and are they closed?
+    dateFinalIdx: index('ix_ids_iteration_team_date_final').on(
+      t.iterationId,
+      t.teamId,
+      t.snapshotDate,
+      t.finalized,
+    ),
   }),
 );
 
@@ -328,6 +390,14 @@ export const releases = workSchema.table(
     releaseDate: date('release_date'),
     plannedVelocity: integer('planned_velocity'),
     planEstimate: numeric('plan_estimate', { precision: 8, scale: 2 }),
+    // Release Tracking's Ideal line baseline (RT-BR-09). The Ideal trajectory runs from
+    // 0 at Release start to THIS approved target at Release end. Deliberately persisted:
+    // reconstructing it from today's mutable Planned value would silently redraw every
+    // past ideal whenever scope changed, which the SRS forbids. NULL = no baseline
+    // approved, which renders as an explicit unavailable state, never as a zero line.
+    // Two columns because Ideal is drawn in whichever unit `Chart Unit` selects.
+    idealTargetPoints: numeric('ideal_target_points', { precision: 8, scale: 2 }),
+    idealTargetCount: integer('ideal_target_count'),
     version: varchar('version', { length: 100 }),
     theme: text('theme'),
     notes: text('notes'),
@@ -374,6 +444,9 @@ export const portfolioItems = workSchema.table(
     // Notes / Release Notes editors (0080). Nullable: an empty rich-text field is absent.
     notes: text('notes'),
     releaseNotes: text('release_notes'),
+    // The BA's fourth rich-text block on Feature and Epic detail (SRS §5.1, §11.4). Same
+    // shape as the pair above for the same reason: an empty editor is ABSENT, not ''.
+    whatSuccessLooksLike: text('what_success_looks_like'),
     state: portfolioItemStateEnum('state').notNull().default('no_entry'),
     preliminaryEstimate: preliminaryEstimateSizeEnum('preliminary_estimate')
       .notNull()
@@ -888,22 +961,51 @@ export const workItemWatchers = workSchema.table(
 
 // ── release_daily_snapshots (burndown / scope tracking read model) ───────
 
+// Grain: one row per (release, TEAM SCOPE, workspace-local date). `teamId IS NULL` is
+// the All Teams aggregate, STORED rather than summed from the team rows on read — a sum
+// cannot de-duplicate a work item that two teams both touch, and RT §4.1 requires
+// DISTINCT work item IDs.
+//
+// Points and count live on ONE row: `Chart Unit` is a display switch over the same
+// measured population, not a second measurement, so two rows per day would let the two
+// units disagree about the same day.
 export const releaseDailySnapshots = workSchema.table(
   'release_daily_snapshots',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
     releaseId: uuid('release_id').notNull(),
+    // NULL = the All Teams aggregate row for this release and date.
+    teamId: uuid('team_id'),
     snapshotDate: date('snapshot_date').notNull(),
-    totalPoints: numeric('total_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    completedPoints: numeric('completed_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    remainingPoints: numeric('remaining_points', { precision: 8, scale: 2 }).notNull().default('0'),
-    totalItems: integer('total_items').notNull().default(0),
-    completedItems: integer('completed_items').notNull().default(0),
+    // ── Phase 6 Release Tracking burnup (migration 0089) ──────────────────
+    // Accepted is {Accepted, Release} ONLY (RT-AC-08). The legacy columns above were
+    // written from COMPLETED_SCHEDULE_STATES, which includes `Completed` and is
+    // therefore the wrong population for this chart.
+    acceptedPoints: numeric('accepted_points', { precision: 8, scale: 2 }).notNull().default('0'),
+    acceptedCount: integer('accepted_count').notNull().default(0),
+    plannedPoints: numeric('planned_points', { precision: 8, scale: 2 }).notNull().default('0'),
+    plannedCount: integer('planned_count').notNull().default(0),
+    // Top-down Feature estimate for the Features in/derived into this release
+    // (RT-BR-08), captured per day so the planning reference line is historical too.
+    preliminaryPoints: numeric('preliminary_points', { precision: 8, scale: 2 })
+      .notNull()
+      .default('0'),
+    preliminaryCount: integer('preliminary_count').notNull().default(0),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+    finalized: boolean('finalized').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    uniqueRelease: uniqueIndex('uq_rds_release_date').on(t.releaseId, t.snapshotDate),
+    // COALESCE'd into the nil UUID in SQL (migration 0089) so ON CONFLICT targets one
+    // predicate and the daily job stays a single upsert for team and All Teams rows.
+    uniqueRelease: uniqueIndex('uq_rds_release_team_date').on(
+      t.releaseId,
+      t.teamId,
+      t.snapshotDate,
+    ),
     releaseIdx: index('ix_rds_release').on(t.releaseId),
+    workspaceIdx: index('ix_rds_workspace').on(t.workspaceId),
   }),
 );
 

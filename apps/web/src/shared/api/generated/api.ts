@@ -2118,15 +2118,15 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/reports/sprints/{sprintId}/burndown': {
+  '/v1/reports/iteration-burndown': {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    /** Get sprint burndown chart data */
-    get: operations['ReportingController_getBurndown']
+    /** Iteration Burndown — frozen daily Remaining To Do, Accepted Points and Ideal */
+    get: operations['ReportingController_getIterationBurndown']
     put?: never
     post?: never
     delete?: never
@@ -2135,15 +2135,66 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/reports/projects/{projectId}/velocity': {
+  '/v1/reports/velocity': {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    /** Get sprint velocity for a project */
+    /** Velocity — Accepted During / After / Not Accepted per completed timebox */
     get: operations['ReportingController_getVelocity']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/reports/team-capacity': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Team Capacity — a read-only projection of the Team Status hours */
+    get: operations['ReportingController_getTeamCapacity']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/reports/release-tracking': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Release Tracking — Direct / Derived / Unparented buckets, rows and totals */
+    get: operations['ReportingController_getReleaseTracking']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/reports/release-tracking/burnup': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Release Tracking burnup — Accepted, Planned, Preliminary and Ideal */
+    get: operations['ReportingController_getReleaseBurnup']
     put?: never
     post?: never
     delete?: never
@@ -2836,6 +2887,7 @@ export interface components {
         | 'capacity:view'
         | 'capacity:manage'
         | 'capacity:publish'
+        | 'report:view'
       )[]
     }
     UpdateRolePermissionsDto: {
@@ -2888,6 +2940,7 @@ export interface components {
         | 'capacity:view'
         | 'capacity:manage'
         | 'capacity:publish'
+        | 'report:view'
       )[]
     }
     RoleAssignmentResponseDto: {
@@ -3831,6 +3884,7 @@ export interface components {
       description: string | null
       notes: string | null
       releaseNotes: string | null
+      whatSuccessLooksLike: string | null
       /** @enum {string} */
       state:
         | 'no_entry'
@@ -3920,6 +3974,7 @@ export interface components {
       description: string | null
       notes: string | null
       releaseNotes: string | null
+      whatSuccessLooksLike: string | null
       /** @enum {string} */
       state:
         | 'no_entry'
@@ -4051,6 +4106,7 @@ export interface components {
       description?: string | null
       notes?: string | null
       releaseNotes?: string | null
+      whatSuccessLooksLike?: string | null
       /** @enum {string} */
       state?:
         | 'no_entry'
@@ -4081,6 +4137,7 @@ export interface components {
       description?: string | null
       notes?: string | null
       releaseNotes?: string | null
+      whatSuccessLooksLike?: string | null
       /** Format: uuid */
       projectId?: string
       /** @enum {string} */
@@ -4152,6 +4209,219 @@ export interface components {
       }
       /** Format: date-time */
       occurredAt: string
+    }
+    IterationBurndownResponseDto: {
+      context: {
+        /** Format: uuid */
+        projectId: string
+        projectName: string
+        teamId: string | null
+        teamName: string | null
+        timeZone: string
+      }
+      timebox: {
+        /** Format: uuid */
+        iterationId: string
+        timeboxGroupId: string | null
+        name: string
+        startDate: string | null
+        endDate: string | null
+        iterationCount: number
+      }
+      points: {
+        date: string
+        remainingToDo: number | null
+        acceptedPoints: number | null
+        ideal: number | null
+      }[]
+      totalTaskEstimateAtStart: number | null
+      /** @enum {string} */
+      historyState: 'complete' | 'partial' | 'missing' | 'no-window'
+      /** @enum {string} */
+      status: 'on-track' | 'behind-plan' | 'unknown'
+      latestSnapshotDate: string | null
+      hasScheduledWork: boolean
+    }
+    VelocityResponseDto: {
+      context: {
+        /** Format: uuid */
+        projectId: string
+        projectName: string
+        teamId: string | null
+        teamName: string | null
+        timeZone: string
+      }
+      window: 5 | 10
+      bars: {
+        timeboxKey: string
+        name: string
+        startDate: string | null
+        endDate: string | null
+        acceptedDuring: number
+        acceptedAfter: number
+        notAccepted: number
+        unclassified: number
+        unclassifiedItems: number
+        iterationCount: number
+      }[]
+      averages: {
+        trend: number | null
+        last3: number | null
+        best3: number | null
+        worst3: number | null
+        sampleSize: number
+      }
+      unclassifiedItems: number
+    }
+    TeamCapacityResponseDto: {
+      context: {
+        /** Format: uuid */
+        projectId: string
+        projectName: string
+        teamId: string | null
+        teamName: string | null
+        timeZone: string
+      }
+      timebox: {
+        /** Format: uuid */
+        iterationId: string
+        timeboxGroupId: string | null
+        name: string
+        startDate: string | null
+        endDate: string | null
+        iterationCount: number
+      }
+      totals: {
+        capacityHours: number
+        estimateHours: number
+        todoHours: number
+        actualHours: number
+      }
+      teams: {
+        id: string | null
+        name: string
+        totals: {
+          capacityHours: number
+          estimateHours: number
+          todoHours: number
+          actualHours: number
+        }
+        members: {
+          id: string | null
+          name: string
+          hours: {
+            capacityHours: number
+            estimateHours: number
+            todoHours: number
+            actualHours: number
+          }
+        }[]
+      }[]
+      hasCapacity: boolean
+      hasTaskHours: boolean
+    }
+    ReleaseTrackingResponseDto: {
+      context: {
+        /** Format: uuid */
+        projectId: string
+        projectName: string
+        teamId: string | null
+        teamName: string | null
+        timeZone: string
+      }
+      release: {
+        /** Format: uuid */
+        id: string
+        name: string
+        startDate: string | null
+        releaseDate: string | null
+      }
+      /** @enum {string} */
+      unit: 'points' | 'count'
+      /** @enum {string} */
+      bucket: 'direct' | 'derived' | 'unparented'
+      summary: {
+        direct: number
+        derived: number
+        unparented: number
+      }
+      rows: {
+        rank: number
+        /** Format: uuid */
+        id: string
+        itemKey: string
+        name: string
+        teams: {
+          id: string | null
+          name: string
+        }[]
+        /** @enum {string} */
+        issueType: 'feature' | 'story' | 'defect'
+        state: string
+        childCount: number
+        status: {
+          accepted: number
+          total: number
+          percent: number | null
+        }
+        mismatches: {
+          /** Format: uuid */
+          childId: string
+          childKey: string
+          childTitle: string
+          /** @enum {string} */
+          childType: 'story' | 'defect'
+          /** Format: uuid */
+          itemReleaseId: string
+          itemReleaseName: string | null
+        }[]
+        fullMismatch: boolean
+        plannedStartDate: string | null
+        plannedEndDate: string | null
+        progress: {
+          points: {
+            accepted: number
+            total: number
+            percent: number | null
+          }
+          stories: {
+            accepted: number
+            total: number
+            percent: number | null
+          }
+          defects: {
+            accepted: number
+            total: number
+            percent: number | null
+          }
+        } | null
+      }[]
+      totals: {
+        planned: number
+        accepted: number
+        preliminary: number
+      }
+    }
+    ReleaseBurnupResponseDto: {
+      /** @enum {string} */
+      unit: 'points' | 'count'
+      points: {
+        date: string
+        accepted: number | null
+        planned: number | null
+        preliminary: number | null
+        ideal: number | null
+      }[]
+      /** @enum {string} */
+      historyState: 'complete' | 'partial' | 'missing' | 'no-window'
+      idealTarget: number | null
+      iterations: {
+        /** Format: uuid */
+        id: string
+        name: string
+        startDate: string | null
+        endDate: string | null
+      }[]
     }
     UpdateCapacityDto: {
       /** Format: uuid */
@@ -12379,13 +12649,15 @@ export interface operations {
       }
     }
   }
-  ReportingController_getBurndown: {
+  ReportingController_getIterationBurndown: {
     parameters: {
-      query?: never
-      header?: never
-      path: {
-        sprintId: string
+      query: {
+        projectId: string
+        teamId?: string | null
+        iterationId: string
       }
+      header?: never
+      path?: never
       cookie?: never
     }
     requestBody?: never
@@ -12395,20 +12667,25 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            sprintId?: string
-            points?: {
-              date?: string
-              remainingPoints?: number
-              completedPoints?: number
-              remainingItems?: number
-              completedItems?: number
-            }[]
-          }
+          'application/json': components['schemas']['IterationBurndownResponseDto']
         }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }
@@ -12425,13 +12702,13 @@ export interface operations {
   }
   ReportingController_getVelocity: {
     parameters: {
-      query?: {
-        lastNSprints?: number
+      query: {
+        projectId: string
+        teamId?: string | null
+        window?: number
       }
       header?: never
-      path: {
-        projectId: string
-      }
+      path?: never
       cookie?: never
     }
     requestBody?: never
@@ -12441,19 +12718,181 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            projectId?: string
-            sprints?: {
-              sprintId?: string
-              sprintName?: string
-              completedPoints?: number
-              completedItems?: number
-            }[]
-          }
+          'application/json': components['schemas']['VelocityResponseDto']
         }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ReportingController_getTeamCapacity: {
+    parameters: {
+      query: {
+        projectId: string
+        teamId?: string | null
+        iterationId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TeamCapacityResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ReportingController_getReleaseTracking: {
+    parameters: {
+      query: {
+        projectId: string
+        teamId?: string | null
+        releaseId: string
+        unit?: 'points' | 'count'
+        bucket?: 'direct' | 'derived' | 'unparented'
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ReleaseTrackingResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ReportingController_getReleaseBurnup: {
+    parameters: {
+      query: {
+        projectId: string
+        teamId?: string | null
+        releaseId: string
+        unit?: 'points' | 'count'
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ReleaseBurnupResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }

@@ -409,6 +409,15 @@ export function RichTextEditor({
         // the ENTIRE box is clickable/typable, not just the top text line.
         class: 'px-4 py-3 text-ui-lg leading-6 text-foreground focus:outline-none',
         style: `min-height:${minHeight}px`,
+        // The field's own name on the editable element. The visible label is a sibling
+        // `<span>` above the box, so without this the box is an UNNAMED text area to a
+        // screen reader — and to any query by accessible name.
+        'aria-label': title,
+        // Explicit, not implied. A `contenteditable` div is a text box to a person and to
+        // most screen readers, but the role is not computed from the attribute — so tooling
+        // (including a role-based query) sees a generic div until this says otherwise.
+        role: 'textbox',
+        'aria-multiline': 'true',
       },
       handlePaste: (view, event) => {
         const files = event.clipboardData ? imageFilesFromClipboard(event.clipboardData) : []

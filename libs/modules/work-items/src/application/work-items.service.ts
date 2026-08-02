@@ -671,6 +671,22 @@ export class WorkItemsService {
     }
 
     const effectiveTeamId = input.teamId !== undefined ? input.teamId : item.teamId;
+    /**
+     * A TEAM change revalidates the iteration the item already sits in.
+     *
+     * `iterationId: input.iterationId ?? null` skipped `assertIterationAssignable` whenever the
+     * patch did not mention an iteration, so moving an item to another team left it parked in the
+     * old team's iteration — the exact state `ITERATION_TEAM_MISMATCH` exists to refuse, reachable
+     * in two steps instead of one. The seeded database already contains one (`US-D2`, Team Beta,
+     * in Team Alpha's Sprint 26.1) and the Phase 6 reports attribute its points by the iteration,
+     * so it counted as Alpha's.
+     *
+     * Only when the team is actually changing. Re-checking on every unrelated patch would start
+     * refusing a title edit on an item whose team and iteration already disagree — a real state
+     * in existing data, and not this patch's fault to reject.
+     */
+    const effectiveIterationId =
+      input.iterationId ?? (input.teamId !== undefined ? item.iterationId : null);
     const changedMemberIds: Array<string | null | undefined> = [];
     if (input.assigneeId && input.assigneeId !== item.assigneeId) {
       changedMemberIds.push(input.assigneeId);
@@ -686,7 +702,7 @@ export class WorkItemsService {
       {
         projectId: item.projectId,
         teamId: effectiveTeamId,
-        iterationId: input.iterationId ?? null,
+        iterationId: effectiveIterationId,
         releaseId: input.releaseId ?? null,
         foundInReleaseId: input.foundInReleaseId ?? null,
         memberIds: changedMemberIds,

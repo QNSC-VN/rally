@@ -55,6 +55,7 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
     description: i.description,
     notes: i.notes,
     releaseNotes: i.releaseNotes,
+    whatSuccessLooksLike: i.whatSuccessLooksLike,
     state: i.state,
     preliminaryEstimate: i.preliminaryEstimate,
     // numeric arrives as a string from Drizzle (precision preservation); the API

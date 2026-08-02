@@ -16,11 +16,6 @@
     "allProjects": "All projects",
     "currentProject": "Current project"
   },
-  "metrics": {
-    "total": "Total",
-    "developing": "Developing",
-    "done": "Done"
-  },
   "states": {
     "no_entry": "No Entry",
     "intake": "Intake",
@@ -99,7 +94,8 @@
       "notes": "Notes",
       "releaseNotes": "Release Notes",
       "milestones": "Milestone",
-      "noMilestones": "No Milestone"
+      "noMilestones": "No Milestone",
+      "whatSuccessLooksLike": "What Success Looks Like"
     },
     "progress": {
       "percentDonePoints": "% Done by Plan Estimate",
@@ -149,6 +145,7 @@
     }
   },
   "create": {
+    "menuLabel": "New Portfolio Item",
     "titleEpic": "New Epic",
     "titleFeature": "New Feature",
     "nameLabel": "Name",

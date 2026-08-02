@@ -61,6 +61,110 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   route (which surfaces only as `Cannot POST /v1/...` in the browser). When a change spans
   packages, verify with `tsc -b --force`.
 
+## Reporting (Phase 6) — what is frozen, what is live
+
+Four surfaces share one module (`libs/modules/reporting`) but not one data strategy, and the
+difference is the whole design. Read this before changing a report or the snapshot job.
+
+- **Burndown is FROZEN history; Velocity and Team Capacity are LIVE queries.** Task To Do is
+  overwritten in place, so yesterday's remaining hours only exist if something wrote them
+  down — hence `iteration_daily_snapshots`. Velocity deliberately has no snapshot: moving an
+  item out of a closed iteration must change that bar. Never "unify" the two paths.
+- **The snapshot cron runs HOURLY and writes only TODAY's workspace-local date.** Date cutoffs
+  are per workspace (`workspace_settings.timezone`), so one UTC-midnight tick is wrong for
+  every workspace that is not on UTC — which is what it used to do. The value that survives a
+  day is the last tick before that workspace's midnight; when the local date rolls over the
+  day stops being addressed and is marked `finalized`. A missed day stays a GAP: the report
+  renders it unavailable, and `buildFallbackSnapshots`-style interpolation is prohibited.
+- **`work_items.accepted_date` is maintained by a TRIGGER** (`trg_sync_accepted_date`,
+  migration 0087), not by the service: `db/seeds/**` and raw SQL write this table directly,
+  and an Accepted row with no acceptance timestamp is a data-quality error the reports refuse
+  to guess about. The trigger never invents a date for a row that was already accepted before
+  0087 — those stay NULL and Velocity reports them as `unclassified`. Verified by experiment:
+  `accepted` sets it, `release` RETAINS it (accepted-equivalent), reopening clears it, and a
+  later re-acceptance writes a fresh, later timestamp.
+- **The timebox says WHICH window; the WORK says whose it is.** `iterations.team_id` is optional
+  here (real Rally collapses project and team, we do not), so a project may run one shared sprint
+  every team works inside — 195 of 206 local iterations name no team. Filtering reports on
+  `iterations.team_id` therefore returned NOTHING for a selected Team while Team Status showed the
+  hours, and Velocity, which had no team predicate on the work at all, credited every point in a
+  timebox to whatever team the timebox named. A team-scoped report now takes the team's own
+  iterations **plus the shared ones** (`teamOrSharedTimebox`) and narrows the numbers per row by
+  `coalesce(item.team_id, iteration.team_id)` — the same two-tier rule `getScopedTaskHours` and
+  Team Status already used. An unknown `teamId` is a 404, never relabelled `All Teams`.
+- **Nothing keeps `work_items.team_id` and its iteration's team in step by itself.**
+  `assertIterationAssignable` refuses the pair with `ITERATION_TEAM_MISMATCH`, but the update path
+  only checked it when the patch mentioned an iteration — so moving an item to another team left it
+  parked in the old team's sprint, in two steps instead of one. A team change now revalidates the
+  iteration the item already sits in. Seeds bypass the service entirely, which is how `US-D2` came
+  to be Team Beta's story inside Team Alpha's Sprint 26.1.
+- **`iterations.timebox_group_id` is how All Teams fuses per-Team iterations.** It is DERIVED
+  from (project, start, end) — `timeboxGroupIdFor()`, migration 0088 and the trigger added in 0093
+  share one expression, pinned by a spec — and computed ONCE, so a later date edit cannot split a
+  historical bar. The approved mockup shows the failure this prevents: two adjacent velocity
+  bars both labelled 25.1. It is maintained by a **trigger** because the service was demonstrably
+  not the only writer: `create` set it, `update` omitted it, and `db/seeds/**` inserts dated
+  iterations directly — 40 rows had dates and no group, three of them sharing a window with four
+  that were grouped, so each became its own bar.
+- **Burndown history carries a TEAM** (`iteration_daily_snapshots.team_id`, migration 0093).
+  `team_id IS NULL` is the All Teams row and every scope is MEASURED independently — the All Teams
+  row is never the sum of the team rows, or a task two teams both touch counts twice. Frozen
+  history cannot be re-sliced on read, so without the column a team-scoped Burndown simply could
+  not be served; a read picks exactly one series (team rows, or the All Teams row), never both.
+  Team rows begin at 0093, so a team-scoped chart of older history is an honest gap.
+- **The Phase 6 snapshot tables now have foreign keys.** `iteration_daily_snapshots` and
+  `member_capacity` had NONE (verified against `pg_constraint`). Orphan snapshots happened to be
+  unreachable through the API — deleting an iteration is blocked unless it is still `planning`, and
+  only `committed` iterations are snapshotted — but orphaned `member_capacity` rows were reachable,
+  and Team Capacity inner-joins `teams`/`users`, so an orphan row DROPS out and the Capacity total
+  quietly falls while Estimate/ToDo/Actual stay. "Unreachable today" is a coincidence of two
+  unrelated rules, not an invariant.
+- **`workspace_settings.working_days`** (ISO 1–7, default Mon–Fri) is the Burndown x-axis and
+  the Ideal line's index. The Ideal line is indexed by WORKING day and reaches zero on the
+  last one; the mockup interpolates over calendar days and never reaches zero — the SRS wins.
+- **`release_daily_snapshots.team_id IS NULL` is the All Teams row, and it is MEASURED, not
+  summed** from the Team rows: a work item two Teams both touch must be counted once. Points
+  and count live on the same row because `Chart Unit` is a display switch over one population.
+- Report series colours are `--report-*` tokens (both themes) in `globals.css`, exposed via
+  `BRAND.report*`. They are data colours fixed by the BA, deliberately not `primary`.
+- **`historyState` describes SNAPSHOTS only.** Both burndown and burnup once folded "no Ideal
+  baseline" into that enum, which made a missing baseline discard measured bars that had really
+  been recorded — IB §3 scopes the baseline to the Ideal LINE, and §5 makes only missing
+  snapshots unavailable. The baseline is now reported separately
+  (`totalTaskEstimateAtStart` / `idealTarget`, null when absent) and a fourth state `no-window`
+  covers an iteration or release with no dates. That state exists because the alternative was a
+  500: the service had nothing but `''` to pass, `'' < ''` slipped past the inverted-range guard
+  in `workingDaysBetween`, and `addDays('')` threw `RangeError`.
+- **`releases.ideal_target_points` / `_count` are captured ONCE, by the snapshot job**, on a
+  release's first snapshot day, from the then-current planned scope — the same `IS NULL`-guarded
+  capture as the iteration baseline, and for the same reason (RT-BR-09): an Ideal derived from
+  today's Planned value silently redraws every past day whenever scope changes. Before this
+  nothing wrote those columns at all, so the Ideal line could never be drawn for any release.
+- **A sparse series needs DOTS, not just lines.** `connectNulls={false}` is right — a bridged gap
+  is a fabrication — but a line segment needs two adjacent points, so a measured day between two
+  gaps drew zero pixels and a young release rendered an empty grid beside populated totals. Give
+  a dot an explicit `fill`: recharts fills dots white by default and draws the series colour as
+  the ring, so `{ r: 2, strokeWidth: 0 }` alone is twelve invisible dots on a white card.
+- **The demo seed writes frozen report history** (`seedReportHistory` in `db/seeds/demo.ts`).
+  Both seeded timeboxes are in the past and the cron only ever writes TODAY, so without it every
+  Phase 6 chart shows its empty state on a fresh database. The rows deliberately include a GAP,
+  weekend audit rows and a sparse burnup — production must never fabricate history, a dev seed
+  must, and those shapes are the ones worth being able to see.
+
+## Permissions reach a workspace ONCE
+
+`db/permissions.catalog.ts` is the source of truth, but `db/seeds/bootstrap.ts` upserts the
+per-workspace tier roles with `set: { name }` — deliberately, so re-seeding cannot clobber an
+admin's edits to a role's permissions. The consequence is easy to miss: **a permission added to
+the catalogue never reaches an existing workspace.** Phase 6 added `report:view` to
+PROJECT_ADMIN and PROJECT_MEMBER and every pre-Phase-6 workspace kept its old array, so all five
+report routes answered 403 to everyone except Workspace Admin — whose `workspace:*` grant is the
+global anchor and hid the fault everywhere it was tested. Migration 0092 backfills it.
+
+So: **a new permission needs a backfill migration**, not just a catalogue entry. Force it only
+when the permission is genuinely new (nobody can have revoked what never existed); a permission
+that already shipped must be merged, not forced, or the migration undoes someone's decision.
+
 ## Observability
 
 The implementation lives in `@qnsc-vn/observability` — shared with opshub, so fix it

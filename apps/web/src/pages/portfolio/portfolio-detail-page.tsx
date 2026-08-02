@@ -137,6 +137,11 @@ export function PortfolioDetailPage() {
       if (typeof resolved.releaseNotes === 'string') {
         resolved.releaseNotes = await uploadAndRewrite(resolved.releaseNotes)
       }
+      // The new editor gets the same treatment: a field left out here persists `blob:` URLs
+      // that resolve to nothing once the tab closes.
+      if (typeof resolved.whatSuccessLooksLike === 'string') {
+        resolved.whatSuccessLooksLike = await uploadAndRewrite(resolved.whatSuccessLooksLike)
+      }
       await wrapSave(async () => {
         await update.mutateAsync({ id: itemId, patch: resolved })
       })
@@ -252,6 +257,17 @@ export function PortfolioDetailPage() {
                 value={item.releaseNotes}
                 readOnly={!canEdit}
                 onChange={(html) => setField({ releaseNotes: html })}
+              />
+
+              {/* What Success Looks Like — the BA's fourth block, on BOTH Feature and Epic
+                  detail (SRS §5.1, §11.4). It had no column behind it, so the field could not
+                  exist at all; migration 0086 adds one shaped exactly like Notes, which is why
+                  this is the same editor rather than a bespoke box. */}
+              <RichTextEditor
+                title={t('detail.fields.whatSuccessLooksLike')}
+                value={item.whatSuccessLooksLike}
+                readOnly={!canEdit}
+                onChange={(html) => setField({ whatSuccessLooksLike: html })}
               />
 
               {/* Comments — the SAME component Work Item detail renders, in the same place

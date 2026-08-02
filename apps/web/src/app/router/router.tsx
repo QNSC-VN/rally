@@ -271,6 +271,19 @@ const capacityPlanDetailRoute = createRoute({
   ),
 })
 
+// `Portfolio > Release Tracking`, the third item in the Portfolio menu (RT-AC-01). Its own page
+// rather than a card inside Reports: the SRS moved it out of Reports deliberately, and it tracks a
+// Release rather than an iteration.
+const releaseTrackingRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/release-tracking',
+  staticData: { breadcrumb: 'Release Tracking' },
+  component: lazyPage(
+    () => import('@/pages/release-tracking/release-tracking-page'),
+    'ReleaseTrackingPage',
+  ),
+})
+
 const reportsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/reports',
@@ -313,6 +326,7 @@ const routeTree = rootRoute.addChildren([
     portfolioDetailRoute,
     capacityPlansRoute,
     capacityPlanDetailRoute,
+    releaseTrackingRoute,
     workItemDetailRoute,
     notFoundRoute,
   ]),

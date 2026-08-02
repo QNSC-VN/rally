@@ -15,6 +15,7 @@ import quality from './locales/en/quality.json'
 import portfolio from './locales/en/portfolio.json'
 import capacity from './locales/en/capacity.json'
 import reports from './locales/en/reports.json'
+import releaseTracking from './locales/en/release-tracking.json'
 import milestones from './locales/en/milestones.json'
 import settings from './locales/en/settings.json'
 import notifications from './locales/en/notifications.json'
@@ -42,6 +43,7 @@ i18n.use(initReactI18next).init({
       portfolio,
       capacity,
       reports,
+      'release-tracking': releaseTracking,
       milestones,
       settings,
       notifications,

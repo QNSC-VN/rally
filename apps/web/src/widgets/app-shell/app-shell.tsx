@@ -136,13 +136,20 @@ const NAV_ITEMS: NavItem[] = [
         featureFlag: 'feature.portfolio',
         permission: 'capacity:view',
       },
+      {
+        // Third and LAST in the Portfolio menu (RT-AC-01), which is where the SRS puts it.
+        path: '/release-tracking',
+        label: 'Release Tracking',
+        featureFlag: 'feature.release-tracking',
+        permission: 'report:view',
+      },
     ],
   },
   {
     path: '/reports',
     label: 'Reports',
     featureFlag: 'feature.reports',
-    permission: 'project:view',
+    permission: 'report:view',
   },
 ]
 

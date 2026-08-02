@@ -79,6 +79,22 @@
   --capacity-headroom: #abedc5;
   --capacity-headroom-bg: #e1faeb;
   --capacity-headroom-border: #57c282;
+
+  /* Report chart series (P6). Taken from the BA-approved mockup rather than reused from the
+     brand palette: these are DATA colours, and the SRS names them per series ("blue/teal
+     bars", "dark line", "green bars", dark/light green + red for the velocity stack). Reusing
+     `--primary` navy for one bar and `--primary-light` for another would make two unrelated
+     measures look like the same family. */
+  --report-todo: #176f84; /* Task To Do (hours) */
+  --report-ideal: #566274; /* Ideal / trend reference line */
+  --report-accepted: #5dbb4f; /* Accepted (points), burndown right axis */
+  --report-during: #3d8c56; /* Velocity: accepted during the iteration */
+  --report-after: #83bd91; /* Velocity: accepted after it ended */
+  --report-not-accepted: #ef6a67; /* Velocity: never accepted */
+  --report-trend: #247344; /* Velocity trend line */
+  --report-planned: #d98324; /* Burnup: planned scope */
+  --report-preliminary: #8b6fd1; /* Burnup: top-down Preliminary estimate */
+  --report-grid: #dfe5ec;
   --warning: #d97706;
   --warning-bg: #fef5e4;
   --warning-border: #f0d9a5;
@@ -188,6 +204,19 @@
   --capacity-headroom: #2f5f45;
   --capacity-headroom-bg: #16261e;
   --capacity-headroom-border: #57c282;
+
+  /* Same series, lifted for a dark card. Hue kept, so a screenshot in either theme is still
+     recognisably the same chart. */
+  --report-todo: #3fa3bb;
+  --report-ideal: #9aa7ba;
+  --report-accepted: #7fd06f;
+  --report-during: #5aab72;
+  --report-after: #a4d3ae;
+  --report-not-accepted: #f28b88;
+  --report-trend: #4fae77;
+  --report-planned: #e8a55a;
+  --report-preliminary: #a68ee0;
+  --report-grid: #2a3a54;
   --warning: #e3a008;
   --warning-bg: #2a2110;
   --warning-border: #4a3a14;

@@ -30,6 +30,8 @@ const forecast = (over: Partial<CapacityForecast> = {}): CapacityForecast => ({
   iterationsModelled: 3,
   samplesUsed: 6,
   historyDays: 84,
+  // Sampled history is this fixture's case; the supplied-velocity branch has its own test.
+  basis: 'history',
   insufficientData: null,
   ...over,
 })
