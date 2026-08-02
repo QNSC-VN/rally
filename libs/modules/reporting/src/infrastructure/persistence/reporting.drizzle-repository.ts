@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
@@ -111,7 +111,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
             eq(iterations.workspaceId, workspaceId),
             eq(iterations.projectId, projectId),
             eq(iterations.timeboxGroupId, timeboxGroupId),
-            scope.kind === 'team' ? eq(iterations.teamId, scope.teamId) : undefined,
+            scope.kind === 'team' ? teamOrSharedTimebox(scope.teamId) : undefined,
           );
 
     const rows = await this.db
@@ -207,7 +207,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           eq(iterations.workspaceId, workspaceId),
           eq(iterations.projectId, projectId),
           sql`${iterations.endDate} < ${todayLocalDate}`,
-          scope.kind === 'team' ? eq(iterations.teamId, scope.teamId) : undefined,
+          scope.kind === 'team' ? teamOrSharedTimebox(scope.teamId) : undefined,
         ),
       )
       .groupBy(groupKey)
@@ -227,8 +227,20 @@ export class ReportingDrizzleRepository implements IReportingRepository {
   async getVelocityItems(
     workspaceId: string,
     iterationIds: string[],
+    scope: TeamScope,
   ): Promise<Array<VelocityItem & { iterationId: string }>> {
     if (iterationIds.length === 0) return [];
+    const iteration = alias(iterations, 'velocity_iteration');
+    /**
+     * Whose points these are: the ITEM's team, falling back to its iteration's.
+     *
+     * The same two-tier rule `getScopedTaskHours` uses, and it has to be here too — this query
+     * had no team predicate at all, so team scope came only from which iterations were selected.
+     * That attributed work by the TIMEBOX's team, and nothing keeps the two in step: the seeded
+     * database already holds Team Beta's `US-D2` sitting in Team Alpha's Sprint 26.1, counted as
+     * Alpha's 8 points and absent from Beta's chart entirely.
+     */
+    const resolvedTeam = sql`coalesce(${workItems.teamId}, ${iteration.teamId})`;
     const rows = await this.db
       .select({
         id: workItems.id,
@@ -239,12 +251,14 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         acceptedDate: workItems.acceptedDate,
       })
       .from(workItems)
+      .leftJoin(iteration, eq(iteration.id, workItems.iterationId))
       .where(
         and(
           eq(workItems.workspaceId, workspaceId),
           inArray(workItems.iterationId, iterationIds),
           inArray(workItems.type, [...LEAF_TYPES]),
           isNull(workItems.deletedAt),
+          scope.kind === 'team' ? sql`${resolvedTeam} = ${scope.teamId}::uuid` : undefined,
         ),
       );
     return rows.map((r) => ({
@@ -794,6 +808,24 @@ const ITERATION_COLUMNS = {
   endDate: iterations.endDate,
   totalTaskEstimateAtStart: iterations.totalTaskEstimateAtStart,
 } as const;
+
+/**
+ * Which iterations a TEAM-scoped report may draw on: the team's own, plus the SHARED ones.
+ *
+ * `iterations.team_id` is optional in this schema — an iteration needs a project and may name a
+ * team (real Rally collapses the two, we do not) — so a project can run one timebox per sprint
+ * that every team works inside. Matching `team_id = :team` alone therefore returned NOTHING for
+ * such a project: 195 of 206 iterations in the local database are team-less, so a selected Team
+ * showed `iterationCount: 0`, empty Velocity bars and zero capacity while Team Status showed the
+ * hours. The inverse was just as wrong — the null-group fallback branch dropped the predicate
+ * entirely, so a selected Team DID get a shared iteration's data there.
+ *
+ * The timebox says WHICH window; the work says WHOSE it is. So a shared window is in scope and
+ * the per-item team predicate below is what narrows the numbers.
+ */
+function teamOrSharedTimebox(teamId: string) {
+  return or(eq(iterations.teamId, teamId), isNull(iterations.teamId));
+}
 
 function toIterationRow(row: {
   id: string;

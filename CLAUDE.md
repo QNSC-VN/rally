@@ -83,6 +83,21 @@ difference is the whole design. Read this before changing a report or the snapsh
   0087 — those stay NULL and Velocity reports them as `unclassified`. Verified by experiment:
   `accepted` sets it, `release` RETAINS it (accepted-equivalent), reopening clears it, and a
   later re-acceptance writes a fresh, later timestamp.
+- **The timebox says WHICH window; the WORK says whose it is.** `iterations.team_id` is optional
+  here (real Rally collapses project and team, we do not), so a project may run one shared sprint
+  every team works inside — 195 of 206 local iterations name no team. Filtering reports on
+  `iterations.team_id` therefore returned NOTHING for a selected Team while Team Status showed the
+  hours, and Velocity, which had no team predicate on the work at all, credited every point in a
+  timebox to whatever team the timebox named. A team-scoped report now takes the team's own
+  iterations **plus the shared ones** (`teamOrSharedTimebox`) and narrows the numbers per row by
+  `coalesce(item.team_id, iteration.team_id)` — the same two-tier rule `getScopedTaskHours` and
+  Team Status already used. An unknown `teamId` is a 404, never relabelled `All Teams`.
+- **Nothing keeps `work_items.team_id` and its iteration's team in step by itself.**
+  `assertIterationAssignable` refuses the pair with `ITERATION_TEAM_MISMATCH`, but the update path
+  only checked it when the patch mentioned an iteration — so moving an item to another team left it
+  parked in the old team's sprint, in two steps instead of one. A team change now revalidates the
+  iteration the item already sits in. Seeds bypass the service entirely, which is how `US-D2` came
+  to be Team Beta's story inside Team Alpha's Sprint 26.1.
 - **`iterations.timebox_group_id` is how All Teams fuses per-Team iterations.** It is DERIVED
   from (project, start, end) — `timeboxGroupIdFor()` and migration 0088 share the expression,
   pinned by a spec — and computed ONCE at create, so a later date edit cannot split a

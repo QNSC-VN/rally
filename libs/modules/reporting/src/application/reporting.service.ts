@@ -143,6 +143,7 @@ export class ReportingService {
     const items = await this.repo.getVelocityItems(
       workspaceId,
       windowed.flatMap((t) => t.iterationIds),
+      scope,
     );
     const byIteration = new Map<string, typeof items>();
     for (const item of items) {
@@ -456,13 +457,24 @@ export class ReportingService {
     if (projectName === null) {
       throw new NotFoundException('PROJECT_NOT_FOUND', 'Project not found');
     }
+    /**
+     * An unknown team is a 404, NOT "All Teams".
+     *
+     * `teamName ?? ALL_TEAMS_LABEL` relabelled an id that resolved to nothing — a team from
+     * another workspace, or a deleted one — while the QUERIES stayed narrowed to it and returned
+     * nothing. The reader got a header claiming a project-wide aggregate over a scope that had
+     * matched no rows, which is the one reading a report must never allow.
+     */
+    if (args.teamId && teamName === null) {
+      throw new NotFoundException('TEAM_NOT_FOUND', 'Team not found');
+    }
     return {
       projectId: args.projectId,
       projectName,
       teamId: args.teamId ?? null,
       // The centred context title is `{Project} - {Team|All Teams}` (IB §7), so the label for
       // "no Team selected" belongs to the contract rather than to the SPA.
-      teamName: args.teamId ? (teamName ?? ALL_TEAMS_LABEL) : ALL_TEAMS_LABEL,
+      teamName: args.teamId ? teamName : ALL_TEAMS_LABEL,
       timeZone,
     };
   }
