@@ -544,6 +544,28 @@ export class PortfolioItemsService {
       }
     }
 
+    /**
+     * RESTORING a Feature whose Epic is archived is refused too.
+     *
+     * The archive guard above only looked one way, so the forbidden state was reachable in three
+     * legal steps: archive the Feature, archive the now-childless Epic, then restore the Feature —
+     * leaving an ACTIVE Feature under a hidden parent, which is exactly what this method's own
+     * docstring says it exists to prevent, and what `assertReferences` refuses on any other write
+     * ("Cannot attach a Feature to an archived Epic").
+     *
+     * Restore the Epic first. Naming it in the message matters: an archived parent is invisible in
+     * every list, so "restore the Epic" is unactionable without knowing which one.
+     */
+    if (!archived && existing.type === 'feature' && existing.parentId !== null) {
+      const [parent] = await this.repo.findByIds([existing.parentId], actor.workspaceId);
+      if (parent && parent.archivedAt !== null) {
+        throw new PreconditionFailedException(
+          'PORTFOLIO_PARENT_ARCHIVED',
+          `Its Epic ${parent.itemKey} is archived — restore that first`,
+        );
+      }
+    }
+
     await this.repo.setArchived(id, archived, actor.workspaceId);
     return this.getItem(actor, id);
   }

@@ -293,6 +293,17 @@ export class ReportingService {
     const scope = teamScope(args.teamId);
     const unit: ChartUnit = args.unit ?? 'points';
 
+    /**
+     * Validate the SCOPE, not just the release.
+     *
+     * This route returns no `context`, so it never called `context()` — and with it skipped the
+     * project and team existence checks the other four reports get for free. A soft-deleted project
+     * still served a burnup, and an unknown `teamId` narrowed every query to nothing while the caller
+     * got a 200. The release check below proves the release belongs to the project; it cannot prove
+     * the project is still there.
+     */
+    await this.resolveScopeNames(actor, args);
+
     const release = await this.repo.findRelease(workspaceId, args.releaseId);
     if (!release || release.projectId !== args.projectId) {
       throw new NotFoundException('RELEASE_NOT_FOUND', 'Release not found');
@@ -445,11 +456,17 @@ export class ReportingService {
     };
   }
 
-  private async context(
+  /**
+   * Resolve the scope's names, refusing anything that does not exist.
+   *
+   * Split out of `context()` so the ONE report that returns no context can still validate. Four of
+   * the five report routes built a context and got these checks for free; `getReleaseBurnup` does not
+   * return one, so it skipped them entirely and served a burnup for a soft-DELETED project.
+   */
+  private async resolveScopeNames(
     actor: JwtPayload,
     args: ScopeArgs,
-    timeZone: string,
-  ): Promise<ReportContext> {
+  ): Promise<{ projectName: string; teamName: string | null }> {
     const [projectName, teamName] = await Promise.all([
       this.repo.getProjectName(actor.workspaceId, args.projectId),
       args.teamId ? this.repo.getTeamName(actor.workspaceId, args.teamId) : Promise.resolve(null),
@@ -468,6 +485,15 @@ export class ReportingService {
     if (args.teamId && teamName === null) {
       throw new NotFoundException('TEAM_NOT_FOUND', 'Team not found');
     }
+    return { projectName, teamName };
+  }
+
+  private async context(
+    actor: JwtPayload,
+    args: ScopeArgs,
+    timeZone: string,
+  ): Promise<ReportContext> {
+    const { projectName, teamName } = await this.resolveScopeNames(actor, args);
     return {
       projectId: args.projectId,
       projectName,

@@ -195,7 +195,12 @@ describe('EnvSchema — refinements are not disabled by an early return', () => 
   });
 
   it('still reports missing database parts when DATABASE_URL is absent', () => {
-    const { DATABASE_URL: _omitted, ...withoutUrl } = env();
+    const { DATABASE_URL, ...withoutUrl } = env();
+    // Asserted, not discarded: if the fixture ever stops setting a URL, this test would otherwise
+    // "pass" while proving nothing about the branch it is here to cover. (It also keeps the binding
+    // used — `no-unused-vars` only exempts `^_` for arguments, not for destructured variables.)
+    expect(DATABASE_URL).toBeTruthy();
+
     const result = EnvSchema.safeParse(withoutUrl);
     expect(result.success).toBe(false);
     if (result.success) return;
