@@ -16,6 +16,7 @@ import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from '
 
 import { BRAND } from '@/shared/config/brand'
 import { useVelocity, type VelocityWindow } from '@/features/reporting/api'
+import { teamScopeLabel } from '@/features/reporting/scope'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { NativeSelect } from '@/shared/ui/native-select'
 import { SkeletonList } from '@/shared/ui/skeleton'
@@ -37,7 +38,7 @@ export function VelocityReport({
   projectId: string
   teamId: string | undefined
 }) {
-  const { t } = useTranslation('reports')
+  const { t } = useTranslation(['reports', 'common'])
   const [window, setWindow] = useState<VelocityWindow>(5)
   const { data, isLoading } = useVelocity({ projectId, teamId, window })
 
@@ -55,7 +56,9 @@ export function VelocityReport({
       actions={
         <div className="flex items-center gap-4">
           <span className="text-ui-xs font-semibold text-muted-foreground">
-            {t('velocity.teamContext', { team: data?.context.teamName ?? '' })}
+            {t('velocity.teamContext', {
+              team: teamScopeLabel(data?.context.teamName, t('common:allTeams')),
+            })}
           </span>
           <label className="flex items-center gap-2 text-ui-xs font-semibold text-foreground-subtle">
             {t('velocity.window')}
@@ -124,6 +127,19 @@ export function VelocityReport({
           />
         </>
       }
+      dataTable={{
+        caption: t('velocity.tableCaption'),
+        noDataLabel: t('common:noData'),
+        columns: [
+          t('velocity.tableIteration'),
+          t('velocity.series.during'),
+          t('velocity.series.after'),
+          t('velocity.series.notAccepted'),
+        ],
+        // The Trend is deliberately absent: it is one repeated value, already stated in the legend,
+        // and a column of the same number on every row is noise to read aloud.
+        rows: bars.map((bar) => [bar.name, bar.acceptedDuring, bar.acceptedAfter, bar.notAccepted]),
+      }}
       footer={
         data && data.unclassifiedItems > 0 ? (
           <p className="mt-2 flex items-center justify-center gap-1.5 text-ui-xs text-destructive">

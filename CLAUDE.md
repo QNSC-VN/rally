@@ -63,6 +63,13 @@ not a function`, so use `AuthService.devLogin` for a bearer token), the **Valida
   the guard** (an incomplete query is a 400 and never reaches authorization), and a JIT-provisioned SSO
   user is **not** a denied principal — `assignDefaultRole` grants `project_member`, which the BA gives
   `report:view`. Use a seeded user with custom roles for the negative case.
+- **The grids are DIVs, so `aria-sort` and `role="columnheader"` are deliberately absent.** They are
+  only meaningful on a real `columnheader`, and `DataTableFrame` renders a scroll container while each
+  page renders its own rows — adding the role to the header alone would announce a one-row table,
+  which is worse than no table semantics. `SortHeader` carries the state in its accessible name
+  instead ("Rank, sorted ascending. Activate to sort."), which is true regardless of the surrounding
+  structure. It is also a real `<button>` now: it was a `div` with `onClick`, so sorting — a
+  documented feature on every grid in the app — was pointer-only.
 - **The frontend has ratchets too** (`apps/web/src/test/fe-consistency.ratchet.test.ts`):
   raw `<button>`, inline styles, hardcoded copy, file length, and CSRF headers on
   raw `fetch` writes. They may only decrease.
@@ -120,6 +127,12 @@ exported from `test/e2e/support/flow-harness.ts`.
   create.
 - **Do NOT run the BE e2e suite while Playwright or a manual session is live.** The reset truncates
   under them. Eight Playwright specs failed at ~21s each exactly that way.
+- **And run `pnpm db:seed:test` AFTER a BE e2e run, before Playwright.** The reset is at the START of
+  the BE run, so the suite leaves all 303 tests' debris behind — hundreds of extra projects,
+  iterations and teams. `golden-journey.e2e.ts` then failed on the Add Item step (the modal stays open
+  because the server refused the create), and it reproduced on a clean checkout with the changes
+  stashed, so it is the database and not the diff. `pnpm db:seed:test` cleared it. Stash-and-rerun is
+  the cheap way to tell the two apart before hunting a phantom regression.
 - **The e2e suite used to leak ~84 projects per run with no teardown anywhere** — 37 files, every
   `afterAll` closing the app and cleaning nothing. Twice that pushed `portfolio_items.rank`
   (`varchar(255)`, extended by appending) to exactly 255 characters at ~1,900 items, after which every
@@ -201,6 +214,25 @@ difference is the whole design. Read this before changing a report or the snapsh
   and count live on the same row because `Chart Unit` is a display switch over one population.
 - Report series colours are `--report-*` tokens (both themes) in `globals.css`, exposed via
   `BRAND.report*`. They are data colours fixed by the BA, deliberately not `primary`.
+- **A chart must pass `dataTable` to `ChartFrame`, and the SVG is `aria-hidden`.** A recharts plot is
+  paths plus loose `<text>` nodes, so assistive tech reads a pile of numbers in painting order with
+  nothing to say which series or which day any belongs to — and these reports ARE their values. The
+  frame renders the caller's own row array as a visually hidden `<table>` instead (`sr-only`, never
+  `display:none`), which is why the two cannot disagree. `null` renders as the caller's `noDataLabel`;
+  a gap stays a gap here too.
+- **`ChartFrame.underAxis` is for a SECOND axis row, not a footer.** The burnup's iteration band is
+  part of the x-axis (RT §7, RT-AC-09: "X-axis shows dates and a secondary iteration-name row"). From
+  `footer` it rendered below the legend strip and up to two history notes — ~90px from the dates it
+  labels — where it reads as a third summary block.
+- **`teamName === null` is `All Teams`, and it is the DEFAULT scope.** All four surfaces printed
+  `teamName ?? ''`, so the scope a reader sees FIRST rendered as "NextGen Platform - " and "Team: ".
+  Use `teamScopeLabel` / `reportScopeLabel` (`features/reporting/scope.ts`); the term is `All Teams`
+  per every Phase 6 §6/§7, even though `capacity.json` and `settings.json` spell it "All teams".
+- **A team-scoped iteration PICKER must offer the team's own timeboxes plus the shared ones**
+  (`iterationsInScope`) — the client half of `teamOrSharedTimebox`. Do not pass `teamId` to
+  `useIterations` for this: that filter is a strict `team_id = ?` and drops exactly the shared
+  iterations the report measures, because SQL equality never matches NULL. `listAssignmentOptions`
+  already had the OR-NULL form; the list endpoint does not.
 - **`historyState` describes SNAPSHOTS only.** Both burndown and burnup once folded "no Ideal
   baseline" into that enum, which made a missing baseline discard measured bars that had really
   been recorded — IB §3 scopes the baseline to the Ideal LINE, and §5 makes only missing

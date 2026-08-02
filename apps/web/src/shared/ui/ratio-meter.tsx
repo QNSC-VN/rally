@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import { BRAND } from '@/shared/config/brand'
 
 /**
@@ -24,27 +26,68 @@ export function RatioMeter({
   accepted,
   total,
   title,
+  percent,
+  hidePercent = false,
+  label,
 }: {
   /** Completion ratio, NOT a percentage: `0.25` renders as 25%. Null when total is 0. */
   ratio: number | null
   accepted: number | string
   total: number | string
   title?: string
+  /**
+   * The percentage to PRINT, when the server computes it and the client must not re-derive it.
+   *
+   * Release Tracking floors (`Math.floor`, RT-BR-05) where this component rounds, so 99.6% is 99
+   * there and would read 100 here — a number that says "finished" about work that is not.
+   */
+  percent?: number | null
+  /**
+   * Print the ratio bar but NOT the percentage.
+   *
+   * For a population whose denominator is a slice rather than the whole: a Derived Feature's Status
+   * counts only the children in the selected release and scope, so a percentage would be read as the
+   * Feature's own progress (RT-BR-05 omits it deliberately). The bar still fills, because the
+   * proportion of the counted work is exactly what it shows.
+   */
+  hidePercent?: boolean
+  /**
+   * Replaces the bare `accepted/total` with the caller's own wording.
+   *
+   * Release Tracking says "5/10 points accepted" — the unit belongs in the cell, because `Chart Unit`
+   * switches it and a reader comparing two rows should not have to look back at a selector to know
+   * what they are counting.
+   */
+  label?: ReactNode
 }) {
-  const pct = ratio === null ? null : Math.round(ratio * 100)
-  // The FILL clamps, the LABEL does not — over-delivery against a forecast is real and the
-  // number is the point, but a fill wider than its track would break the layout.
-  const fill = pct === null ? 0 : Math.max(0, Math.min(100, pct))
-  const color = pct !== null && pct >= 100 ? BRAND.primaryLight : BRAND.warning
+  const pct = percent !== undefined ? percent : ratio === null ? null : Math.round(ratio * 100)
+  /**
+   * The FILL comes from the RATIO, not from the printed percentage.
+   *
+   * They are usually the same number, but not always: a suppressed percentage (`hidePercent`) still
+   * has a real proportion to draw, and a floored `percent` differs from the ratio in the last unit.
+   * Reading the bar off `pct` drew an empty track for a Derived row that was half done.
+   *
+   * It clamps and the LABEL does not — over-delivery against a forecast is real and the number is the
+   * point, but a fill wider than its track would break the layout.
+   */
+  const measured = ratio !== null ? ratio * 100 : pct
+  const fill = measured === null ? 0 : Math.max(0, Math.min(100, measured))
+  // The colour follows the number the READER SEES, so a cell can never print a blue "100%" beside an
+  // amber bar. Where no percentage is printed it falls back to the measured proportion.
+  const shown = pct ?? (measured === null ? null : Math.round(measured))
+  const color = shown !== null && shown >= 100 ? BRAND.primaryLight : BRAND.warning
 
   return (
     <div className="min-w-0 flex-1" title={title}>
       <div className="flex items-baseline justify-between gap-2 text-ui-xs">
-        <span className="font-semibold tabular-nums" style={{ color }}>
-          {pct === null ? '--' : `${pct}%`}
-        </span>
-        <span className="font-mono text-foreground-subtle tabular-nums">
-          {accepted}/{total}
+        {!hidePercent && (
+          <span className="font-semibold tabular-nums" style={{ color }}>
+            {pct === null ? '--' : `${pct}%`}
+          </span>
+        )}
+        <span className="truncate font-mono text-foreground-subtle tabular-nums">
+          {label ?? `${accepted}/${total}`}
         </span>
       </div>
       <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-border-subtle">

@@ -49,6 +49,28 @@ export function axisLabel(value: string, side: 'left' | 'right' | 'bottom') {
 }
 
 /**
+ * The equivalent of the chart, as data.
+ *
+ * A recharts chart is an inline SVG of paths and `<text>` nodes: a screen reader is read a pile of
+ * disconnected numbers in painting order, with nothing to say which series or which day any of them
+ * belongs to. Alt text alone cannot fix that — "Iteration Burndown chart" conveys none of the
+ * values, and these reports ARE their values.
+ *
+ * So the caller hands over the same rows it plotted and the frame renders them once as a real
+ * `<table>`, visually hidden. Same source array, so the two cannot disagree.
+ */
+export interface ChartDataTable {
+  /** Column headings, first one being the axis category (`Date`, `Iteration`). */
+  columns: string[]
+  /** One row per axis point, already formatted. `null` renders as "no data" — never as 0. */
+  rows: (string | number | null)[][]
+  /** Sentence describing what the chart shows, used as the table's caption. */
+  caption: string
+  /** Translated wording for a `null` cell — a gap, which must not read as zero. */
+  noDataLabel: string
+}
+
+/**
  * A titled chart card with a fixed height and an explicit empty state.
  *
  * `isEmpty` is a required decision rather than a derived one: every Phase 6 report has to
@@ -65,6 +87,8 @@ export function ChartFrame({
   emptyTitle,
   emptyDescription,
   legend,
+  underAxis,
+  dataTable,
   footer,
   children,
 }: {
@@ -77,6 +101,17 @@ export function ChartFrame({
   emptyTitle?: string
   emptyDescription?: string
   legend?: ReactNode
+  /**
+   * A secondary row belonging to the X-AXIS, rendered immediately under it and above the legend.
+   *
+   * The Release burnup's iteration band is this: RT-AC-09 and §7 put "a secondary iteration-name row"
+   * on the x-axis, so a reader can map a date onto the sprint it fell in. Rendered from `footer` it
+   * sat below the legend and the history notes — around 90px under the dates it labels, with two
+   * unrelated blocks in between, which is far enough to stop being a second axis at all.
+   */
+  underAxis?: ReactNode
+  /** The chart's data as a visually hidden table. See {@link ChartDataTable}. */
+  dataTable?: ChartDataTable
   footer?: ReactNode
   /** A single recharts chart element. */
   children: ReactElement
@@ -97,15 +132,62 @@ export function ChartFrame({
           <EmptyState title={emptyTitle ?? ''} description={emptyDescription} />
         </div>
       ) : (
-        <div style={{ height }}>
-          <ResponsiveContainer width="100%" height="100%">
-            {children}
-          </ResponsiveContainer>
-        </div>
+        <>
+          {/* `aria-hidden` on the plot, the table below carrying the content. Hiding the SVG is the
+              point: left visible to assistive tech it duplicates every number in an order that
+              means nothing, and a reader would have to hear it twice. */}
+          <div style={{ height }} aria-hidden="true">
+            <ResponsiveContainer width="100%" height="100%">
+              {children}
+            </ResponsiveContainer>
+          </div>
+          {underAxis}
+          {dataTable != null && <ChartDataTableFallback {...dataTable} />}
+        </>
       )}
       {!isEmpty && legend != null && <ChartLegendBar>{legend}</ChartLegendBar>}
       {footer}
     </div>
+  )
+}
+
+/**
+ * The hidden table.
+ *
+ * `sr-only` rather than `display: none`: the latter is skipped by assistive tech too, which would
+ * make this an accessibility feature that helps nobody.
+ */
+function ChartDataTableFallback({ columns, rows, caption, noDataLabel }: ChartDataTable) {
+  return (
+    <table className="sr-only">
+      <caption>{caption}</caption>
+      <thead>
+        <tr>
+          {columns.map((column) => (
+            <th key={column} scope="col">
+              {column}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, index) => (
+          <tr key={index}>
+            {row.map((cell, cellIndex) =>
+              cellIndex === 0 ? (
+                <th key={cellIndex} scope="row">
+                  {cell}
+                </th>
+              ) : (
+                // A gap is spoken as a gap. "0" here would be the same fabrication the charts
+                // refuse to draw.
+                <td key={cellIndex}>{cell ?? noDataLabel}</td>
+              ),
+            )}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 

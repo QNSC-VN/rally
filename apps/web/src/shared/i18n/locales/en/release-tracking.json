@@ -14,7 +14,7 @@
     "next": "Next release"
   },
   "views": {
-    "dependencies": "Dependencies · Future",
+    "dependencies": "Dependencies \u00b7 Future",
     "dependenciesHint": "Release dependency analysis is future work and is not available yet."
   },
   "summary": {
@@ -67,7 +67,9 @@
     "empty": {
       "title": "No burnup history",
       "description": "The burnup is built from daily snapshots of this release. None have been recorded for this window yet, so no history can be shown."
-    }
+    },
+    "tableCaption": "Burnup for {{release}} as a table: Accepted, Planned, Preliminary Estimate and the Ideal trajectory, per day of the release window.",
+    "tableDate": "Date"
   },
   "issues": {
     "badgeLabel": "Children assigned to a different release",

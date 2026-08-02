@@ -17,6 +17,7 @@ import { GitBranch } from 'lucide-react'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useReleases } from '@/features/releases/api'
 import { useReleaseTracking, type ChartUnit, type ReleaseBucket } from '@/features/reporting/api'
+import { reportScopeLabel } from '@/features/reporting/scope'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { NativeSelect } from '@/shared/ui/native-select'
 import { PageHeader } from '@/shared/ui/page-header'
@@ -28,7 +29,7 @@ import { TrackingGrid } from './ui/tracking-grid'
 const BUCKETS: ReleaseBucket[] = ['direct', 'derived', 'unparented']
 
 export function ReleaseTrackingPage() {
-  const { t } = useTranslation('release-tracking')
+  const { t } = useTranslation(['release-tracking', 'common'])
   const { project, team } = useAppContext()
   const projectId = project?.projectId
   const teamId = team?.teamId
@@ -73,12 +74,26 @@ export function ReleaseTrackingPage() {
   }
 
   const summary = data?.summary
-  const scope = data ? `${data.context.projectName} · ${data.context.teamName ?? ''}` : ''
+  /**
+   * The read-only scope line.
+   *
+   * `All Teams` where there is no Team, not an empty string after a separator: All Teams is the
+   * DEFAULT scope (RT-BR-01 names it), so the page's first render printed "NextGen Platform · " and
+   * left the reader to guess whether the Team was still loading.
+   */
+  const scope = data
+    ? reportScopeLabel(data.context.projectName, data.context.teamName, t('common:allTeams'))
+    : ''
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-background">
       <PageHeader
         title={t('title')}
+        /* Project/Team is read-only CONTEXT (RT-AC-02 forbids a second filter here), and it sat in
+           `actions` between the Release picker and the Chart Unit selector — a plain text span in a
+           row of controls, which is where a reader looks for one. `PageHeader` has a subtitle slot for
+           exactly this. */
+        subtitle={scope}
         actions={
           <div className="flex items-center gap-4">
             <TimeboxPicker
@@ -96,8 +111,6 @@ export function ReleaseTrackingPage() {
               nextLabel={t('picker.next')}
               minWidth={240}
             />
-            {/* Project/Team is read-only CONTEXT here, never a control. */}
-            <span className="text-ui-xs text-muted-foreground">{scope}</span>
             <label className="flex items-center gap-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
               {t('chartUnit')}
               <NativeSelect
