@@ -351,13 +351,17 @@ export class MilestonesService {
       throw new NotFoundException('MILESTONE_NOT_FOUND', 'Milestone not found');
     }
 
-    // Ensure target dates are always derived from linked releases
-    await this.recalcTargetDates(id, workspaceId);
-    const refreshed = await this.milestoneRepo.findById(id);
-
-    // Compute progress from work items linked to this milestone's releases
-    const progress = await this.computeProgress(refreshed!.releaseIds);
-    return { ...refreshed!, progress: progress ?? undefined };
+    /**
+     * No repair on the read path any more.
+     *
+     * This used to call `recalcTargetDates` on every GET, which is why the detail page looked correct
+     * while `listMilestones` showed a stale window — the surface a reviewer checks was the one that
+     * healed itself. The derived window is maintained by migration 0097's triggers now, on all three
+     * writes that can invalidate it (a release date edit, a link add/remove, a manual write to a linked
+     * milestone), so a read is just a read and both surfaces agree.
+     */
+    const progress = await this.computeProgress(milestone.releaseIds);
+    return { ...milestone, progress: progress ?? undefined };
   }
 
   /**
