@@ -31,7 +31,7 @@ import { ReleasesService } from '@modules/releases';
 import { ReportSnapshotService, ReportingService } from '@modules/reporting';
 import { TeamStatusService } from '@modules/team-status';
 import { WorkItemsService } from '@modules/work-items';
-import { iterationDailySnapshots, iterations, workItems } from '@db/schema/work';
+import { iterationDailySnapshots, iterations, teams, workItems } from '@db/schema/work';
 import { users } from '@db/schema/identity';
 
 import {
@@ -56,6 +56,20 @@ describe('Phase 6 reports (e2e)', () => {
   let snapshots: ReportSnapshotService;
 
   const admin = adminActor();
+
+  /** A workspace team, inserted directly — teams have no create service in this module's reach. */
+  async function newTeam(label: string): Promise<string> {
+    const [row] = await db
+      .insert(teams)
+      .values({
+        workspaceId: WORKSPACE_ID,
+        name: `${label} ${uniqueKey()}`,
+        key: uniqueKey('T'),
+        status: 'active',
+      })
+      .returning({ id: teams.id });
+    return row.id;
+  }
   let projectId: string;
   let iterationId: string;
   let storyId: string;
@@ -354,6 +368,111 @@ describe('Phase 6 reports (e2e)', () => {
     // ToDo is independent, never estimate - actual.
     expect(report.totals.todoHours).toBe(6);
     expect(report.totals.estimateHours).toBe(8);
+  });
+
+  it("scopes a SHARED iteration by the WORK's team, not by the timebox", async () => {
+    /**
+     * The defect this exists for. Every report filtered `iterations.team_id`, and an iteration
+     * only OPTIONALLY names a team — 195 of 206 in the local database name none — so selecting a
+     * Team returned `iterationCount: 0`, empty bars and zero capacity while Team Status showed the
+     * hours. Velocity meanwhile had no team predicate on the WORK at all, so whatever team the
+     * timebox happened to name owned every point in it.
+     *
+     * Contract §3: "Selected Team — include only records belonging to that Team", and TC §3 scopes
+     * tasks by the parent's team. So: the timebox says which window, the work says whose it is.
+     */
+    const alpha = await newTeam('P6 Alpha');
+    const beta = await newTeam('P6 Beta');
+    await projects.linkTeam(WORKSPACE_ID, projectId, alpha);
+    await projects.linkTeam(WORKSPACE_ID, projectId, beta);
+
+    // ONE shared, team-LESS iteration, already finished — the shape that used to return nothing.
+    const shared = await iterationsSvc.createIteration(admin, projectId, 'P6 Shared Sprint', {
+      state: 'committed',
+      startDate: shift(localToday, -18),
+      endDate: shift(localToday, -8),
+    });
+
+    for (const [team, points] of [
+      [alpha, '5'],
+      [beta, '3'],
+    ] as const) {
+      const story = await items.createWorkItem(admin, projectId, 'story', `P6 ${points}pt`, {
+        iterationId: shared.id,
+        teamId: team,
+        storyPoints: points,
+      });
+      await items.updateWorkItem(admin, story.id, { scheduleState: 'accepted' });
+      /**
+       * Backdated INTO the window, because the trigger stamps `accepted_date` with now().
+       *
+       * Accepting today is `acceptedAfter` for a sprint that ended eight days ago — correctly, and
+       * that is what this assertion first caught. During/After is a property of WHEN, so a During
+       * fixture has to say when.
+       */
+      await db
+        .update(workItems)
+        .set({ acceptedDate: new Date(`${shift(localToday, -10)}T09:00:00Z`) })
+        .where(eq(workItems.id, story.id));
+    }
+
+    const barFor = (report: { bars: Array<{ name: string; acceptedDuring: number }> }) =>
+      report.bars.find((b) => b.name === 'P6 Shared Sprint');
+
+    // All Teams: both teams' points, measured over one population.
+    const all = await reporting.getVelocity(admin, { projectId, window: 10 });
+    expect(barFor(all)?.acceptedDuring).toBe(8);
+
+    // Each team sees ITS OWN points — not zero, and not the other team's.
+    const alphaReport = await reporting.getVelocity(admin, {
+      projectId,
+      window: 10,
+      teamId: alpha,
+    });
+    expect(barFor(alphaReport)?.acceptedDuring).toBe(5);
+    const betaReport = await reporting.getVelocity(admin, { projectId, window: 10, teamId: beta });
+    expect(barFor(betaReport)?.acceptedDuring).toBe(3);
+  });
+
+  it("reports capacity hours for a real team, and only that team's", async () => {
+    /**
+     * Capacity was never actually asserted: the existing projection test wrapped its
+     * `updateCapacity` call in `if (teamId)` against a team-LESS fixture iteration, so the write
+     * never ran and `totals.capacityHours` was never checked — TC §3's Capacity measure had no
+     * end-to-end coverage at all.
+     */
+    const team = await newTeam('P6 Capacity');
+    await projects.linkTeam(WORKSPACE_ID, projectId, team);
+    const other = await newTeam('P6 Capacity Other');
+    await projects.linkTeam(WORKSPACE_ID, projectId, other);
+
+    await teamStatus.updateCapacity(admin, {
+      projectId,
+      teamId: team,
+      iterationId,
+      userId: ADMIN_USER_ID,
+      capacityHours: 40,
+    });
+
+    const scoped = await reporting.getTeamCapacity(admin, { projectId, iterationId, teamId: team });
+    expect(scoped.totals.capacityHours).toBe(40);
+    expect(scoped.context.teamName).toContain('P6 Capacity');
+
+    // The other team has no capacity record: an explicit zero, not the first team's hours.
+    const otherReport = await reporting.getTeamCapacity(admin, {
+      projectId,
+      iterationId,
+      teamId: other,
+    });
+    expect(otherReport.totals.capacityHours).toBe(0);
+  });
+
+  it('404s an unknown team instead of relabelling it All Teams', async () => {
+    // `teamName ?? ALL_TEAMS_LABEL` claimed a project-wide aggregate while the queries stayed
+    // narrowed to an id that matched nothing — a header that contradicted its own numbers.
+    await expect(
+      reporting.getVelocity(admin, { projectId, window: 5, teamId: randomUUID() }),
+    ).rejects.toThrow(/TEAM_NOT_FOUND|not found/i);
   });
 
   // ── Release Tracking ──────────────────────────────────────────────────────

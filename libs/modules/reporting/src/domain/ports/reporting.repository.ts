@@ -118,10 +118,17 @@ export interface IReportingRepository {
     scope: TeamScope,
     todayLocalDate: string,
   ): Promise<TimeboxGroup[]>;
-  /** Currently-assigned Story/Defect rows for a set of iterations, keyed by iteration. */
+  /**
+   * Currently-assigned Story/Defect rows for a set of iterations, keyed by iteration.
+   *
+   * `scope` narrows by the ITEM's own team (falling back to its iteration's), not by the
+   * timebox — a team-scoped report may legitimately include a SHARED, team-less iteration, and
+   * an item's team and its iteration's team are not kept in step by anything.
+   */
   getVelocityItems(
     workspaceId: string,
     iterationIds: string[],
+    scope: TeamScope,
   ): Promise<Array<VelocityItem & { iterationId: string }>>;
 
   // ── Team Capacity ─────────────────────────────────────────────────────────

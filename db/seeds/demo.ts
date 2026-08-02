@@ -638,11 +638,23 @@ async function seedFlow() {
       rank: getDeterministicRank('US-D1'),
     },
     {
+      /**
+       * Team Beta's story, and therefore NOT in Sprint 26.1.
+       *
+       * It used to carry `iterationId: NXP_ITER_CURRENT_ID` while Sprint 26.1 belongs to Team
+       * Alpha — a pair `assertIterationAssignable` refuses with `ITERATION_TEAM_MISMATCH`, which
+       * a raw seed insert bypasses. The Phase 6 reports then attributed its 8 points by the
+       * ITERATION's team, so Alpha's Velocity bar carried Beta's work and Beta's chart was empty.
+       * A seed must not manufacture a state the service would reject.
+       *
+       * Accepted with no iteration is a real shape: it still rolls up to FE-2 and the Portfolio
+       * percentages (which read `schedule_state`), and Velocity legitimately ignores unscheduled
+       * work because there is no timebox to attribute it to.
+       */
       id: NXP_STORY_3_ID,
       workspaceId: WORKSPACE_ID,
       projectId: nxpId,
       teamId: TEAM_BETA_ID,
-      iterationId: NXP_ITER_CURRENT_ID,
       releaseId: NXP_RELEASE_1_ID,
       itemKey: 'US-D2',
       type: 'story',
