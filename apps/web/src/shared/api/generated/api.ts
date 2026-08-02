@@ -3484,8 +3484,6 @@ export interface components {
       assigneeId?: string
       /** Format: uuid */
       teamId?: string
-      /** Format: uuid */
-      iterationId?: string
       estimateHours?: number
       todoHours?: number
       actualHours?: number
@@ -4303,6 +4301,7 @@ export interface components {
       teams: {
         id: string | null
         name: string
+        archived: boolean
         totals: {
           capacityHours: number
           estimateHours: number

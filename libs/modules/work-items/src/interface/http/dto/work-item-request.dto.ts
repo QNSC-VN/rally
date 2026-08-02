@@ -172,7 +172,10 @@ export const CreateTaskSchema = z.object({
   state: z.enum(['defined', 'in_progress', 'completed']).optional(),
   assigneeId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
-  iterationId: z.string().uuid().optional(),
+  // No `iterationId`. A Task inherits its Iteration through its parent Story/Defect and has "no
+  // independent Iteration selector" (P1-TASK-011, P2-IS-024) — so the contract does not advertise a
+  // field the service refuses and a trigger overwrites. `teamId` stays, because a Task's team only
+  // DEFAULTS to its parent's and is genuinely settable (SRS P1-04).
   estimateHours: hoursOptional,
   todoHours: hoursOptional,
   actualHours: hoursOptional,

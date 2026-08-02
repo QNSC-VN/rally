@@ -18,12 +18,14 @@ import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { useIterations } from '@/features/iterations/api'
 import { useTeamCapacityReport, type TeamCapacityTeam } from '@/features/reporting/api'
 import { iterationsInScope, teamScopeLabel } from '@/features/reporting/scope'
+import { TEAM_STATUS_STYLE } from '@/features/teams/status-colors'
 import { Avatar } from '@/shared/ui/avatar'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
+import { StatusBadge } from '@/shared/ui/status-badge'
 import { IterationPicker } from '@/shared/ui/timebox-picker'
 import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 import { NUMERIC_CELL_CLASS } from '@/shared/lib/utils'
@@ -244,6 +246,12 @@ function TeamGroup({
           <span className="shrink-0 text-ui-xs text-foreground-subtle">
             {t('capacity.memberCount', { count: team.members.length })}
           </span>
+          {/* An archived Team keeps its hours — archiving a Team does not delete its linked
+              Work Item/Sprint history (DB design §488), and a total that shrinks for an invisible
+              reason is worse than one that explains itself. But the global Team picker hides
+              archived teams, so without this badge the row is indistinguishable from a live team's
+              and a reader would compare a disbanded team's numbers to current ones. */}
+          {team.archived && <StatusBadge style={TEAM_STATUS_STYLE.archived} className="shrink-0" />}
         </div>
         <HoursCells values={team.totals} colStyles={colStyles} bold />
       </div>

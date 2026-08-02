@@ -303,6 +303,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       .select({
         teamId: memberCapacity.teamId,
         teamName: teams.name,
+        teamStatus: teams.status,
         memberId: memberCapacity.userId,
         memberName: users.displayName,
         capacityHours: memberCapacity.capacityHours,
@@ -321,6 +322,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     return rows.map((r) => ({
       teamId: r.teamId,
       teamName: r.teamName,
+      teamArchived: r.teamStatus === 'archived',
       memberId: r.memberId,
       memberName: r.memberName,
       capacityHours: num(r.capacityHours),
@@ -358,6 +360,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         taskId: tasks.id,
         teamId: sql<string | null>`${resolvedTeam}`,
         teamName: team.name,
+        teamStatus: team.status,
         ownerId: tasks.assigneeId,
         ownerName: users.displayName,
         estimateHours: tasks.estimateHours,
@@ -386,6 +389,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       taskId: r.taskId,
       teamId: r.teamId,
       teamName: r.teamName,
+      teamArchived: r.teamStatus === 'archived',
       ownerId: r.ownerId,
       ownerName: r.ownerName,
       estimateHours: num(r.estimateHours),

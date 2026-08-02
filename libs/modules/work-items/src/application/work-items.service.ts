@@ -261,6 +261,24 @@ export class WorkItemsService {
           'A task can only be created under a user story or defect',
         );
       }
+      /**
+       * A Task carries NO iteration into the write at all (P1-TASK-011, P2-IS-024).
+       *
+       * Not "must equal the parent's" — that would still be a value the caller owns, and the
+       * contract is that it owns none. `trg_task_iteration_from_parent` fills the column from
+       * `parent_id` on insert, and the insert uses `RETURNING`, so the created row comes back
+       * already carrying the parent's iteration.
+       *
+       * The guard is here as well as in `createTask` because this method is reachable on its own:
+       * `POST /work-items` with `type: 'task'` skips that wrapper entirely, so a refusal only there
+       * would be a front door with a lock beside a side door without one.
+       */
+      if (type === 'task' && opts.iterationId !== undefined) {
+        throw new PreconditionFailedException(
+          'TASK_ITERATION_DERIVED',
+          "A task's iteration follows its parent story or defect and cannot be set directly.",
+        );
+      }
       // Non-defect, non-task items cannot have a parent (only tasks and defects)
       if (type !== 'defect' && type !== 'task') {
         throw new PreconditionFailedException(
@@ -455,7 +473,9 @@ export class WorkItemsService {
       state?: string;
       assigneeId?: string;
       teamId?: string;
-      iterationId?: string;
+      // No `iterationId`: a Task inherits it through its parent (P1-TASK-011), so passing one is a
+      // compile error rather than a runtime refusal. `teamId` stays — a Task's team only DEFAULTS to
+      // its parent's and is genuinely settable (SRS P1-04).
       estimateHours?: string;
       todoHours?: string;
       actualHours?: string;
@@ -475,10 +495,14 @@ export class WorkItemsService {
     // dedicated tasks table by the repository layer when type='task'.
     // For now, we still write through the work_items table for backward
     // compatibility, but the service interface accepts the new shape.
+    //
+    // No `iterationId` is passed and none is accepted: this was
+    // `opts.iterationId ?? parent.iterationId`, so a caller's value simply won and the Task started
+    // life in a different sprint from its Story — the state P1-TASK-011 and P2-IS-024 both rule out.
+    // `createWorkItem` refuses one for a task and the trigger fills the column from the parent.
     return this.createWorkItem(actor, parent.projectId, 'task', title, {
       ...opts,
       parentId: parent.id,
-      iterationId: opts.iterationId ?? parent.iterationId ?? undefined,
       assigneeId: opts.assigneeId ?? parent.assigneeId ?? undefined,
       // SRS P1-04 (Task Management): team defaults to the parent's team unless
       // explicitly provided, keeping the task's project/team compatible with
@@ -654,6 +678,25 @@ export class WorkItemsService {
       throw new PreconditionFailedException(
         'WORK_ITEM_STORY_HAS_NO_PRIORITY',
         'Priority is only editable on defects',
+      );
+    }
+
+    /**
+     * A Task has NO Iteration of its own to set (P1-TASK-011, P2-IS-024).
+     *
+     * The BA says it three times and real Rally shows the field read-only: a Task inherits its
+     * Iteration through its parent Story/Defect, and has "no independent Iteration selector". The
+     * value is maintained by `trg_task_iteration_from_parent`, so this patch could not take effect
+     * anyway — which is precisely why it REFUSES rather than ignores. An endpoint that accepts a
+     * field and silently discards it teaches a caller that the write worked; the next read would say
+     * otherwise and the trigger would look like the bug.
+     *
+     * Move the parent instead: `trg_cascade_iteration_to_tasks` takes the tasks with it.
+     */
+    if (item.type === 'task' && input.iterationId !== undefined) {
+      throw new PreconditionFailedException(
+        'TASK_ITERATION_DERIVED',
+        "A task's iteration follows its parent story or defect and cannot be set directly. Move the parent instead.",
       );
     }
 

@@ -113,8 +113,9 @@ describe('Phase 6 reports (e2e)', () => {
       storyPoints: '5',
     });
     storyId = story.id;
+    // No `iterationId`: the task takes its parent's (P1-TASK-011), which is this iteration. Passing
+    // one is now a compile error, and it was always redundant here.
     await items.createTask(admin, storyId, 'P6 task', {
-      iterationId,
       assigneeId: ADMIN_USER_ID,
       estimateHours: '8',
       todoHours: '6',
