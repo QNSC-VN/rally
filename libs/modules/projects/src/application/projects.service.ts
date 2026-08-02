@@ -6,11 +6,14 @@ import {
   PreconditionFailedException,
   PermissionDeniedException,
   UnitOfWork,
+  InjectDrizzle,
   AuditProducer,
   AUDIT_ACTION,
   AUDIT_RESOURCE,
 } from '@platform';
-import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
+import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
+import { and, eq } from 'drizzle-orm';
+import { capacityPlanTeams, capacityPlans } from '../../../../../db/schema/work';
 import { IProjectRepository, PROJECT_REPOSITORY } from '../domain/ports/project.repository';
 import {
   IWorkflowStatusRepository,
@@ -66,6 +69,7 @@ export class ProjectsService {
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
     private readonly activity: ActivityLogger,
+    @InjectDrizzle() private readonly db: DrizzleDB,
   ) {}
 
   // ── Revision History (activity log) ─────────────────────────────────────────
@@ -614,6 +618,41 @@ export class ProjectsService {
       throw new NotFoundException(
         'PROJECT_TEAM_LINK_NOT_FOUND',
         'Team is not linked to this project',
+      );
+    }
+
+    /**
+     * REFUSED while the team is on one of this project's capacity plans, naming the plans.
+     *
+     * `project_teams` is a soft status flip, so `fk_capacity_plan_teams_team ON DELETE RESTRICT`
+     * never fires and nothing stopped an unlink from leaving the team's plan row and its allocations
+     * behind — precisely the state migration 0085 had to clean up. Releases already refuse deletion
+     * for a plan that depends on them (`RELEASE_HAS_CAPACITY_PLAN`); this is the same rule for the
+     * other reference.
+     *
+     * `Remove Team` on the plan is the deliberate action, and it re-parks the demand as unassigned
+     * (AC-005) rather than losing it — which is why refusing here costs the planner nothing.
+     */
+    const plans = await this.db
+      .select({ planKey: capacityPlans.planKey, name: capacityPlans.name })
+      .from(capacityPlanTeams)
+      .innerJoin(capacityPlans, eq(capacityPlans.id, capacityPlanTeams.planId))
+      .where(
+        and(
+          eq(capacityPlanTeams.teamId, teamId),
+          eq(capacityPlans.projectId, projectId),
+          eq(capacityPlans.workspaceId, workspaceId),
+        ),
+      )
+      // `id` breaks the tie: `plan_key` is unique per project, not per workspace, and the
+      // ordering ratchet requires the last column to be unique so two runs cannot disagree.
+      .orderBy(capacityPlans.planKey, capacityPlans.id)
+      .limit(3);
+    if (plans.length > 0) {
+      const named = plans.map((row) => `${row.planKey} (${row.name})`).join(', ');
+      throw new PreconditionFailedException(
+        'PROJECT_TEAM_HAS_CAPACITY_PLAN',
+        `This team is on ${named} — remove it from the plan before unlinking it from the project`,
       );
     }
 
