@@ -2887,6 +2887,7 @@ export interface components {
         | 'capacity:view'
         | 'capacity:manage'
         | 'capacity:publish'
+        | 'capacity:view_draft'
         | 'report:view'
       )[]
     }
@@ -2940,6 +2941,7 @@ export interface components {
         | 'capacity:view'
         | 'capacity:manage'
         | 'capacity:publish'
+        | 'capacity:view_draft'
         | 'report:view'
       )[]
     }
