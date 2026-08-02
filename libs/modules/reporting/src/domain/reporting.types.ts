@@ -85,6 +85,15 @@ export interface TeamCapacityTeam {
   /** Null for the synthetic `No Team` group. */
   id: string | null;
   name: string;
+  /**
+   * The Team is archived, and its hours are reported anyway.
+   *
+   * Archiving a Team does not delete its linked Work Item/Sprint history (DB design §488), so
+   * dropping these rows would shrink a total for a reason the reader cannot see. The row is marked
+   * instead, because the global Team picker hides archived teams — nothing else on the screen says
+   * that this team no longer exists.
+   */
+  archived: boolean;
   totals: TeamCapacityHours;
   members: Array<{ id: string | null; name: string; hours: TeamCapacityHours }>;
 }
@@ -140,7 +149,18 @@ export interface ReleaseTrackingReport {
   bucket: ReleaseBucket;
   /** All three totals stay visible even when the active bucket is empty (§5.1). */
   summary: { direct: number; derived: number; unparented: number };
+  /** The requested page of the ACTIVE bucket — not the whole bucket. See {@link page}. */
   rows: ReleaseTrackingRow[];
+  /**
+   * Which slice of the active bucket `rows` is.
+   *
+   * `total` is the active bucket's whole-population size, so it always equals
+   * `summary[bucket]`; it is restated here so a client rendering a pagination footer does not
+   * have to know that identity. Classification, `summary` and `totals` are all measured over
+   * the full population before this slice is taken — paging changes which rows travel, never
+   * a number.
+   */
+  page: { page: number; pageSize: number; total: number; pageCount: number };
   totals: { planned: number; accepted: number; preliminary: number };
 }
 

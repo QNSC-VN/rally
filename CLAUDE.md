@@ -269,6 +269,41 @@ two automatic moves:
 - **Completing a task sets To Do to 0**, and **reopening does NOT restore it** — the owner enters a new
   remaining value if there is one. This replaces the older `Estimate = To Do + Actual` display rule.
 
+## A Task's Iteration is DERIVED, not cascaded
+
+The BA says it three times — "A Task inherits Project, Team, Iteration and Release/Milestone context
+THROUGH ITS PARENT Story/Defect" (`BUSINESS_BASELINE.md`), "no independent Iteration selector"
+(`P1-TASK-011`), "without an independent Task iteration assignment" (`P2-IS-024`) — and real Rally
+shows the field read-only. That is stronger than keeping two values in step: **a Task owns no
+iteration value at all.**
+
+- **`work.tasks.iteration_id` is a maintained mirror** (`trg_task_iteration_from_parent`, migration
+  0095). It is re-read from `parent_id` on every insert and on any update touching `parent_id` or
+  `iteration_id`, so reparenting follows the new parent for free and a raw-SQL write cannot diverge.
+  Enforced in the DB because `db/seeds/**` writes `work.tasks` directly — the same reason
+  `trg_sync_accepted_date` and `timebox_group_id` are triggers.
+- **Moving a parent moves its Tasks** (`trg_cascade_iteration_to_tasks`, `AFTER UPDATE OF
+iteration_id`). Before this, `createTask` inherited once at birth and nothing looked at the parent
+  again, so a moved Story left its Tasks counting hours in the old sprint.
+- **Passing an iteration for a Task is a REFUSAL** (`TASK_ITERATION_DERIVED`), not a silent
+  discard — and on `createTask` it is a compile error, because the opts type no longer has the field.
+  `CreateTaskSchema` dropped it too, so the contract does not advertise what the service refuses. The
+  guard sits in `createWorkItem` as well: `POST /work-items` with `type: 'task'` skips the
+  `createTask` wrapper entirely.
+- **`teamId` is NOT derived.** A Task's team only DEFAULTS to its parent's and stays settable (SRS
+  P1-04); `getScopedTaskHours` resolves `coalesce(task, parent, iteration)` deliberately. Only the
+  Iteration is contractually derived.
+
+## An archived Team keeps its hours
+
+"Archive Team does not delete the linked Work Item/Sprint history" (DB design §488), so Team Capacity
+still reports an archived team's rows — a total that shrinks when a team is disbanded is worse than
+one that explains itself. The row carries `archived: true` and renders `TEAM_STATUS_STYLE.archived`,
+because the global Team picker already hides archived teams (`app-shell.tsx` filters
+`status === 'active'`) and nothing else on screen would say the team no longer exists. The flag is
+ORed across the capacity rows and the task rows: both reach the same bucket, and a task row whose
+`teams` join missed must not clear what a capacity row set correctly.
+
 ## Archive ordering cuts both ways
 
 An Epic with active child Features cannot be archived — and a Feature whose Epic is archived cannot be

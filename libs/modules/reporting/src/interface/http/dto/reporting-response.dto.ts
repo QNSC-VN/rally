@@ -109,6 +109,10 @@ export const TeamCapacityResponseSchema = z.object({
       // Null for the synthetic `No Team` group — work whose Team cannot be resolved.
       id: z.string().uuid().nullable(),
       name: z.string(),
+      // The Team is archived. Its hours are still reported (archiving a Team does not delete its
+      // linked history), so the row says so — the global Team picker hides archived teams, and
+      // nothing else on screen would.
+      archived: z.boolean(),
       totals: HoursSchema,
       members: z.array(
         z.object({
@@ -178,7 +182,15 @@ export const ReleaseTrackingResponseSchema = z.object({
     derived: z.number().int(),
     unparented: z.number().int(),
   }),
+  /** One page of the ACTIVE bucket. `page.total` is that bucket's whole-population size. */
   rows: z.array(TrackingRowSchema),
+  page: z.object({
+    page: z.number().int(),
+    pageSize: z.number().int(),
+    /** The active bucket's full row count — always equal to `summary[bucket]`. */
+    total: z.number().int(),
+    pageCount: z.number().int(),
+  }),
   totals: z.object({ planned: z.number(), accepted: z.number(), preliminary: z.number() }),
 });
 export class ReleaseTrackingResponseDto extends createZodDto(ReleaseTrackingResponseSchema) {}

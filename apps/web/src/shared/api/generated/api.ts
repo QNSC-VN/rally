@@ -3484,8 +3484,6 @@ export interface components {
       assigneeId?: string
       /** Format: uuid */
       teamId?: string
-      /** Format: uuid */
-      iterationId?: string
       estimateHours?: number
       todoHours?: number
       actualHours?: number
@@ -4303,6 +4301,7 @@ export interface components {
       teams: {
         id: string | null
         name: string
+        archived: boolean
         totals: {
           capacityHours: number
           estimateHours: number
@@ -4399,6 +4398,12 @@ export interface components {
           }
         } | null
       }[]
+      page: {
+        page: number
+        pageSize: number
+        total: number
+        pageCount: number
+      }
       totals: {
         planned: number
         accepted: number
@@ -12821,6 +12826,8 @@ export interface operations {
         releaseId: string
         unit?: 'points' | 'count'
         bucket?: 'direct' | 'derived' | 'unparented'
+        page?: number
+        pageSize?: number
       }
       header?: never
       path?: never

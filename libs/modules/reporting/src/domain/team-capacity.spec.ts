@@ -11,6 +11,7 @@ import {
 const capacity = (over: Partial<CapacityRecord> = {}): CapacityRecord => ({
   teamId: 'core',
   teamName: 'Core Platform',
+  teamArchived: false,
   memberId: 'u1',
   memberName: 'Marcus Webb',
   capacityHours: 96,
@@ -21,6 +22,7 @@ const task = (over: Partial<ScopedTaskHours> = {}): ScopedTaskHours => ({
   taskId: 't1',
   teamId: 'core',
   teamName: 'Core Platform',
+  teamArchived: false,
   ownerId: 'u1',
   ownerName: 'Marcus Webb',
   estimateHours: 6,
@@ -165,6 +167,43 @@ describe('rollUpTeamCapacity (Team Capacity §3, §4)', () => {
       ],
     });
     expect(r.totals.estimateHours).toBe(0.3);
+  });
+});
+
+describe('an archived Team', () => {
+  it('KEEPS its hours and marks the row', () => {
+    // "Archive Team does not delete the linked Work Item/Sprint history" (DB design §488). Dropping
+    // the rows would shrink the report's total for a reason invisible on screen — and the global Team
+    // picker already hides archived teams, so the badge is the only thing that can say why a
+    // disbanded team is in the table.
+    const r = rollUpTeamCapacity({
+      capacities: [capacity({ teamArchived: true, capacityHours: 40 })],
+      tasks: [task({ teamArchived: true, estimateHours: 12, todoHours: 4, actualHours: 8 })],
+    });
+
+    expect(r.teams).toHaveLength(1);
+    expect(r.teams[0].archived).toBe(true);
+    expect(r.teams[0].totals).toMatchObject({ capacityHours: 40, estimateHours: 12 });
+    expect(r.totals.actualHours).toBe(8);
+  });
+
+  it('stays marked when only ONE of its two sources says so', () => {
+    // The bucket is reached from both the capacity rows and the task rows. A task row whose `teams`
+    // join missed — a team-less task resolved through its iteration, say — must not clear a flag the
+    // capacity row set correctly, so the sources are ORed rather than last-write-wins.
+    const r = rollUpTeamCapacity({
+      capacities: [capacity({ teamArchived: true })],
+      tasks: [task({ teamArchived: false })],
+    });
+    expect(r.teams[0].archived).toBe(true);
+  });
+
+  it('leaves a live Team unmarked, and the synthetic No Team group too', () => {
+    const r = rollUpTeamCapacity({
+      capacities: [capacity()],
+      tasks: [task({ taskId: 't9', teamId: null, teamName: null })],
+    });
+    expect(r.teams.every((t) => t.archived === false)).toBe(true);
   });
 });
 

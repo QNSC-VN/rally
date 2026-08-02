@@ -19,6 +19,16 @@ export interface TeamCapacityHours {
 export interface CapacityRecord {
   teamId: string;
   teamName: string;
+  /**
+   * The Team has been archived (`teams.status = 'archived'`).
+   *
+   * Its hours are still reported — "Archive Team does not delete the linked Work Item/Sprint
+   * history" (DB design §488), and a total that quietly shrinks when a team is disbanded is worse
+   * than one that explains itself. But an archived team is not comparable to a live one, and the
+   * global Team picker already hides it, so nothing else on screen would tell a reader that this
+   * row belongs to a team that no longer exists.
+   */
+  teamArchived: boolean;
   memberId: string;
   memberName: string;
   capacityHours: number;
@@ -35,6 +45,8 @@ export interface ScopedTaskHours {
    */
   teamId: string | null;
   teamName: string | null;
+  /** See {@link CapacityRecord.teamArchived}. False when the Team cannot be resolved at all. */
+  teamArchived: boolean;
   ownerId: string | null;
   ownerName: string | null;
   estimateHours: number;
@@ -53,6 +65,8 @@ export interface TeamCapacityTeamRow {
   /** Null for the synthetic `No Team` group. */
   id: string | null;
   name: string;
+  /** See {@link CapacityRecord.teamArchived}. */
+  archived: boolean;
   totals: TeamCapacityHours;
   members: TeamCapacityMemberRow[];
 }
@@ -117,15 +131,22 @@ export function rollUpTeamCapacity(input: {
   interface Bucket {
     id: string | null;
     name: string;
+    archived: boolean;
     members: Map<string, TeamCapacityMemberRow>;
   }
   const teams = new Map<string, Bucket>();
 
-  const team = (id: string | null, name: string): Bucket => {
+  const team = (id: string | null, name: string, archived: boolean): Bucket => {
     const key = id ?? NO_TEAM_LABEL;
     const existing = teams.get(key);
-    if (existing) return existing;
-    const created: Bucket = { id, name, members: new Map() };
+    if (existing) {
+      // ORed across sources rather than taken from whichever record happened to create the
+      // bucket: a team is reached through BOTH the capacity rows and the task rows, and a row
+      // whose `teams` join missed would otherwise clear a flag another row had set right.
+      existing.archived = existing.archived || archived;
+      return existing;
+    }
+    const created: Bucket = { id, name, archived, members: new Map() };
     teams.set(key, created);
     return created;
   };
@@ -140,7 +161,7 @@ export function rollUpTeamCapacity(input: {
 
   // 1. Capacity records first, so a member with capacity and no tasks still has a row.
   for (const record of input.capacities) {
-    const bucket = team(record.teamId, record.teamName);
+    const bucket = team(record.teamId, record.teamName, record.teamArchived);
     const row = member(bucket, record.memberId, record.memberId, record.memberName);
     // Additive rather than assigned: the unique index makes one row per
     // (project, team, iteration, member), but summing means a duplicate would show up as
@@ -153,7 +174,7 @@ export function rollUpTeamCapacity(input: {
   for (const task of input.tasks) {
     if (seenTasks.has(task.taskId)) continue;
     seenTasks.add(task.taskId);
-    const bucket = team(task.teamId, task.teamName ?? NO_TEAM_LABEL);
+    const bucket = team(task.teamId, task.teamName ?? NO_TEAM_LABEL, task.teamArchived);
     const key = task.ownerId ?? UNASSIGNED_LABEL;
     const row = member(bucket, key, task.ownerId, task.ownerName ?? UNASSIGNED_LABEL);
     row.hours = add(row.hours, {
@@ -172,6 +193,7 @@ export function rollUpTeamCapacity(input: {
       return {
         id: bucket.id,
         name: bucket.name,
+        archived: bucket.archived,
         totals: round(totals),
         members: members.map((m) => ({ ...m, hours: round(m.hours) })),
       };

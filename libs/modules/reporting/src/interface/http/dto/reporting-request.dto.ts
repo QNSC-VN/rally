@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
 
+import { RELEASE_TRACKING_MAX_PAGE_SIZE } from '../../../domain/release-tracking';
+
 /**
  * Every report query carries `projectId` and an OPTIONAL `teamId`, and nothing else about
  * scope: the SRS is explicit that "Project and Team come from the global workspace context.
@@ -65,6 +67,16 @@ export const ReleaseTrackingQuerySchema = z.object({
   // "The list filter displays one bucket at a time" (§5) — the rows returned are the active
   // bucket's, while all three summary totals come back regardless.
   bucket: z.enum(RELEASE_BUCKETS).optional(),
+  /**
+   * Paging over the ACTIVE BUCKET's rows only.
+   *
+   * The three summary counts, the Preliminary/Planned/Accepted totals and the burnup are
+   * deliberately NOT paged — they are measured over the whole population, so a page of rows
+   * never changes a number the reader is comparing against. `pageSize` is clamped rather
+   * than validated to a closed set so the grid's own 10/25/50/100 selector all pass through.
+   */
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(RELEASE_TRACKING_MAX_PAGE_SIZE).optional(),
 });
 export class ReleaseTrackingQueryDto extends createZodDto(ReleaseTrackingQuerySchema) {}
 

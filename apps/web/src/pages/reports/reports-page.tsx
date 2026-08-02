@@ -18,7 +18,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { CompactSelect } from '@/shared/ui/native-select'
 import { PageHeader } from '@/shared/ui/page-header'
 import { EmptyState } from '@/shared/ui/empty-state'
 
@@ -48,12 +48,16 @@ export function ReportsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-background">
+      {/* The `Type` switcher sits WITH the title, not opposite it: it names what the page is
+          currently showing, so it reads as part of the heading ("Reports › Velocity") rather
+          than as an action. At toolbar scale it also stops a form-sized control out-weighing
+          the title beside it. The right side stays free for report-level actions. */}
       <PageHeader
         title={t('title')}
-        actions={
+        badge={
           <label className="flex items-center gap-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
             {t('type')}
-            <NativeSelect
+            <CompactSelect
               value={type}
               onChange={(event) => setType(event.target.value as ReportType)}
               aria-label={t('type')}
@@ -63,7 +67,7 @@ export function ReportsPage() {
                   {t(`types.${value}`)}
                 </option>
               ))}
-            </NativeSelect>
+            </CompactSelect>
           </label>
         }
       />

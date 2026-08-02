@@ -37,6 +37,33 @@ export const NativeSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
 )
 NativeSelect.displayName = 'NativeSelect'
 
+/**
+ * CompactSelect — a bordered select sized for a page header or toolbar.
+ *
+ * `NativeSelect`'s `px-3 py-2` is a form-field size: in a header bar it out-weighs the title it
+ * sits beside and forces the bar taller than every other page's. This keeps the same token
+ * system (border-input, focus ring, bg-card) at toolbar scale, with room for the caret.
+ */
+export const CompactSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
+  ({ className, children, ...props }, ref) => {
+    return (
+      <select
+        ref={ref}
+        className={cn(
+          'h-7 w-auto cursor-pointer rounded border border-input bg-card py-0 pr-7 pl-2 text-ui-sm font-semibold text-foreground transition-colors outline-none',
+          FIELD_FOCUS_VISIBLE,
+          'disabled:cursor-not-allowed disabled:bg-input-background disabled:opacity-60',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </select>
+    )
+  },
+)
+CompactSelect.displayName = 'CompactSelect'
+
 /** Compact variant for inline table-cell selects (h-7, no border visible at rest) */
 export const InlineSelect = forwardRef<HTMLSelectElement, NativeSelectProps>(
   ({ className, children, ...props }, ref) => {

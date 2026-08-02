@@ -44,12 +44,27 @@ export function ReleaseTrackingPage() {
   const [unit, setUnit] = useState<ChartUnit>('points')
   const [bucket, setBucket] = useState<ReleaseBucket>('direct')
 
-  const { data, isLoading } = useReleaseTracking({
+  // Paging lives here because this component owns the query. The rows are now a SERVER page:
+  // the endpoint classifies and totals over the whole population, then returns one slice, so
+  // switching page refetches rather than re-slicing something already in memory.
+  const [pageSize, setPageSize] = useState(25)
+  const [page, setPage] = useState(1)
+  // A bucket switch changes the population; page 3 of the old bucket means nothing in the new.
+  const pageResetKey = `${releaseId ?? ''}|${bucket}|${pageSize}`
+  const [syncedPageKey, setSyncedPageKey] = useState(pageResetKey)
+  if (syncedPageKey !== pageResetKey) {
+    setSyncedPageKey(pageResetKey)
+    setPage(1)
+  }
+
+  const { data, isLoading, isError } = useReleaseTracking({
     projectId,
     teamId,
     releaseId: releaseId ?? undefined,
     unit,
     bucket,
+    page,
+    pageSize,
   })
 
   if (!projectId) {
@@ -174,7 +189,17 @@ export function ReleaseTrackingPage() {
                 </option>
               ))}
             </NativeSelect>
-            <TrackingGrid report={data} bucket={bucket} unit={unit} isLoading={isLoading} />
+            <TrackingGrid
+              report={data}
+              bucket={bucket}
+              unit={unit}
+              isLoading={isLoading}
+              isError={isError}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
           </div>
         </div>
 

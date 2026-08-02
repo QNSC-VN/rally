@@ -91,6 +91,7 @@ export function ChartFrame({
   dataTable,
   footer,
   children,
+  bare = false,
 }: {
   title?: ReactNode
   /** The centred, bold context line — `{Project} - {Team|All Teams}` on Burndown (IB §7). */
@@ -115,9 +116,15 @@ export function ChartFrame({
   footer?: ReactNode
   /** A single recharts chart element. */
   children: ReactElement
+  /**
+   * Drop the card border/background/padding, for a chart already inside a surface that owns
+   * them (`ReportSurface`). Without this the Reports card nested a second bordered card and
+   * every chart sat in a double frame.
+   */
+  bare?: boolean
 }) {
   return (
-    <div className="rounded border border-border-strong bg-card p-4">
+    <div className={bare ? '' : 'rounded border border-border-strong bg-card p-4'}>
       {(title != null || actions != null) && (
         <div className="mb-3 flex items-center justify-between gap-3">
           {title != null && <p className="text-ui-sm font-semibold text-foreground">{title}</p>}
