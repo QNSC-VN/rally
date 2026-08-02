@@ -19,13 +19,24 @@ import { describe, expect, it } from 'vitest'
  *   • giant files        → decompose (pages = composition; one component / file)
  */
 
-// ── Baselines — LOWER as the migration proceeds, NEVER raise ──────────────────
-const MAX_RAW_BUTTON = 80 // occurrences in pages/features/entities/widgets
-const MAX_INLINE_STYLE = 194 // `style={{` in pages/features/entities/widgets (remainder is data-driven/dynamic)
+/**
+ * Baselines — LOWER as the migration proceeds, NEVER raise.
+ *
+ * RE-MEASURED 2026-08-02, using this file's own counters. Four of the six had drifted well below
+ * their baseline, so the docblock's claim that each is "frozen at the CURRENT count" was false and
+ * 39 new violations could have landed green: raw buttons 80→60, inline styles 194→183, hardcoded
+ * copy 23→15, file length 1024→1009. A ratchet with slack in it is not a ratchet; it is a comment.
+ *
+ * Measured by forcing every baseline to -1 and reading the counts the failures report, rather than
+ * by grepping alongside — an approximation would have set the bar in the wrong place (my own grep
+ * said 8 for `text-[` where the real count is 2).
+ */
+const MAX_RAW_BUTTON = 60 // occurrences in pages/features/entities/widgets
+const MAX_INLINE_STYLE = 183 // `style={{` in pages/features/entities/widgets (remainder is data-driven/dynamic)
 const MAX_ARBITRARY_TEXT = 2 // `text-[` app-wide (only text-[0] + one navy placeholder rgba remain)
 const MAX_RAW_FONT_SIZE = 12 // raw Tailwind text-{xs,sm,base,lg,xl,2xl,3xl} in consumer layers; use the text-ui-* scale. Residual = deliberate display text (login hero, big numbers, entity-title inputs)
-const MAX_HARDCODED_TEXT = 23 // capitalized JSX text nodes in consumer layers (P4 fleet done; residual = enum <option> labels)
-const MAX_FILE_LINES = 1024 // largest single source file (after monolith decomposition)
+const MAX_HARDCODED_TEXT = 15 // capitalized JSX text nodes in consumer layers (P4 fleet done; residual = enum <option> labels)
+const MAX_FILE_LINES = 1009 // largest single source file — pages/backlog/backlog-page.tsx
 
 // this file lives in src/test/
 const SRC = join(import.meta.dirname, '../')

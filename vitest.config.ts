@@ -117,15 +117,21 @@ export default defineConfig({
       exclude: ['**/*.spec.ts'],
       // Ratchet: raise these incrementally as coverage improves, NEVER lower them.
       // Measured 2026-07-26 across all 27 spec'd files: stmts 71.27, branches
-      // 63.98, funcs 67.80, lines 72.21 — floors sit just underneath. The previous
-      // floors (49/40) were set against a 3-file sample and so understated the
-      // real bar by ~20 points.
-      // Target: stmts/funcs/lines 80%, branches 70%.
+      // 63.98, funcs 67.80, lines 72.21 — floors sat just underneath.
+      //
+      // RE-MEASURED 2026-08-02: stmts 82.22, branch 76.84, funcs 81.39, lines 82.86. Phase 5 and
+      // Phase 6 raised real coverage by ~10 points and nobody moved the floors with it, so a
+      // ten-point regression would have passed unnoticed — a ratchet that trails this far behind
+      // measures nothing. Floors sit ~1 point under the measurement: close enough to catch a
+      // regression, loose enough that one refactor of a well-covered file is not a red build.
+      //
+      // The stated target (stmts/funcs/lines 80, branches 70) is now MET, so the next move is to
+      // hold this line rather than to keep climbing.
       thresholds: {
-        lines: 70,
-        functions: 66,
-        branches: 62,
-        statements: 70,
+        lines: 82,
+        functions: 80,
+        branches: 76,
+        statements: 81,
       },
     },
   },

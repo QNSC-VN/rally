@@ -5,15 +5,15 @@ non-obvious tooling behaviour. Read this before changing build, auth, or DB code
 
 ## Where the real documentation lives
 
-| Topic | File |
-|---|---|
-| Frontend conventions (FSD layers, shared/ui, i18n) | `apps/web/FRONTEND_CONVENTIONS.md` |
-| Entity surface pattern (list + detail scaffolds) | `apps/web/ADR-001-entity-surface-pattern.md` |
-| Component migration state + ratchets | `apps/web/FRONTEND_COMPONENT_AUDIT.md` |
-| Design specs and wave plans | `docs/superpowers/{specs,plans}/` |
+| Topic                                                 | File                                                    |
+| ----------------------------------------------------- | ------------------------------------------------------- |
+| Frontend conventions (FSD layers, shared/ui, i18n)    | `apps/web/FRONTEND_CONVENTIONS.md`                      |
+| Entity surface pattern (list + detail scaffolds)      | `apps/web/ADR-001-entity-surface-pattern.md`            |
+| Component migration state + ratchets                  | `apps/web/FRONTEND_COMPONENT_AUDIT.md`                  |
+| Design specs and wave plans                           | `docs/superpowers/{specs,plans}/`                       |
 | Auth model shared with opshub (+ what opshub must do) | `docs/superpowers/specs/2026-07-28-auth-convergence.md` |
-| Declared differences from opshub | `docs/DIVERGENCE.md` |
-| SCM (GitHub App) setup | `docs/scm-github-app.md` |
+| Declared differences from opshub                      | `docs/DIVERGENCE.md`                                    |
+| SCM (GitHub App) setup                                | `docs/scm-github-app.md`                                |
 
 ## Local stack
 
@@ -48,6 +48,21 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
 - **Coverage is a ratchet, not a target.** `vitest.config.ts` lists the files that
   have specs; `test/coverage-include.spec.ts` fails if a spec's subject is missing
   from that list or if the list names a deleted file. Raise the floors, never lower.
+  **Re-measure when you raise them.** The floors sat ~11 points under real coverage for two phases
+  (70/66/62/70 against 82/77/81/83), so a ten-point regression would have passed — a ratchet that
+  trails that far measures nothing. Same for `fe-consistency.ratchet.test.ts`: four of its six
+  baselines had drifted below their true counts, so 39 new violations could have landed green. Measure
+  by forcing the baselines to `-1` and reading the counts the failures report — a grep alongside gets
+  it wrong (mine said 8 for `text-[` where the real count is 2).
+- **A decorator-counting ratchet is not an authorization test.** `route-policy.ratchet.spec.ts` reads
+  source text, so it cannot tell a correct `@RequirePermission` from a misspelled code or a
+  project-tier code whose scope resolves from the wrong field. `test/e2e/report-authz.e2e.spec.ts` is
+  the shape that does: real `AppModule`, `app.inject()`, both directions. Three things it had to learn
+  the hard way — the test app has **no `/v1` prefix** and **no cookie plugin** (`reply.setCookie is
+not a function`, so use `AuthService.devLogin` for a bearer token), the **ValidationPipe runs before
+  the guard** (an incomplete query is a 400 and never reaches authorization), and a JIT-provisioned SSO
+  user is **not** a denied principal — `assignDefaultRole` grants `project_member`, which the BA gives
+  `report:view`. Use a seeded user with custom roles for the negative case.
 - **The frontend has ratchets too** (`apps/web/src/test/fe-consistency.ratchet.test.ts`):
   raw `<button>`, inline styles, hardcoded copy, file length, and CSRF headers on
   raw `fetch` writes. They may only decrease.
@@ -58,19 +73,19 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   (`codegen:check`), so drift fails CI instead of failing at runtime.
 - **`waitFor() timed out` in `notification-flow.e2e.spec.ts` is an ENVIRONMENT fault, not a flake.**
   Two independent causes, both seen in one session:
-    1. **Email is unconfigured.** `.env` ships `EMAIL_PROVIDER=ses`, but `MAIL_FROM_EMAIL` is
-       `.optional()` in `env.schema.ts` despite its own comment saying "Required when
-       EMAIL_PROVIDER != 'dev'". Unset, `resolveFromEmail` returns `''`, every send fails with
-       `Email address not verified "Mini Rally" <>`, and after three failures the email circuit
-       breaker opens and stays open for the process — so the relay never delivers and the test waits
-       out its 10s. Set `MAIL_FROM_EMAIL` and verify it in localstack:
-       `docker exec -i rally-localstack awslocal ses verify-email-identity --email-address <addr>`.
-       (The breaker is in-process, so restarting the API clears it; the failed rows are not retried
-       and can be deleted.)
-    2. **A live worker is a competing consumer** of `messaging.notification_outbox` and claims the
-       rows the test is waiting for. Stop `pnpm start:dev:worker` before a BE e2e run.
-  Neither is a product defect, and both look exactly like one. Check
-  `docker ps` first: localstack dying mid-session produces the same symptom.
+  1. **Email is unconfigured.** `.env` ships `EMAIL_PROVIDER=ses`, but `MAIL_FROM_EMAIL` is
+     `.optional()` in `env.schema.ts` despite its own comment saying "Required when
+     EMAIL_PROVIDER != 'dev'". Unset, `resolveFromEmail` returns `''`, every send fails with
+     `Email address not verified "Mini Rally" <>`, and after three failures the email circuit
+     breaker opens and stays open for the process — so the relay never delivers and the test waits
+     out its 10s. Set `MAIL_FROM_EMAIL` and verify it in localstack:
+     `docker exec -i rally-localstack awslocal ses verify-email-identity --email-address <addr>`.
+     (The breaker is in-process, so restarting the API clears it; the failed rows are not retried
+     and can be deleted.)
+  2. **A live worker is a competing consumer** of `messaging.notification_outbox` and claims the
+     rows the test is waiting for. Stop `pnpm start:dev:worker` before a BE e2e run.
+     Neither is a product defect, and both look exactly like one. Check
+     `docker ps` first: localstack dying mid-session produces the same symptom.
 - **Run `pnpm lint`, not path-scoped `eslint`.** CI lints `{apps/api,apps/worker,libs,db}/**/*.ts` in one
   pass; linting only the paths you touched misses rules that fire elsewhere in that glob — and
   `no-unused-vars` exempts `^_` for ARGUMENTS only, not for destructured variables, so the
@@ -85,7 +100,7 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
 **The seed produces EXACTLY two projects, and that is load-bearing.** `SEEDED.nxp` carries the depth —
 three iterations (finished / active / future), two releases, an Epic with seven Features, a draft AND a
 published capacity plan, frozen Burndown + burnup history, SCM links, attachments, notifications.
-`SEEDED.pay` mirrors every entity TYPE with one row each, so anything needing a *second* project
+`SEEDED.pay` mirrors every entity TYPE with one row each, so anything needing a _second_ project
 (isolation, permission scoping, cross-project refusals, "another release") has one waiting. Both are
 exported from `test/e2e/support/flow-harness.ts`.
 
@@ -309,7 +324,7 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
   cannot be configured weaker than production here; sizing is the only difference.
 - **Sessions live only in the cache.** That is why it sits outside the ECS tasks:
   it survives task replacement, so a deploy does not log everyone out. Replacing
-  the cache node *does* log everyone out — treat that as a user-visible change.
+  the cache node _does_ log everyone out — treat that as a user-visible change.
 - **An infra change alone does not take effect — it needs a deploy.** Terraform
   owns the task definition's environment and the Pages project's `API_ORIGIN`, but
   `ecs-service` sets `ignore_changes = [task_definition]` and Pages env changes
@@ -322,11 +337,11 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
   exactly how develop ran against a deleted cache endpoint (`valkey: down` on
   `/v1/readyz`) after the cache migration.
 - **Don't roll the service from `infra-apply` instead.** Terraform's newest task
-  definition carries a new *image*, so rolling onto it there would ship app code
+  definition carries a new _image_, so rolling onto it there would ship app code
   ahead of `Run database migrations`.
 - **ElastiCache cluster ids and replication-group ids share one namespace.**
   `CreateReplicationGroup` fails with `InvalidParameterValue: Cannot have a
-  cluster and replication group with same identifier` while a same-named cluster
+cluster and replication group with same identifier` while a same-named cluster
   is still deleting. Terraform runs an unrelated destroy and create in parallel,
   so a same-name migration between the two resource types needs two applies — the
   plan cannot show you this.
@@ -423,7 +438,7 @@ permissions from the database — see
 ordered list of what opshub still has to do. Wider audit:
 `OPSHUB_RALLY_PARITY_PLAN.md` and `RALLY_HARDENING_PLAN.md` one directory up.
 
-What may live in a *shared package* is a separate rule, recorded in
+What may live in a _shared package_ is a separate rule, recorded in
 `qnsc-app-platform/docs/ADMISSION-TEST.md`: divergence that would be a security
 defect or a cross-repo contract break belongs there; divergence that would merely be
 inconsistent stays in the product.
