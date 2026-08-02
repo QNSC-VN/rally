@@ -180,6 +180,32 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
     }));
   }
 
+  async findUserEmail(userId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return rows[0]?.email ?? null;
+  }
+
+  async grantWorkspaceRole(
+    input: { workspaceId: string; userId: string; roleId: string; grantedBy: string },
+    tx?: DbExecutor,
+  ): Promise<void> {
+    await (tx ?? this.db)
+      .insert(userRoleAssignments)
+      .values({
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+        roleId: input.roleId,
+        scopeType: 'workspace',
+        scopeId: null,
+        grantedBy: input.grantedBy,
+      })
+      .onConflictDoNothing();
+  }
+
   async addMember(input: AddMemberInput, tx?: DbExecutor): Promise<WorkspaceMember> {
     const rows = await (tx ?? this.db)
       .insert(workspaceMembers)

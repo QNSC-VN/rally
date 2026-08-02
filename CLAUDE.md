@@ -356,6 +356,38 @@ AC-013 and broke AC-012 — a read-only Project Admin holds neither write code. 
 Admin and NOT to Project Member; the write grants still imply it. Backfilled by migration 0094 (see
 below for why a backfill is required at all).
 
+## An invitation binds to an ADDRESS, and grants a real role
+
+Two independent faults on the one flow that onboards every user, both fixed together:
+
+- **Acceptance is bound to the invited email.** It used to validate only `pending` + not-expired, so
+  the token was a bearer capability — a forwarded link, a shared inbox or a copied URL made the wrong
+  person a member at the invited role (`INVITATION_EMAIL_MISMATCH` now refuses it, case-insensitively,
+  because an IdP may return a differently-cased local part for the same mailbox).
+- **`workspace_members.role_id` is authoritative for NOTHING.** `AccessService` resolves permissions
+  from `user_role_assignments`, and this module's own members query reads the role from there too.
+  `addMember` writes only the denormalised column, so the invited role was written where nobody reads
+  it: a user invited as Project Admin landed with whatever `ensureDefaultRole` gives a first SSO
+  login, and the admin who sent the invitation saw the intended role nowhere. Accept now calls
+  `grantWorkspaceRole` **inside the same transaction** and invalidates the permission cache after
+  commit, like `assignRole` does. Any new path that "assigns a role" must write the assignment table.
+
+## A route's permission code must be one the intended role can hold
+
+`GET /work-items/by-key` carried `workspace:view` — admin-only, since `workspace:*` is
+admin-reserved and neither Project Admin nor Project Member holds any `workspace:*` code. It is the
+sole resolver behind `/item/$itemKey`, so **every notification click and ID cell 403'd for both
+non-admin roles** while the service's own `assertProjectPermission(work_item:view)` would have allowed
+them. It now carries no decorator, deliberately: item keys are workspace-unique so the owning project
+is unknown until the row loads, which is the same resolve-then-check shape as
+`PATCH /work-items/reorder`. Same class of bug: `POST /iterations/:id/work-items` required
+`iteration:edit` while the Add New button was gated on `work_item:create`, so a Project Member saw the
+button and got a 403 for an item they can create from the Backlog.
+
+**The pattern to watch for:** a gate chosen for where the id lives rather than for what the action is.
+It is invisible in testing because the dev principal is a Workspace Admin whose `workspace:*` masks
+every one of them — exactly how the `report:view` bug survived to migration 0092.
+
 ## Permissions reach a workspace ONCE
 
 `db/permissions.catalog.ts` is the source of truth, but `db/seeds/bootstrap.ts` upserts the

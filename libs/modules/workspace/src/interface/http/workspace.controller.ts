@@ -347,6 +347,10 @@ export class WorkspaceController {
   // ── List invitations ───────────────────────────────────────────────────────
 
   @Get(':id/invitations')
+  // Same code as sending one. The list is the pending-hire roster — address plus assigned role — and
+  // it was readable by any authenticated member while `POST` was correctly gated. Its only consumer
+  // is User Management, which the SRS reserves for Workspace Admin.
+  @RequirePermission('users:invite')
   @ApiOperation({ summary: 'List invitations for a workspace' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: [InvitationResponseDto] })
@@ -402,6 +406,12 @@ export class WorkspaceController {
   // ── Workspace settings ─────────────────────────────────────────────────────
 
   @Get(':id/settings')
+  // "Only `workspace_admin` can view and edit Workspace Settings … Project Member cannot access
+  // Workspace Settings" (Settings/Audit SRS). The WRITE was already gated `workspace:edit`; the read
+  // carried nothing, and a route with no metadata is OPEN — so any member could read the workspace's
+  // timezone, locale, working days and preliminary-estimate config. The only consumer is the
+  // admin-only Workspace Settings tab, so this restores the contract without moving the UI.
+  @RequirePermission('workspace:view')
   @ApiOperation({ summary: 'Get workspace settings' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkspaceSettingsResponseDto })

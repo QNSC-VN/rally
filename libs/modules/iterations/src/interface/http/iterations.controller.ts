@@ -327,7 +327,16 @@ export class IterationsController {
   }
 
   @Post(':id/work-items')
-  @RequirePermission('iteration:edit', { resource: 'iteration', from: 'param', field: 'id' })
+  /**
+   * `work_item:create`, not `iteration:edit` — creating a Story inside an iteration is a work-item
+   * create (Iteration Status SRS: "Create Story/Defect in Iteration | `work_item:create` plus
+   * project/team access"), and the service's own docblock already said so.
+   *
+   * A Project Member holds `work_item:create` and not `iteration:edit`, so they saw the Add New
+   * button (gated client-side on `work_item:create`), filled the modal and got a 403 — for an item
+   * they can create from the Backlog. The iteration still supplies the project scope.
+   */
+  @RequirePermission('work_item:create', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Create a Story/Defect directly in the iteration' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: CreateIterationItemResponseDto })

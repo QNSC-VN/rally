@@ -315,9 +315,20 @@ export class WorkItemsController {
   // (which is ParseUUIDPipe-validated and would 400 on the literal "by-key").
   @Get('by-key')
   @ApiOperation({ summary: 'Get a work item by its workspace-unique item key' })
-  // Keys are workspace-unique (Rally FormattedID) — resolve at workspace scope;
-  // the service then enforces work_item:view on the resolved item's own project.
-  @RequirePermission('workspace:view')
+  /**
+   * No `@RequirePermission`: the check cannot be expressed as one, and the service does it properly.
+   *
+   * Item keys are workspace-unique (Rally FormattedID), so the owning project is unknown until the
+   * row is loaded — which is why `getWorkItemByKey` resolves the row and then calls
+   * `assertProjectPermission(actor, item.projectId, WORK_ITEM_VIEW)`. The same shape as
+   * `PATCH /work-items/reorder`.
+   *
+   * It used to carry `workspace:view`, which only `workspace_admin` holds (`workspace:*` is
+   * admin-reserved). Neither Project Admin nor Project Member has any `workspace:*` code, and this
+   * route is the SOLE resolver behind `/item/$itemKey` — so every notification click and every ID
+   * cell answered 403 for the two roles that do the work. Invisible in testing because the dev
+   * principal is a Workspace Admin, exactly as the `report:view` bug was.
+   */
   @ApiResponse({ status: 200, type: WorkItemResponseDto })
   @ApiCommonErrors(400, 401, 404)
   async getWorkItemByKey(

@@ -16,6 +16,7 @@ import {
   addDays,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
+import { AccessService } from '@modules/access';
 import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '../../../../../db/schema/enums';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
 import {
@@ -62,6 +63,7 @@ export class WorkspaceService {
     private readonly emailScheduler: EmailSchedulerService,
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
+    private readonly access: AccessService,
   ) {}
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
@@ -615,6 +617,25 @@ export class WorkspaceService {
       throw new PreconditionFailedException('INVITATION_EXPIRED', 'Invitation has expired');
     }
 
+    /**
+     * The invitation is bound to the ADDRESS it was sent to.
+     *
+     * Without this, acceptance validated only `pending` + not-expired, so the token was a bearer
+     * capability: anyone who obtained the link — a forwarded mail, a shared inbox, a copied URL —
+     * joined the workspace at the invited role. An invitation is an identity binding, and §5.2 step 4
+     * says so ("Existing/new user accept đúng email").
+     *
+     * Case-insensitive, because an IdP may return a differently-cased local part than the address the
+     * admin typed, and the two are the same mailbox.
+     */
+    const acceptingEmail = await this.memberRepo.findUserEmail(acceptingUserId);
+    if (!acceptingEmail || acceptingEmail.toLowerCase() !== invitation.email.toLowerCase()) {
+      throw new PreconditionFailedException(
+        'INVITATION_EMAIL_MISMATCH',
+        'This invitation was sent to a different email address',
+      );
+    }
+
     const existing = await this.memberRepo.findMember(invitation.workspaceId, acceptingUserId);
 
     // Atomic: enroll the member (if not already one) and mark the invitation
@@ -628,6 +649,31 @@ export class WorkspaceService {
             workspaceId: invitation.workspaceId,
             userId: acceptingUserId,
             roleId: invitation.roleId ?? undefined,
+          },
+          tx,
+        );
+      }
+
+      /**
+       * The invited ROLE, written where permissions are actually read from.
+       *
+       * `addMember` above sets `workspace_members.role_id`, which is denormalised and authoritative
+       * for nothing: `AccessService` resolves permissions from `user_role_assignments`, and this
+       * module's own members query reads the role from there too. So the invited role used to be
+       * written to a column nobody reads — a user invited as Project Admin landed with whatever
+       * `ensureDefaultRole` gives a first-time SSO login, and the admin who sent the invitation saw
+       * the intended role nowhere and was never told the grant had not happened.
+       *
+       * Inside the same transaction as the membership and the status flip: a partial success here
+       * would enrol someone with no role at all.
+       */
+      if (invitation.roleId) {
+        await this.memberRepo.grantWorkspaceRole(
+          {
+            workspaceId: invitation.workspaceId,
+            userId: acceptingUserId,
+            roleId: invitation.roleId,
+            grantedBy: acceptingUserId,
           },
           tx,
         );
@@ -647,6 +693,14 @@ export class WorkspaceService {
         tx,
       );
     });
+
+    // The grant has to land on the accepting user's NEXT request, not at token expiry: PolicyGuard
+    // caches resolved permissions per (workspace, user) for 5 minutes, and this user was already
+    // authenticated in order to accept — so a stale entry from before the grant is the normal case.
+    // After commit, matching `assignRole`.
+    if (invitation.roleId) {
+      await this.access.invalidateUser(invitation.workspaceId, acceptingUserId);
+    }
 
     this.logger.log({ invitationId: invitation.id, acceptingUserId }, 'Invitation accepted');
   }

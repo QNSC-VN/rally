@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
+import { AccessService } from '@modules/access';
 import { WorkspaceService } from './workspace.service';
 import { WORKSPACE_REPOSITORY, IWorkspaceRepository } from '../domain/ports/workspace.repository';
 import {
@@ -101,6 +102,10 @@ const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> => ({
   touchLastActive: vi.fn().mockResolvedValue(undefined),
   countActiveAdmins: vi.fn().mockResolvedValue(2),
   isActiveAdmin: vi.fn().mockResolvedValue(false),
+  // The invited address by default, so an accept in these specs is a matching one; a test that
+  // cares about the mismatch overrides it.
+  findUserEmail: vi.fn().mockResolvedValue('bob@example.com'),
+  grantWorkspaceRole: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> => ({
@@ -168,6 +173,9 @@ describe('WorkspaceService', () => {
         { provide: EmailSchedulerService, useValue: emailScheduler },
         { provide: UnitOfWork, useValue: makeUow() },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
+        // Accepting an invitation now grants the invited role, so the permission cache has to be
+        // dropped for that user — see `acceptInvitation`.
+        { provide: AccessService, useValue: { invalidateUser: vi.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
@@ -499,6 +507,69 @@ describe('WorkspaceService', () => {
         expect.anything(),
       );
       expect(memberRepo.addMember).toHaveBeenCalledOnce();
+    });
+
+    it('REFUSES an invitation addressed to someone else', async () => {
+      // The token used to be a bearer capability: acceptance checked only `pending` + not-expired, so
+      // a forwarded link made the wrong person a member at the invited role. §5.2 step 4 binds it to
+      // the address it was sent to.
+      invitationRepo.findByTokenHash.mockResolvedValue(mockInvitation({ status: 'pending' }));
+      memberRepo.findUserEmail.mockResolvedValue('someone.else@example.com');
+
+      await expect(service.acceptInvitation('raw-token', 'user-9')).rejects.toMatchObject({
+        code: 'INVITATION_EMAIL_MISMATCH',
+      });
+      expect(memberRepo.addMember).not.toHaveBeenCalled();
+      expect(invitationRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('accepts a differently-cased address as the same mailbox', async () => {
+      // An IdP may return a differently-cased local part than the address the admin typed.
+      invitationRepo.findByTokenHash.mockResolvedValue(mockInvitation({ status: 'pending' }));
+      memberRepo.findUserEmail.mockResolvedValue('BOB@Example.COM');
+      memberRepo.findMember.mockResolvedValue(null);
+      memberRepo.addMember.mockResolvedValue(mockMember());
+
+      await service.acceptInvitation('raw-token', 'user-2');
+      expect(memberRepo.addMember).toHaveBeenCalledOnce();
+    });
+
+    it('GRANTS the invited role where permissions are actually read from', async () => {
+      /**
+       * `workspace_members.role_id` is denormalised and authoritative for nothing — `AccessService`
+       * resolves permissions from `user_role_assignments`. So the invited role used to be written to a
+       * column nobody reads: a user invited as Project Admin landed with the default role and nobody
+       * was told the grant had not happened.
+       */
+      invitationRepo.findByTokenHash.mockResolvedValue(
+        mockInvitation({ status: 'pending', roleId: 'role-project-admin' }),
+      );
+      memberRepo.findMember.mockResolvedValue(null);
+      memberRepo.addMember.mockResolvedValue(mockMember());
+
+      await service.acceptInvitation('raw-token', 'user-2');
+
+      expect(memberRepo.grantWorkspaceRole).toHaveBeenCalledWith(
+        {
+          workspaceId: 'ws-1',
+          userId: 'user-2',
+          roleId: 'role-project-admin',
+          grantedBy: 'user-2',
+        },
+        // In the SAME transaction as the membership and the status flip.
+        expect.anything(),
+      );
+    });
+
+    it('grants nothing when the invitation carried no role', async () => {
+      invitationRepo.findByTokenHash.mockResolvedValue(
+        mockInvitation({ status: 'pending', roleId: null }),
+      );
+      memberRepo.findMember.mockResolvedValue(null);
+      memberRepo.addMember.mockResolvedValue(mockMember());
+
+      await service.acceptInvitation('raw-token', 'user-2');
+      expect(memberRepo.grantWorkspaceRole).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when token not found', async () => {

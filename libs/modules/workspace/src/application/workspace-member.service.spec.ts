@@ -67,6 +67,10 @@ const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> => ({
   touchLastActive: vi.fn().mockResolvedValue(undefined),
   countActiveAdmins: vi.fn().mockResolvedValue(0),
   isActiveAdmin: vi.fn().mockResolvedValue(false),
+  // The invited address by default, so an accept in these specs is a matching one; a test that
+  // cares about the mismatch overrides it.
+  findUserEmail: vi.fn().mockResolvedValue('invitee@qnsc.dev'),
+  grantWorkspaceRole: vi.fn().mockResolvedValue(undefined),
 });
 
 // ── Tests ────────────────────────────────────────────────────────────────────
