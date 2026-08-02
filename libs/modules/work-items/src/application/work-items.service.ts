@@ -871,27 +871,51 @@ export class WorkItemsService {
       );
       await this.appendMany(activityInputs, tx);
 
-      // ── Auto-accept iteration when ALL assigned Story/Defect are accepted (BA F1) ──
-      // Fires when this Story/Defect transitions INTO an accepted state and is
-      // assigned to an iteration. The repo guards idempotency (committed → accepted
-      // only) and the ≥1-item / all-accepted rule.
-      if (
-        !isTask &&
+      /**
+       * ── Auto-accept: re-evaluate the RULE, not just the write that used to trigger it ──
+       *
+       * "A non-empty Iteration auto-changes to `Accepted` when all ASSIGNED Story/Defect items are
+       * `Accepted`" (BUSINESS_BASELINE:12, BR-IT-02). That is a condition over an iteration's
+       * MEMBERSHIP, so every write that can change membership has to re-check it — not only a write
+       * that changes a status.
+       *
+       * This used to require `input.scheduleState` to transition into an accepted state, which left
+       * two reachable holes: move the last open Story OUT of an otherwise-accepted iteration, or move
+       * an already-accepted Story IN. Both end in exactly the state the rule describes with the
+       * iteration still Committed — Timeboxes saying Committed while the Iteration Status tile says
+       * ACCEPTED 100%. The BA logged that pairing as DEV-021; the status path was fixed and the scope
+       * path was not.
+       *
+       * BOTH iterations are re-checked on a move: the one the item left may now be complete, and the
+       * one it joined may be. `autoAcceptIterationIfComplete` owns the guards (non-empty, all
+       * accepted, `planning|committed → accepted` only), so this never auto-REVERSES — which
+       * BUSINESS_BASELINE:12 also requires, and which is what makes it safe to run on every move.
+       */
+      const acceptedTransition =
         input.scheduleState !== undefined &&
         isAcceptedScheduleState(input.scheduleState) &&
-        !isAcceptedScheduleState(item.scheduleState) &&
-        updated.iterationId
-      ) {
-        const flipped = await this.workItemRepo.autoAcceptIterationIfComplete(
-          updated.iterationId,
-          actor.workspaceId,
-          tx,
+        !isAcceptedScheduleState(item.scheduleState);
+      const iterationChanged =
+        input.iterationId !== undefined && input.iterationId !== item.iterationId;
+
+      if (!isTask && (acceptedTransition || iterationChanged)) {
+        const affected = new Set(
+          [item.iterationId, input.iterationId !== undefined ? input.iterationId : item.iterationId]
+            // `null` is the Backlog, which has no acceptance state of its own.
+            .filter((id): id is string => typeof id === 'string'),
         );
-        if (flipped) {
-          this.logger.log(
-            { iterationId: updated.iterationId },
-            'Iteration auto-accepted — all assigned Story/Defect items are accepted',
+        for (const iterationId of affected) {
+          const flipped = await this.workItemRepo.autoAcceptIterationIfComplete(
+            iterationId,
+            actor.workspaceId,
+            tx,
           );
+          if (flipped) {
+            this.logger.log(
+              { iterationId },
+              'Iteration auto-accepted — all assigned Story/Defect items are accepted',
+            );
+          }
         }
       }
 
@@ -1416,15 +1440,34 @@ export class WorkItemsService {
       }
     }
 
-    await this.uow.run((tx) =>
-      this.workItemRepo.assignIteration(
+    // Every iteration this batch touches: the ones the items are LEAVING and the one they are joining.
+    // Bulk-assigning accepted work into a committed iteration satisfies the auto-accept rule just as a
+    // status change does, and this path never checked it at all.
+    const affectedIterations = new Set(
+      [...items.map((i) => i.iterationId), iterationId].filter(
+        (id): id is string => typeof id === 'string',
+      ),
+    );
+
+    await this.uow.run(async (tx) => {
+      await this.workItemRepo.assignIteration(
         items.map((i) => i.id),
         iterationId,
         actor.workspaceId,
         actor.sub,
         tx,
-      ),
-    );
+      );
+      for (const affected of affectedIterations) {
+        const flipped = await this.workItemRepo.autoAcceptIterationIfComplete(
+          affected,
+          actor.workspaceId,
+          tx,
+        );
+        if (flipped) {
+          this.logger.log({ iterationId: affected }, 'Iteration auto-accepted after bulk assignment');
+        }
+      }
+    });
     this.logger.log({ projectId, count: items.length, iterationId }, 'Bulk iteration assigned');
     return items.length;
   }

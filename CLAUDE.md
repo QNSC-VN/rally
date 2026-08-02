@@ -352,6 +352,33 @@ because the global Team picker already hides archived teams (`app-shell.tsx` fil
 ORed across the capacity rows and the task rows: both reach the same bucket, and a task row whose
 `teams` join missed must not clear what a capacity row set correctly.
 
+## A rule stated as an INVARIANT cannot be implemented as one write's hook
+
+Two BA rules were specified as conditions and built as hooks on one particular write, so a different
+write reaching the same state left the rule unsatisfied. Both are now pinned by
+`test/e2e/derived-invariants.e2e.spec.ts`.
+
+- **Iteration auto-accept is a condition over MEMBERSHIP**: "a non-empty Iteration auto-changes to
+  `Accepted` when all ASSIGNED Story/Defect items are `Accepted`" (BUSINESS_BASELINE:12, BR-IT-02) —
+  and *assigned* is what a scope change alters. The check only ran on a `scheduleState` transition, so
+  moving the last open Story OUT, or bulk-assigning an accepted Story IN, left the iteration Committed
+  while the Iteration Status tile read ACCEPTED 100%. Every membership write now re-evaluates BOTH
+  affected iterations (the one left and the one joined). Safe to run on every move because
+  `autoAcceptIterationIfComplete` only ever goes `planning|committed → accepted` — the same rule's
+  "does not auto-reverse" clause is what makes that true.
+- **A Milestone's target window EQUALS its linked Releases' MIN/MAX** (P3-MS-FR-011/012, §73).
+  `recalcTargetDates` ran on create, update, link writes — and on `getMilestone`, a repair on the READ
+  path. It never ran when a linked Release's own dates were edited, and `listMilestones` reads the
+  persisted columns, so the detail page self-healed while the list showed a stale window. **The
+  self-healing is why it hid**: the surface a reviewer opens was the one that repaired itself.
+  Migration 0097 moves this to triggers covering all three invalidating writes (a release date edit, a
+  link add/remove, a manual write to a linked milestone, which §73 makes read-only), and the read-path
+  repair is gone. `§75` is respected: removing the last link leaves the dates alone rather than
+  inferring NULL.
+
+**The smell to watch for: a value repaired on read.** It makes the defect invisible on exactly the
+screen someone checks, and it leaves every other reader stale.
+
 ## Archive ordering cuts both ways
 
 An Epic with active child Features cannot be archived — and a Feature whose Epic is archived cannot be

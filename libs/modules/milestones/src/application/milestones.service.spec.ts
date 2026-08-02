@@ -269,13 +269,19 @@ describe('MilestonesService', () => {
     // milestone:view is enforced by the PolicyGuard at the route (P2,
     // resource-resolved from :id), covered by e2e — not a service assert.
 
-    it('recalculates target dates on get to ensure they are derived', async () => {
+    it('does NOT repair the derived dates on read — a read is a read', async () => {
+      /**
+       * Inverted deliberately. `getMilestone` used to call `recalcTargetDates`, which is why the detail
+       * page always looked right while `listMilestones` showed a stale window after a linked Release's
+       * dates changed: the surface a reviewer checks was the one that healed itself, so the real defect
+       * hid behind it.
+       *
+       * The derived window is an equality (P3-MS-FR-011/012, SRS §73), maintained by migration 0097's
+       * triggers on all three writes that can invalidate it. One row read, one findById.
+       */
       repo.findById.mockResolvedValue(mockMilestone());
       await service.getMilestone('ws-1', 'ms-1');
-      // recalcTargetDates runs db.select for the aggregate query
-      expect(db.select).toHaveBeenCalled();
-      // findById is called twice: initial check + after recalc
-      expect(repo.findById).toHaveBeenCalledTimes(2);
+      expect(repo.findById).toHaveBeenCalledTimes(1);
     });
   });
 
