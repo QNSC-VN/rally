@@ -89,11 +89,42 @@ difference is the whole design. Read this before changing a report or the snapsh
   0087 — those stay NULL and Velocity reports them as `unclassified`. Verified by experiment:
   `accepted` sets it, `release` RETAINS it (accepted-equivalent), reopening clears it, and a
   later re-acceptance writes a fresh, later timestamp.
+- **The timebox says WHICH window; the WORK says whose it is.** `iterations.team_id` is optional
+  here (real Rally collapses project and team, we do not), so a project may run one shared sprint
+  every team works inside — 195 of 206 local iterations name no team. Filtering reports on
+  `iterations.team_id` therefore returned NOTHING for a selected Team while Team Status showed the
+  hours, and Velocity, which had no team predicate on the work at all, credited every point in a
+  timebox to whatever team the timebox named. A team-scoped report now takes the team's own
+  iterations **plus the shared ones** (`teamOrSharedTimebox`) and narrows the numbers per row by
+  `coalesce(item.team_id, iteration.team_id)` — the same two-tier rule `getScopedTaskHours` and
+  Team Status already used. An unknown `teamId` is a 404, never relabelled `All Teams`.
+- **Nothing keeps `work_items.team_id` and its iteration's team in step by itself.**
+  `assertIterationAssignable` refuses the pair with `ITERATION_TEAM_MISMATCH`, but the update path
+  only checked it when the patch mentioned an iteration — so moving an item to another team left it
+  parked in the old team's sprint, in two steps instead of one. A team change now revalidates the
+  iteration the item already sits in. Seeds bypass the service entirely, which is how `US-D2` came
+  to be Team Beta's story inside Team Alpha's Sprint 26.1.
 - **`iterations.timebox_group_id` is how All Teams fuses per-Team iterations.** It is DERIVED
-  from (project, start, end) — `timeboxGroupIdFor()` and migration 0088 share the expression,
-  pinned by a spec — and computed ONCE at create, so a later date edit cannot split a
+  from (project, start, end) — `timeboxGroupIdFor()`, migration 0088 and the trigger added in 0093
+  share one expression, pinned by a spec — and computed ONCE, so a later date edit cannot split a
   historical bar. The approved mockup shows the failure this prevents: two adjacent velocity
-  bars both labelled 25.1.
+  bars both labelled 25.1. It is maintained by a **trigger** because the service was demonstrably
+  not the only writer: `create` set it, `update` omitted it, and `db/seeds/**` inserts dated
+  iterations directly — 40 rows had dates and no group, three of them sharing a window with four
+  that were grouped, so each became its own bar.
+- **Burndown history carries a TEAM** (`iteration_daily_snapshots.team_id`, migration 0093).
+  `team_id IS NULL` is the All Teams row and every scope is MEASURED independently — the All Teams
+  row is never the sum of the team rows, or a task two teams both touch counts twice. Frozen
+  history cannot be re-sliced on read, so without the column a team-scoped Burndown simply could
+  not be served; a read picks exactly one series (team rows, or the All Teams row), never both.
+  Team rows begin at 0093, so a team-scoped chart of older history is an honest gap.
+- **The Phase 6 snapshot tables now have foreign keys.** `iteration_daily_snapshots` and
+  `member_capacity` had NONE (verified against `pg_constraint`). Orphan snapshots happened to be
+  unreachable through the API — deleting an iteration is blocked unless it is still `planning`, and
+  only `committed` iterations are snapshotted — but orphaned `member_capacity` rows were reachable,
+  and Team Capacity inner-joins `teams`/`users`, so an orphan row DROPS out and the Capacity total
+  quietly falls while Estimate/ToDo/Actual stay. "Unreachable today" is a coincidence of two
+  unrelated rules, not an invariant.
 - **`workspace_settings.working_days`** (ISO 1–7, default Mon–Fri) is the Burndown x-axis and
   the Ideal line's index. The Ideal line is indexed by WORKING day and reaches zero on the
   last one; the mockup interpolates over calendar days and never reaches zero — the SRS wins.

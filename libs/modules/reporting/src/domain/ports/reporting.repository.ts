@@ -60,6 +60,11 @@ export interface ActiveReleaseRow {
 export interface IterationSnapshotWrite {
   workspaceId: string;
   iterationId: string;
+  /**
+   * NULL is the ALL TEAMS row, MEASURED over the whole iteration scope rather than summed from
+   * the team rows — a task two teams both touch must be counted once (migration 0093).
+   */
+  teamId: string | null;
   /** Workspace-local date. */
   snapshotDate: string;
   remainingTodo: number;
@@ -104,7 +109,17 @@ export interface IReportingRepository {
   ): Promise<IterationRow[]>;
 
   // ── Iteration Burndown ────────────────────────────────────────────────────
-  getIterationSnapshots(workspaceId: string, iterationIds: string[]): Promise<StoredSnapshot[]>;
+  /**
+   * Stored daily rows for one SCOPE — the team's own series, or the All Teams series.
+   *
+   * Never both: `team_id IS NULL` is measured over the whole iteration, so mixing it with a
+   * team's rows would double every overlapping day.
+   */
+  getIterationSnapshots(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<StoredSnapshot[]>;
   countScheduledWork(workspaceId: string, iterationIds: string[]): Promise<number>;
 
   // ── Velocity ──────────────────────────────────────────────────────────────
@@ -118,10 +133,17 @@ export interface IReportingRepository {
     scope: TeamScope,
     todayLocalDate: string,
   ): Promise<TimeboxGroup[]>;
-  /** Currently-assigned Story/Defect rows for a set of iterations, keyed by iteration. */
+  /**
+   * Currently-assigned Story/Defect rows for a set of iterations, keyed by iteration.
+   *
+   * `scope` narrows by the ITEM's own team (falling back to its iteration's), not by the
+   * timebox — a team-scoped report may legitimately include a SHARED, team-less iteration, and
+   * an item's team and its iteration's team are not kept in step by anything.
+   */
   getVelocityItems(
     workspaceId: string,
     iterationIds: string[],
+    scope: TeamScope,
   ): Promise<Array<VelocityItem & { iterationId: string }>>;
 
   // ── Team Capacity ─────────────────────────────────────────────────────────
@@ -224,11 +246,21 @@ export interface IReportingRepository {
    * Today's measured values for one iteration: SUM(task.todo) in hours, and the cumulative
    * accepted points as of the end of the workspace-local day.
    */
+  /**
+   * Today's measured values for one iteration and ONE scope.
+   *
+   * `teamId === null` measures the whole iteration (the All Teams row); a team id narrows to that
+   * team's work by `coalesce(task.team_id, parent.team_id, iteration.team_id)`.
+   */
   measureIterationDay(
     workspaceId: string,
     iterationId: string,
     endOfDay: Date,
+    teamId?: string | null,
   ): Promise<{ remainingTodo: number; acceptedPoints: number }>;
+
+  /** Teams with work in this iteration — who gets a per-team snapshot row. */
+  teamsInIterationScope(workspaceId: string, iterationId: string): Promise<string[]>;
 
   upsertIterationSnapshot(row: IterationSnapshotWrite): Promise<void>;
   upsertReleaseSnapshot(row: ReleaseSnapshotWrite): Promise<void>;

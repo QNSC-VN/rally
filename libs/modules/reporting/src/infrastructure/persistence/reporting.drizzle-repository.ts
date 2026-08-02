@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
@@ -111,7 +111,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
             eq(iterations.workspaceId, workspaceId),
             eq(iterations.projectId, projectId),
             eq(iterations.timeboxGroupId, timeboxGroupId),
-            scope.kind === 'team' ? eq(iterations.teamId, scope.teamId) : undefined,
+            scope.kind === 'team' ? teamOrSharedTimebox(scope.teamId) : undefined,
           );
 
     const rows = await this.db
@@ -127,6 +127,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
   async getIterationSnapshots(
     workspaceId: string,
     iterationIds: string[],
+    scope: TeamScope,
   ): Promise<StoredSnapshot[]> {
     if (iterationIds.length === 0) return [];
     const rows = await this.db
@@ -140,6 +141,17 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         and(
           eq(iterationDailySnapshots.workspaceId, workspaceId),
           inArray(iterationDailySnapshots.iterationId, iterationIds),
+          /**
+           * Exactly ONE series per iteration: the team's own rows, or the All Teams row.
+           *
+           * Not a filter that can match both — `team_id IS NULL` is a MEASURED total over the
+           * whole scope, so including it alongside a team's rows would double every day the two
+           * overlap. Team rows only exist from migration 0093 onwards, so a team-scoped chart of
+           * older history is a legitimate gap rather than a silent fallback to All Teams.
+           */
+          scope.kind === 'team'
+            ? eq(iterationDailySnapshots.teamId, scope.teamId)
+            : isNull(iterationDailySnapshots.teamId),
         ),
       )
       .orderBy(asc(iterationDailySnapshots.snapshotDate), asc(iterationDailySnapshots.id));
@@ -207,7 +219,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           eq(iterations.workspaceId, workspaceId),
           eq(iterations.projectId, projectId),
           sql`${iterations.endDate} < ${todayLocalDate}`,
-          scope.kind === 'team' ? eq(iterations.teamId, scope.teamId) : undefined,
+          scope.kind === 'team' ? teamOrSharedTimebox(scope.teamId) : undefined,
         ),
       )
       .groupBy(groupKey)
@@ -227,8 +239,20 @@ export class ReportingDrizzleRepository implements IReportingRepository {
   async getVelocityItems(
     workspaceId: string,
     iterationIds: string[],
+    scope: TeamScope,
   ): Promise<Array<VelocityItem & { iterationId: string }>> {
     if (iterationIds.length === 0) return [];
+    const iteration = alias(iterations, 'velocity_iteration');
+    /**
+     * Whose points these are: the ITEM's team, falling back to its iteration's.
+     *
+     * The same two-tier rule `getScopedTaskHours` uses, and it has to be here too — this query
+     * had no team predicate at all, so team scope came only from which iterations were selected.
+     * That attributed work by the TIMEBOX's team, and nothing keeps the two in step: the seeded
+     * database already holds Team Beta's `US-D2` sitting in Team Alpha's Sprint 26.1, counted as
+     * Alpha's 8 points and absent from Beta's chart entirely.
+     */
+    const resolvedTeam = sql`coalesce(${workItems.teamId}, ${iteration.teamId})`;
     const rows = await this.db
       .select({
         id: workItems.id,
@@ -239,12 +263,14 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         acceptedDate: workItems.acceptedDate,
       })
       .from(workItems)
+      .leftJoin(iteration, eq(iteration.id, workItems.iterationId))
       .where(
         and(
           eq(workItems.workspaceId, workspaceId),
           inArray(workItems.iterationId, iterationIds),
           inArray(workItems.type, [...LEAF_TYPES]),
           isNull(workItems.deletedAt),
+          scope.kind === 'team' ? sql`${resolvedTeam} = ${scope.teamId}::uuid` : undefined,
         ),
       );
     return rows.map((r) => ({
@@ -663,25 +689,42 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     workspaceId: string,
     iterationId: string,
     endOfDay: Date,
+    teamId: string | null = null,
   ): Promise<{ remainingTodo: number; acceptedPoints: number }> {
     const parent = alias(workItems, 'parent');
+    const iteration = alias(iterations, 'measured_iteration');
+    /**
+     * Whose work this is — the same two-tier rule the live reports use.
+     *
+     * `teamId === null` MEASURES the whole iteration scope (the All Teams row), it does not sum
+     * the team rows: a task two teams both touch has to be counted once, and summing would count
+     * it twice. `release_daily_snapshots` already works this way.
+     */
+    const taskTeam = sql`coalesce(${tasks.teamId}, ${parent.teamId}, ${iteration.teamId})`;
+    const itemTeam = sql`coalesce(${workItems.teamId}, ${iteration.teamId})`;
 
     const [todo] = await this.db
       .select({ total: sql<number>`coalesce(sum(${tasks.todoHours}), 0)::float8` })
       .from(tasks)
       .innerJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
+      .leftJoin(
+        iteration,
+        sql`${iteration.id} = coalesce(${tasks.iterationId}, ${parent.iterationId})`,
+      )
       .where(
         and(
           eq(tasks.workspaceId, workspaceId),
           isNull(tasks.deletedAt),
           // Same scoping rule as Team Status and the Team Capacity projection.
           sql`(${tasks.iterationId} = ${iterationId}::uuid or ${parent.iterationId} = ${iterationId}::uuid)`,
+          teamId === null ? undefined : sql`${taskTeam} = ${teamId}::uuid`,
         ),
       );
 
     const [accepted] = await this.db
       .select({ total: sql<number>`coalesce(sum(${workItems.storyPoints}), 0)::float8` })
       .from(workItems)
+      .leftJoin(iteration, eq(iteration.id, workItems.iterationId))
       .where(
         and(
           eq(workItems.workspaceId, workspaceId),
@@ -692,36 +735,90 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           // Cumulative BY DATE (IB-BR-02): an item accepted after this day's local boundary
           // does not count towards it, even though it is accepted right now.
           sql`${workItems.acceptedDate} is not null and ${workItems.acceptedDate} <= ${endOfDay}`,
+          teamId === null ? undefined : sql`${itemTeam} = ${teamId}::uuid`,
         ),
       );
 
     return { remainingTodo: todo?.total ?? 0, acceptedPoints: accepted?.total ?? 0 };
   }
 
-  async upsertIterationSnapshot(row: IterationSnapshotWrite): Promise<void> {
-    // Idempotent by (iteration, date): a retry, a second pod, or an extra tick rewrites the
-    // same row rather than creating a duplicate (IB §4). Only TODAY's date is ever passed, so
-    // this can never rewrite a closed day.
-    await this.db
-      .insert(iterationDailySnapshots)
-      .values({
-        workspaceId: row.workspaceId,
-        iterationId: row.iterationId,
-        snapshotDate: row.snapshotDate,
-        remainingTodo: String(row.remainingTodo),
-        acceptedPoints: String(row.acceptedPoints),
-        capturedAt: new Date(),
+  async teamsInIterationScope(workspaceId: string, iterationId: string): Promise<string[]> {
+    /**
+     * The teams that actually have work in this iteration — tasks OR leaf items.
+     *
+     * Snapshotting every team in the project would write a row of zeros for teams that never
+     * touched the iteration, and a zero is indistinguishable from a team that delivered nothing.
+     * Same rule `teamsInvolved` applies to the release burnup.
+     */
+    const parent = alias(workItems, 'parent');
+    const iteration = alias(iterations, 'scope_iteration');
+    const taskTeams = await this.db
+      .selectDistinct({
+        teamId: sql<string | null>`coalesce(${tasks.teamId}, ${parent.teamId}, ${iteration.teamId})`,
       })
-      .onConflictDoUpdate({
-        target: [iterationDailySnapshots.iterationId, iterationDailySnapshots.snapshotDate],
-        set: {
-          remainingTodo: String(row.remainingTodo),
-          acceptedPoints: String(row.acceptedPoints),
-          capturedAt: new Date(),
-        },
-        // Defence in depth: even if a caller passed a past date, a finalized row stays put.
-        setWhere: sql`${iterationDailySnapshots.finalized} = false`,
-      });
+      .from(tasks)
+      .innerJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
+      .leftJoin(
+        iteration,
+        sql`${iteration.id} = coalesce(${tasks.iterationId}, ${parent.iterationId})`,
+      )
+      .where(
+        and(
+          eq(tasks.workspaceId, workspaceId),
+          isNull(tasks.deletedAt),
+          sql`(${tasks.iterationId} = ${iterationId}::uuid or ${parent.iterationId} = ${iterationId}::uuid)`,
+        ),
+      );
+
+    const itemTeams = await this.db
+      .selectDistinct({
+        teamId: sql<string | null>`coalesce(${workItems.teamId}, ${iteration.teamId})`,
+      })
+      .from(workItems)
+      .leftJoin(iteration, eq(iteration.id, workItems.iterationId))
+      .where(
+        and(
+          eq(workItems.workspaceId, workspaceId),
+          eq(workItems.iterationId, iterationId),
+          inArray(workItems.type, [...LEAF_TYPES]),
+          isNull(workItems.deletedAt),
+        ),
+      );
+
+    const ids = new Set<string>();
+    for (const row of [...taskTeams, ...itemTeams]) {
+      if (row.teamId !== null) ids.add(row.teamId);
+    }
+    return [...ids];
+  }
+
+  async upsertIterationSnapshot(row: IterationSnapshotWrite): Promise<void> {
+    /**
+     * Idempotent by (iteration, team, date): a retry, a second pod, or an extra tick rewrites the
+     * same row rather than creating a duplicate (IB §4). Only TODAY's date is ever passed, so this
+     * can never rewrite a closed day.
+     *
+     * Raw SQL, exactly like `upsertReleaseSnapshot` and for the same reason: the unique index is
+     * on `(iteration_id, COALESCE(team_id, nil), snapshot_date)` — a nullable team needs the
+     * COALESCE so one ON CONFLICT predicate serves the team rows AND the All Teams row — and
+     * Drizzle's `onConflictDoUpdate` target accepts columns only, not an expression. Every value
+     * is still a bind parameter.
+     */
+    await this.db.execute(sql`
+      insert into "work"."iteration_daily_snapshots"
+        (workspace_id, iteration_id, team_id, snapshot_date,
+         remaining_todo, accepted_points, captured_at)
+      values
+        (${row.workspaceId}::uuid, ${row.iterationId}::uuid, ${row.teamId}::uuid,
+         ${row.snapshotDate}::date, ${String(row.remainingTodo)}, ${String(row.acceptedPoints)}, now())
+      on conflict (iteration_id, coalesce(team_id, ${NIL_UUID}::uuid), snapshot_date)
+      do update set
+        remaining_todo  = excluded.remaining_todo,
+        accepted_points = excluded.accepted_points,
+        captured_at     = now()
+      -- Defence in depth: a finalized day stays put even if a caller passed a past date.
+      where "work"."iteration_daily_snapshots".finalized = false
+    `);
   }
 
   async upsertReleaseSnapshot(row: ReleaseSnapshotWrite): Promise<void> {
@@ -794,6 +891,24 @@ const ITERATION_COLUMNS = {
   endDate: iterations.endDate,
   totalTaskEstimateAtStart: iterations.totalTaskEstimateAtStart,
 } as const;
+
+/**
+ * Which iterations a TEAM-scoped report may draw on: the team's own, plus the SHARED ones.
+ *
+ * `iterations.team_id` is optional in this schema — an iteration needs a project and may name a
+ * team (real Rally collapses the two, we do not) — so a project can run one timebox per sprint
+ * that every team works inside. Matching `team_id = :team` alone therefore returned NOTHING for
+ * such a project: 195 of 206 iterations in the local database are team-less, so a selected Team
+ * showed `iterationCount: 0`, empty Velocity bars and zero capacity while Team Status showed the
+ * hours. The inverse was just as wrong — the null-group fallback branch dropped the predicate
+ * entirely, so a selected Team DID get a shared iteration's data there.
+ *
+ * The timebox says WHICH window; the work says WHOSE it is. So a shared window is in scope and
+ * the per-item team predicate below is what narrows the numbers.
+ */
+function teamOrSharedTimebox(teamId: string) {
+  return or(eq(iterations.teamId, teamId), isNull(iterations.teamId));
+}
 
 function toIterationRow(row: {
   id: string;
