@@ -11,10 +11,11 @@
  * colours on the indicators: §6 lists what the approved report contains, and none of those are in
  * it. Capacity is still edited on Team Status, which owns `team_status:edit`.
  */
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { EMPTY_VALUE } from '@/shared/lib/utils'
+import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { useIterations } from '@/features/iterations/api'
 import { useTeamCapacityReport, type TeamCapacityTeam } from '@/features/reporting/api'
@@ -48,8 +49,7 @@ type HourKey = (typeof HOUR_KEYS)[number]
  * message. `EMPTY_VALUE` is what the rest of the app renders for an absent value, and the KPI row
  * stays mounted so the layout does not jump.
  */
-const formatHours = (value: number | undefined) =>
-  value === undefined ? EMPTY_VALUE : `${value}h`
+const formatHours = (value: number | undefined) => (value === undefined ? EMPTY_VALUE : `${value}h`)
 
 /**
  * Hours off a totals/member record by column key. One mapping, used by the group row, the
@@ -82,21 +82,15 @@ export function TeamCapacityReport({
     iterationId: selectedId,
   })
 
-  // Sort the TEAM rows by an hour aggregate, the same click-to-sort header wiring Team Status
-  // uses for its member groups. Members keep their server order inside a team: the SRS orders
-  // them by the roster, and re-sorting a two-level table on one key reads as flat.
-  const [sortCol, setSortCol] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const toggleSort = useCallback(
-    (col: string) => {
-      if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
-      else {
-        setSortCol(col)
-        setSortDir('asc')
-      }
-    },
-    [sortCol],
-  )
+  /**
+   * Sort the TEAM rows by an hour aggregate. Members keep their server order inside a team: the SRS
+   * orders them by the roster, and re-sorting a two-level table on one key reads as flat.
+   *
+   * `useTableSort`, not a local pair of `useState`s — this was a verbatim reimplementation of it, the
+   * fifth copy of "same column flips direction, a new column starts ascending" that the hook exists to
+   * end. Eight other grids already call it.
+   */
+  const { sortField: sortCol, sortDir, toggle: toggleSort } = useTableSort<string>()
 
   const columns: ColumnSpec<TeamCapacityTeam, unknown, ColKey>[] = [
     {
@@ -118,7 +112,9 @@ export function TeamCapacityReport({
   ]
   const table = useDataTable<TeamCapacityTeam, unknown, ColKey>(columns, {
     storageKey: 'reports:team-capacity',
-    sort: { col: sortCol, dir: sortDir, onSort: toggleSort },
+    // `?? 'asc'`: the hook reports a null direction while nothing is sorted, and the header wants a
+    // concrete one to draw its caret with.
+    sort: { col: sortCol, dir: sortDir ?? 'asc', onSort: toggleSort },
     leadingWidth: 24,
   })
 

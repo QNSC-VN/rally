@@ -12,6 +12,8 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { CapacityBarTooltip } from './capacity-bar-tooltip'
 import { MetricValue } from '@/shared/ui/metric-value'
+import { StatusBadge } from '@/shared/ui/status-badge'
+import { portfolioStateStyle } from '@/features/portfolio/status-colors'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
@@ -254,9 +256,11 @@ export function AllocationRow({
         style={colStyleFor('state', { flexShrink: 0 })}
         className="flex min-w-0 items-center px-2"
       >
-        <span className="break-words whitespace-normal text-muted-foreground">
-          {tPortfolio(`states.${allocation.state}`)}
-        </span>
+        {/* The SAME badge the Portfolio surfaces draw, from the same colour map: a Feature's state
+            should not read as a pill there and as grey text here. */}
+        <StatusBadge
+          style={portfolioStateStyle(allocation.state, tPortfolio(`states.${allocation.state}`))}
+        />
       </div>
 
       {/* The `Allocation` column: where this row's work came FROM. The allocated points live in the

@@ -20,6 +20,7 @@ import { useReleaseTracking, type ChartUnit, type ReleaseBucket } from '@/featur
 import { reportScopeLabel } from '@/features/reporting/scope'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { NativeSelect } from '@/shared/ui/native-select'
+import { MetricCard } from '@/shared/ui/metric-card'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { PageHeader } from '@/shared/ui/page-header'
 import { TimeboxPicker } from '@/shared/ui/timebox-picker'
@@ -155,6 +156,14 @@ export function ReleaseTrackingPage() {
             <p className="mb-3 text-ui-sm font-semibold text-foreground">{t('summary.title')}</p>
             {/* All three totals stay visible even when the active bucket is empty (§5.1), and
                 clicking one switches the list — the tiles ARE the bucket selector. */}
+            {/* Each tile is a `MetricCard`, so the three bucket counts read like every other KPI in
+                the app: label above value, `text-ui-*` scale, one set of colour tokens. They were
+                hand-rolled the other way up with a raw `text-xl`, which made this the only summary in
+                Rally where the number came first.
+
+                Still BUTTONS: the tiles are the bucket selector (§5.1), so the pressed one is stated
+                with `aria-pressed` rather than by colour alone. `MetricStrip` is deliberately NOT used
+                — that is the 58px bar under a page header, and these sit inside a panel. */}
             <div className="flex items-stretch">
               {BUCKETS.map((key) => (
                 <button
@@ -162,19 +171,18 @@ export function ReleaseTrackingPage() {
                   type="button"
                   onClick={() => setBucket(key)}
                   aria-pressed={bucket === key}
-                  className={`flex-1 border-r border-border-inner px-2 py-1 text-center last:border-r-0 ${
+                  className={`flex-1 border-r border-border-inner px-3 py-1 last:border-r-0 ${
                     bucket === key ? 'bg-accent-bg' : 'hover:bg-surface-hover'
                   }`}
                 >
-                  <span className="block text-xl font-semibold text-foreground tabular-nums">
-                    {/* `--`, not `0`. `data` is undefined while the request is in flight and after
-                        it fails, and three large zeros beside the grid's error state read as "this
-                        release has no Features" — a data conclusion drawn from a network fault. */}
-                    {summary ? summary[key] : EMPTY_VALUE}
-                  </span>
-                  <span className="mt-1 block text-ui-xs font-semibold text-muted-foreground">
-                    {t(`summary.${key}`)}
-                  </span>
+                  <MetricCard
+                    label={t(`summary.${key}`)}
+                    /* `--`, not `0`. `data` is undefined while the request is in flight and after it
+                       fails, and three large zeros beside the grid's error state read as "this release
+                       has no Features" — a data conclusion drawn from a network fault. */
+                    value={summary ? summary[key] : EMPTY_VALUE}
+                    minWidth={0}
+                  />
                 </button>
               ))}
             </div>

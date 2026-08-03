@@ -13,6 +13,8 @@ import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { RankCell } from '@/shared/ui/table'
+import { StatusBadge } from '@/shared/ui/status-badge'
+import { portfolioStateStyle } from '@/features/portfolio/status-colors'
 import { ReorderButtons } from '@/shared/ui/reorder-buttons'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { BRAND } from '@/shared/config/brand'
@@ -200,12 +202,18 @@ export function PortfolioRow({
           className="min-w-0 px-0"
           onClick={(e) => e.stopPropagation()}
         >
+          {/* The state reads as a BADGE, like every other entity's does — `StatusBadge` had no usages
+              under `pages/portfolio/**` at all, so the one vocabulary with eleven values was the one
+              rendered as bare text. The select is still the editor; only its trigger changes. */}
           <SearchableSelect
             variant="cell"
             value={item.state}
             readOnly={!canEdit}
             ariaLabel={t('filters.state')}
             options={PORTFOLIO_STATES.map((s) => ({ value: s, label: t(`states.${s}`) }))}
+            triggerContent={
+              <StatusBadge style={portfolioStateStyle(item.state, t(`states.${item.state}`))} />
+            }
             onChange={(v) => {
               if (v && v !== item.state)
                 save({ state: v as PortfolioItemState }, t('row.stateUpdated'))

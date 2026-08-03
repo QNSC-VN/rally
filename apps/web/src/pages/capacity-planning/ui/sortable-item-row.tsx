@@ -1,9 +1,8 @@
 import { type CSSProperties, type ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical } from 'lucide-react'
 
-import { BRAND } from '@/shared/config/brand'
+import { DragHandle } from '@/shared/ui/drag-handle'
 
 /**
  * Makes one Features-tab row draggable, and hands the row its grip.
@@ -13,8 +12,10 @@ import { BRAND } from '@/shared/config/brand'
  * rank (and by tests that do not mount a `DndContext`). Keeping the mechanics here means the row
  * stays a presentational grid row and simply renders whatever `dragHandle` it is given.
  *
- * Rally ranks by dragging the row itself; the grip is the affordance that says so, and it is the
- * same `GripVertical` every other rankable grid in the app uses.
+ * Rally ranks by dragging the row itself; the grip is the affordance that says so, and it is the shared
+ * `DragHandle` every other rankable grid uses. It hand-rolled a lucide `GripVertical` instead — a
+ * different glyph from the six dots the rest of the app draws, and with no width-preserving spacer, so
+ * a published plan (grip disabled, `null` rendered) shifted every column ~20px left of a draft one.
  */
 export function SortableItemRow({
   id,
@@ -49,17 +50,18 @@ export function SortableItemRow({
     zIndex: isDragging ? 1 : undefined,
   }
 
-  const grip = disabled ? null : (
-    <button
-      type="button"
+  /**
+   * Rendered even when disabled: `DragHandle` becomes an inert, invisible spacer of the same width, so
+   * the columns beside it do not move between a draft plan and a published one.
+   */
+  const grip = (
+    <DragHandle
       ref={setActivatorNodeRef}
-      aria-label={label}
-      className="flex shrink-0 cursor-grab items-center px-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+      label={label}
+      disabled={disabled}
       {...attributes}
       {...listeners}
-    >
-      <GripVertical size={12} style={{ color: BRAND.textMuted }} />
-    </button>
+    />
   )
 
   return (
