@@ -9,6 +9,8 @@
  * server numbers them, and the superseded `D` marker for Derived rows is deliberately absent.
  */
 import { useCallback, useMemo, useState } from 'react'
+
+import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 
@@ -61,8 +63,20 @@ export function TrackingGrid({
   const { t } = useTranslation(['release-tracking', 'common'])
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
-  const [sortCol, setSortCol] = useState<string | null>('rank')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  /**
+   * `useTableSort`, seeded with RT-AC-04's default (`rank`, ascending).
+   *
+   * The local pair it replaces also behaved differently from every other grid: `setSortDir((dir) =>
+   * sortCol === col && dir === 'asc' ? 'desc' : 'asc')` kept the PREVIOUS direction when a new column
+   * was clicked, so clicking Team after descending Rank sorted Team descending — the header's caret and
+   * the rows agreed with each other and disagreed with the rest of the app, where a new column always
+   * starts ascending.
+   */
+  const {
+    sortField: sortCol,
+    sortDir,
+    toggle: toggleSort,
+  } = useTableSort<string>({ field: 'rank', dir: 'asc' })
 
   const columns: ColumnSpec<ReleaseTrackingRow, Ctx, ColKey>[] = useMemo(
     () => [
@@ -148,14 +162,9 @@ export function TrackingGrid({
 
   const table = useDataTable<ReleaseTrackingRow, Ctx, ColKey>(columns, {
     storageKey: 'release-tracking:columns',
-    sort: {
-      col: sortCol,
-      dir: sortDir,
-      onSort: (col) => {
-        setSortDir((dir) => (sortCol === col && dir === 'asc' ? 'desc' : 'asc'))
-        setSortCol(col)
-      },
-    },
+    // `?? 'asc'`: the hook reports a null direction only while nothing is sorted, which cannot happen
+    // here (it is seeded), but the header's contract wants a concrete direction.
+    sort: { col: sortCol, dir: sortDir ?? 'asc', onSort: toggleSort },
   })
 
   /**

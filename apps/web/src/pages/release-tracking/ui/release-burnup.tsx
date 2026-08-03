@@ -18,6 +18,7 @@ import { BRAND } from '@/shared/config/brand'
 import { useReleaseBurnup, type ChartUnit } from '@/features/reporting/api'
 import { formatDate } from '@/shared/lib/utils'
 import { MetricCard } from '@/shared/ui/metric-card'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import {
   CHART_AXIS,
   CHART_GRID,
@@ -172,31 +173,33 @@ export function ReleaseBurnup({
             </p>
           )}
 
-          {totals && (
-            <div className="mt-3 flex gap-8">
-              <MetricCard
-                label={t('totals.accepted')}
-                value={totals.accepted}
-                caption={unitLabel}
-                valueColor={BRAND.reportAccepted}
-                minWidth={120}
-              />
-              <MetricCard
-                label={t('totals.planned')}
-                value={totals.planned}
-                caption={unitLabel}
-                valueColor={BRAND.reportPlanned}
-                minWidth={120}
-              />
-              <MetricCard
-                label={t('totals.preliminary')}
-                value={totals.preliminary}
-                caption={unitLabel}
-                valueColor={BRAND.reportPreliminary}
-                minWidth={140}
-              />
-            </div>
-          )}
+          {/* The three totals stay MOUNTED with absent values, they no longer vanish.
+              This was the last surface still using the third convention for missing data — the reports
+              sweep settled on `--` everywhere, the tiles above it print `--`, and a row of cards that
+              disappears makes the panel change height on every refetch while saying nothing about why. */}
+          <div className="mt-3 flex gap-8">
+            <MetricCard
+              label={t('totals.accepted')}
+              value={totals?.accepted ?? EMPTY_VALUE}
+              caption={unitLabel}
+              valueColor={BRAND.reportAccepted}
+              minWidth={120}
+            />
+            <MetricCard
+              label={t('totals.planned')}
+              value={totals?.planned ?? EMPTY_VALUE}
+              caption={unitLabel}
+              valueColor={BRAND.reportPlanned}
+              minWidth={120}
+            />
+            <MetricCard
+              label={t('totals.preliminary')}
+              value={totals?.preliminary ?? EMPTY_VALUE}
+              caption={unitLabel}
+              valueColor={BRAND.reportPreliminary}
+              minWidth={140}
+            />
+          </div>
         </>
       }
     >
