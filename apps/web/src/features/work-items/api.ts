@@ -170,6 +170,12 @@ export function useTaskTotals(workItemId: string | undefined) {
 }
 
 // ── Child Defects (defects with parentId set to a story) ────────────────────
+//
+// CURRENTLY NO CALLER, deliberately kept. Its one consumer was the Work Item `Defects` tab,
+// removed under `GAP-P1-WID-001` (the BA's approved Phase 1 tab structure is Details / Tasks /
+// Revision History). The parent-child link itself is untouched, so the binding stays valid and
+// `childDefectsKeys` is still pinned by `query-invalidation.integrity.test.ts`. Delete both
+// together if the relationship is ever dropped — not because this looks unused.
 
 export const childDefectsKeys = {
   all: ['child-defects'] as const,
