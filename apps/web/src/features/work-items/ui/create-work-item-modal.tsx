@@ -19,8 +19,10 @@ import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
 import { OwnerSelectField, TeamSelectField } from '@/shared/ui/entity-select-field'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { KeyChip } from '@/shared/ui/key-chip'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 
 type CreatableType = 'story' | 'defect'
 
@@ -205,35 +207,49 @@ export function CreateWorkItemModal({
         </FormField>
 
         {/* Project — required, default current project (WIC-FR-004) */}
-        <FormField label={t('create.projectLabel')} required htmlFor="wi-project">
-          <NativeSelect
-            id="wi-project"
+        {/* The `KeyChip` glyph `ProjectSelectCell` puts on every Project column, so the field
+            and the column are recognisably the same thing. Was a bare `NativeSelect` listing
+            names only — searchable too, since a workspace can hold a long project list. */}
+        <FormField label={t('create.projectLabel')} required>
+          <SearchableSelect
+            variant="field"
             value={selectedProjectId}
-            onChange={(e) => handleProjectChange(e.target.value)}
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </NativeSelect>
+            ariaLabel={t('create.projectLabel')}
+            searchPlaceholder="Search"
+            options={projects.map((p) => ({
+              value: p.id,
+              label: p.name,
+              searchText: `${p.key} ${p.name}`,
+              icon: (
+                <KeyChip size="sm" tone="project">
+                  {p.key}
+                </KeyChip>
+              ),
+            }))}
+            onChange={(v) => handleProjectChange(v ?? selectedProjectId)}
+          />
         </FormField>
 
-        {/* Parent Story — Defect only */}
+        {/* Parent Story — Defect only. Carries the story `TypeBadge`, the same glyph the ID
+            column renders. */}
         {type === 'defect' && (
-          <FormField label={t('create.parentStoryLabel')} htmlFor="wi-parent-story">
-            <NativeSelect
-              id="wi-parent-story"
+          <FormField label={t('create.parentStoryLabel')}>
+            <SearchableSelect
+              variant="field"
               value={parentStoryId}
-              onChange={(e) => setParentStoryId(e.target.value)}
-            >
-              <option value="">{t('sidebar.noParentStory')}</option>
-              {stories.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.itemKey} — {s.title}
-                </option>
-              ))}
-            </NativeSelect>
+              ariaLabel={t('create.parentStoryLabel')}
+              searchPlaceholder="Search"
+              options={[
+                { value: '', label: t('sidebar.noParentStory') },
+                ...stories.map((s) => ({
+                  value: s.id,
+                  label: `${s.itemKey} — ${s.title}`,
+                  searchText: `${s.itemKey} ${s.title}`,
+                  icon: <TypeBadge type="story" size={16} />,
+                })),
+              ]}
+              onChange={(v) => setParentStoryId(v ?? '')}
+            />
           </FormField>
         )}
 

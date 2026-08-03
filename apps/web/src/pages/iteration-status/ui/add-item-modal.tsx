@@ -9,6 +9,8 @@ import { useProjectMembers, useProjectTeams } from '@/features/teams/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { ProjectCell } from '@/shared/ui/project-cell'
+import { TeamCell } from '@/shared/ui/team-cell'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
@@ -35,8 +37,9 @@ export function AddItemModal({
   const { project } = useAppContext()
   // Project / Team / Iteration are inherited from the iteration context and shown
   // read-only (P2-IS-FR-044/045); the created item picks them up server-side.
-  const teamName =
-    teams.find((tm) => tm.id === iteration.teamId)?.name ?? t('toolbar.noTeam', 'No team')
+  const iterationTeam = teams.find((tm) => tm.id === iteration.teamId)
+  const teamName = iterationTeam?.name ?? t('toolbar.noTeam', 'No team')
+  const teamKey = iterationTeam?.key ?? null
   const roBox =
     'flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground'
   const [type, setType] = useState<'story' | 'defect'>('story')
@@ -117,11 +120,22 @@ export function AddItemModal({
 
         {/* Project / Team / Iteration — read-only context (P2-IS-FR-044/045) */}
         <div className="grid grid-cols-2 gap-3">
+          {/* Read-only per P2-IS-FR-044/045, but carrying the SAME glyphs the grids use —
+              a `KeyChip` for the project and a square `TeamAvatar` for the team — so an
+              inherited value looks like the value it was inherited from. */}
           <FormField label={t('create.projectLabel', 'Project')}>
-            <div className={roBox}>{project?.projectName ?? '--'}</div>
+            <div className={roBox}>
+              <ProjectCell projectKey={project?.projectKey} projectName={project?.projectName} />
+            </div>
           </FormField>
           <FormField label={t('create.teamLabel', 'Team')}>
-            <div className={roBox}>{teamName}</div>
+            <div className={roBox}>
+              {iteration.teamId ? (
+                <TeamCell teamKey={teamKey} name={teamName} />
+              ) : (
+                <span>{teamName}</span>
+              )}
+            </div>
           </FormField>
         </div>
         <FormField label={t('create.iterationLabel', 'Iteration')}>
