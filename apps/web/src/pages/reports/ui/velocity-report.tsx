@@ -29,6 +29,8 @@ import {
   axisLabel,
 } from '@/shared/ui/chart'
 
+import { EmptyState } from '@/shared/ui/empty-state'
+
 import { ReportSurface } from './report-surface'
 
 const fmt = (value: number | null | undefined) => (value == null ? '--' : value.toFixed(2))
@@ -42,7 +44,11 @@ export function VelocityReport({
 }) {
   const { t } = useTranslation(['reports', 'common'])
   const [window, setWindow] = useState<VelocityWindow>(5)
-  const { data, isLoading } = useVelocity({ projectId, teamId, window })
+  // `isError` was never read here, so a 500 or a dropped connection left `bars` empty and the chart
+  // rendered §6's own sentence — "No completed iteration with scheduled work exists in this project and
+  // team scope" — as a measured statement about delivery history. Team Capacity already fixed exactly
+  // this; the comment on its own error branch says so.
+  const { data, isLoading, isError } = useVelocity({ projectId, teamId, window })
 
   const bars = data?.bars ?? []
   const averages = data?.averages
@@ -110,6 +116,17 @@ export function VelocityReport({
         ) : undefined
       }
       padBody
+      /**
+       * A failed request is not "no completed iterations".
+       *
+       * On the shell rather than inside `ChartFrame`, so the averages strip goes absent with the chart
+       * instead of a fabricated set of numbers sitting above an error.
+       */
+      error={
+        isError ? (
+          <EmptyState title={t('velocity.error.title')} description={t('velocity.error.body')} />
+        ) : undefined
+      }
       loading={isLoading && !data}
     >
       <ChartFrame

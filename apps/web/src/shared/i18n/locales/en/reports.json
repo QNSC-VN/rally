@@ -66,7 +66,11 @@
       "description": "No completed iteration with scheduled work exists in this project and team scope."
     },
     "tableCaption": "Velocity as a table: Accepted During Iteration, Accepted After Iteration and Not Accepted points, per completed iteration.",
-    "tableIteration": "Iteration"
+    "tableIteration": "Iteration",
+    "error": {
+      "title": "Could not load velocity",
+      "body": "The request failed, so no iteration history could be read. This is not a statement about the project \u2014 try again."
+    }
   },
   "capacity": {
     "title": "Team Capacity - {{scope}}",

@@ -20,6 +20,7 @@ vi.mock('@/features/iterations/api', () => ({
 }))
 
 import { apiClient } from '@/shared/api/http-client'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { TeamCapacityReport } from './team-capacity-report'
 
 const mockGET = apiClient.GET as ReturnType<typeof vi.fn>
@@ -104,5 +105,33 @@ describe('TeamCapacityReport', () => {
     // Chrome must not blank out on load — that was the chart reports' early-return skeleton.
     expect(screen.getByText('capacity.title')).toBeInTheDocument()
     expect(screen.getByText('capacity.source')).toBeInTheDocument()
+  })
+
+  it('shows the four indicators as `--` while loading, never as a measured 0h', async () => {
+    /**
+     * The strip stays mounted through a load (so the layout does not jump), which is exactly why the
+     * numbers cannot be coerced: `formatHours(totals?.capacityHours ?? 0)` printed four `0h` cards for
+     * a request that had not answered yet.
+     */
+    mockGET.mockReturnValue(new Promise(() => {}))
+    renderReport()
+
+    expect(screen.getAllByText(EMPTY_VALUE).length).toBeGreaterThanOrEqual(4)
+    expect(screen.queryByText('0h')).not.toBeInTheDocument()
+  })
+
+  it('shows `--` rather than 0h when the request FAILS', async () => {
+    // The worst version of the bug: `0h / 0h / 0h / 0h` sitting directly above an error message,
+    // because the error branch lived on the table and the strip is above it.
+    mockGET.mockResolvedValue({
+      data: undefined,
+      error: { message: 'boom' },
+      response: { status: 500 },
+    })
+    renderReport()
+
+    await waitFor(() => expect(screen.getByText('capacity.error.title')).toBeInTheDocument())
+    expect(screen.queryByText('0h')).not.toBeInTheDocument()
+    expect(screen.getAllByText(EMPTY_VALUE).length).toBeGreaterThanOrEqual(4)
   })
 })
