@@ -442,6 +442,33 @@ Feature. That leaves an active Feature under a hidden parent, which is what `ass
 on every other write. The message names the Epic's key, because an archived parent is invisible in
 every list.
 
+## An allocation's value is a FIXED SNAPSHOT with a source label
+
+`capacity_plan_allocations.value` is NOT NULL and carries `source` (`feature_estimate` | `manual`),
+which is migration 0101 reversing 0077 on purpose. Anything that reads or writes an allocation must
+respect this:
+
+- **Never resolve an allocation's charge on read.** SRS §11 is `fixed allocation.value set during
+  planning/replanning`, and §337 defines Team Estimated as `SUM(allocation.value)`. 0077 had made the
+  column nullable so a blank Estimate could resolve to the Feature's own estimate per request. That
+  meant editing a Feature's Refined Estimate silently moved every Draft plan that had assigned it — a
+  planner's committed demand changed with no action on the plan — and no surface could compute a total
+  from the stored rows, so five of them re-resolved and agreed by luck.
+- **`source` is why the value can be fixed.** 0077's stated objection was real: "a defaulted 8 and a
+  deliberate 8 were indistinguishable." The BA answers it with a label, not a null (§185: blank
+  "copies the Feature's top-down estimate into a fixed allocation row and labels its source `Feature
+  Estimate`"; §186: a supplied one "becomes a fixed `Manual` allocation row").
+- **The copy happens at WRITE time, in the plan's unit** — `defaultAllocationEstimate`, Refined →
+  Preliminary, deliberately skipping Total Allocated so a blank field cannot commit the sum of the
+  allocations it is creating (§294). `value: null` on a PATCH means RE-COPY, not clear: the emptied
+  cell re-baselines the row against the Feature's forecast as it stands now.
+- **A tier is a property of a FEATURE, not of an allocation row.** AC-014 resolves Feature Estimated
+  from Total Allocated (team-assigned rows only) → Refined → Preliminary, once, over the aggregate.
+  Allocation rows have a `source`; only item rows have a `tier`.
+- **A merged parked row keeps its source only when exactly ONE row folded in.** A sum of two rows is a
+  number no single rule produced, so it is `manual` — calling it a Feature estimate would misreport
+  the Feature's size.
+
 ## Capacity: what refuses, and why
 
 Three references into a capacity plan are now REFUSALS rather than silent repairs, all following

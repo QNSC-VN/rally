@@ -1,4 +1,5 @@
 import type { DbExecutor } from '@platform';
+import type { CapacityAllocationSource } from '../../../../../../db/schema/enums';
 import type { VelocitySample } from '../capacity-forecast';
 import type { CapacityAllocation, CapacityAllocationRow } from '../capacity-allocation.types';
 import type {
@@ -108,8 +109,9 @@ export interface ICapacityPlanRepository {
       planId: string;
       portfolioItemId: string;
       teamId: string | null;
-      /** `null` = assigned without an explicit allocation. */
-      value: string | null;
+      /** The FIXED committed value (§11). Copied from the Feature or typed — `source` says which. */
+      value: string;
+      source: CapacityAllocationSource;
       isPrimary?: boolean;
     },
     executor?: DbExecutor,
@@ -117,7 +119,13 @@ export interface ICapacityPlanRepository {
 
   updateAllocation(
     id: string,
-    input: { value?: string | null; teamId?: string | null; isPrimary?: boolean },
+    input: {
+      value?: string;
+      /** Moves with `value`: a recopied estimate is `feature_estimate`, a typed one `manual`. */
+      source?: CapacityAllocationSource;
+      teamId?: string | null;
+      isPrimary?: boolean;
+    },
     executor?: DbExecutor,
   ): Promise<CapacityAllocation>;
 
@@ -139,15 +147,6 @@ export interface ICapacityPlanRepository {
     portfolioItemId: string,
     executor?: DbExecutor,
   ): Promise<{ id: string } | null>;
-
-  /**
-   * SUM(value) for one Feature on one plan, counting ONLY rows assigned to a team.
-   *
-   * Feeds `resolveEstimate`'s allocated tier. Unallocated rows are excluded because an
-   * unallocated placeholder must not outrank a Refined or Preliminary forecast — see the
-   * `capacity_plan_allocations` comment in `db/schema/work.ts`.
-   */
-  totalAllocatedFor(planId: string, portfolioItemId: string): Promise<number>;
 
   /** Per-team Complete/Rollup, following Rally's project+release+team child filter. */
   teamMetrics(plan: CapacityPlan, teamId: string): Promise<{ complete: number; rollup: number }>;

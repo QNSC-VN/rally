@@ -404,7 +404,12 @@ describe('CapacityPlansService', () => {
 
       await service.removeTeam(actor, 'plan-1', 'team-1');
 
-      expect(repo.updateAllocation).toHaveBeenCalledWith('parked-1', { value: '8' }, TX);
+      // A merge of two rows is a SUM, so the folded row is `manual` — 5 parked + 3 removed.
+      expect(repo.updateAllocation).toHaveBeenCalledWith(
+        'parked-1',
+        { value: '8', source: 'manual' },
+        TX,
+      );
       expect(repo.deleteAllocation).toHaveBeenCalledWith('al-1', TX);
     });
 
@@ -457,13 +462,13 @@ describe('CapacityPlansService', () => {
         teamId: 'team-1',
         isPrimary: false,
         value: '30',
+        source: 'manual',
         createdAt: new Date(),
         updatedAt: new Date(),
         itemKey: 'FE-1',
         name: 'A feature',
         refined: null,
         preliminarySize: 'm',
-        totalAllocated: 30,
         rollup: 0,
         complete: 0,
         rank: 'm',
@@ -509,12 +514,10 @@ describe('CapacityPlansService', () => {
           ...DEFAULT_PRELIMINARY_ESTIMATE_MAP,
           m: { points: 0, count: 0 },
         });
-        repo.listAllocations.mockResolvedValue([
-          allocationRow({ value: '0', totalAllocated: 0, refined: null }),
-        ]);
+        repo.listAllocations.mockResolvedValue([allocationRow({ value: '0', refined: null })]);
 
         const detail = await service.getPlanDetail(actor, 'plan-1');
-        expect(detail.allocations[0].tier).toBe('none');
+        expect(detail.items[0].tier).toBe('none');
         expect(detail.allocations[0].metrics.warnings).toContain('feature_missing_estimate');
       });
 
@@ -562,13 +565,13 @@ describe('CapacityPlansService', () => {
       teamId: 'team-1',
       isPrimary: false,
       value: '10',
+      source: 'manual',
       createdAt: new Date(),
       updatedAt: new Date(),
       itemKey: 'FE-1',
       name: 'A feature',
       refined: null,
       preliminarySize: 'm',
-      totalAllocated: 10,
       rollup: 0,
       complete: 0,
       rank: 'm',
@@ -657,7 +660,7 @@ describe('CapacityPlansService', () => {
     it('takes the ALLOCATED tier when any allocation carries one', async () => {
       repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '100')] }));
       repo.listAllocations.mockResolvedValue([
-        row({ portfolioItemId: 'fe-1', teamId: null, value: '0', totalAllocated: 0, rank: 'a' }),
+        row({ portfolioItemId: 'fe-1', teamId: null, value: '0', rank: 'a' }),
         row({ portfolioItemId: 'fe-1', teamId: 'team-1', value: '10', rank: 'a' }),
       ]);
       expect((await service.getPlanDetail(actor, 'plan-1')).items[0].tier).toBe('allocated');
@@ -686,6 +689,7 @@ describe('CapacityPlansService', () => {
       teamId: 'team-1',
       isPrimary: false,
       value: '10',
+      source: 'manual',
       createdAt: new Date(),
       updatedAt: new Date(),
       ...over,
@@ -831,13 +835,13 @@ describe('CapacityPlansService', () => {
       teamId: 'team-1',
       isPrimary: false,
       value: '30',
+      source: 'manual',
       createdAt: new Date(),
       updatedAt: new Date(),
       itemKey: 'FE-1',
       name: 'A feature',
       refined: null,
       preliminarySize: 'm',
-      totalAllocated: 30,
       rollup: 0,
       complete: 0,
       rank: 'm',
@@ -1244,7 +1248,8 @@ describe('CapacityPlansService', () => {
               portfolioItemId: 'fe-1',
               teamId: null,
               isPrimary: false,
-              value: null,
+              value: '3',
+              source: 'manual' as const,
               createdAt: new Date(),
               updatedAt: new Date(),
             }
@@ -1262,6 +1267,7 @@ describe('CapacityPlansService', () => {
       expect(repo.updateAllocation).toHaveBeenCalledWith('parked-1', {
         teamId: 'team-1',
         value: '7',
+        source: 'manual',
         // The first team to receive the work owns it, exactly as a fresh allocation would.
         isPrimary: true,
       });
@@ -1284,6 +1290,7 @@ describe('CapacityPlansService', () => {
               teamId: 'team-1',
               isPrimary: false,
               value: '10',
+              source: 'manual',
               createdAt: new Date(),
               updatedAt: new Date(),
             },
@@ -1299,7 +1306,7 @@ describe('CapacityPlansService', () => {
       // No tx here: setting an existing row is a single write with no primary-assignment bookkeeping
       // to keep atomic with it. `5`, not `15` — the number asked for, not the number plus what was
       // already there.
-      expect(repo.updateAllocation).toHaveBeenCalledWith('al-1', { value: '5' });
+      expect(repo.updateAllocation).toHaveBeenCalledWith('al-1', { value: '5', source: 'manual' });
     });
 
     it('leaves an existing slice ALONE when no value is supplied', async () => {
@@ -1386,22 +1393,22 @@ describe('CapacityPlansService', () => {
     });
   });
 
-  describe("a blank Estimate ASSIGNS without allocating (Rally's primary assignment)", () => {
-    /** One allocation row, with the tier inputs each test varies. */
+  describe('a blank Estimate COPIES the Feature estimate into a fixed row', () => {
+    /** One allocation row, with the estimate inputs each test varies. */
     const row = (over: Partial<CapacityAllocationRow> = {}): CapacityAllocationRow => ({
       id: 'alloc-1',
       planId: 'plan-1',
       portfolioItemId: 'fe-1',
       teamId: 'team-1',
       isPrimary: true,
-      value: null,
+      value: '30',
+      source: 'feature_estimate',
       createdAt: new Date(),
       updatedAt: new Date(),
       itemKey: 'FE-1',
       name: 'A feature',
       refined: null,
       preliminarySize: 'm',
-      totalAllocated: 0,
       rollup: 0,
       complete: 0,
       rank: 'm',
@@ -1443,81 +1450,115 @@ describe('CapacityPlansService', () => {
       );
     });
 
-    it('stores NULL, not a copy of the Feature estimate', async () => {
-      // Rally assigns an item to one team and allocates points to the additional ones. The
-      // assignment carries no number: the plan charges the Feature's own estimate there. Writing
-      // that estimate into the row — which this used to do — froze a copy, so a later change to
-      // the Feature stopped moving the plan and the Allocation column could never render blank.
+    /** A Feature the allocate guard will accept, with both top-down forecasts stated. */
+    function feature(over: Record<string, unknown> = {}) {
       portfolio.getItem.mockResolvedValue({
         id: 'fe-1',
         type: 'feature',
         projectId: 'proj-a',
         refinedEstimate: '30',
+        refinedItemCountEstimate: 4,
         preliminaryEstimate: 'm',
         archivedAt: null,
         state: 'developing',
         releaseId: null,
+        ...over,
       } as never);
+    }
+
+    it("COPIES the Feature's refined estimate when no value is supplied", async () => {
+      /**
+       * §185: a blank Estimate "copies the Feature's top-down estimate into a fixed allocation row and
+       * labels its source `Feature Estimate`".
+       *
+       * Between 0077 and 0101 this stored NULL and the charge was resolved on every read, so editing
+       * the Feature's Refined Estimate silently moved every Draft plan that had assigned it.
+       */
+      feature();
 
       await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
 
-      expect(repo.createAllocation).toHaveBeenCalledWith(expect.objectContaining({ value: null }));
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        expect.objectContaining({ value: '30', source: 'feature_estimate' }),
+      );
     });
 
-    it('charges the REFINED estimate on read for a null row', async () => {
-      repo.listAllocations.mockResolvedValue([
-        row({ value: null, refined: 30, preliminarySize: 'm' }),
-      ]);
+    it('copies the PRELIMINARY mapping when there is no refined forecast', async () => {
+      // 'm' maps to 5 points in the seeded default. Zero is not a forecast, which is why a refined
+      // estimate of 0 falls through rather than committing 0.
+      feature({ refinedEstimate: '0' });
 
-      const detail = await service.getPlanDetail(actor, 'plan-1');
+      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
 
-      expect(detail.allocations[0].value).toBeNull();
-      expect(detail.allocations[0].metrics.estimated).toBe(30);
-      expect(detail.allocations[0].tier).toBe('refined');
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        expect.objectContaining({ value: '5', source: 'feature_estimate' }),
+      );
     });
 
-    it('falls back to the PRELIMINARY mapping when there is no refined estimate', async () => {
-      repo.listAllocations.mockResolvedValue([
-        row({ value: null, refined: null, preliminarySize: 'm' }),
-      ]);
+    it("copies in the PLAN'S UNIT, not always points", async () => {
+      // A count plan copies `refinedItemCountEstimate`; a points plan copies `refinedEstimate`. One
+      // Feature, two plans, two different right answers.
+      repo.findById.mockResolvedValue(plan({ unit: 'count' }));
+      feature();
 
-      const detail = await service.getPlanDetail(actor, 'plan-1');
+      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
 
-      // 'm' maps to 5 points in the seeded default.
-      expect(detail.allocations[0].metrics.estimated).toBe(5);
-      expect(detail.allocations[0].tier).toBe('preliminary');
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        expect.objectContaining({ value: '4', source: 'feature_estimate' }),
+      );
     });
 
-    it('NEVER charges a null row with what OTHER teams were allocated', async () => {
-      // `totalAllocated` is the SUM over this Feature's team rows. Folding it into a null row would
-      // bill one team for the slices the others were given — the circularity that made the old
-      // default skip the allocated tier, now expressed on the read side.
-      repo.listAllocations.mockResolvedValue([
-        row({ value: null, refined: null, preliminarySize: 'm', totalAllocated: 999 }),
-      ]);
+    it('stores a SUPPLIED value as manual', async () => {
+      // §186: "A supplied Estimate becomes a fixed `Manual` allocation row."
+      feature();
 
-      const detail = await service.getPlanDetail(actor, 'plan-1');
+      await service.allocate(actor, 'plan-1', {
+        portfolioItemId: 'fe-1',
+        teamId: 'team-1',
+        value: 12,
+      });
 
-      expect(detail.allocations[0].metrics.estimated).toBe(5);
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        expect.objectContaining({ value: '12', source: 'manual' }),
+      );
     });
 
-    it('an EXPLICIT value wins and reads as the allocated tier', async () => {
+    it('charges the STORED value, whatever the Feature is now estimated at', async () => {
+      /**
+       * The point of the snapshot. The row committed 12 while the Feature's Refined Estimate says 30;
+       * the plan is charged 12, because 12 is what was committed. The old read path resolved the
+       * charge per request, so this row would have reported 12 only until someone edited the Feature.
+       */
       repo.listAllocations.mockResolvedValue([
-        row({ value: '12', refined: 30, preliminarySize: 'm' }),
+        row({ value: '12', source: 'manual', refined: 30, preliminarySize: 'm' }),
       ]);
 
       const detail = await service.getPlanDetail(actor, 'plan-1');
 
       expect(detail.allocations[0].value).toBe('12');
+      expect(detail.allocations[0].source).toBe('manual');
       expect(detail.allocations[0].metrics.estimated).toBe(12);
-      expect(detail.allocations[0].tier).toBe('allocated');
+      // The Feature's own candidates still travel, so the dialog can show what a re-copy would take.
+      expect(detail.allocations[0].estimateBreakdown).toEqual({ refined: 30, preliminary: 5 });
     });
 
-    it("sums a team's RESOLVED charges, so a null row still costs the team", async () => {
-      // Two Features on one team: one assigned (null → estimate 30), one sliced at 12. The team is
-      // charged 42, and a grid that read the raw column would have shown 12.
+    it('charges a ZERO row zero, and says its estimate is missing', async () => {
+      // §246's Team-picker default. A row committing nothing has no demand to plan against, which is
+      // Rally's "Feature Missing Estimate Error" — and it must NOT quietly resolve to the Feature's
+      // forecast, which is exactly what the pre-0101 read did with a null.
       repo.listAllocations.mockResolvedValue([
-        row({ portfolioItemId: 'fe-1', value: null, refined: 30, preliminarySize: 'm' }),
+        row({ value: '0', source: 'manual', refined: 30, preliminarySize: 'm' }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+
+      expect(detail.allocations[0].metrics.estimated).toBe(0);
+      expect(detail.allocations[0].metrics.warnings).toContain('feature_missing_estimate');
+    });
+
+    it("sums a team's STORED values — §337's SUM(allocation.value)", async () => {
+      repo.listAllocations.mockResolvedValue([
+        row({ portfolioItemId: 'fe-1', value: '30', refined: 30, preliminarySize: 'm' }),
         row({ portfolioItemId: 'fe-2', value: '12', refined: null, preliminarySize: 'm' }),
       ]);
 
@@ -1525,6 +1566,55 @@ describe('CapacityPlansService', () => {
 
       expect(detail.teams[0].metrics.estimated).toBe(42);
       expect(detail.items.map((i) => i.estimated)).toEqual([30, 12]);
+    });
+
+    it("resolves a Feature's OWN Estimated per AC-014, from the aggregate", async () => {
+      /**
+       * "Total Allocated, Refined Estimate, then temporary Preliminary Estimate mapping."
+       *
+       * A Feature split 8 + 13 across two teams is Estimated at 21 with tier `allocated`, even though
+       * its Refined forecast says 30 — a commitment outranks a forecast. The item tier used to be
+       * inferred from whichever tier the FIRST allocation row reported, upgraded to `allocated` if any
+       * row had an explicit value; three approximations of this one rule.
+       */
+      repo.listAllocations.mockResolvedValue([
+        row({ id: 'a-1', teamId: 'team-1', value: '8', refined: 30 }),
+        row({ id: 'a-2', teamId: 'team-2', value: '13', refined: 30 }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+
+      expect(detail.items).toHaveLength(1);
+      expect(detail.items[0].estimated).toBe(21);
+      expect(detail.items[0].tier).toBe('allocated');
+      expect(detail.items[0].estimateBreakdown.allocated).toBe(21);
+    });
+
+    it('falls through to the forecast when every team row commits ZERO', async () => {
+      // AC-014 reads "Total Allocated … -> if > 0", so a Feature carrying only 0-valued rows is
+      // Estimated at its Refined forecast — the state a Team-picker add leaves behind (§246).
+      repo.listAllocations.mockResolvedValue([row({ value: '0', refined: 30 })]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+
+      expect(detail.items[0].estimated).toBe(30);
+      expect(detail.items[0].tier).toBe('refined');
+    });
+
+    it('does NOT let an UNALLOCATED row count toward Total Allocated', async () => {
+      // §294: "An Unallocated placeholder does not override Refined or Preliminary." Its own value is
+      // still real demand — the plan's `unallocated` total reports it — but the Feature's Estimated
+      // resolves to the forecast, so the Features tab reconciles with the team grid.
+      repo.listAllocations.mockResolvedValue([
+        row({ teamId: null, isPrimary: false, value: '3', refined: 30 }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+
+      expect(detail.items[0].estimated).toBe(30);
+      expect(detail.items[0].tier).toBe('refined');
+      expect(detail.items[0].estimateBreakdown.allocated).toBeNull();
+      expect(detail.unallocated).toBe(3);
     });
 
     it.each([
@@ -1571,6 +1661,7 @@ describe('CapacityPlansService', () => {
         teamId: 'team-1',
         isPrimary: false,
         value: '10',
+        source: 'manual',
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -1623,6 +1714,7 @@ describe('CapacityPlansService', () => {
       portfolioItemId: 'fe-1',
       teamId: 'team-a',
       value: '8',
+      source: 'manual',
       isPrimary: true,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -1666,6 +1758,8 @@ describe('CapacityPlansService', () => {
           portfolioItemId: 'fe-1',
           teamId: 'team-a',
           value: '8',
+          // A carried row is the same commitment on another plan, source included.
+          source: 'manual',
           isPrimary: true,
         },
         TX,
@@ -1703,16 +1797,27 @@ describe('CapacityPlansService', () => {
        * `mergeParkedValue` is the same helper `removeTeam` uses for the same situation.
        */
       expect(repo.createAllocation).toHaveBeenCalledWith(
-        { planId: 'plan-2', portfolioItemId: 'fe-1', teamId: null, value: '13' },
+        {
+          planId: 'plan-2',
+          portfolioItemId: 'fe-1',
+          teamId: null,
+          value: '13',
+          // A SUM of two rows is nobody's Feature estimate, so the merged row is `manual`.
+          source: 'manual',
+        },
         TX,
       );
       expect(repo.deleteAllocation).toHaveBeenCalledTimes(2);
     });
 
-    it('parks a valueless row as valueless, rather than as zero', async () => {
-      // "Planned, but not yet estimated" is a real state: the Feature's own estimate answers for it
-      // (AC-014), and a 0 would claim a planner had committed to nothing.
-      arrange({ rows: [alloc({ value: null })], teamOnTarget: false });
+    it('parks a single lost row with its OWN source intact', async () => {
+      // One row folding in is the same commitment on another plan, so a `feature_estimate` row stays
+      // `feature_estimate`. Only a SUM of several rows becomes `manual` — that total is a number no
+      // single rule produced, and calling it a Feature estimate would misreport the Feature's size.
+      arrange({
+        rows: [alloc({ value: '8', source: 'feature_estimate' })],
+        teamOnTarget: false,
+      });
       await service.moveItemToPlan(actor, 'plan-1', {
         portfolioItemId: 'fe-1',
         targetPlanId: 'plan-2',
@@ -1721,7 +1826,13 @@ describe('CapacityPlansService', () => {
       });
 
       expect(repo.createAllocation).toHaveBeenCalledWith(
-        { planId: 'plan-2', portfolioItemId: 'fe-1', teamId: null, value: null },
+        {
+          planId: 'plan-2',
+          portfolioItemId: 'fe-1',
+          teamId: null,
+          value: '8',
+          source: 'feature_estimate',
+        },
         TX,
       );
     });
@@ -1948,7 +2059,6 @@ describe('CapacityPlansService', () => {
           name: 'Guest checkout',
           refined: null,
           preliminarySize: 'no_entry',
-          totalAllocated: 12,
           rollup: 0,
           complete: 0,
           rank: 'a',
@@ -2050,11 +2160,11 @@ describe('CapacityPlansService', () => {
       teamId: 'team-1',
       isPrimary: true,
       value: '3',
+      source: 'manual',
       itemKey: 'FE-1',
       name: 'Guest checkout',
       refined: 13,
       preliminarySize: 'm',
-      totalAllocated: 3,
       rollup: 0,
       complete: 0,
       rank: 'a',
@@ -2087,10 +2197,10 @@ describe('CapacityPlansService', () => {
     });
 
     it('still charges a Feature that has ONLY a parked row', async () => {
-      // Skipping the placeholder must not make "planned but not yet assigned" read as zero: with no
-      // team row there is nothing else to report, so the Feature's own estimate stands.
+      // §294 keeps the placeholder out of Total Allocated, so AC-014 falls through to the Feature's
+      // own forecast rather than reading as zero — "planned but not yet assigned" has a size.
       repo.listAllocations.mockResolvedValue([
-        row({ id: 'a-parked', teamId: null, value: null, isPrimary: false }),
+        row({ id: 'a-parked', teamId: null, value: '3', isPrimary: false }),
       ]);
       const detail = await service.getPlanDetail(actor, 'plan-1');
       expect(detail.items[0]?.estimated).toBe(13);
@@ -2191,7 +2301,7 @@ describe('CapacityPlansService', () => {
         // — the only 0 in the map, and the reason an unsized Feature reads as "no estimate" not "zero".
         row({
           teamId: 'team-1',
-          value: null,
+          value: '0',
           refined: null,
           preliminarySize: 'no_entry',
           rollup: 4,

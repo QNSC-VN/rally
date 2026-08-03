@@ -4652,8 +4652,9 @@ export interface components {
           | 'rollup_exceeds_capacity'
           | 'estimated_exceeds_capacity'
         )[]
-        /** @description All three candidates behind Estimated, for the estimate-source tooltip */
+        /** @description All three candidates behind AC-014's Feature Estimated, for the tier tooltip */
         estimateBreakdown: {
+          /** @description Total Allocated — SUM over TEAM-ASSIGNED rows; null when the Feature has none */
           allocated: number | null
           refined: number | null
           preliminary: number | null
@@ -4675,13 +4676,13 @@ export interface components {
         name: string
         teamId: string | null
         isPrimary: boolean
-        /** @description Explicitly allocated points, or null when the team was assigned without a slice */
-        value: number | null
+        /** @description The FIXED committed value on this row (SRS §11) — never resolved on read */
+        value: number
         /**
-         * @description Which estimate tier the Feature figure came from — drives the UI badge
+         * @description Where `value` came from: copied from the Feature's top-down estimate (§185) or typed by a planner (§186)
          * @enum {string}
          */
-        tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+        source: 'feature_estimate' | 'manual'
         /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
         rank: string
         /**
@@ -4706,9 +4707,8 @@ export interface components {
         projectName: string | null
         /** @description The Feature is archived: this row contributes nothing to any total, and is returned only so a planner can see the stale commitment and remove it */
         archived: boolean
-        /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
+        /** @description The Feature's two top-down candidates: what a blank Estimate would copy, and what a `feature_estimate` row can be compared against once the forecast has moved */
         estimateBreakdown: {
-          allocated: number | null
           refined: number | null
           preliminary: number | null
         }
@@ -4850,8 +4850,9 @@ export interface components {
             | 'rollup_exceeds_capacity'
             | 'estimated_exceeds_capacity'
           )[]
-          /** @description All three candidates behind Estimated, for the estimate-source tooltip */
+          /** @description All three candidates behind AC-014's Feature Estimated, for the tier tooltip */
           estimateBreakdown: {
+            /** @description Total Allocated — SUM over TEAM-ASSIGNED rows; null when the Feature has none */
             allocated: number | null
             refined: number | null
             preliminary: number | null
@@ -4873,13 +4874,13 @@ export interface components {
           name: string
           teamId: string | null
           isPrimary: boolean
-          /** @description Explicitly allocated points, or null when the team was assigned without a slice */
-          value: number | null
+          /** @description The FIXED committed value on this row (SRS §11) — never resolved on read */
+          value: number
           /**
-           * @description Which estimate tier the Feature figure came from — drives the UI badge
+           * @description Where `value` came from: copied from the Feature's top-down estimate (§185) or typed by a planner (§186)
            * @enum {string}
            */
-          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          source: 'feature_estimate' | 'manual'
           /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
           rank: string
           /**
@@ -4904,9 +4905,8 @@ export interface components {
           projectName: string | null
           /** @description The Feature is archived: this row contributes nothing to any total, and is returned only so a planner can see the stale commitment and remove it */
           archived: boolean
-          /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
+          /** @description The Feature's two top-down candidates: what a blank Estimate would copy, and what a `feature_estimate` row can be compared against once the forecast has moved */
           estimateBreakdown: {
-            allocated: number | null
             refined: number | null
             preliminary: number | null
           }
@@ -5039,8 +5039,9 @@ export interface components {
             | 'rollup_exceeds_capacity'
             | 'estimated_exceeds_capacity'
           )[]
-          /** @description All three candidates behind Estimated, for the estimate-source tooltip */
+          /** @description All three candidates behind AC-014's Feature Estimated, for the tier tooltip */
           estimateBreakdown: {
+            /** @description Total Allocated — SUM over TEAM-ASSIGNED rows; null when the Feature has none */
             allocated: number | null
             refined: number | null
             preliminary: number | null
@@ -5062,13 +5063,13 @@ export interface components {
           name: string
           teamId: string | null
           isPrimary: boolean
-          /** @description Explicitly allocated points, or null when the team was assigned without a slice */
-          value: number | null
+          /** @description The FIXED committed value on this row (SRS §11) — never resolved on read */
+          value: number
           /**
-           * @description Which estimate tier the Feature figure came from — drives the UI badge
+           * @description Where `value` came from: copied from the Feature's top-down estimate (§185) or typed by a planner (§186)
            * @enum {string}
            */
-          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          source: 'feature_estimate' | 'manual'
           /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
           rank: string
           /**
@@ -5093,9 +5094,8 @@ export interface components {
           projectName: string | null
           /** @description The Feature is archived: this row contributes nothing to any total, and is returned only so a planner can see the stale commitment and remove it */
           archived: boolean
-          /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
+          /** @description The Feature's two top-down candidates: what a blank Estimate would copy, and what a `feature_estimate` row can be compared against once the forecast has moved */
           estimateBreakdown: {
-            allocated: number | null
             refined: number | null
             preliminary: number | null
           }
@@ -5266,8 +5266,9 @@ export interface components {
             | 'rollup_exceeds_capacity'
             | 'estimated_exceeds_capacity'
           )[]
-          /** @description All three candidates behind Estimated, for the estimate-source tooltip */
+          /** @description All three candidates behind AC-014's Feature Estimated, for the tier tooltip */
           estimateBreakdown: {
+            /** @description Total Allocated — SUM over TEAM-ASSIGNED rows; null when the Feature has none */
             allocated: number | null
             refined: number | null
             preliminary: number | null
@@ -5289,13 +5290,13 @@ export interface components {
           name: string
           teamId: string | null
           isPrimary: boolean
-          /** @description Explicitly allocated points, or null when the team was assigned without a slice */
-          value: number | null
+          /** @description The FIXED committed value on this row (SRS §11) — never resolved on read */
+          value: number
           /**
-           * @description Which estimate tier the Feature figure came from — drives the UI badge
+           * @description Where `value` came from: copied from the Feature's top-down estimate (§185) or typed by a planner (§186)
            * @enum {string}
            */
-          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+          source: 'feature_estimate' | 'manual'
           /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
           rank: string
           /**
@@ -5320,9 +5321,8 @@ export interface components {
           projectName: string | null
           /** @description The Feature is archived: this row contributes nothing to any total, and is returned only so a planner can see the stale commitment and remove it */
           archived: boolean
-          /** @description All three candidates behind Estimated, for Rally's Estimate tooltip */
+          /** @description The Feature's two top-down candidates: what a blank Estimate would copy, and what a `feature_estimate` row can be compared against once the forecast has moved */
           estimateBreakdown: {
-            allocated: number | null
             refined: number | null
             preliminary: number | null
           }

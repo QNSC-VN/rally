@@ -715,6 +715,13 @@
       "when": 1787642303005,
       "tag": "0100_drop_capacity_target_load",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1787728703005,
+      "tag": "0101_capacity_allocation_fixed_value",
+      "breakpoints": true
     }
   ]
 }

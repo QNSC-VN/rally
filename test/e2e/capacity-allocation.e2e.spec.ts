@@ -238,7 +238,7 @@ describe('capacity allocation (e2e)', () => {
     expect(item.rollup.completedPoints).toBe(7);
   });
 
-  it('reports the tier as ALLOCATED once demand exists, and warns when children outgrow it', async () => {
+  it('labels a supplied value MANUAL, and warns when children outgrow it', async () => {
     const featureId = await newFeature(`Tier ${uniqueKey()}`);
     await capacity.allocate(admin, planId, {
       portfolioItemId: featureId,
@@ -250,12 +250,19 @@ describe('capacity allocation (e2e)', () => {
     const detail = await capacity.getPlanDetail(admin, planId);
     const row = detail.allocations.find((a) => a.portfolioItemId === featureId);
 
-    expect(row?.tier).toBe('allocated');
+    expect(row?.source).toBe('manual');
+    // The SERVICE returns the raw numeric string; the controller is what converts it for the wire.
+    expect(Number(row?.value)).toBe(5);
     // 9 > 5: the plan under-committed for this work.
     expect(row?.metrics.warnings).toContain('rollup_exceeds_estimated');
+    // The Feature's own Estimated resolves to Total Allocated (AC-014), so the tier is `allocated`
+    // even though the ROW itself is a typed number rather than a tier.
+    const item = detail.items.find((i) => i.portfolioItemId === featureId);
+    expect(item?.tier).toBe('allocated');
+    expect(item?.estimated).toBe(5);
   });
 
-  it('keeps the Unallocated bucket out of team demand and out of the allocated tier', async () => {
+  it('keeps the Unallocated bucket out of team demand and out of Total Allocated', async () => {
     const featureId = await newFeature(`Bucket ${uniqueKey()}`);
     await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId: null, value: 12 });
 
@@ -264,11 +271,12 @@ describe('capacity allocation (e2e)', () => {
 
     expect(row?.teamId).toBeNull();
     expect(detail.unallocated).toBeGreaterThanOrEqual(12);
-    // The row was given an EXPLICIT 12, so its own tier is `allocated` — the tier describes what
-    // this row is charged, and 12 is a number a planner typed. What must not happen is that number
-    // leaking sideways: a row with NO explicit value falls back to the Feature's own estimate and
-    // never to the sum of what other rows were allocated (covered by the unit specs).
-    expect(row?.tier).toBe('allocated');
+    // 12 is real demand a planner typed, and the plan reports it under `unallocated` above. What it
+    // must NOT do is reach the Feature's Estimated: §294 counts only team-assigned rows toward Total
+    // Allocated, so the Feature still resolves through Refined → Preliminary.
+    expect(row?.source).toBe('manual');
+    const item = detail.items.find((i) => i.portfolioItemId === featureId);
+    expect(item?.estimateBreakdown.allocated).toBeNull();
     // The bucket contributes nothing to any team's Estimated.
     const teamA = detail.teams.find((t) => t.teamId === teamAId);
     const chargedToA = detail.allocations
@@ -277,12 +285,14 @@ describe('capacity allocation (e2e)', () => {
     expect(teamA?.metrics.estimated).toBe(chargedToA);
   });
 
-  it('ASSIGNS without allocating: a null value charges the Feature estimate to the team', async () => {
-    // Rally's primary assignment. The allocation row stores no number and the plan charges the
-    // Feature's own estimate there, which is why Rally's `Allocation` column is blank on those
-    // rows. Only real SQL shows the column actually holding NULL rather than a defaulted copy.
-    // Preliminary 'm' explicitly: the shared fixture leaves the estimate empty, which resolves to
-    // tier `none` and 0 — a legitimate state, but not the one this rule is about.
+  it('COPIES the Feature estimate into a fixed row, and the copy does not follow the Feature', async () => {
+    /**
+     * §185-186 against real SQL, which is where the fixed-snapshot rule is actually visible: only the
+     * database can show the column holding a copied 5 rather than a NULL resolved per read.
+     *
+     * Preliminary 'm' explicitly — the shared fixture leaves the estimate empty, which copies 0. A
+     * legitimate state, but not the one this rule is about.
+     */
     const feature = await portfolio.createItem(admin, {
       projectId,
       type: 'feature',
@@ -295,27 +305,40 @@ describe('capacity allocation (e2e)', () => {
     const detail = await capacity.getPlanDetail(admin, planId);
     const row = detail.allocations.find((a) => a.portfolioItemId === featureId);
 
-    expect(row?.value).toBeNull();
-    // `newFeature` uses preliminary 'm', which the seeded map puts at 5 points.
+    // The seeded map puts 'm' at 5 points, and that 5 is STORED.
+    expect(Number(row?.value)).toBe(5);
+    expect(row?.source).toBe('feature_estimate');
     expect(row?.metrics.estimated).toBe(5);
-    expect(row?.tier).toBe('preliminary');
 
-    // Slicing it explicitly overrides the fallback…
+    /**
+     * Now the Feature is re-forecast to 21. The plan must not move: a planner's committed demand is
+     * not a subscription to someone else's edit, which is what a resolving read made it.
+     */
+    await portfolio.updateItem(admin, featureId, { refinedEstimate: '21' });
+    const afterEdit = (await capacity.getPlanDetail(admin, planId)).allocations.find(
+      (a) => a.portfolioItemId === featureId,
+    );
+    expect(Number(afterEdit?.value)).toBe(5);
+    expect(afterEdit?.metrics.estimated).toBe(5);
+    // The Feature's new forecast still travels, so the row can be compared against it and re-copied.
+    expect(afterEdit?.estimateBreakdown.refined).toBe(21);
+
+    // Typing a slice relabels the row `manual`…
     await capacity.updateAllocation(admin, planId, row!.id, { value: 13 });
     const sliced = (await capacity.getPlanDetail(admin, planId)).allocations.find(
       (a) => a.portfolioItemId === featureId,
     );
-    expect(sliced?.value).toBe('13.00');
-    expect(sliced?.metrics.estimated).toBe(13);
-    expect(sliced?.tier).toBe('allocated');
+    expect(Number(sliced?.value)).toBe(13);
+    expect(sliced?.source).toBe('manual');
 
-    // …and clearing it returns the row to the Feature's estimate rather than to zero.
+    // …and emptying the cell RE-COPIES the Feature's estimate as it stands NOW — 21, not the 5 the
+    // row was first created with. A re-copy is a deliberate re-baseline, not a subscription.
     await capacity.updateAllocation(admin, planId, row!.id, { value: null });
-    const cleared = (await capacity.getPlanDetail(admin, planId)).allocations.find(
+    const recopied = (await capacity.getPlanDetail(admin, planId)).allocations.find(
       (a) => a.portfolioItemId === featureId,
     );
-    expect(cleared?.value).toBeNull();
-    expect(cleared?.metrics.estimated).toBe(5);
+    expect(Number(recopied?.value)).toBe(21);
+    expect(recopied?.source).toBe('feature_estimate');
   });
 
   it('stays silent INSIDE capacity and warns only once past it — plan level included', async () => {

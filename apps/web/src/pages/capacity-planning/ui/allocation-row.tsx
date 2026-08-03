@@ -17,7 +17,7 @@ import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { type AllocColKey } from '../model/columns'
-import { EstimateTierIcon } from './estimate-tier-badge'
+import { AllocationSourceIcon } from './estimate-tier-badge'
 import { CapacityItemActions } from './capacity-item-actions'
 
 /**
@@ -129,14 +129,19 @@ export function AllocationRow({
 
   function commit(raw: string) {
     const trimmed = raw.trim()
-    // Emptying the cell CLEARS the explicit allocation (sends null) rather than committing 0: this
-    // team is still planned to work on the Feature, it just has no slice of its own again.
+    /**
+     * Emptying the cell RE-COPIES the Feature's current top-down estimate (§185), it does not commit 0.
+     *
+     * `value: null` on the wire, which used to clear the row to NULL and hand it back to a resolving
+     * read. There is no NULL to write since 0101 — the value is fixed — but the gesture still means
+     * "charge whatever this Feature is estimated at", evaluated now. Always sent: the row may already
+     * hold the estimate as a stale copy, and re-copying is exactly how a planner re-baselines it.
+     */
     if (trimmed === '') {
-      if (allocation.value === null) return
       update.mutate(
         { id: planId, allocationId: allocation.id, value: null },
         {
-          onSuccess: () => notify.success(t('row.allocationCleared')),
+          onSuccess: () => notify.success(t('row.allocationRecopied')),
           onError: (err) => notify.error(err.message),
         },
       )
@@ -309,8 +314,8 @@ export function AllocationRow({
       <div style={colStyleFor('rollup', { flexShrink: 0 })} className="px-2 text-right">
         <MetricValue value={metrics.rollup} pct={null} />
       </div>
-      {/* `Estimated` is the row's charge AND its editor: typing here allocates an explicit slice to
-          this team, clearing it hands the row back to the Feature's own estimate. Rally edits the
+      {/* `Estimated` is the row's charge AND its editor: typing here commits a number a planner chose
+          (`manual`), emptying it re-copies the Feature's estimate (`feature_estimate`). Rally edits the
           allocation through its assignment dialog; we put it on the number it changes, which is the
           same cell a reader is already looking at. */}
       <div
@@ -320,7 +325,7 @@ export function AllocationRow({
       >
         <InlineEditableCell
           fullCell
-          value={allocation.value === null ? '' : String(allocation.value)}
+          value={String(allocation.value)}
           canEdit={canManage}
           onCommit={commit}
           ariaLabel={t('row.allocationLabel', { feature: allocation.itemKey })}
@@ -334,12 +339,19 @@ export function AllocationRow({
         />
       </div>
 
-      {/* Rally's trailing `Estimate` glyph: which tier this row's Estimated came from. */}
+      {/* The row's SOURCE glyph: typed by a planner, or copied from the Feature's estimate (§185-186).
+          It was a tier glyph, which no longer describes anything about this row — the value is a fixed
+          snapshot, not one of three candidates resolved on read. The panel still names both forecasts,
+          so a copy that has fallen behind the Feature's current numbers is visible. */}
       <div
         style={colStyleFor('tier', { flexShrink: 0 })}
         className="flex items-center justify-center px-1"
       >
-        <EstimateTierIcon tier={allocation.tier} breakdown={allocation.estimateBreakdown} />
+        <AllocationSourceIcon
+          source={allocation.source}
+          value={allocation.value}
+          breakdown={allocation.estimateBreakdown}
+        />
       </div>
     </div>
   )

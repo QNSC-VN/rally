@@ -19,7 +19,10 @@ import {
   measureSql,
   metricSubqueries,
 } from './capacity-metrics.sql';
-import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
+import {
+  acceptedScheduleStatesSql,
+  type CapacityAllocationSource,
+} from '../../../../../../db/schema/enums';
 import type { VelocitySample } from '../../domain/capacity-forecast';
 import type {
   CapacityAllocation,
@@ -254,15 +257,6 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
             and ${workItems.deletedAt} is null
             and ${workItems.featureId} = ${capacityPlanAllocations.portfolioItemId}
         )`,
-        // SUM over TEAM-ASSIGNED rows only: an Unallocated placeholder must not outrank a
-        // Refined or Preliminary forecast in `resolveEstimate`.
-        totalAllocated: sql<string>`(
-          select coalesce(sum(a2.value), 0)
-          from ${capacityPlanAllocations} a2
-          where a2.plan_id = ${capacityPlanAllocations.planId}
-            and a2.portfolio_item_id = ${capacityPlanAllocations.portfolioItemId}
-            and a2.team_id is not null
-        )`,
       })
       .from(capacityPlanAllocations)
       .innerJoin(portfolioItems, eq(portfolioItems.id, capacityPlanAllocations.portfolioItemId))
@@ -297,7 +291,6 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       state: row.itemState,
       refined: row.refinedEstimate === null ? null : Number(row.refinedEstimate),
       preliminarySize: row.preliminaryEstimate,
-      totalAllocated: Number(row.totalAllocated),
       rank: row.rank,
       itemRollup: Number(row.itemRollup),
       itemComplete: Number(row.itemComplete),
@@ -380,6 +373,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       portfolioItemId: string;
       teamId: string | null;
       value: string;
+      source: CapacityAllocationSource;
       isPrimary?: boolean;
     },
     executor?: DbExecutor,
@@ -391,12 +385,18 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
 
   async updateAllocation(
     id: string,
-    input: { value?: string; teamId?: string | null; isPrimary?: boolean },
+    input: {
+      value?: string;
+      source?: CapacityAllocationSource;
+      teamId?: string | null;
+      isPrimary?: boolean;
+    },
     executor?: DbExecutor,
   ): Promise<CapacityAllocation> {
     const exec = executor ?? this.db;
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (input.value !== undefined) set.value = input.value;
+    if (input.source !== undefined) set.source = input.source;
     // `undefined` leaves the team alone; `null` moves the row to the Unallocated bucket.
     if (input.teamId !== undefined) set.teamId = input.teamId;
     if (input.isPrimary !== undefined) set.isPrimary = input.isPrimary;
@@ -412,22 +412,6 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
   async deleteAllocation(id: string, executor?: DbExecutor): Promise<void> {
     const exec = executor ?? this.db;
     await exec.delete(capacityPlanAllocations).where(eq(capacityPlanAllocations.id, id));
-  }
-
-  async totalAllocatedFor(planId: string, portfolioItemId: string): Promise<number> {
-    const rows = await this.db
-      .select({ total: sql<string>`coalesce(sum(${capacityPlanAllocations.value}), 0)` })
-      .from(capacityPlanAllocations)
-      .where(
-        and(
-          eq(capacityPlanAllocations.planId, planId),
-          eq(capacityPlanAllocations.portfolioItemId, portfolioItemId),
-          // Team-assigned rows ONLY: an unallocated placeholder must not outrank a
-          // Refined or Preliminary forecast in `resolveEstimate`.
-          isNotNull(capacityPlanAllocations.teamId),
-        ),
-      );
-    return Number(rows[0]?.total ?? 0);
   }
 
   async teamMetrics(
@@ -753,6 +737,7 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       teamId: row.teamId,
       isPrimary: row.isPrimary,
       value: row.value,
+      source: row.source,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

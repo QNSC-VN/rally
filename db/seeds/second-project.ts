@@ -330,6 +330,7 @@ export async function seedSecondProject(db: Db): Promise<void> {
       portfolioItemId: PAY_FEATURE_ID,
       teamId: TEAM_GAMMA_ID,
       value: '8',
+      source: 'manual' as const,
       isPrimary: true,
     })
     .onConflictDoNothing();

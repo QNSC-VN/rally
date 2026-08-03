@@ -54,6 +54,7 @@ import {
   entityRefTypeEnum,
   capacityPlanStatusEnum,
   capacityPlanUnitEnum,
+  capacityAllocationSourceEnum,
 } from './enums';
 import { files } from './storage';
 
@@ -679,10 +680,20 @@ export const capacityPlanAllocations = workSchema.table(
      * all" is already expressed by `team_id IS NULL`, Rally's unassigned state.
      */
     isPrimary: boolean('is_primary').notNull().default(false),
-    // NULLABLE, and the default is gone with the NOT NULL: null means "not explicitly
-    // allocated", which the read path resolves to the Feature's own estimate (Refined →
-    // Preliminary). Rally's `Allocation` column is blank on exactly those rows.
-    value: numeric('value', { precision: 10, scale: 2 }),
+    /**
+     * The committed demand this row carries — a FIXED snapshot, per Capacity SRS §11
+     * (`fixed allocation.value set during planning/replanning`).
+     *
+     * NOT NULL again as of 0101. Migration 0077 had made it nullable so a blank Estimate could
+     * resolve to the Feature's own estimate on read, and stated the objection it was solving:
+     * "a defaulted 8 and a deliberate 8 were indistinguishable". `source` answers that objection
+     * without a resolving read — which matters because a resolved value moved a Draft plan's
+     * totals whenever someone edited the Feature's Refined Estimate, so `Team Estimated =
+     * SUM(allocation.value)` (§337) was not summable from stored rows.
+     */
+    value: numeric('value', { precision: 10, scale: 2 }).notNull(),
+    /** Whether {@link value} was copied from the Feature's estimate or typed (§185-186). */
+    source: capacityAllocationSourceEnum('source').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

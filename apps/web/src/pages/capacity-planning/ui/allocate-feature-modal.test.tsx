@@ -19,8 +19,11 @@ const ITEM = 'item-1'
 
 /**
  * A plan with three teams and FE-1 split across two of them, which is the state the dialog exists
- * for: Alpha holds an explicit 8, Beta was assigned WITHOUT a slice (`value: null`), and Gamma is on
- * the plan but carries nothing yet.
+ * for: Alpha committed 8 by hand, Beta carries 5 copied from the Feature's own estimate, and Gamma is
+ * on the plan but holds nothing of this Feature yet.
+ *
+ * Every row carries a real number since 0101 — the nullable `value` and its resolve-on-read charge are
+ * gone (§11), and `source` is what distinguishes a typed 8 from a copied one.
  */
 const plan = {
   id: 'plan-1',
@@ -38,6 +41,8 @@ const plan = {
       name: 'x',
       teamId: 'team-a',
       value: 8,
+      source: 'manual',
+      estimateBreakdown: { refined: 5, preliminary: 5 },
     },
     {
       id: 'alloc-b',
@@ -45,7 +50,9 @@ const plan = {
       itemKey: 'FE-1',
       name: 'x',
       teamId: 'team-b',
-      value: null,
+      value: 5,
+      source: 'feature_estimate',
+      estimateBreakdown: { refined: 5, preliminary: 5 },
     },
     // Another Feature's allocation — must not appear in this dialog.
     {
@@ -55,6 +62,8 @@ const plan = {
       name: 'y',
       teamId: 'team-c',
       value: 3,
+      source: 'manual',
+      estimateBreakdown: { refined: 5, preliminary: 5 },
     },
   ],
 } as unknown as CapacityPlan
@@ -94,8 +103,9 @@ describe('AllocateFeatureModal', () => {
     renderModal()
     expect(teamTriggers()).toHaveLength(2)
     expect((estimates()[0] as HTMLInputElement).value).toBe('8')
-    // Assigned without a slice reads as BLANK, not 0 — the two mean different things to the plan.
-    expect((estimates()[1] as HTMLInputElement).value).toBe('')
+    // A copied row shows its NUMBER, not a blank: the value is committed either way, and `source` is
+    // what says where it came from. It used to render blank because the column held NULL.
+    expect((estimates()[1] as HTMLInputElement).value).toBe('5')
     expect(screen.getByText('FE-1 — Guest checkout flow')).toBeTruthy()
   })
 
@@ -128,8 +138,8 @@ describe('AllocateFeatureModal', () => {
   })
 
   it('sends a blank Estimate as no value at all, not as zero', async () => {
-    // Rally: "leave the Estimate field blank to allocate the entire original estimate". Sending 0
-    // would allocate nothing while looking like a commitment.
+    // §185: a blank Estimate copies the Feature's top-down estimate into the row. Omitting the field
+    // is what asks the server for that copy; sending 0 would commit nothing while looking deliberate.
     renderModal()
     fireEvent.click(screen.getByRole('button', { name: 'Add team' }))
     chooseTeam(2, 'Team Gamma')
@@ -149,8 +159,9 @@ describe('AllocateFeatureModal', () => {
     expect(mockPATCH.mock.calls[0][1].body).toEqual({ value: 13 })
   })
 
-  it('clears an allocation by emptying its Estimate', async () => {
-    // `value: null` is a real edit: the row goes back to charging the Feature's own estimate.
+  it("re-copies the Feature's estimate by emptying an Estimate", async () => {
+    // `value: null` is a real edit, and no longer a clear: the server re-copies the Feature's current
+    // top-down estimate into the row and relabels it `feature_estimate` (§185).
     renderModal()
     fireEvent.change(estimates()[0], { target: { value: '' } })
     fireEvent.click(apply())
