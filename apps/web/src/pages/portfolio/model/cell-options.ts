@@ -8,11 +8,8 @@ export interface PortfolioCellOptions {
  * Projects the caller may move an item INTO — workspace-wide, not per-row, because the
  * destination is by definition a different project from the row's own.
  */
-export interface ProjectOption {
-  id: string
-  key: string
-  name: string
-}
+// The project option shape lives with the shared cell that consumes it, so the two cannot drift.
+export type { ProjectOption } from '@/shared/ui/project-cell'
 
 /**
  * The lists a row gets when its project has resolved nothing yet. A frozen shared
