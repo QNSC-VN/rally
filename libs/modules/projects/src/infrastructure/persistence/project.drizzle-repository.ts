@@ -73,8 +73,23 @@ export class ProjectDrizzleRepository implements IProjectRepository {
   async listByWorkspaceWithStats(
     workspaceId: string,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
+    readableProjectIds: string[] | null,
   ): Promise<PagedResult<ProjectWithStats>> {
     const conditions = [eq(projects.workspaceId, workspaceId), isNull(projects.deletedAt)];
+
+    /**
+     * `null` is UNRESTRICTED; an array — including an EMPTY one — restricts.
+     *
+     * The empty case has to short-circuit rather than fall through: `inArray(col, [])` is not portable
+     * across drivers as "match nothing", and getting it wrong here would return the whole workspace to
+     * a principal with no readable projects. Failing closed is the only acceptable direction.
+     */
+    if (readableProjectIds !== null) {
+      if (readableProjectIds.length === 0) {
+        return buildPageResult<ProjectWithStats>([], limit, (p) => [p.createdAt.toISOString()]);
+      }
+      conditions.push(inArray(projects.id, readableProjectIds));
+    }
 
     if (cursor) {
       conditions.push(keysetCondition(projects.createdAt, projects.id, cursor));

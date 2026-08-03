@@ -47,6 +47,7 @@ import type {
   CreateWorkflowTransitionInput,
   UpdateProjectMemberInput,
 } from '../domain/project.types';
+import { AccessService } from '@modules/access';
 import { DEFAULT_WORKFLOW_STATUSES } from '../domain/project.constants';
 import type { Label } from '../domain/label.types';
 import type { WorkItemType } from '../domain/ports/project.repository';
@@ -69,6 +70,7 @@ export class ProjectsService {
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
     private readonly activity: ActivityLogger,
+    private readonly access: AccessService,
     @InjectDrizzle() private readonly db: DrizzleDB,
   ) {}
 
@@ -101,7 +103,26 @@ export class ProjectsService {
     actor: JwtPayload,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<ProjectWithStats>> {
-    return this.projectRepo.listByWorkspaceWithStats(actor.workspaceId, args);
+    /**
+     * Only the projects this caller may READ.
+     *
+     * The query filtered on `workspace_id` + `deleted_at IS NULL` and nothing else, and the route
+     * carried no `@RequirePermission` — so every project's key, name, description, owner, dates and
+     * counts was readable by any authenticated principal, including one with zero role assignments.
+     * PRJ-FR-001 says "List chỉ project user được phép truy cập trong workspace hiện tại", and §10 is
+     * explicit that workspace membership alone does not confer project visibility.
+     *
+     * `listReadableProjectIds` is the primitive built for exactly this — its own docblock calls it "the
+     * authorization fact behind every CROSS-PROJECT list" and Portfolio already uses it. `null` means
+     * UNRESTRICTED (a workspace-wide grant, i.e. Workspace Admin); an empty array is a legitimate
+     * "no projects" and must not be confused with it, which is why the sentinel exists.
+     */
+    const readable = await this.access.listReadableProjectIds(
+      actor.workspaceId,
+      actor.sub,
+      'project:view',
+    );
+    return this.projectRepo.listByWorkspaceWithStats(actor.workspaceId, args, readable);
   }
 
   /** Home "Project Health" widget — bounded, attention-sorted per-project rollup. */

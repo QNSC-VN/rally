@@ -431,6 +431,31 @@ Two independent faults on the one flow that onboards every user, both fixed toge
   `grantWorkspaceRole` **inside the same transaction** and invalidates the permission cache after
   commit, like `assignRole` does. Any new path that "assigns a role" must write the assignment table.
 
+## A cross-project LIST is scoped by `listReadableProjectIds`, not by `workspace_id`
+
+`AccessService.listReadableProjectIds` is the authorization fact behind every cross-project list — its
+own docblock says so, and Portfolio already used it. `GET /v1/projects` did not: no
+`@RequirePermission`, and a query filtering on `workspace_id` + `deleted_at IS NULL` alone, so every
+project's key, name, description, owner, dates and counts was readable by any authenticated principal
+including one with zero role assignments. PRJ-FR-001 and §10 both say otherwise.
+
+**`null` means UNRESTRICTED and an empty array means "nothing".** The sentinel exists precisely because
+those two are different answers, so a caller that flattens `null` to `[]` fails closed and one that
+flattens `[]` to "all" leaks the workspace. The repository short-circuits the empty case rather than
+emitting `inArray(col, [])`, which is not portable as "match nothing".
+
+`GET /projects/:id/members` was open for the same reason and is now `project:view` scoped to the path
+id — **with no `resource` key**, because the param IS the project id and there is nothing to resolve
+(`'project'` is deliberately not a `ScopedResource`).
+
+**Still open, and deliberately not in that change:** `GET :id/members-with-profile` is documented "for
+User Management UI" but feeds the Portfolio and Projects owner pickers, so gating it needs the feed
+split first — and the genuinely sensitive fields are `phone`, `lastLoginAt` and the role ids, not name
+and email, which are visible wherever someone is an assignee. Whether a staff directory is
+member-visible is a product decision. Separately, `useProjects` fetches `limit: 100` and filters
+client-side, so past 100 projects the Active/Archived tabs, the search and the metric tiles silently
+truncate — a pagination defect, not an authorization one.
+
 ## A route's permission code must be one the intended role can hold
 
 `GET /work-items/by-key` carried `workspace:view` — admin-only, since `workspace:*` is

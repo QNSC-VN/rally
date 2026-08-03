@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
+import { AccessService } from '@modules/access';
 import { ProjectsService } from './projects.service';
 import { PROJECT_REPOSITORY } from '../domain/ports/project.repository';
 import { WORKFLOW_STATUS_REPOSITORY } from '../domain/ports/workflow-status.repository';
@@ -177,6 +178,13 @@ describe('ProjectsService', () => {
         { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         { provide: ActivityLogger, useValue: activityMock() },
+        // `listProjects` now asks which projects the caller may read. `null` = UNRESTRICTED, which
+        // keeps these specs' expectations about the unfiltered page intact; the restriction itself is
+        // covered end-to-end in `test/e2e/read-scoping.e2e.spec.ts`.
+        {
+          provide: AccessService,
+          useValue: { listReadableProjectIds: vi.fn().mockResolvedValue(null) },
+        },
         {
           provide: DRIZZLE,
           /**

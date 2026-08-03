@@ -19,9 +19,15 @@ export interface IProjectRepository {
     workspaceId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Project>>;
+  /**
+   * @param readableProjectIds `null` = UNRESTRICTED (a workspace-wide grant). An array restricts the
+   * page to those ids, and an EMPTY array means "no readable projects" — never "all", so a caller that
+   * forgets the distinction fails closed.
+   */
   listByWorkspaceWithStats(
     workspaceId: string,
     args: { limit: number; cursor: CursorPayload | null },
+    readableProjectIds: string[] | null,
   ): Promise<PagedResult<ProjectWithStats>>;
   listHealthByWorkspace(workspaceId: string, args: { limit: number }): Promise<ProjectHealth[]>;
   create(input: CreateProjectInput, tx?: DbExecutor): Promise<Project>;
