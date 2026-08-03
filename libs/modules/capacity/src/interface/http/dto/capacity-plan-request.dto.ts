@@ -8,17 +8,6 @@ import { capacityPlanUnitEnum } from '../../../../../../../db/schema/enums';
 const UNITS = capacityPlanUnitEnum.enumValues;
 
 /**
- * Advisory load ceiling. Range matches `ck_capacity_target_load_range` exactly (1–100).
- *
- * 100 is permitted and means "reserve no headroom" — warn only once a team is genuinely
- * over capacity. That is a coherent choice, so the API does not forbid it; Rally's own
- * guidance of roughly 80% is expressed as the column DEFAULT instead. Keeping the bound
- * identical to the CHECK matters: a stricter DTO would make a value the schema accepts
- * unreachable through the API, with nothing explaining why.
- */
-const TARGET_LOAD = z.number().int().min(1).max(100);
-
-/**
  * Capacity in the plan's unit. Non-negative per `ck_capacity_non_negative`.
  *
  * Accepted as a NUMBER on the wire and stored as a numeric string — the same boundary
@@ -43,7 +32,6 @@ export const CreateCapacityPlanSchema = z.object({
   unit: z.enum(UNITS),
   plannedStartDate: ISO_DATE.nullable().optional(),
   plannedEndDate: ISO_DATE.nullable().optional(),
-  targetLoadPct: TARGET_LOAD.optional(),
 });
 export class CreateCapacityPlanDto extends createZodDto(CreateCapacityPlanSchema) {}
 
@@ -57,7 +45,6 @@ export const UpdateCapacityPlanSchema = z
     name: z.string().min(1).max(255).trim().optional(),
     plannedStartDate: ISO_DATE.nullable().optional(),
     plannedEndDate: ISO_DATE.nullable().optional(),
-    targetLoadPct: TARGET_LOAD.optional(),
   })
   // An empty body would bump `updated_at` and return 200 having changed nothing, which
   // reads as a successful save.

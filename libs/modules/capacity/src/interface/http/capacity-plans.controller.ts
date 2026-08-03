@@ -58,7 +58,6 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
     unit: p.unit,
     plannedStartDate: p.plannedStartDate,
     plannedEndDate: p.plannedEndDate,
-    targetLoadPct: p.targetLoadPct,
     publishedAt: p.publishedAt === null ? null : p.publishedAt.toISOString(),
     publishedBy: p.publishedBy,
     createdAt: p.createdAt.toISOString(),
@@ -113,15 +112,16 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       metrics: a.metrics,
     })),
     unallocated: p.unallocated,
+    warnings: p.warnings,
   };
 }
 
 /**
  * The LIST returns plans without allocations or metrics.
  *
- * The grid there shows name/release/unit/status/target/capacity only, and assembling
- * per-row metrics for every plan in a project would mean one aggregate per allocation per
- * plan for numbers nothing displays.
+ * The grid there shows name/release/unit/status/capacity only, and assembling per-row metrics
+ * for every plan in a project would mean one aggregate per allocation per plan for numbers
+ * nothing displays.
  */
 function toListDto(p: CapacityPlanView): CapacityPlanResponseDto {
   return toDto({
@@ -132,6 +132,9 @@ function toListDto(p: CapacityPlanView): CapacityPlanResponseDto {
     itemCutlineIndex: null,
     allocations: [],
     unallocated: 0,
+    // No metrics on this projection, so nothing to evaluate — an empty list, not a clean bill of
+    // health computed from zeros.
+    warnings: [],
   });
 }
 

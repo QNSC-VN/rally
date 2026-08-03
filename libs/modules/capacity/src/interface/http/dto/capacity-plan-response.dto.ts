@@ -30,7 +30,6 @@ const CapacityWarningEnum = z.enum([
   'rollup_exceeds_estimated',
   'rollup_exceeds_capacity',
   'estimated_exceeds_capacity',
-  'load_above_target',
 ]);
 
 const CapacityMetricsSchema = z.object({
@@ -177,7 +176,6 @@ export const CapacityPlanSchema = z.object({
   unit: z.enum(UNITS).describe('Fixed at creation — every number on the plan uses it'),
   plannedStartDate: z.string().nullable().describe('YYYY-MM-DD'),
   plannedEndDate: z.string().nullable().describe('YYYY-MM-DD'),
-  targetLoadPct: z.number().int().describe('Advisory load ceiling, 1–99'),
   // `z.date()` cannot be converted by zod's JSON-Schema emitter, which breaks Swagger
   // generation and therefore app boot — these are ISO strings, as everywhere else.
   publishedAt: z.string().datetime().nullable(),
@@ -209,6 +207,20 @@ export const CapacityPlanSchema = z.object({
    * unallocated placeholder must not outrank a Refined or Preliminary forecast.
    */
   unallocated: z.number(),
+  /**
+   * The advisory warnings for the PLAN as a whole, from the same rule function every row uses.
+   *
+   * The plan-level bars — the summary strip and the Breakdown overlay — showed totals with no
+   * warnings at all, so a plan whose combined demand exceeded its combined capacity read as clean
+   * while the rows beneath it flagged. Served rather than derived client-side because the rules live
+   * in one place (`computeCapacityWarnings`) and the frontend has no copy of them; it only maps codes
+   * to sentences.
+   *
+   * Evaluated over EVERY team, like `totalCapacity` and `itemCutlineIndex`, even for a reader whose
+   * team rows are narrowed: these are facts about the plan, and a reader shown the plan's totals is
+   * entitled to know whether they are in trouble.
+   */
+  warnings: z.array(CapacityWarningEnum).describe("The plan's own advisory warnings"),
 });
 export class CapacityPlanResponseDto extends createZodDto(CapacityPlanSchema) {}
 

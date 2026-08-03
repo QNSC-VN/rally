@@ -698,7 +698,6 @@ async function seedFlow() {
       planKey: 'CP-1',
       name: 'NX Platform v2 capacity',
       unit: 'points' as const,
-      targetLoadPct: 80,
       // The release's own window (RE-1: 2026-07-01 → 07-31). Without planned dates there is
       // no window to forecast INTO, so Calculate Capacity Forecast could only ever refuse —
       // and publish (slice 7) writes these dates onto the Features it publishes.
@@ -794,7 +793,6 @@ async function seedFlow() {
       planKey: 'CP-2',
       name: 'Payments hardening capacity',
       unit: 'points' as const,
-      targetLoadPct: 80,
       plannedStartDate: '2026-08-01',
       plannedEndDate: '2026-08-31',
       status: 'published' as const,

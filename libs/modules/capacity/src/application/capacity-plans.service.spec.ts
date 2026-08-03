@@ -33,7 +33,6 @@ const plan = (over: Partial<CapacityPlan> = {}): CapacityPlan => ({
   unit: 'points',
   plannedStartDate: null,
   plannedEndDate: null,
-  targetLoadPct: 80,
   publishedAt: null,
   publishedBy: null,
   createdAt: new Date(),

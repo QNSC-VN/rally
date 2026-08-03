@@ -708,6 +708,13 @@
       "when": 1787555903005,
       "tag": "0099_release_team_targets",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1787642303005,
+      "tag": "0100_drop_capacity_target_load",
+      "breakpoints": true
     }
   ]
 }

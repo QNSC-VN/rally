@@ -35,17 +35,11 @@ export function EditCapacityPlanModal({
   const [name, setName] = useState(plan.name)
   const [startDate, setStartDate] = useState(plan.plannedStartDate)
   const [endDate, setEndDate] = useState(plan.plannedEndDate)
-  const [targetLoad, setTargetLoad] = useState(String(plan.targetLoadPct))
-  const [errors, setErrors] = useState<{ name?: string; targetLoad?: string; form?: string }>({})
+  const [errors, setErrors] = useState<{ name?: string; form?: string }>({})
 
   async function submit() {
     const next: typeof errors = {}
     if (!name.trim()) next.name = t('edit.nameRequired')
-    const load = Number(targetLoad)
-    // The same 1–99 the column's check constraint enforces: 100% leaves no headroom for unplanned
-    // work, which is the entire point of an advisory ceiling.
-    if (!Number.isInteger(load) || load < 1 || load > 99)
-      next.targetLoad = t('edit.targetLoadRange')
     if (Object.keys(next).length > 0) {
       setErrors(next)
       return
@@ -60,7 +54,6 @@ export function EditCapacityPlanModal({
           // null explicitly.
           plannedStartDate: startDate,
           plannedEndDate: endDate,
-          targetLoadPct: load,
         },
       })
       notify.success(t('edit.saved'))
@@ -102,20 +95,6 @@ export function EditCapacityPlanModal({
           </FormField>
         </div>
 
-        <FormField
-          label={t('detail.fields.targetLoad')}
-          error={errors.targetLoad}
-          htmlFor="plan-target-load"
-        >
-          <Input
-            id="plan-target-load"
-            type="number"
-            min={1}
-            max={99}
-            value={targetLoad}
-            onChange={(e) => setTargetLoad(e.target.value)}
-          />
-        </FormField>
         <p className="text-ui-xs text-foreground-subtle">{t('edit.unitFixedHint')}</p>
       </ModalBody>
 

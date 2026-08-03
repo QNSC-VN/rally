@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
-import { AlertTriangle } from 'lucide-react'
 
 import { Tooltip } from '@/shared/ui/tooltip'
 import { BRAND } from '@/shared/config/brand'
+import { WarningIndicator } from '@/shared/ui/warning-indicator'
 
 /**
  * The four segment styles Rally draws a capacity bar from — ONE source of truth.
@@ -66,8 +66,6 @@ export interface CompositeBarProps {
    * baseline would imply a ceiling nobody set.
    */
   capacity: number | null
-  /** Advisory ceiling as a percentage of capacity; draws the target marker. */
-  targetLoadPct?: number | null
   /**
    * Already-translated warning sentences, in the order they should be read.
    *
@@ -128,7 +126,6 @@ export function CompositeBar({
   rollup,
   estimated,
   capacity,
-  targetLoadPct,
   warningLabels = [],
   warningLabelled = true,
   title,
@@ -235,28 +232,15 @@ export function CompositeBar({
           }}
         />
 
-        {/* Target load, only meaningful when there is a real ceiling below 100%. */}
-        {hasCapacity && targetLoadPct != null && targetLoadPct > 0 && targetLoadPct < 100 && (
-          <div
-            className="absolute inset-y-0 w-px opacity-70"
-            style={{ left: `${targetLoadPct}%`, backgroundColor: BRAND.warning }}
-          />
-        )}
-
         {/* The warning sits INSIDE the track, at the point the bar failed.
             Rally places it that way and the position carries meaning: at the LEFT edge when the
             row overflows its ceiling (the bar is already full, so the trouble is where it began),
             at the boundary of the longest band otherwise. Outside the track it read as a note
             about the row; inside it reads as a note about the bar.
             One glyph however many rules fired — a row of triangles says nothing extra, and the
-            reasons ride the accessible name either way. The name is on a wrapping span, not the
-            SVG: `title` is an HTML attribute React's SVG typings reject. */}
+            reasons ride the accessible name either way. */}
         {warningLabels.length > 0 && (
           <span
-            {...(warningLabelled
-              ? { role: 'img', 'aria-label': warningLabels.join('. ') }
-              : { 'aria-hidden': true })}
-            title={warningLabels.join('\n')}
             data-segment="warning"
             className="absolute inset-y-0 z-10 flex items-center"
             style={
@@ -265,7 +249,7 @@ export function CompositeBar({
                 : { left: `min(${pct(Math.max(rollup, estimated, complete))}%, calc(100% - 14px))` }
             }
           >
-            <AlertTriangle size={12} style={{ color: BRAND.danger }} />
+            <WarningIndicator labels={warningLabels} announce={warningLabelled} />
           </span>
         )}
       </div>

@@ -600,10 +600,6 @@ export const capacityPlans = workSchema.table(
     // advisory and writes nothing.
     plannedStartDate: date('planned_start_date'),
     plannedEndDate: date('planned_end_date'),
-    // Advisory load ceiling, below 100%. Rally's own guidance is to leave ~20% of a
-    // team's capacity for unplanned work, so a team at 95% needs a warning even
-    // though it is not technically over capacity. Never blocks an action.
-    targetLoadPct: integer('target_load_pct').notNull().default(80),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     publishedBy: uuid('published_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

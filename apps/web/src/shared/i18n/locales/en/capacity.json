@@ -44,7 +44,6 @@
       "project": "Project",
       "release": "Release",
       "unit": "Unit",
-      "targetLoad": "Target Load",
       "totalCapacity": "Total Capacity",
       "plannedStartDate": "Planned Start Date",
       "plannedEndDate": "Planned End Date"
@@ -119,7 +118,6 @@
     "rollup_exceeds_estimated": "Rollup exceeds Estimated",
     "rollup_exceeds_capacity": "Rollup exceeds Capacity",
     "estimated_exceeds_capacity": "Estimated exceeds Capacity",
-    "load_above_target": "Committed demand is above the target load, leaving no room for unplanned work",
     "featuresRequireAttention": "{{count}} Feature requires attention",
     "featuresRequireAttention_plural": "{{count}} Features require attention"
   },
@@ -212,7 +210,9 @@
     "unassigned": "Unassigned",
     "base": "base",
     "assignedSplit": "{{assigned}} Assigned · {{unassigned}} Unassigned",
-    "itemType": "Portfolio Item Type"
+    "itemType": "Portfolio Item Type",
+    "unassignedWarning": "{{count}} Feature has no team in this plan",
+    "unassignedWarning_plural": "{{count}} Features have no team in this plan"
   },
   "items": {
     "tab": "Items",
@@ -282,7 +282,6 @@
     "title": "Edit Plan Details",
     "nameLabel": "Name",
     "nameRequired": "Enter a name",
-    "targetLoadRange": "Target load must be a whole number between 1 and 99",
     "unitFixedHint": "Unit and release are fixed: every number on the plan is expressed in the unit and scoped to the release.",
     "saveButton": "Save",
     "saved": "Plan updated",

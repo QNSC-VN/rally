@@ -318,8 +318,18 @@ describe('capacity allocation (e2e)', () => {
     expect(cleared?.metrics.estimated).toBe(5);
   });
 
-  it('warns when a team’s committed demand passes its target load, then its capacity', async () => {
-    // Capacity 50, target 80% -> ceiling 40.
+  it('stays silent INSIDE capacity and warns only once past it — plan level included', async () => {
+    /**
+     * There was a `load_above_target` rule here: capacity 50 with the plan's 80% target load meant a
+     * ceiling of 40, and a team at 45 was flagged. It is gone with `capacity_plans.target_load_pct` —
+     * nothing in the BA's advisory set rations headroom, and every surface drew that warning with the
+     * SAME red triangle as a real breach, so a team at 90% of capacity was indistinguishable from one
+     * that had blown through it.
+     *
+     * The plan-level assertions are the other half of this change: `computeCapacityWarnings` was never
+     * called over the plan's totals, so the summary strip and the Breakdown overlay showed a plan in
+     * breach with no warning on it at all.
+     */
     const featureId = await newFeature(`Load ${uniqueKey()}`);
     await capacity.allocate(admin, planId, {
       portfolioItemId: featureId,
@@ -338,21 +348,76 @@ describe('capacity allocation (e2e)', () => {
     const bump = 45 - (beforeB?.metrics.estimated ?? 0) + Number(alloc?.value ?? 0);
     await capacity.updateAllocation(admin, planId, alloc!.id, { value: bump });
 
-    const mid = (await capacity.getPlanDetail(admin, planId)).teams.find(
-      (t) => t.teamId === teamBId,
-    );
+    const midPlan = await capacity.getPlanDetail(admin, planId);
+    const mid = midPlan.teams.find((t) => t.teamId === teamBId);
     expect(mid?.metrics.estimated).toBe(45);
-    expect(mid?.metrics.warnings).toContain('load_above_target');
-    expect(mid?.metrics.warnings).not.toContain('estimated_exceeds_capacity');
+    // 45 of 50 — 90% of capacity, and nothing to say about it.
+    expect(mid?.metrics.warnings).toEqual([]);
 
-    // Now past capacity: the target warning gives way to the hard one, so the row does not
-    // carry two warnings saying the same thing.
+    // Now past capacity, where the one hard rule fires.
     await capacity.updateAllocation(admin, planId, alloc!.id, { value: bump + 20 });
-    const over = (await capacity.getPlanDetail(admin, planId)).teams.find(
-      (t) => t.teamId === teamBId,
-    );
+    const overPlan = await capacity.getPlanDetail(admin, planId);
+    const over = overPlan.teams.find((t) => t.teamId === teamBId);
     expect(over?.metrics.warnings).toContain('estimated_exceeds_capacity');
-    expect(over?.metrics.warnings).not.toContain('load_above_target');
+  });
+
+  it('gives the PLAN its own warnings, over the summed team rows', async () => {
+    /**
+     * `computeCapacityWarnings` ran for allocation rows, team rows and Feature rows — never over the
+     * plan's totals. `CapacityPlanResponse` had no plan-level `warnings` at all, so the header bar
+     * and the Breakdown overlay showed a plan in breach with nothing on them while the rows
+     * underneath flagged.
+     *
+     * Its OWN plan, not the shared one every other test allocates into: this asserts a BOUNDARY, and
+     * a shared plan's totals move with whatever ran before it.
+     *
+     * A team in breach is NOT automatically a plan in breach — team B at 65 of its own 50 still fits
+     * inside the shared plan's 100 across two teams — so the plan is judged against its own summed
+     * ceiling rather than inheriting a row's verdict.
+     */
+    const releaseId = (await releases.createRelease(admin, projectId, `Rel ${uniqueKey()}`, {})).id;
+    const plan = await capacity.createPlan(admin, {
+      projectId,
+      releaseId,
+      name: 'Plan warnings',
+      unit: 'points',
+    });
+    await capacity.addTeam(admin, plan.id, teamAId);
+    await capacity.addTeam(admin, plan.id, teamBId);
+
+    // No capacity entered anywhere: the plan cannot be measured and says so, rather than reading as
+    // "all clear" — the same answer its team rows give.
+    const fresh = await capacity.getPlanDetail(admin, plan.id);
+    expect(fresh.warnings).toEqual(['team_missing_capacity']);
+
+    await capacity.setTeamCapacity(admin, plan.id, teamAId, '30');
+    await capacity.setTeamCapacity(admin, plan.id, teamBId, '20');
+
+    // 50 against the plan's 50, split so NEITHER team is over its own ceiling: 30 on A, 20 on B.
+    const featureA = await newFeature(`Plan warn A ${uniqueKey()}`);
+    const featureB = await newFeature(`Plan warn B ${uniqueKey()}`);
+    await capacity.allocate(admin, plan.id, {
+      portfolioItemId: featureA,
+      teamId: teamAId,
+      value: 30,
+    });
+    await capacity.allocate(admin, plan.id, {
+      portfolioItemId: featureB,
+      teamId: teamBId,
+      value: 20,
+    });
+
+    // Planned exactly to the line — not over it, on any row or on the plan.
+    const atLine = await capacity.getPlanDetail(admin, plan.id);
+    expect(atLine.warnings).toEqual([]);
+    expect(atLine.teams.every((team) => team.metrics.warnings.length === 0)).toBe(true);
+
+    // One point more, which tips both team B's own 20 and the plan's 50.
+    const allocB = atLine.allocations.find((a) => a.portfolioItemId === featureB);
+    await capacity.updateAllocation(admin, plan.id, allocB!.id, { value: 21 });
+
+    const over = await capacity.getPlanDetail(admin, plan.id);
+    expect(over.warnings).toContain('estimated_exceeds_capacity');
   });
 
   it('SETS a second allocation for the same Feature and team rather than adding to it', async () => {
