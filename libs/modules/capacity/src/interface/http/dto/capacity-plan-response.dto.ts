@@ -192,13 +192,13 @@ export const CapacityPlanSchema = z.object({
   totalCapacity: z.number().nullable(),
   items: z.array(CapacityPlanItemSchema).describe('One row per Feature, in RANK order'),
   /**
-   * The Capacity Cutline: the index of the ITEM the line is drawn AFTER.
+   * The Capacity Cutline: the index of the last ITEM that FITS inside the plan's total capacity.
    *
-   * SRS §189 — "rendered after the first Feature where cumulative planning Estimated reaches or exceeds
-   * Plan total Capacity" — so this is the TIPPING Feature, which sits above the line. It used to be the
-   * last Feature that still fit, putting the tipping one below.
+   * Rally's rule, from the capacity plan's Items tab: "Items above the cutline fit within the defined
+   * plan capacity. Items below the line exceed the capacity of the plan." A declared divergence from SRS
+   * §189, which puts the overflowing Feature above the line — see `computeCutlineIndex`.
    *
-   * Plan-wide and on the item list, which is where Rally draws it too. An index rather than a per-row
+   * Plan-wide and on the item list, which is where Rally draws it. An index rather than a per-row
    * boolean, because the line sits BETWEEN two rows and a per-row flag would let a client render a
    * "fits" row below a "does not fit" one.
    */
@@ -206,9 +206,7 @@ export const CapacityPlanSchema = z.object({
     .number()
     .int()
     .nullable()
-    .describe(
-      'The item the line is drawn after; the last index when nothing reaches capacity (no line); null = no capacity entered',
-    ),
+    .describe('-1 = the first item already exceeds capacity; null = no capacity entered'),
   allocations: z.array(CapacityAllocationSchema),
   /**
    * Demand parked without a team.

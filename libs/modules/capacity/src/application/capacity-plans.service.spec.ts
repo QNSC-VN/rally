@@ -598,8 +598,8 @@ describe('CapacityPlansService', () => {
     });
 
     it('accumulates ITEMS in rank order against the TOTAL capacity', async () => {
-      // 20 + 15 = 35 against 40 (10 + 30), then the third reaches 45 — so THAT one is the tipping
-      // Feature and sits above the line (§189: "reaches or exceeds").
+      // 20 + 15 = 35 fits in 40 (10 + 30); the third takes it to 45, so it does not fit and sits
+      // below the line ("items above the cutline fit within the defined plan capacity").
       repo.findViewById.mockResolvedValue(
         view({ teams: [planTeam('team-1', '10'), planTeam('team-2', '30')] }),
       );
@@ -611,7 +611,7 @@ describe('CapacityPlansService', () => {
 
       const detail = await service.getPlanDetail(actor, 'plan-1');
       expect(detail.items.map((i) => i.itemKey)).toEqual(['FE-1', 'FE-1', 'FE-1']);
-      expect(detail.itemCutlineIndex).toBe(2);
+      expect(detail.itemCutlineIndex).toBe(1);
     });
 
     it('counts a shared Feature ONCE, summing its allocations', async () => {
@@ -626,11 +626,10 @@ describe('CapacityPlansService', () => {
 
       const detail = await service.getPlanDetail(actor, 'plan-1');
       expect(detail.items).toHaveLength(2);
-      // 20 committed for the shared Feature, then 10 more reaches 30 against 25 — the second Feature
-      // is the tipping one.
+      // 20 committed for the shared Feature; 10 more takes it past 25, so only the first fits.
       expect(detail.items[0].estimated).toBe(20);
       expect(detail.items[0].teamIds).toEqual(['team-1', 'team-2']);
-      expect(detail.itemCutlineIndex).toBe(1);
+      expect(detail.itemCutlineIndex).toBe(0);
     });
 
     it('orders items strictly by RANK, even though unallocated rows come back last', async () => {
@@ -645,12 +644,11 @@ describe('CapacityPlansService', () => {
       expect(detail.items[0].unallocated).toBe(true);
     });
 
-    it('puts the line after the FIRST item when that alone exceeds the plan', async () => {
-      // It reaches capacity by itself, so it is the tipping Feature. This answered -1 before §189 was
-      // applied, which put every row of a single-item plan below its own cutline.
+    it('answers -1 when the FIRST item already exceeds the plan', async () => {
+      // Nothing fits, so the line sits above every row.
       repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '5')] }));
       repo.listAllocations.mockResolvedValue([row({ value: '20' })]);
-      expect((await service.getPlanDetail(actor, 'plan-1')).itemCutlineIndex).toBe(0);
+      expect((await service.getPlanDetail(actor, 'plan-1')).itemCutlineIndex).toBe(-1);
     });
 
     it('draws NO line when no team has entered a capacity', async () => {

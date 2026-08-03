@@ -174,12 +174,9 @@ describe('capacity items + cutline (e2e)', () => {
   });
 
   it('draws the cutline against the PLAN total, not one team', async () => {
-    /**
-     * Two teams of 10 each: 20 total. Three 8-point Features — 8, then 16, then 24, so the THIRD is
-     * where the running total reaches 20 and §189 draws the line after it ("the first Feature where
-     * cumulative planning Estimated reaches or exceeds Plan total Capacity"). Per team, none of the
-     * three would fit, which is the answer Rally does NOT give here.
-     */
+    // Two teams of 10 each: 20 total. Three 8-point Features — 8 and 16 fit, 24 does not, so the line
+    // falls after the second ("items above the cutline fit within the defined plan capacity"). Per
+    // team, none of the three would fit, which is the answer Rally does NOT give here.
     const { planId } = await newPlan();
     await capacity.addTeam(admin, planId, teamAId);
     await capacity.addTeam(admin, planId, teamBId);
@@ -197,7 +194,7 @@ describe('capacity items + cutline (e2e)', () => {
 
     const detail = await capacity.getPlanDetail(admin, planId);
     expect(detail.items).toHaveLength(3);
-    expect(detail.itemCutlineIndex).toBe(2);
+    expect(detail.itemCutlineIndex).toBe(1);
   });
 
   it('has no cutline until some capacity is entered', async () => {

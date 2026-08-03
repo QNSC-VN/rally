@@ -457,6 +457,24 @@ Both were ruled on. Neither is drift, and neither should be "fixed" on sight.
   is a COUNT, dependencies are genuinely unimplemented rather than unknown, and `0` is true where a dash
   would read as "not known". Note this is the one place the app's own absent-value rule (`--` everywhere
   else) is deliberately not applied.
+- **The cutline keeps the overflowing Feature BELOW the line.** Rally's Items-tab doc is the deciding
+  sentence: "Items above the cutline fit within the defined plan capacity. Items below the line exceed
+  the capacity of the plan." SRS §189 says the line is drawn "after the first Feature where cumulative
+  planning Estimated reaches or exceeds Plan total Capacity", which puts that Feature above the line. The
+  two differ by exactly one row — capacity 100 against 90, 20, 5 puts the 20 below here and above under
+  §189.
+
+  Worth knowing that this one was shipped §189's way and reverted: the BA reading went in under a
+  blanket "align to the BA" instruction, and Broadcom's wording was only checked afterwards. `Rollup`,
+  `Complete` and the cutline are now all decided the same way — the product's documented behaviour wins
+  where the SRS restates it differently. If a future ruling reverses that, reverse all three together;
+  half-and-half is how a plan starts disagreeing with itself.
+
+  Verified at
+  `techdocs.broadcom.com/us/en/ca-enterprise-software/valueops/rally/rally-help/planning/capacity-planning-page/view-capacity-plan-details/capacity-plan-items-tab.html`
+  (the same page carries the Project/Release sentence above, for Complete and for estimated points).
+  The cutline was removed from Rally and later restored, which is why it may be absent from an older
+  screenshot or a different edition.
 
 ## An allocation's value is a FIXED SNAPSHOT with a source label
 

@@ -4689,7 +4689,7 @@ export interface components {
         /** @description Any allocation has no team — Rally’s unassigned warning */
         unallocated: boolean
       }[]
-      /** @description The item the line is drawn after; the last index when nothing reaches capacity (no line); null = no capacity entered */
+      /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
       itemCutlineIndex: number | null
       allocations: {
         /** Format: uuid */
@@ -4887,7 +4887,7 @@ export interface components {
           /** @description Any allocation has no team — Rally’s unassigned warning */
           unallocated: boolean
         }[]
-        /** @description The item the line is drawn after; the last index when nothing reaches capacity (no line); null = no capacity entered */
+        /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
         itemCutlineIndex: number | null
         allocations: {
           /** Format: uuid */
@@ -5076,7 +5076,7 @@ export interface components {
           /** @description Any allocation has no team — Rally’s unassigned warning */
           unallocated: boolean
         }[]
-        /** @description The item the line is drawn after; the last index when nothing reaches capacity (no line); null = no capacity entered */
+        /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
         itemCutlineIndex: number | null
         allocations: {
           /** Format: uuid */
@@ -5303,7 +5303,7 @@ export interface components {
           /** @description Any allocation has no team — Rally’s unassigned warning */
           unallocated: boolean
         }[]
-        /** @description The item the line is drawn after; the last index when nothing reaches capacity (no line); null = no capacity entered */
+        /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
         itemCutlineIndex: number | null
         allocations: {
           /** Format: uuid */

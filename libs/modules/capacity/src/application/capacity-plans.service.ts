@@ -141,11 +141,11 @@ export interface CapacityPlanDetail extends Omit<CapacityPlanView, 'teams'> {
   teams: CapacityPlanTeamWithMetrics[];
   items: CapacityPlanItem[];
   /**
-   * Index of the ITEM (in rank order) the Capacity Cutline is drawn AFTER — §189's tipping Feature,
-   * the first one whose cumulative Estimated reaches or exceeds the plan's total capacity.
+   * Index of the last ITEM (in rank order) that FITS inside the plan's total capacity — Rally's rule,
+   * "items above the cutline fit within the defined plan capacity".
    *
-   * The last index when nothing reaches capacity, which renders no line; `null` when no team has
-   * entered a capacity, so there is nothing to draw one against.
+   * `-1` when the first item already exceeds it; `null` when no team has entered a capacity, so there
+   * is nothing to draw a line against. A declared divergence from SRS §189 — see `computeCutlineIndex`.
    */
   itemCutlineIndex: number | null;
   allocations: CapacityAllocationView[];
@@ -1473,12 +1473,11 @@ export class CapacityPlansService {
     items.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
 
     /**
-     * The Capacity Cutline, §189: after the first Feature whose cumulative Estimated reaches or exceeds
-     * the plan's capacity, so that Feature is the last one above the line.
+     * Rally's cutline: "Items above the cutline fit within the defined plan capacity."
      *
-     * PLAN-wide, on the item list, in rank order — the shape Rally documents. An earlier version drew it
-     * per team on the team grid; that answered a different question (what one team drops) than the one
-     * the line answers (what this PLAN drops).
+     * PLAN-wide, on the item list, in rank order — the shape Rally documents, on the plan's Items tab.
+     * An earlier version drew it per team on the team grid; that answered a different question (what one
+     * team drops) than the one the line answers (what this PLAN drops).
      */
     const itemCutlineIndex = computeCutlineIndex(
       items.map((item) => item.estimated),
