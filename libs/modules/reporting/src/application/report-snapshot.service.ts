@@ -171,7 +171,7 @@ export class ReportSnapshotService {
       // Outside its own window a release has no burnup axis to sit on.
       if (localDate < release.startDate || localDate > release.releaseDate) continue;
       try {
-        result.releasesSnapshotted += await this.snapshotRelease(release, localDate);
+        result.releasesSnapshotted += await this.snapshotRelease(release, localDate, now);
       } catch (err) {
         result.failures += 1;
         this.logger.error(
@@ -217,6 +217,7 @@ export class ReportSnapshotService {
   private async snapshotRelease(
     release: { id: string; workspaceId: string; projectId: string },
     localDate: string,
+    now: Date,
   ): Promise<number> {
     const map = await this.preliminaryEstimates.forWorkspace(release.workspaceId);
     const [features, children] = await Promise.all([
@@ -241,21 +242,28 @@ export class ReportSnapshotService {
       const counts = releaseTotals(leaves, inRelease, 'count');
 
       /**
-       * The Ideal target, captured once from the ALL TEAMS planned scope.
+       * The Ideal target for THIS scope, captured once.
        *
-       * All Teams because the Ideal is a release-level trajectory, not a per-Team one, and that
-       * row is measured rather than summed. First snapshot day because RT-BR-09 forbids deriving
-       * it from today's Planned value — see `captureReleaseIdealTarget`, which only writes while
-       * both columns are still null, so this is a no-op on every later tick.
+       * It used to be captured only under All Teams, from two columns on `releases` — so every team's
+       * burnup drew its own Accepted line against the WHOLE release's target and each team looked
+       * permanently behind, while `getReleaseBurnupRows` correctly narrowed the measured series to that
+       * team's rows. RT §7's acceptance example 7 recomputes the entire Burnup from the selected Team's
+       * scope, and the Ideal is part of that definition.
+       *
+       * Already inside the `scopes` loop, so the planned totals in hand are this scope's — and the All
+       * Teams row is MEASURED here, the same population `upsertReleaseSnapshot` records below, which is
+       * why `findReleaseTeamTarget` reads it instead of summing the team rows. First snapshot day per
+       * scope, because `captureReleaseTeamTarget` uses `onConflictDoNothing` and RT-BR-09 forbids
+       * deriving the Ideal from today's mutable Planned value.
        */
-      if (teamId === null) {
-        await this.repo.captureReleaseIdealTarget(
-          release.workspaceId,
-          release.id,
-          points.planned,
-          counts.planned,
-        );
-      }
+      await this.repo.captureReleaseTeamTarget({
+        workspaceId: release.workspaceId,
+        releaseId: release.id,
+        teamId,
+        plannedPoints: points.planned,
+        plannedCount: counts.planned,
+        at: now,
+      });
 
       await this.repo.upsertReleaseSnapshot({
         workspaceId: release.workspaceId,

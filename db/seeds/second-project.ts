@@ -37,6 +37,7 @@ import {
   portfolioItems,
   projectTeams,
   releaseDailySnapshots,
+  releaseTeamTargets,
   releases,
   tasks,
   teamMembers,
@@ -374,14 +375,17 @@ export async function seedSecondProject(db: Db): Promise<void> {
     )
     .onConflictDoNothing();
 
+  // One row per scope, as the burndown above: All Teams (measured) and Gamma's own, whose numbers
+  // coincide because every PAY item is Gamma's. Without the Gamma row a team-scoped burnup had an
+  // Ideal target and no series to draw beneath it.
   await db
     .insert(releaseDailySnapshots)
-    .values([
-      {
+    .values(
+      [null, TEAM_GAMMA_ID].map((teamId) => ({
         id: uuidv7(),
         workspaceId: WORKSPACE_ID,
         releaseId: PAY_RELEASE_ID,
-        teamId: null,
+        teamId,
         snapshotDate: '2026-08-06',
         acceptedPoints: '5',
         acceptedCount: 1,
@@ -391,15 +395,27 @@ export async function seedSecondProject(db: Db): Promise<void> {
         preliminaryCount: 2,
         capturedAt: new Date('2026-08-06T17:00:00Z'),
         finalized: true,
-      },
-    ])
+      })),
+    )
     .onConflictDoNothing();
 
-  // The Ideal target the burnup climbs to — captured once, as the job would.
+  // The Ideal target the burnup climbs to, in `release_team_targets` — captured once per scope, as the
+  // job would. One row per scope the snapshots carry: the `team_id IS NULL` row is the MEASURED All
+  // Teams target and is never summed. Every PAY item is Gamma's, so both read 8 points / 2 items.
   await db
-    .update(releases)
-    .set({ idealTargetPoints: '8', idealTargetCount: 2 })
-    .where(and(eq(releases.id, PAY_RELEASE_ID), eq(releases.workspaceId, WORKSPACE_ID)));
+    .insert(releaseTeamTargets)
+    .values(
+      [null, TEAM_GAMMA_ID].map((teamId) => ({
+        id: uuidv7(),
+        workspaceId: WORKSPACE_ID,
+        releaseId: PAY_RELEASE_ID,
+        teamId,
+        idealTargetPoints: '8',
+        idealTargetCount: 2,
+        capturedAt: new Date('2026-08-06T17:00:00Z'),
+      })),
+    )
+    .onConflictDoNothing();
 
   /**
    * Advance the workspace key counters past what PAY just took.

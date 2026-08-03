@@ -34,6 +34,7 @@ import { WorkItemsService } from '@modules/work-items';
 import {
   iterationDailySnapshots,
   iterationTeamBaselines,
+  releaseTeamTargets,
   iterations,
   teams,
   workItems,
@@ -855,7 +856,7 @@ describe('Phase 6 reports (e2e)', () => {
     /**
      * And the target is captured ONCE. Scope grows by 8 points, a later tick runs, and the target
      * must not follow it — RT-BR-09 forbids an Ideal that redraws whenever scope changes, which is
-     * the same rule `captureStartBaseline` enforces for the iteration baseline.
+     * the same rule `captureTeamBaselines` enforces for the iteration baseline.
      */
     await items.createWorkItem(admin, projectId, 'story', 'burnup scope creep', {
       releaseId: release.id,
@@ -865,6 +866,106 @@ describe('Phase 6 reports (e2e)', () => {
     const later = await reporting.getReleaseBurnup(admin, { projectId, releaseId: release.id });
     expect(later.points.find((p) => p.date === localToday)?.planned).toBe(21);
     expect(later.idealTarget).toBe(13);
+  });
+
+  it('captures the release Ideal target per TEAM, summed for All Teams', async () => {
+    /**
+     * The mirror of the baseline test above, for the Burnup.
+     *
+     * The target used to be two columns on `releases`, so it had no team dimension at all while
+     * `getReleaseBurnupRows` correctly narrowed the measured series to the selected team: Alpha's 6
+     * accepted points were drawn against the whole release's 10, and every team looked permanently
+     * behind. RT §7's acceptance example 7 recomputes the entire Burnup from the selected Team's scope,
+     * and the Ideal is inside that definition — so migration 0099 moved it to one row per (release,
+     * team scope), like `iteration_team_baselines`.
+     *
+     * `team_id IS NULL` in this table is the MEASURED All Teams row, as in `release_daily_snapshots` and
+     * unlike `iteration_team_baselines`: RT §4.1 measures All Teams because a Feature whose children
+     * span two teams sits in both teams' derived buckets, so a sum would count it twice.
+     */
+    const alpha = await newTeam('P6 Burnup Alpha');
+    const beta = await newTeam('P6 Burnup Beta');
+    await projects.linkTeam(WORKSPACE_ID, projectId, alpha);
+    await projects.linkTeam(WORKSPACE_ID, projectId, beta);
+
+    const release = await releases.createRelease(admin, projectId, `P6 Release Targets`, {
+      startDate: shift(localToday, -1),
+      releaseDate: shift(localToday, 10),
+    });
+    for (const [team, points] of [
+      [alpha, '6'],
+      [beta, '4'],
+    ] as const) {
+      await items.createWorkItem(admin, projectId, 'story', `P6 bu ${points}pt`, {
+        releaseId: release.id,
+        teamId: team,
+        storyPoints: points,
+      });
+    }
+
+    await snapshots.takeSnapshots();
+
+    const targets = await db
+      .select({
+        teamId: releaseTeamTargets.teamId,
+        points: releaseTeamTargets.idealTargetPoints,
+        count: releaseTeamTargets.idealTargetCount,
+      })
+      .from(releaseTeamTargets)
+      .where(eq(releaseTeamTargets.releaseId, release.id));
+    // One row per team WITH work, plus the measured All Teams row — three scopes, matching the three
+    // snapshot rows written for the same day.
+    expect(new Set(targets.map((r) => r.teamId))).toEqual(new Set([null, alpha, beta]));
+    expect(Number(targets.find((r) => r.teamId === null)?.points)).toBe(10);
+    expect(Number(targets.find((r) => r.teamId === alpha)?.points)).toBe(6);
+    expect(targets.find((r) => r.teamId === alpha)?.count).toBe(1);
+    expect(Number(targets.find((r) => r.teamId === beta)?.points)).toBe(4);
+
+    const [allTeams, alphaReport, betaReport] = await Promise.all([
+      reporting.getReleaseBurnup(admin, { projectId, releaseId: release.id }),
+      reporting.getReleaseBurnup(admin, { projectId, releaseId: release.id, teamId: alpha }),
+      reporting.getReleaseBurnup(admin, { projectId, releaseId: release.id, teamId: beta }),
+    ]);
+    // All Teams measured over the whole release — 10 — and each team races its own goal.
+    expect(allTeams.idealTarget).toBe(10);
+    expect(alphaReport.idealTarget).toBe(6);
+    expect(betaReport.idealTarget).toBe(4);
+    // The Ideal is actually plotted per scope, not merely reported in the header.
+    expect(alphaReport.points.some((p) => p.ideal !== null)).toBe(true);
+
+    // Item counts follow the same grain, because `Chart Unit` is a display switch over one population.
+    const alphaByCount = await reporting.getReleaseBurnup(admin, {
+      projectId,
+      releaseId: release.id,
+      teamId: alpha,
+      unit: 'count',
+    });
+    expect(alphaByCount.idealTarget).toBe(1);
+
+    /**
+     * Capture-once PER SCOPE. Alpha's scope grows; a later tick must move neither Alpha's target nor
+     * the All Teams sum that contains it (RT-BR-09).
+     */
+    await items.createWorkItem(admin, projectId, 'story', 'P6 bu alpha creep', {
+      releaseId: release.id,
+      teamId: alpha,
+      storyPoints: '8',
+    });
+    await snapshots.takeSnapshots();
+
+    const [allAfter, alphaAfter] = await Promise.all([
+      reporting.getReleaseBurnup(admin, { projectId, releaseId: release.id }),
+      reporting.getReleaseBurnup(admin, { projectId, releaseId: release.id, teamId: alpha }),
+    ]);
+    expect(alphaAfter.points.find((p) => p.date === localToday)?.planned).toBe(14);
+    expect(alphaAfter.idealTarget).toBe(6);
+    expect(allAfter.idealTarget).toBe(10);
+
+    const rowsAgain = await db
+      .select({ id: releaseTeamTargets.id })
+      .from(releaseTeamTargets)
+      .where(eq(releaseTeamTargets.releaseId, release.id));
+    expect(rowsAgain).toHaveLength(3);
   });
 
   it('validates the SCOPE on the burnup route, which returns no context', async () => {
