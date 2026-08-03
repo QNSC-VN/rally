@@ -19,6 +19,7 @@ import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
 import { useProjectMembers, useProjectTeams } from '@/features/teams/api'
 import {
   ScheduleState,
+  SCHEDULE_STATE_LABEL,
   getSimplifiedState,
   SIMPLIFIED_STATE_TO_SCHEDULE_STATE,
 } from '@/entities/work-item/model/types'
@@ -30,6 +31,10 @@ import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { DetailSectionHeading } from '@/shared/ui/detail/detail-field'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { InlineSelect } from '@/shared/ui/native-select'
 import { TableTotalsRow } from '@/shared/ui/table-totals-row'
 import {
   useDataTable,
@@ -84,6 +89,9 @@ export function TasksTab({
   const { project } = useAppContext()
   const projectLabel = project?.projectKey ?? project?.projectName ?? '--'
   const [showAdd, setShowAdd] = useState(false)
+  // Search + a State filter in the shared toolbar, as the Portfolio Children tab has them.
+  const [search, setSearch] = useState('')
+  const [stateFilter, setStateFilter] = useState<string>('all')
   const navigate = useNavigate()
 
   // ── Bulk actions: Delete + Copy (shared BulkDeleteCopy). `copySelected` is
@@ -119,8 +127,25 @@ export function TasksTab({
     [sortCol],
   )
 
+  const visibleTasks = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    return tasks.filter(
+      (task) =>
+        (needle === '' ||
+          task.itemKey.toLowerCase().includes(needle) ||
+          task.title.toLowerCase().includes(needle)) &&
+        (stateFilter === 'all' || task.scheduleState === stateFilter),
+    )
+  }, [tasks, search, stateFilter])
+
+  /** The states these tasks are actually in, so the filter never offers an empty result. */
+  const taskStates = useMemo(
+    () => [...new Set(tasks.map((task) => task.scheduleState))].sort(),
+    [tasks],
+  )
+
   const sortedTasks = useMemo(() => {
-    if (!sortCol) return tasks
+    if (!sortCol) return visibleTasks
     const factor = sortDir === 'asc' ? 1 : -1
     const numeric = sortCol === 'todo' || sortCol === 'actuals' || sortCol === 'estimate'
     const value = (wi: WorkItem): string | number => {
@@ -151,13 +176,13 @@ export function TasksTab({
           return ''
       }
     }
-    return [...tasks].sort((a, b) => {
+    return [...visibleTasks].sort((a, b) => {
       const av = value(a)
       const bv = value(b)
       if (numeric) return ((av as number) - (bv as number)) * factor
       return String(av).localeCompare(String(bv)) * factor
     })
-  }, [tasks, sortCol, sortDir, members, teams])
+  }, [visibleTasks, sortCol, sortDir, members, teams])
 
   // Drag-to-rerank (shared engine). Disabled while a non-rank column sort is
   // active (order detaches from rank) or in read-only mode. Persists via the
@@ -202,18 +227,52 @@ export function TasksTab({
   }
 
   return (
-    <div className="w-full">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-ui-xl font-semibold text-foreground">{t('tasks.heading')}</h2>
-          <p className="mt-1 text-ui-sm text-muted-foreground">{t('tasks.subtitle')}</p>
-        </div>
-        <Button size="sm" onClick={() => setShowAdd(true)}>
-          <Plus size={13} />
-          {t('tasks.add')}
-        </Button>
-      </div>
+    <div className="flex min-h-0 w-full flex-1 flex-col gap-2">
+      {/* The section heading, in the SAME `DetailSectionHeading` the Portfolio Children tab uses
+          above its own toolbar. This tab previously had a larger bespoke `<h2>` + subtitle pair;
+          moving to the shared toolbar dropped both, which left the grid with no title at all. */}
+      <DetailSectionHeading>{t('tasks.heading')}</DetailSectionHeading>
+
+      {/* The shared toolbar the Portfolio Children tab established: search, Add New, Filters and
+          Show Fields. This tab had a bare heading and an Add button, so the two grids looked
+          unrelated above the table even though they share every component inside it. */}
+      <PageToolbar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: t('tasks.search'),
+          ariaLabel: t('tasks.search'),
+          width: 220,
+        }}
+        actions={
+          readOnly ? undefined : (
+            <Button size="sm" onClick={() => setShowAdd(true)}>
+              <Plus size={14} /> {t('tasks.add')}
+            </Button>
+          )
+        }
+        activeFilterCount={stateFilter !== 'all' ? 1 : 0}
+        defaultFiltersOpen={stateFilter !== 'all'}
+        filters={
+          <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+            {t('tasks.filterState')}
+            <InlineSelect
+              value={stateFilter}
+              aria-label={t('tasks.filterState')}
+              onChange={(e) => setStateFilter(e.target.value)}
+              className="w-auto"
+            >
+              <option value="all">{t('tasks.allStates')}</option>
+              {taskStates.map((state) => (
+                <option key={state} value={state}>
+                  {SCHEDULE_STATE_LABEL[state as ScheduleState] ?? state}
+                </option>
+              ))}
+            </InlineSelect>
+          </label>
+        }
+        fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
+      />
 
       {/* Shared SelectableTable owns selection + header select-all gutter +
           BulkActionBar (Set State) + chrome — identical shell as the other
