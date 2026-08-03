@@ -2,9 +2,31 @@
  * Work Item Detail Page — P1-WI-DETAIL / P1-TASK
  *
  * Route: /item/$itemKey
- * Story/Defect: 3 tabs — Details | Tasks | Revision History
- * Task:         2 tabs — Details | Revision History
+ * Story/Defect: Details | Tasks | Connections | Revision History
+ * Task:         Details | Connections | Revision History
  * Sidebar differs by type (task shows time fields + Work Product link).
+ *
+ * NO `Defects` TAB, and it is not an oversight — it was built, then removed under
+ * `GAP-P1-WID-001`. The BA's own audit (`06_Dev testing align/notes/P1-WID-01.md`) records the
+ * approved structure as "Details, Tasks, Revision History", flags the shipped tab as "`Defects` is
+ * additional to the approved mockup/SRS scope", and its BA-confirmed fix direction (2026-07-19) is
+ * "hide/remove the additional `Defects` tab from this Phase 1 scope". Real Rally has no such tab
+ * either. A child defect is reached from Quality or the Backlog; the link itself is not lost.
+ *
+ * This docblock claimed "3 tabs" throughout the tab's whole life, so the comment was never the
+ * thing that drifted — the tab bar was.
+ *
+ * THREE OTHER ADDITIONS ARE STILL HERE ON PURPOSE. Do not remove any of them on the strength of
+ * this comment; each has a different status, and only `Defects` had an instruction to Dev.
+ *
+ *  - `LinkedItemsBlock` and `CommentThread` (both on the Details tab) — the same note flags these
+ *    as "beyond the current mockup/SRS", but assigns the action to BA/Mockup, not Dev: "evaluate
+ *    extra Linked Items and Comments for Future Backlog". That evaluation has not happened —
+ *    `04_Developement_tracking/Future_Backlog/` holds only Team Board, Release Planning and
+ *    Iteration Status Board. Pending a BA decision, not a dev cleanup.
+ *  - `Connections` (SCM pull requests + changesets) — NOT what the note means by "Linked Items";
+ *    that is `LinkedItemsBlock` above. Connections appears in NO BA document: not approved, not
+ *    rejected, not recorded as an extra. It postdates the audit and nobody has ruled on it.
  */
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -12,7 +34,6 @@ import { useParams, useNavigate } from '@tanstack/react-router'
 import {
   Bell,
   BellOff,
-  Bug,
   FileText,
   GitPullRequest,
   History,
@@ -25,7 +46,6 @@ import {
   useUpdateWorkItem,
   useWatchers,
   useToggleWatch,
-  useChildDefects,
   useWorkItemConnections,
   useWorkItemChangesets,
   type WorkItem,
@@ -37,7 +57,7 @@ import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { DetailLayout } from '@/shared/ui/detail/detail-layout'
 import { DetailHeaderButton } from '@/shared/ui/detail-header'
 import { TasksTab } from './ui/tasks-tab'
-import { HistoryTab, DefectsTab } from './ui/detail-tabs'
+import { HistoryTab } from './ui/detail-tabs'
 import { ConnectionsTab } from './ui/connections-tab'
 import { DetailSidebar } from './ui/detail-sidebar'
 import { BRAND } from '@/shared/config/brand'
@@ -54,7 +74,7 @@ import { useUploadPastedImages } from '@/features/collaboration/use-upload-paste
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type DetailTab = 'details' | 'tasks' | 'defects' | 'connections' | 'history'
+type DetailTab = 'details' | 'tasks' | 'connections' | 'history'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -176,14 +196,6 @@ export function WorkItemDetailPage() {
   const toggleWatch = useToggleWatch(itemByKey?.id)
   const isWatching = watchers.some((w) => w.userId === currentUserId)
 
-  // Defects tab: fetch child defects for stories
-  const isStory = itemByKey?.type === 'story'
-  const { data: childDefects = [] } = useChildDefects(
-    isStory ? itemByKey.id : undefined,
-    isStory ? itemByKey.projectId : undefined,
-  )
-  const defectCount = childDefects.length
-
   // Tasks tab count (DEV-012): drive from the SAME collection the Tasks table
   // and roll-up read, so the badge always matches the persisted child tasks and
   // refreshes after a create/delete (both invalidate the ['work-items'] root).
@@ -280,20 +292,6 @@ export function WorkItemDetailPage() {
           },
         ]
       : []),
-    ...(isStory
-      ? [
-          {
-            id: 'defects' as DetailTab,
-            icon: (
-              <span className="flex items-center gap-1.5">
-                <Bug size={19} />
-                <span className="text-ui-xs font-semibold tabular-nums">{defectCount}</span>
-              </span>
-            ),
-            label: t('tabs.defects'),
-          },
-        ]
-      : []),
     {
       id: 'connections',
       icon: (
@@ -375,9 +373,6 @@ export function WorkItemDetailPage() {
           )}
           {activeTabId === 'tasks' && !isTask && (
             <TasksTab workItemId={item.id} projectId={item.projectId} readOnly={readOnly} />
-          )}
-          {activeTabId === 'defects' && isStory && (
-            <DefectsTab workItemId={item.id} projectId={item.projectId} />
           )}
           {activeTabId === 'connections' && <ConnectionsTab workItemId={item.id} />}
           {activeTabId === 'history' && <HistoryTab workItemId={item.id} />}

@@ -5,9 +5,17 @@ import { useNavigate } from '@tanstack/react-router'
 import { useSortable } from '@dnd-kit/sortable'
 import { toast } from 'sonner'
 
-import { useDataTable, useRowRerank, useDragRowStyle, SelectableTable } from '@/shared/ui/table'
+import {
+  useDataTable,
+  useRowRerank,
+  useDragRowStyle,
+  SelectableTable,
+  RankCell,
+} from '@/shared/ui/table'
 import { TableTotalsRow } from '@/shared/ui/table-totals-row'
-import { SearchInput } from '@/shared/ui/search-input'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
+import { InlineSelect } from '@/shared/ui/native-select'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
@@ -55,6 +63,7 @@ export function EpicChildrenTable({
   const { t } = useTranslation('portfolio')
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
+  const [stateFilter, setStateFilter] = useState<string>('all')
   const { sortField, sortDir, toggle } = useTableSort<EpicSortField>()
 
   const table = useDataTable<PortfolioItem, unknown, EpicChildColKey>(EPIC_CHILD_COLUMNS, {
@@ -76,12 +85,16 @@ export function EpicChildrenTable({
     const needle = search.trim().toLowerCase()
     const rows = features.filter(
       (feature) =>
-        needle === '' ||
-        feature.itemKey.toLowerCase().includes(needle) ||
-        feature.name.toLowerCase().includes(needle),
+        (needle === '' ||
+          feature.itemKey.toLowerCase().includes(needle) ||
+          feature.name.toLowerCase().includes(needle)) &&
+        (stateFilter === 'all' || feature.state === stateFilter),
     )
     return sortFeatures(rows, sortField, sortDir)
-  }, [features, search, sortField, sortDir])
+  }, [features, search, stateFilter, sortField, sortDir])
+
+  /** The states these Features are actually in, so the filter never offers an empty result. */
+  const featureStates = useMemo(() => [...new Set(features.map((f) => f.state))].sort(), [features])
 
   const selection = useRowSelection(visible)
 
@@ -114,12 +127,37 @@ export function EpicChildrenTable({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <SearchInput
-        value={search}
-        onChange={setSearch}
-        ariaLabel={t('detail.children.searchFeatures')}
-        placeholder={t('detail.children.searchFeatures')}
-        width={240}
+      {/* The same toolbar the Feature Children tab uses — search, Filters, Show Fields. No Add
+          New: a child Feature is created from the Portfolio list, not from inside its Epic. */}
+      <PageToolbar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: t('detail.children.searchFeatures'),
+          ariaLabel: t('detail.children.searchFeatures'),
+          width: 220,
+        }}
+        activeFilterCount={stateFilter !== 'all' ? 1 : 0}
+        defaultFiltersOpen={stateFilter !== 'all'}
+        filters={
+          <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
+            {t('detail.children.filterState')}
+            <InlineSelect
+              value={stateFilter}
+              aria-label={t('detail.children.filterState')}
+              onChange={(e) => setStateFilter(e.target.value)}
+              className="w-auto"
+            >
+              <option value="all">{t('detail.children.allStates')}</option>
+              {featureStates.map((state) => (
+                <option key={state} value={state}>
+                  {t(`states.${state}`, { defaultValue: state })}
+                </option>
+              ))}
+            </InlineSelect>
+          </label>
+        }
+        fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
       />
 
       <SelectableTable
@@ -241,9 +279,7 @@ function EpicChildRow({
         stopPropagation
         checkbox={{ checked: selected, onChange: onToggleSelect, ariaLabel: selectLabel }}
       />
-      <div style={colStyles.rank} className="px-2 text-right text-muted-foreground tabular-nums">
-        {rowNum}
-      </div>
+      <RankCell rowNum={rowNum} style={colStyles.rank} />
       <div style={colStyles.id} className="flex items-center px-2">
         <IdCell type={feature.type} itemKey={feature.itemKey} onOpen={onOpen} />
       </div>
