@@ -39,6 +39,7 @@
  * about what the form can do. `P5-PI-039` tests that an Epic has no Release selector.
  */
 import { useTranslation } from 'react-i18next'
+import { ProjectCell } from '@/shared/ui/project-cell'
 
 import { type PortfolioItemDetail, type UpdatePortfolioItemBody } from '@/features/portfolio/api'
 import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
@@ -99,7 +100,7 @@ export function PortfolioDetailSidebar({
           resets its Team and drops a cross-project Release or Epic, so it belongs to the
           grid's Project cell where that consequence is visible in the row. */}
       <DetailField label={t('detail.fields.project')}>
-        <DetailReadonlyValue>{item.projectName ?? '--'}</DetailReadonlyValue>
+        <ProjectCell projectName={item.projectName} />
       </DetailField>
 
       {!isEpic && (

@@ -6,6 +6,7 @@
  * P3.3: Added Artifacts tab showing linked US/DE work items.
  */
 import { useState } from 'react'
+import { ProjectCell } from '@/shared/ui/project-cell'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
@@ -188,7 +189,10 @@ export function ReleaseDetailPage() {
             <>
               <div className="space-y-4">
                 <DetailField label={t('detailPage.projectScope')}>
-                  <DetailReadonlyValue>{project?.projectName ?? '--'}</DetailReadonlyValue>
+                  <ProjectCell
+                    projectKey={project?.projectKey}
+                    projectName={project?.projectName}
+                  />
                 </DetailField>
 
                 <DetailField label={t('detailPage.lifecycleState')}>

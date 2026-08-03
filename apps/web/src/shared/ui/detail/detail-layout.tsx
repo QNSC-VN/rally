@@ -42,7 +42,12 @@ interface DetailLayoutProps {
    * Entity-wide summary rendered BETWEEN the header and the tabs.
    *
    * For anything that describes the whole record rather than one tab — the capacity plan's metric
-   * panel, for instance. Omit and the tabs sit directly under the header.
+   * panel, for instance. Omit and the tabs join the dark header block.
+   *
+   * Passing this ALSO changes where the tabs live: a summary has to sit under the header it
+   * describes, so the tabs move below it and onto the page background. Otherwise the page would
+   * read navy / white summary / navy tabs — three bands where there should be two. The tab bar
+   * follows suit and renders light (see {@link DetailTabBar}); only the Capacity Plan does this.
    */
   summary?: ReactNode
   // ── Tabs ─────────────────────────────────────────────────────────────────
@@ -69,8 +74,10 @@ export function DetailLayout({
 }: DetailLayoutProps) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
-      {/* The dark bar is the HEADER only. Rally keeps its tabs on the page background below it,
-          which is also what makes room for a summary row between the two. */}
+      {/* ONE dark block: the header, and the tabs with it when there is no summary. Rally keeps
+          its tabs on the page background, and this deliberately diverges — a white band between
+          the navy header and the tabs split one heading into two, and the tabs name the entity the
+          header names. */}
       <div className="shrink-0 bg-primary-dark text-white">
         <DetailHeader
           onBack={onBack}
@@ -81,13 +88,17 @@ export function DetailLayout({
           status={status}
           actions={actions}
         />
+        {!summary && <DetailTabBar tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} />}
       </div>
 
-      {/* Above the tabs on purpose: a summary describes the whole entity, so it must not look like
-          it belongs to whichever tab happens to be selected. Rally orders it the same way. */}
+      {/* A summary describes the whole entity, so it belongs directly under the header rather than
+          below the tabs, where it would read as part of whichever tab is selected. That pushes the
+          tabs out of the dark block — three bands of navy / white / navy is worse than the light
+          tab bar this keeps, which is what the Capacity Plan had all along. */}
       {summary}
-
-      <DetailTabBar tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} />
+      {summary && (
+        <DetailTabBar tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} light />
+      )}
 
       {children}
     </div>

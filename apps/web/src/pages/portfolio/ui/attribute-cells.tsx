@@ -22,8 +22,7 @@
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 import { TeamAvatar, TeamCell } from '@/shared/ui/team-cell'
-import { KeyChip } from '@/shared/ui/key-chip'
-import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-options'
+import { type PortfolioCellOptions } from '../model/cell-options'
 
 /** The em-dash every one of these cells shows when the value is unset. */
 function EmptyCell() {
@@ -112,76 +111,9 @@ export function ReleaseSelectCell({
   )
 }
 
-/**
- * Project column — which project the item lives in, and a MOVE when you change it.
- *
- * Editable per SRS §3.1 (`Project | Yes`) and FR-004, for both Epic and Feature. Rally
- * itself recommends this: an item starts in a strategy project and moves to an execution
- * project once a team picks it up.
- *
- * Changing it is not a plain field write — the server resets the Team to one linked to
- * the destination and drops a Release or parent Epic that belonged to the old project
- * (`applyProjectMove`). So the toast says "moved", not "updated", and the row's other
- * cells will visibly change with it. Child Features of a moved Epic deliberately stay
- * put.
- */
-export function ProjectSelectCell({
-  projectId,
-  projectName,
-  projects,
-  canEdit,
-  ariaLabel,
-  onChange,
-}: {
-  projectId: string
-  projectName?: string | null
-  projects: ProjectOption[]
-  canEdit: boolean
-  ariaLabel: string
-  onChange: (projectId: string) => void
-}) {
-  if (!canEdit) {
-    return (
-      <span className="px-2 break-words whitespace-normal text-muted-foreground">
-        {projectName ?? '--'}
-      </span>
-    )
-  }
-
-  // No clear option: an item ALWAYS belongs to a project, unlike every other reference
-  // in this module.
-  const options: SelectOption[] = projects.map((p) => ({
-    value: p.id,
-    label: p.name,
-    searchText: `${p.key} ${p.name}`,
-    icon: (
-      <KeyChip size="sm" tone="project">
-        {p.key}
-      </KeyChip>
-    ),
-  }))
-
-  if (!projects.some((p) => p.id === projectId)) {
-    options.unshift({ value: projectId, label: projectName ?? projectId })
-  }
-
-  return (
-    <SearchableSelect
-      variant="cell"
-      value={projectId}
-      // A project name is long enough to matter, and Rally wraps this column.
-      wrapLabel
-      ariaLabel={ariaLabel}
-      searchPlaceholder="Search"
-      options={options}
-      // Guarded here as well as at the call site: clearing is not a legal transition, so
-      // an empty value must never reach the API as a move.
-      onChange={(v) => {
-        if (v && v !== projectId) onChange(v)
-      }}
-    />
-  )
-}
+// `ProjectSelectCell` now lives in `shared/ui/project-cell.tsx` — it is re-exported below so
+// this module stays the single import site for the grid's related-entity cells.
+export { ProjectSelectCell, type ProjectOption } from '@/shared/ui/project-cell'
 
 /**
  * Team column — square key-chip + name (circle = person, square = team).

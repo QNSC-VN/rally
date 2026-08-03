@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { ProjectCell } from '@/shared/ui/project-cell'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { PanelRightClose } from 'lucide-react'
@@ -271,7 +272,7 @@ export function DetailSidebar({
         {/* Project — read-only (WID-FR-007). A work item's project is fixed. */}
         <FormField label={t('sidebar.project', 'Project')}>
           <div className="flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground">
-            {project?.projectName ?? '--'}
+            <ProjectCell projectKey={project?.projectKey} projectName={project?.projectName} />
           </div>
         </FormField>
 

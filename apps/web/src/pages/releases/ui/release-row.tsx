@@ -1,4 +1,5 @@
 import { type CSSProperties, type ReactNode } from 'react'
+import { ProjectCell } from '@/shared/ui/project-cell'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 
@@ -234,7 +235,7 @@ export function ReleaseRow({
         onClick={(e) => e.stopPropagation()}
       >
         <span className="block break-words whitespace-normal text-muted-foreground">
-          {project?.projectName ?? '--'}
+          <ProjectCell projectKey={project?.projectKey} projectName={project?.projectName} />
         </span>
       </div>
 

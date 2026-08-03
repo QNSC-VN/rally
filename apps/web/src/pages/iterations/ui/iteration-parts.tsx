@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ProjectCell } from '@/shared/ui/project-cell'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { FileText, History, Loader2 } from 'lucide-react'
@@ -368,7 +369,10 @@ export function IterationDetail({
               sidebar={
                 <div className="space-y-4">
                   <DetailField label={t('detail.projectLabel')}>
-                    <DetailReadonlyValue>{project?.projectName ?? '--'}</DetailReadonlyValue>
+                    <ProjectCell
+                      projectKey={project?.projectKey}
+                      projectName={project?.projectName}
+                    />
                   </DetailField>
 
                   <TeamSelectField
