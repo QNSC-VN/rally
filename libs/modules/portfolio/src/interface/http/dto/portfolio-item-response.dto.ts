@@ -159,6 +159,12 @@ const PortfolioChildSchema = z.object({
   priority: z.enum(PRIORITIES).describe("The BA's `Priority` column on the Children tab"),
   iterationId: z.string().uuid().nullable(),
   iterationName: z.string().nullable().describe("The BA's `Iteration` column"),
+  /**
+   * The stored LexoRank. Already the query's ORDER BY, so the rows arrive in it — exposing it lets
+   * the Children tab drag-to-rank through `PATCH /v1/work-items/{id}/rank`, the same endpoint the
+   * Backlog uses. Without it the client received an ordered list it could not reorder.
+   */
+  rank: z.string(),
   /** IDs alongside the names, so the disclosed child rows can edit in place. */
   projectId: z.string().uuid(),
   releaseId: z.string().uuid().nullable(),

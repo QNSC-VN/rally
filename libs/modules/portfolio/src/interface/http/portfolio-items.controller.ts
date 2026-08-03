@@ -120,6 +120,9 @@ function toChildDto(c: PortfolioChildItem): PortfolioChildResponseDto {
     priority: c.priority,
     iterationId: c.iterationId,
     iterationName: c.iterationName,
+    // The repository already ordered by and returned this; only the DTO mapping dropped it, so
+    // the Children tab received a rank-ordered list it had no way to reorder.
+    rank: c.rank,
     projectId: c.projectId,
     releaseId: c.releaseId,
     teamId: c.teamId,

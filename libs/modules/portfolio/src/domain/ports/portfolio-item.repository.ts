@@ -148,6 +148,8 @@ export interface PortfolioChildItem {
   priority: WorkItemPriority;
   iterationId: string | null;
   iterationName: string | null;
+  /** The stored LexoRank — already this list's ORDER BY, and what drag-to-rank reorders. */
+  rank: string;
   /** IDs as well as names, so a grid can bind an editable picker to the child. */
   projectId: string;
   releaseId: string | null;
