@@ -110,9 +110,9 @@ export function usePlanLookups(plan: CapacityPlan | undefined): PlanLookups {
   }, [plan?.items])
 
   /**
-   * `itemCutlineIndex` is the item the line is drawn AFTER — §189's tipping Feature — so the line
-   * belongs above the NEXT one, and there is no line when that index is the last row. `null` (no
-   * capacity entered anywhere) draws nothing either: there is no number for a running total to exceed.
+   * `itemCutlineIndex` is the last item that FITS, so the line belongs above the NEXT one. `-1` means
+   * even the first exceeds the plan, so it lands above the first; `null` (no capacity entered anywhere)
+   * draws nothing, because there is no number for a running total to exceed.
    */
   const cutlineBeforeId = useMemo(() => {
     const items = plan?.items ?? []

@@ -218,24 +218,33 @@ export function computeCapacityWarnings(input: CapacityWarningInput): CapacityWa
 }
 
 /**
- * Where the Capacity Cutline is drawn: after the LAST Feature above the line.
+ * Where the Capacity Cutline is drawn: after the last Feature that FITS inside the plan's capacity.
  *
- * Capacity SRS §189, exactly: "rendered after the first Feature where cumulative planning Estimated
- * (§11) reaches or exceeds Plan total Capacity". So the Feature that TIPS the plan over sits ABOVE the
- * line — it is the last one the plan is committing to, not the first one it drops.
+ * RALLY'S RULE, quoted from the capacity plan's Items tab (Broadcom TechDocs, "Items Tab" —
+ * techdocs.broadcom.com/.../capacity-plan-items-tab.html):
  *
- * This used to return the last item that still FIT, putting the tipping Feature below the line. The
- * difference is one row, and it is the row a planner argues about: with a capacity of 100 and estimates
- * 90, 20, 5, the BA's line falls after the 20 (the plan is 110 against 100 and knows it), where the old
- * rule fell after the 90 and reported the 20 as dropped. "Reaches OR exceeds" is what makes the
- * boundary inclusive; a plan filled exactly to its capacity is committed, not overflowing.
+ *   "Items above the cutline fit within the defined plan capacity. Items below the line exceed the
+ *    capacity of the plan."
+ *   "The cutline only displays when you sort portfolio items by rank in ascending order."
  *
- * Walked in rank order, and Rally draws the line only in rank-ascending order — in any other order a
- * running total means nothing.
+ * So the Feature that TIPS the plan over its capacity belongs BELOW the line: it does not fit, which is
+ * what the line is reporting. Only rank-ascending order, because in any other order a running total
+ * means nothing.
  *
- * Returns the 0-based index of that Feature. When the running total never reaches capacity, everything
- * is above the line and the last index is returned, which renders no line (there is no NEXT row to draw
- * it above). `null` capacity means there is no number to exceed, so no line at all.
+ * DECLARED DIVERGENCE from Capacity SRS §189, which says the line is "rendered after the first Feature
+ * where cumulative planning Estimated reaches or exceeds Plan total Capacity" — that puts the
+ * overflowing Feature above the line. The two readings differ by exactly one row, and it is the row a
+ * planner argues about: capacity 100 against estimates 90, 20, 5 puts the 20 below the line here and
+ * above it under §189. Ruled in Rally's favour, on the same grounds as the Project/Release child filter
+ * in `childWorkPredicate` — the product's documented behaviour wins where the SRS restates it
+ * differently, and "above the line fits" is the sentence the whole feature exists to communicate.
+ *
+ * This briefly shipped as §189's reading and was reverted once Broadcom's wording was confirmed; see
+ * `CLAUDE.md`, "Declared divergences from the BA".
+ *
+ * Returns the 0-based index of the last item that fits, or -1 when the first item already exceeds
+ * capacity (nothing fits, so the line sits above everything). `null` capacity means there is no ceiling
+ * to compare against, so no line at all.
  */
 export function computeCutlineIndex(
   estimatesInRankOrder: readonly number[],
@@ -244,12 +253,14 @@ export function computeCutlineIndex(
   if (capacity === null || capacity <= 0) return null;
 
   let running = 0;
+  let lastFitting = -1;
   for (let i = 0; i < estimatesInRankOrder.length; i += 1) {
     running += estimatesInRankOrder[i] ?? 0;
-    if (running >= capacity) return i;
+    // `>` not `>=`: a plan filled EXACTLY to its capacity fits, so that item stays above the line.
+    if (running > capacity) break;
+    lastFitting = i;
   }
-  // Nothing reached capacity: the whole list is above the line.
-  return estimatesInRankOrder.length - 1;
+  return lastFitting;
 }
 
 /**

@@ -256,15 +256,9 @@ test.describe('Capacity allocation', () => {
     await setCapacity(page, 'Team Beta', '0')
     await expect(teamRow(page)).toContainText('5')
 
-    /**
-     * THREE Features at 4 points each, against a plan capacity of 5.
-     *
-     * §189 draws the line after the first Feature whose cumulative Estimated reaches or exceeds
-     * capacity: 4, then 8 — so the SECOND is the tipping Feature and sits above the line, leaving the
-     * third below it. Two Features were enough while the line sat after the last one that FIT; now the
-     * tipping row is above, so a third is needed for there to be anything below the line at all.
-     */
-    for (const feature of [/FE-1/, /FE-2/, /FE-3/]) {
+    // `openPlan` reset the board, so these are the only two Features on the plan: 4 points each,
+    // the first fits inside 5, the second does not — so the line falls between them.
+    for (const feature of [/FE-1/, /FE-2/]) {
       await allocateFeature(page, feature, /Team Alpha/, '4')
     }
 
@@ -276,7 +270,7 @@ test.describe('Capacity allocation', () => {
 
     await page.getByRole('tab', { name: /Features/ }).click()
     await expect(page.getByRole('separator', { name: /Capacity cutline/i })).toBeVisible()
-    // Exactly one Feature is marked as not fitting — the third.
+    // Exactly one Feature is marked as not fitting — the second.
     await expect(page.locator('[data-below-cutline="true"]')).toHaveCount(1)
 
     // Survives a reload: the index came from the API, not from local state.
@@ -288,7 +282,7 @@ test.describe('Capacity allocation', () => {
 
     // ── Restore the seeded state ─────────────────────────────────────────────
     await expandTeam(page)
-    for (const key of ['FE-1', 'FE-2', 'FE-3']) {
+    for (const key of ['FE-1', 'FE-2']) {
       await removeFeature(page, key)
     }
     const reset = await (async () => {
