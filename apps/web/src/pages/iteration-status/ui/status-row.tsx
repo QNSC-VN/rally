@@ -160,7 +160,6 @@ export function StatusRow({
           minWidth: 'max-content',
           ...rowStyle,
         }}
-        {...(dragEnabled && canEdit ? attributes : {})}
         onMouseOver={(e) => {
           e.currentTarget.style.backgroundColor = BRAND.primaryLighter
         }}
@@ -174,6 +173,7 @@ export function StatusRow({
           ref={setActivatorNodeRef}
           dragDisabled={!dragEnabled || !canEdit}
           dragListeners={dragEnabled && canEdit ? listeners : undefined}
+          dragAttributes={dragEnabled && canEdit ? attributes : undefined}
           stopPropagation
           checkbox={{
             checked: selected,

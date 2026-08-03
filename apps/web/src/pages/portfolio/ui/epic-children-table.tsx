@@ -232,11 +232,11 @@ function EpicChildRow({
       // `useDragRowStyle`, so this row cannot drift from the other six drag grids.
       className="group flex min-h-[34px] min-w-max items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
       style={dragStyle}
-      {...(dragDisabled ? {} : attributes)}
     >
       <RowGutter
         ref={setActivatorNodeRef}
         dragListeners={dragDisabled ? undefined : listeners}
+        dragAttributes={dragDisabled ? undefined : attributes}
         dragDisabled={dragDisabled}
         stopPropagation
         checkbox={{ checked: selected, onChange: onToggleSelect, ariaLabel: selectLabel }}
