@@ -272,6 +272,16 @@ difference is the whole design. Read this before changing a report or the snapsh
 - **`release_daily_snapshots.team_id IS NULL` is the All Teams row, and it is MEASURED, not
   summed** from the Team rows: a work item two Teams both touch must be counted once. Points
   and count live on the same row because `Chart Unit` is a display switch over one population.
+- **An absent number renders `EMPTY_VALUE` (`--`), never `0`.** `data` is `undefined` both while a
+  request is in flight and after it fails, so `?? 0` turns a network fault into a measured claim:
+  Release Tracking showed three large zeros ("this release has no Features") and Team Capacity four
+  `0h` cards ("this team planned nothing") — the latter directly ABOVE its own error message, because
+  the error branch sat on the table and the KPI strip is above it. `ReportSurface` now takes an `error`
+  slot so the strip and the body go absent together; a report that passes it must also render its
+  `strip` in the absent state, since the strip is the caller's node. Velocity never read `isError` at
+  all and rendered §6's own sentence "no completed iteration with scheduled work exists" for a 500.
+  The KPI row stays MOUNTED through all of this — the BA's structure-preserving rule — which is exactly
+  why the values cannot be coerced.
 - Report series colours are `--report-*` tokens (both themes) in `globals.css`, exposed via
   `BRAND.report*`. They are data colours fixed by the BA, deliberately not `primary`.
 - **A chart must pass `dataTable` to `ChartFrame`, and the SVG is `aria-hidden`.** A recharts plot is

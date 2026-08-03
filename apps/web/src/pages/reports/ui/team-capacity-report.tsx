@@ -14,6 +14,7 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { useIterations } from '@/features/iterations/api'
 import { useTeamCapacityReport, type TeamCapacityTeam } from '@/features/reporting/api'
@@ -39,8 +40,16 @@ type ColKey = 'member' | 'capacity' | 'estimate' | 'todo' | 'actual'
 const HOUR_KEYS = ['capacity', 'estimate', 'todo', 'actual'] as const
 type HourKey = (typeof HOUR_KEYS)[number]
 
-/** `132h`. Hours are already rounded server-side; this only adds the unit. */
-const formatHours = (value: number) => `${value}h`
+/**
+ * `132h`, or `--` when there is no number yet.
+ *
+ * `undefined` reaches here while the request is in flight and after it fails, and it used to be
+ * coerced with `?? 0` — so a failed load printed four measured-looking `0h` cards above an error
+ * message. `EMPTY_VALUE` is what the rest of the app renders for an absent value, and the KPI row
+ * stays mounted so the layout does not jump.
+ */
+const formatHours = (value: number | undefined) =>
+  value === undefined ? EMPTY_VALUE : `${value}h`
 
 /**
  * Hours off a totals/member record by column key. One mapping, used by the group row, the
@@ -154,12 +163,12 @@ export function TeamCapacityReport({
         <MetricStrip>
           <MetricCard
             label={t('capacity.indicators.capacity')}
-            value={formatHours(totals?.capacityHours ?? 0)}
+            value={formatHours(totals?.capacityHours)}
             minWidth={120}
           />
           <MetricCard
             label={t('capacity.indicators.estimate')}
-            value={formatHours(totals?.estimateHours ?? 0)}
+            value={formatHours(totals?.estimateHours)}
             minWidth={120}
           />
           {/* No `valueColor` on any of the four. ToDo was amber and Actual green, which reads as a
@@ -168,15 +177,26 @@ export function TeamCapacityReport({
               already neutral, so three of the four values also disagreed about what a colour meant. */}
           <MetricCard
             label={t('capacity.indicators.todo')}
-            value={formatHours(totals?.todoHours ?? 0)}
+            value={formatHours(totals?.todoHours)}
             minWidth={120}
           />
           <MetricCard
             label={t('capacity.indicators.actual')}
-            value={formatHours(totals?.actualHours ?? 0)}
+            value={formatHours(totals?.actualHours)}
             minWidth={120}
           />
         </MetricStrip>
+      }
+      /**
+       * A failed load is NOT an empty scope — that told the reader "no capacity has been planned", a
+       * data conclusion drawn from a network fault. It sits on the SHELL rather than on the table so
+       * the four indicators go absent with it; on the table it rendered below a strip still showing
+       * `0h`.
+       */
+      error={
+        isError ? (
+          <EmptyState title={t('capacity.error.title')} description={t('capacity.error.body')} />
+        ) : undefined
       }
     >
       <DataTableFrame<ColKey>
@@ -188,14 +208,6 @@ export function TeamCapacityReport({
            same four numbers from the same `totals` object as the four indicator cards directly above
            it, on the same screen. §6 lists what the approved report contains and a table footer is
            not in it; the indicators ARE the totals. */
-        // A failed load is NOT an empty scope. Without this the query's error fell through to
-        // the empty state, which told the reader "no capacity has been planned" — a data
-        // conclusion drawn from a network fault.
-        error={
-          isError ? (
-            <EmptyState title={t('capacity.error.title')} description={t('capacity.error.body')} />
-          ) : undefined
-        }
         empty={
           teams.length === 0 ? (
             <EmptyState
