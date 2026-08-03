@@ -10,12 +10,14 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { useSortable } from '@dnd-kit/sortable'
+
 import { RowGutter } from '@/shared/ui/row-gutter'
+import { useDragRowStyle } from '@/shared/ui/table'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { RankCell } from '@/shared/ui/table'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { portfolioStateStyle } from '@/features/portfolio/status-colors'
-import { ReorderButtons } from '@/shared/ui/reorder-buttons'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { BRAND } from '@/shared/config/brand'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
@@ -60,7 +62,7 @@ import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-opt
 export function PortfolioRow({
   item,
   rowNum,
-  moveHandlers,
+  canRank,
   canEdit,
   members,
   canEditProject,
@@ -79,7 +81,6 @@ export function PortfolioRow({
    * The BA's up/down reorder handlers (§37, FR-005), absent at the ends of the list and while a
    * column sort is active — the running order means nothing under any other sort.
    */
-  moveHandlers: { onMoveUp?: () => void; onMoveDown?: () => void }
   /** Highlighted because the user was just sent here — see the scaffold's `revealRowId`. */
   revealed?: boolean
   canEdit: boolean
@@ -99,6 +100,8 @@ export function PortfolioRow({
   optionsFor: (projectId: string) => PortfolioCellOptions
   colStyleFor: (key: ColKey, base?: CSSProperties) => CSSProperties
   /** Gutter configuration from the list scaffold; the row renders the gutter itself. */
+  /** Drag-to-rank allowed for THIS row: rank order active, and edit rights on its project. */
+  canRank: boolean
   gutterProps: {
     stopPropagation: true
     checkbox?: { checked: boolean; onChange: () => void; ariaLabel: string }
@@ -116,6 +119,16 @@ export function PortfolioRow({
    * add a second source of truth for the same fact. Same shape as Iteration Status.
    */
   const [expanded, setExpanded] = useState(false)
+  const {
+    setNodeRef,
+    setActivatorNodeRef,
+    listeners,
+    attributes,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id })
+  const dragStyle = useDragRowStyle({ transform, transition, isDragging })
   const expandable = hasChildren(item)
 
   // Shared commit helper: fire the mutation with the standard success/error toasts.
@@ -128,31 +141,29 @@ export function PortfolioRow({
   return (
     <>
       <div
+        ref={setNodeRef}
         className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
         // Named so a test can find the row the user was just sent to, and so a screen reader is
         // not told about a purely visual hint.
         data-revealed={revealed || undefined}
-        style={{ backgroundColor: revealed ? BRAND.accentBg : undefined }}
+        // The drag transform and the reveal highlight share one `style`: the shared
+        // `useDragRowStyle` supplies transform/transition/opacity, and the reveal colour is layered
+        // on top so a row that is both dragged and revealed keeps both.
+        style={{ ...dragStyle, backgroundColor: revealed ? BRAND.accentBg : undefined }}
         /** An explicit handle for tests, which is what they should locate rows by. */
         data-portfolio-row={item.id}
       >
-        <RowGutter {...gutterProps} />
+        <RowGutter
+          ref={setActivatorNodeRef}
+          dragListeners={listeners}
+          dragAttributes={attributes}
+          dragDisabled={!canRank}
+          {...gutterProps}
+        />
 
         {/* Rank, with the up/down controls (§37, FR-005). Its own cell rather than the gutter: the
             number is a column FR-002 names, and the buttons belong next to what they change. */}
-        <RankCell
-          rowNum={rowNum}
-          style={colStyleFor('rank', { flexShrink: 0 })}
-          actions={
-            canEdit ? (
-              <ReorderButtons
-                upLabel={t('rank.moveUp', { item: item.itemKey })}
-                downLabel={t('rank.moveDown', { item: item.itemKey })}
-                {...moveHandlers}
-              />
-            ) : undefined
-          }
-        />
+        <RankCell rowNum={rowNum} style={colStyleFor('rank', { flexShrink: 0 })} />
 
         {/* ID — the disclosure chevron sits to the LEFT of the type glyph (Rally parity,
           same placement as Iteration Status), then the same TypeBadge + key cell as
