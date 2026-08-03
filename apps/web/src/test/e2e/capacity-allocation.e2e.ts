@@ -211,7 +211,9 @@ test.describe('Capacity allocation', () => {
     }
   }
 
-  test('allocates a Feature to a team, names the value SOURCE, then removes it', async ({ page }) => {
+  test('allocates a Feature to a team, names the value SOURCE, then removes it', async ({
+    page,
+  }) => {
     await openPlan(page)
 
     // ── Add, then allocate ──────────────────────────────────────────────────
@@ -247,16 +249,22 @@ test.describe('Capacity allocation', () => {
     // back the way it found it.
     await openPlan(page)
 
-    // A plan capacity small enough that the second Feature cannot fit. The cutline measures the
-    // PLAN's total, so Beta's ceiling has to be part of the arrangement rather than left to whatever
-    // the seed chose — 0 is a real state ("this team takes no committed demand"), not a blank.
+    // A plan capacity small enough that the demand straddles it. The cutline measures the PLAN's
+    // total, so Beta's ceiling has to be part of the arrangement rather than left to whatever the
+    // seed chose — 0 is a real state ("this team takes no committed demand"), not a blank.
     await setCapacity(page, 'Team Alpha', '5')
     await setCapacity(page, 'Team Beta', '0')
     await expect(teamRow(page)).toContainText('5')
 
-    // `openPlan` reset the board, so these are the only two Features on the plan: 4 points each,
-    // the first fits inside 5, the second cannot.
-    for (const feature of [/FE-1/, /FE-2/]) {
+    /**
+     * THREE Features at 4 points each, against a plan capacity of 5.
+     *
+     * §189 draws the line after the first Feature whose cumulative Estimated reaches or exceeds
+     * capacity: 4, then 8 — so the SECOND is the tipping Feature and sits above the line, leaving the
+     * third below it. Two Features were enough while the line sat after the last one that FIT; now the
+     * tipping row is above, so a third is needed for there to be anything below the line at all.
+     */
+    for (const feature of [/FE-1/, /FE-2/, /FE-3/]) {
       await allocateFeature(page, feature, /Team Alpha/, '4')
     }
 
@@ -268,7 +276,7 @@ test.describe('Capacity allocation', () => {
 
     await page.getByRole('tab', { name: /Features/ }).click()
     await expect(page.getByRole('separator', { name: /Capacity cutline/i })).toBeVisible()
-    // Exactly one Feature is marked as not fitting — the second.
+    // Exactly one Feature is marked as not fitting — the third.
     await expect(page.locator('[data-below-cutline="true"]')).toHaveCount(1)
 
     // Survives a reload: the index came from the API, not from local state.
@@ -280,7 +288,7 @@ test.describe('Capacity allocation', () => {
 
     // ── Restore the seeded state ─────────────────────────────────────────────
     await expandTeam(page)
-    for (const key of ['FE-1', 'FE-2']) {
+    for (const key of ['FE-1', 'FE-2', 'FE-3']) {
       await removeFeature(page, key)
     }
     const reset = await (async () => {

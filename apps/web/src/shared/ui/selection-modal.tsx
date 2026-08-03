@@ -20,6 +20,17 @@ export interface SelectionItem {
   /** Optional leading icon (e.g. a `<TypeBadge>`) shown before the name, so the
    *  picker matches the icon+key cells used by the list/select fields. */
   icon?: ReactNode
+  /**
+   * Already in the target set: shown, un-tickable, and annotated.
+   *
+   * Capacity SRS §247 asks for exactly this — a Feature already allocated to the selected Team stays
+   * "visible in the list marked as added, with selection disabled … deliberately **not** removed from
+   * the list, so the planner can see what is already in the Team instead of the row disappearing."
+   * Filtering such rows out answers "what can I add" while hiding "what is already there".
+   */
+  disabled?: boolean
+  /** Short note beside a disabled row, e.g. `Added`. Ignored unless `disabled`. */
+  disabledNote?: string
 }
 
 interface SelectionModalProps {
@@ -72,17 +83,20 @@ export function SelectionModal({
     return items.filter((it) => it.name.toLowerCase().includes(q))
   }, [items, search])
 
+  /** Select-all and the tick counts ignore disabled rows: they cannot be selected. */
+  const selectable = useMemo(() => filtered.filter((it) => !it.disabled), [filtered])
+
   function toggle(id: string) {
     setLocal((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
   function toggleAll() {
-    if (filtered.every((it) => local.includes(it.id))) {
-      setLocal((prev) => prev.filter((id) => !filtered.some((f) => f.id === id)))
+    if (selectable.every((it) => local.includes(it.id))) {
+      setLocal((prev) => prev.filter((id) => !selectable.some((f) => f.id === id)))
     } else {
       setLocal((prev) => {
         const next = new Set(prev)
-        filtered.forEach((it) => next.add(it.id))
+        selectable.forEach((it) => next.add(it.id))
         return [...next]
       })
     }
@@ -101,7 +115,8 @@ export function SelectionModal({
     }
   }
 
-  const allFilteredSelected = filtered.length > 0 && filtered.every((it) => local.includes(it.id))
+  const allFilteredSelected =
+    selectable.length > 0 && selectable.every((it) => local.includes(it.id))
 
   return (
     <AppModal open={open} onClose={onClose} title={title} width={440}>
@@ -128,7 +143,8 @@ export function SelectionModal({
             onChange={toggleAll}
             ariaLabel={allFilteredSelected ? 'Deselect all' : 'Select all'}
           />
-          {allFilteredSelected ? 'Deselect All' : 'Select All'} ({filtered.length})
+          {/* Counts what CAN be ticked, not every visible row — a disabled row is already in. */}
+          {allFilteredSelected ? 'Deselect All' : 'Select All'} ({selectable.length})
         </label>
         <div className="max-h-60 overflow-y-auto">
           {filtered.length === 0 ? (
@@ -139,10 +155,13 @@ export function SelectionModal({
             filtered.map((item) => (
               <label
                 key={item.id}
-                className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-ui-md transition-colors select-none hover:bg-gray-50"
+                className={`flex items-center gap-2 rounded px-1 py-1.5 text-ui-md transition-colors select-none ${
+                  item.disabled ? 'cursor-default opacity-60' : 'cursor-pointer hover:bg-gray-50'
+                }`}
               >
                 <SelectionCheckbox
                   checked={local.includes(item.id)}
+                  disabled={item.disabled}
                   onChange={() => toggle(item.id)}
                   ariaLabel={item.name}
                 />
@@ -150,6 +169,15 @@ export function SelectionModal({
                 <span className="truncate" style={{ color: BRAND.textPrimary }}>
                   {item.name}
                 </span>
+                {/* The note is what turns a greyed row from "broken" into "already there" (§247). */}
+                {item.disabled && item.disabledNote != null && (
+                  <span
+                    className="ml-auto shrink-0 text-ui-xs font-semibold"
+                    style={{ color: BRAND.textMuted }}
+                  >
+                    {item.disabledNote}
+                  </span>
+                )}
               </label>
             ))
           )}

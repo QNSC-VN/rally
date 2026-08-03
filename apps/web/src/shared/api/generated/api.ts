@@ -4689,7 +4689,7 @@ export interface components {
         /** @description Any allocation has no team — Rally’s unassigned warning */
         unallocated: boolean
       }[]
-      /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
+      /** @description The item the line is drawn after; the last index when nothing reaches capacity (no line); null = no capacity entered */
       itemCutlineIndex: number | null
       allocations: {
         /** Format: uuid */
@@ -4887,7 +4887,7 @@ export interface components {
           /** @description Any allocation has no team — Rally’s unassigned warning */
           unallocated: boolean
         }[]
-        /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
+        /** @description The item the line is drawn after; the last index when nothing reaches capacity (no line); null = no capacity entered */
         itemCutlineIndex: number | null
         allocations: {
           /** Format: uuid */
@@ -4967,10 +4967,10 @@ export interface components {
         portfolioItemId: string
         itemKey: string
         /**
-         * @description unallocated: no team, so no plan to inherit. release_span_mismatch: the plan window reaches outside its release, so Rally writes the dates but not the Release.
+         * @description unallocated: no team, so no plan to inherit. release_span_mismatch: the plan window reaches outside its release, so the dates are written but not the Release. archived: the Feature is not actionable demand. other_release: the Feature already belongs to a different release (§226 allows the allocation; publish must not move it).
          * @enum {string}
          */
-        reason: 'unallocated' | 'release_span_mismatch' | 'archived'
+        reason: 'unallocated' | 'release_span_mismatch' | 'archived' | 'other_release'
       }[]
     }
     RevertResultResponseDto: {
@@ -5076,7 +5076,7 @@ export interface components {
           /** @description Any allocation has no team — Rally’s unassigned warning */
           unallocated: boolean
         }[]
-        /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
+        /** @description The item the line is drawn after; the last index when nothing reaches capacity (no line); null = no capacity entered */
         itemCutlineIndex: number | null
         allocations: {
           /** Format: uuid */
@@ -5303,7 +5303,7 @@ export interface components {
           /** @description Any allocation has no team — Rally’s unassigned warning */
           unallocated: boolean
         }[]
-        /** @description -1 = the first item already exceeds capacity; null = no capacity entered */
+        /** @description The item the line is drawn after; the last index when nothing reaches capacity (no line); null = no capacity entered */
         itemCutlineIndex: number | null
         allocations: {
           /** Format: uuid */

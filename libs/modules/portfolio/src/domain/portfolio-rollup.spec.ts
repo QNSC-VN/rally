@@ -328,10 +328,13 @@ describe('computeCapacityWarnings', () => {
 });
 
 describe('computeCutlineIndex', () => {
-  // Rally draws the line only in rank-ascending order: in any other order a running
-  // total means nothing.
-  it('returns the index of the last item that fits', () => {
-    // 30+25+20+25 = 100 exactly; the fifth item would exceed.
+  /**
+   * §189: the line is "rendered after the first Feature where cumulative planning Estimated reaches or
+   * exceeds Plan total Capacity", so the Feature that TIPS the plan over is ABOVE the line. Rally draws
+   * it only in rank-ascending order, because in any other order a running total means nothing.
+   */
+  it('returns the index of the Feature that reaches capacity', () => {
+    // 30+25+20+25 = 100 exactly at index 3.
     expect(computeCutlineIndex([30, 25, 20, 25, 15], 100)).toBe(3);
   });
 
@@ -339,18 +342,27 @@ describe('computeCutlineIndex', () => {
     expect(computeCutlineIndex([50, 50], 100)).toBe(1);
   });
 
-  it('returns -1 when the first item alone exceeds capacity', () => {
-    expect(computeCutlineIndex([150, 10], 100)).toBe(-1);
+  it('keeps the TIPPING Feature above the line, not below it', () => {
+    /**
+     * The one row the two readings disagree about. 90 + 20 = 110 against 100: the plan is over, and the
+     * 20 is what took it there — so it is the last Feature the plan commits to, and the 5 below it is
+     * what gets dropped. The old rule drew the line after the 90 and reported the 20 as dropped too.
+     *
+     * Still NOT a bin-packing optimisation: the 5 stays below even though it would fit in the 10 the
+     * plan had left, because the cutline follows priority order.
+     */
+    expect(computeCutlineIndex([90, 20, 5], 100)).toBe(1);
   });
 
-  it('returns the last index when everything fits', () => {
+  it('puts the line after the FIRST item when that alone exceeds capacity', () => {
+    // It reaches capacity by itself, so it is the tipping Feature — index 0, where the old rule
+    // returned -1 and put every row below the line.
+    expect(computeCutlineIndex([150, 10], 100)).toBe(0);
+  });
+
+  it('returns the last index when nothing reaches capacity', () => {
+    // Everything is above the line; there is no NEXT row to draw one above, so none is rendered.
     expect(computeCutlineIndex([10, 20, 30], 100)).toBe(2);
-  });
-
-  it('stops at the first overflow rather than packing later small items', () => {
-    // Deliberately NOT a bin-packing optimisation: the cutline reflects priority
-    // order, so a small item below the line stays below it.
-    expect(computeCutlineIndex([90, 20, 5], 100)).toBe(0);
   });
 
   it('returns null when no capacity has been entered', () => {
@@ -362,8 +374,8 @@ describe('computeCutlineIndex', () => {
     expect(computeCutlineIndex([], 100)).toBe(-1);
   });
 
-  it('treats a zero-estimate item as fitting', () => {
-    // An unestimated feature does not consume capacity, so it must not push the line up.
+  it('does not let a zero-estimate item move the line', () => {
+    // An unestimated Feature consumes no capacity: 50 + 0 + 50 reaches 100 at the third one.
     expect(computeCutlineIndex([50, 0, 50], 100)).toBe(2);
   });
 });

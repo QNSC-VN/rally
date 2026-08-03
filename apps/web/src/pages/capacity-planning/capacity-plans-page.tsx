@@ -373,7 +373,11 @@ export function CapacityPlansPage() {
       />
 
       {showCreate && (
-        <CreateCapacityPlanModal projectId={projectId} onClose={() => setShowCreate(false)} />
+        <CreateCapacityPlanModal
+          projectId={projectId}
+          projectName={project?.projectName ?? null}
+          onClose={() => setShowCreate(false)}
+        />
       )}
     </>
   )
