@@ -19,7 +19,7 @@ import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { type AllocColKey } from '../model/columns'
-import { AllocationSourceIcon } from './estimate-tier-badge'
+import { EstimateTierIcon } from './estimate-tier-badge'
 import { CapacityItemActions } from './capacity-item-actions'
 
 /**
@@ -343,18 +343,20 @@ export function AllocationRow({
         />
       </div>
 
-      {/* The row's SOURCE glyph: typed by a planner, or copied from the Feature's estimate (§185-186).
-          It was a tier glyph, which no longer describes anything about this row — the value is a fixed
-          snapshot, not one of three candidates resolved on read. The panel still names both forecasts,
-          so a copy that has fallen behind the Feature's current numbers is visible. */}
+      {/* Rally's trailing `Estimate` glyph and its panel — Allocated / Refined / Preliminary, the one in
+          force ticked and the other two struck through, matched to a screenshot of the real product's
+          team tab.
+          §185-186's source (`Manual` / `Feature Estimate`) is a finer distinction than Rally draws and
+          has no row of its own in that panel, so it rides the glyph's accessible name instead. */}
       <div
         style={colStyleFor('tier', { flexShrink: 0 })}
         className="flex items-center justify-center px-1"
       >
-        <AllocationSourceIcon
-          source={allocation.source}
-          value={allocation.value}
-          breakdown={allocation.estimateBreakdown}
+        <EstimateTierIcon
+          tier={allocation.tier}
+          // `allocated` is THIS row's committed value — the number the Estimated cell shows beside it.
+          breakdown={{ allocated: allocation.value, ...allocation.estimateBreakdown }}
+          sourceNote={t(`sources.${allocation.source}`)}
         />
       </div>
     </div>

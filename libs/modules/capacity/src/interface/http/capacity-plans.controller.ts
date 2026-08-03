@@ -103,6 +103,7 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       // 0101 — every row carries a fixed value, and `source` says where it came from.
       value: Number(a.value),
       source: a.source,
+      tier: a.tier,
       rank: a.rank,
       state: a.state,
       projectId: a.projectId,

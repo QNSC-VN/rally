@@ -211,7 +211,7 @@ test.describe('Capacity allocation', () => {
     }
   }
 
-  test('allocates a Feature to a team, names the value SOURCE, then removes it', async ({
+  test("allocates a Feature to a team, shows Rally's Estimate panel, then removes it", async ({
     page,
   }) => {
     await openPlan(page)
@@ -225,10 +225,18 @@ test.describe('Capacity allocation', () => {
     await expandTeam(page)
     const row = page.locator('div.group').filter({ hasText: 'Guest checkout flow' }).first()
     await expect(row).toBeVisible()
-    // The trailing glyph's accessible name says the SOURCE and lists the Feature's current forecasts,
-    // so a copy that has fallen behind them is visible. It used to name a tier, which described a
-    // resolve-on-read the row no longer does.
-    await expect(row.getByRole('img', { name: /Feature Estimate:/ })).toBeVisible()
+    /**
+     * The trailing glyph carries Rally's `Estimate` panel as its accessible name: the three candidates
+     * in Rally's order with the one in force ticked, then the allocation's own source.
+     *
+     * FE-1 is preliminary `M` with no Refined forecast, so a blank Estimate copied 5 — Allocated 5 wins,
+     * Refined is an em dash and Preliminary's equal 5 is beaten. Matched against a screenshot of the
+     * real product's team tab.
+     */
+    await expect(
+      row.getByRole('img', { name: /^Estimate: Allocated 5 ✓, Refined —, Preliminary 5\./ }),
+    ).toBeVisible()
+    await expect(row.getByRole('img', { name: /Feature Estimate$/ })).toBeVisible()
 
     // Survives a reload: the allocation was persisted, not just held in cache. Expansion is
     // local state, so the reload collapses the team again — reopen it.
