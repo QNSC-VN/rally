@@ -9,17 +9,11 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useMemo, useState, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { SelectableTable, useDataTable } from '@/shared/ui/table'
+import { SelectableTable, useDataTable, useRerankSensors } from '@/shared/ui/table'
 import { IterationBoard } from '@/widgets/iteration-board/iteration-board'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import {
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
+import { closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { SkeletonList } from '@/shared/ui/skeleton'
@@ -263,7 +257,9 @@ export function IterationStatusPage() {
 
   // ── Rank drag-and-drop (only meaningful in default rank order) ──────────
   const rankMutation = useRankAnyWorkItem()
-  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  // Pointer AND keyboard, from the one shared definition. This was a hand-rolled pointer-only set,
+  // which is why rank reorder here could not be done without a mouse.
+  const dndSensors = useRerankSensors()
   const [localItems, setLocalItems] = useState<IterationStatusItem[]>(pagedItems)
   const [syncedItems, setSyncedItems] = useState(pagedItems)
   if (syncedItems !== pagedItems) {

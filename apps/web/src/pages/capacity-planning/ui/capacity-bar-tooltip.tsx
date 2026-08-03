@@ -1,3 +1,4 @@
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { useTranslation } from 'react-i18next'
 
 import { CAPACITY_SEGMENTS } from '@/shared/ui/composite-bar'
@@ -67,7 +68,7 @@ export function CapacityBarTooltip({
           }}
         />
         <span className="flex-1">{t('breakdown.capacity')}</span>
-        <span className="tabular-nums">{capacity === null ? '—' : capacity}</span>
+        <span className="tabular-nums">{capacity === null ? EMPTY_VALUE : capacity}</span>
         <span className="w-9 text-right opacity-70">
           {capacity === null ? '' : t('summary.base')}
         </span>

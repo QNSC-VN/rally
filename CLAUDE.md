@@ -86,6 +86,22 @@ not a function`, so use `AuthService.devLogin` for a bearer token), the **Valida
   instead ("Rank, sorted ascending. Activate to sort."), which is true regardless of the surrounding
   structure. It is also a real `<button>` now: it was a `div` with `onClick`, so sorting — a
   documented feature on every grid in the app — was pointer-only.
+- **Rank reorder needs a KEYBOARD sensor AND a focusable grip — both, or neither works.**
+  `KeyboardSensor` appeared nowhere in the SPA, and `DragHandle` was a `div`, so reorder was
+  pointer-only on Backlog, Iteration Status, Quality and Portfolio. Adding the sensor alone would not
+  have helped: dnd-kit activates from the ACTIVATOR's `onKeyDown`, and dnd-kit's `attributes` (which
+  carry `role="button"` and `tabIndex`) were spread on the ROW while `listeners` were on the grip — so
+  focus landed on one node and the key handler lived on another. `attributes` now go on the grip
+  alongside `listeners` (which also stops every row announcing as a button with its own tab stop), and
+  `useRerankSensors()` is the one shared sensor set. Backlog and Iteration Status previously hand-rolled
+  `useSensors(useSensor(PointerSensor…))`, which is exactly why they diverged — there was no single
+  place to add the keyboard sensor. Capacity Planning's grip already did this correctly and was the
+  model.
+- **`EMPTY_VALUE` (`'--'`) is the only placeholder for an absent value**, per its own docblock ("not an
+  em-dash, because that is what real Rally renders"). 15 em-dash literals had drifted back in, two of
+  them colliding *within one screen* — Portfolio detail rendered `'--'` in the sidebar beside `'—'` in
+  both children tables. When replacing these, note that the string also appears in prose comments; a
+  blind find-and-replace edits those too.
 - **The frontend has ratchets too** (`apps/web/src/test/fe-consistency.ratchet.test.ts`):
   raw `<button>`, inline styles, hardcoded copy, file length, and CSRF headers on
   raw `fetch` writes. They may only decrease.

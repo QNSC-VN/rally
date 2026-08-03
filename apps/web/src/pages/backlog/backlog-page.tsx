@@ -11,13 +11,7 @@
  */
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
+import { closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useTranslation } from 'react-i18next'
@@ -63,109 +57,15 @@ import {
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
-import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
+import type { ColumnDef } from '@/shared/lib/hooks/use-column-layout'
+import {
+  BACKLOG_COLUMNS,
+  BACKLOG_HEADER_COLUMNS,
+  SCHEDULE_STATE_OPTS,
+  type ColumnKey,
+} from './model/columns'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable, SelectableTable, RankSortHeader } from '@/shared/ui/table'
-import { type DataTableHeaderColumn } from '@/shared/ui/table'
-
-// ── Column definitions ─────────────────────────────────────────────────────────
-
-type ColumnKey =
-  | 'id'
-  | 'name'
-  | 'scheduleState'
-  | 'flowState'
-  | 'priority'
-  | 'estimate'
-  | 'owner'
-  | 'release'
-  | 'iteration'
-
-const COLUMN_MINS: Record<ColumnKey, number> = {
-  id: 88,
-  name: 180,
-  scheduleState: 120,
-  flowState: 120,
-  priority: 80,
-  estimate: 44,
-  owner: 90,
-  release: 100,
-  iteration: 100,
-}
-
-const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
-  id: 116,
-  name: 260,
-  scheduleState: 136,
-  flowState: 136,
-  priority: 96,
-  estimate: 52,
-  owner: 120,
-  release: 160,
-  iteration: 140,
-}
-
-const COLUMN_LABELS: Record<ColumnKey, string> = {
-  id: 'ID',
-  name: 'Name',
-  scheduleState: 'Schedule State',
-  flowState: 'Flow State',
-  priority: 'Priority',
-  estimate: 'Est.',
-  owner: 'Owner',
-  release: 'Release',
-  iteration: 'Iteration',
-}
-
-const COLUMNS: ColumnKey[] = [
-  'id',
-  'name',
-  'scheduleState',
-  'flowState',
-  'priority',
-  'estimate',
-  'owner',
-  'release',
-  'iteration',
-]
-
-const BACKLOG_COLUMNS: ColumnDef<ColumnKey>[] = COLUMNS.map((key) => ({
-  key,
-  label: COLUMN_LABELS[key],
-  defaultWidth: DEFAULT_WIDTHS[key],
-  minWidth: COLUMN_MINS[key],
-}))
-
-/**
- * Server-side sort field per column (backend `WorkItemSortBy`). Columns absent
- * from this map are not sortable (owner/release/iteration would sort by UUID).
- */
-const COLUMN_SORT_FIELD: Partial<Record<ColumnKey, string>> = {
-  id: 'itemKey',
-  name: 'title',
-  scheduleState: 'scheduleState',
-  priority: 'priority',
-  estimate: 'planEstimate',
-}
-
-/** Header descriptors for the shared <DataTableHeader>; sortable where mapped. */
-const BACKLOG_HEADER_COLUMNS: DataTableHeaderColumn<ColumnKey>[] = COLUMNS.map((key) => ({
-  key,
-  label: COLUMN_LABELS[key],
-  align: key === 'estimate' ? ('center' as const) : undefined,
-  sortCol: COLUMN_SORT_FIELD[key],
-}))
-
-// ── Resizable column header ────────────────────────────────────────────────────
-
-// ── Owner cell (avatar + name) ─────────────────────────────────────────────────
-
-// ── Main page ─────────────────────────────────────────────────────────────────
-
-const SCHEDULE_STATE_OPTS = [
-  { value: '' as const, label: 'All States' },
-  ...SCHEDULE_STATE_VALUES.map((v) => ({ value: v, label: SCHEDULE_STATE_LABEL[v] })),
-]
+import { useDataTable, useRerankSensors, SelectableTable, RankSortHeader } from '@/shared/ui/table'
 
 export function BacklogPage() {
   const { t } = useTranslation('backlog')
@@ -184,6 +84,17 @@ export function BacklogPage() {
   const [filterOwner, setFilterOwner] = useState('')
   const [filterRelease, setFilterRelease] = useState('')
   const [filterIteration, setFilterIteration] = useState('')
+  // "none yet" vs "no match" are different facts; one branch used to always blame filters.
+  const emptyKey =
+    search ||
+    filterType ||
+    filterState ||
+    filterPriority ||
+    filterOwner ||
+    filterRelease ||
+    filterIteration
+      ? 'empty.noMatch'
+      : 'empty.none'
   const [pageSize, setPageSize] = useState<number>(25)
   const [cursor, setCursor] = useState<string | undefined>(undefined)
   const [cursorHistory, setCursorHistory] = useState<string[]>([])
@@ -213,7 +124,7 @@ export function BacklogPage() {
   const { data: iterationOptions = [] } = useIterationOptions(projectId, team?.teamId)
   // All iterations regardless of state — used to resolve an already-set
   // iterationId to its name. Reusing iterationOptions here silently rendered
-  // '—' for any item whose iteration had since become Accepted, even though
+  // a dash for any item whose iteration had since become Accepted, even though
   // the relation was genuinely set (see RELATION_DATA_TRACEABILITY.md).
   const { data: allIterations = [] } = useIterations(projectId, team?.teamId)
 
@@ -288,7 +199,8 @@ export function BacklogPage() {
   }
 
   const rankMutation = useRankAnyWorkItem()
-  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  // Pointer AND keyboard, one shared definition — this was a hand-rolled pointer-only set.
+  const dndSensors = useRerankSensors()
 
   function handleDragEnd(event: DragEndEvent) {
     // Rank reorder is only meaningful in the default rank order; a column sort
@@ -469,7 +381,7 @@ export function BacklogPage() {
           empty={
             items.length === 0 ? (
               <div className="flex h-32 flex-col items-center justify-center gap-2">
-                <p className="text-ui-xl text-foreground-subtle">{t('empty')}</p>
+                <p className="text-ui-xl text-foreground-subtle">{t(emptyKey)}</p>
                 <button
                   onClick={() => setShowCreate(true)}
                   disabled={!canCreate}
@@ -803,13 +715,13 @@ function BacklogRow({
         zIndex: isDragging ? 1 : undefined,
         position: isDragging ? 'relative' : undefined,
       }}
-      {...attributes}
     >
       {/* Leading gutter (rank grip + selection checkbox) — shared component so
           the header, rows and any nested rows stay column-aligned. */}
       <RowGutter
         ref={setActivatorNodeRef}
         dragListeners={listeners}
+        dragAttributes={attributes}
         stopPropagation
         checkbox={{
           checked: selected,

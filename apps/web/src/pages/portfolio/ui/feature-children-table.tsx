@@ -1,3 +1,4 @@
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { useMemo, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
@@ -483,7 +484,7 @@ function ChildRow({
               if (next !== (child.storyPoints ?? null)) patch({ storyPoints: next })
             }}
             // A dash, not 0: an unestimated Story is not a Story worth zero points.
-            displayValue={child.storyPoints ?? '—'}
+            displayValue={child.storyPoints ?? EMPTY_VALUE}
             className="block text-right font-mono text-muted-foreground tabular-nums"
             inputClassName="w-full rounded border border-primary bg-transparent px-0.5 text-right font-mono text-ui-xs text-foreground focus:outline-none"
           />
@@ -521,7 +522,7 @@ function ChildRow({
             and can be long, and truncating it hid the end behind a tooltip nobody opens. */}
         <div style={colStyles.iteration} className="min-w-0 px-2">
           <span className="break-words whitespace-normal text-muted-foreground">
-            {child.iterationName ?? '—'}
+            {child.iterationName ?? EMPTY_VALUE}
           </span>
         </div>
         <div
@@ -535,7 +536,7 @@ function ChildRow({
             ariaLabel={t('detail.children.editRelease', { key: child.itemKey })}
             placeholder="—"
             options={[
-              { value: '', label: '—' },
+              { value: '', label: EMPTY_VALUE },
               ...releases.map((r) => ({
                 value: r.id,
                 label: r.releaseKey ? `${r.releaseKey}: ${r.name}` : r.name,

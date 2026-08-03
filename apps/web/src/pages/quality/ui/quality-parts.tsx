@@ -788,11 +788,11 @@ export function DefectTableRow({
         zIndex: isDragging ? 1 : undefined,
         position: isDragging ? 'relative' : undefined,
       }}
-      {...attributes}
     >
       <RowGutter
         ref={setActivatorNodeRef}
         dragListeners={listeners}
+        dragAttributes={attributes}
         dragDisabled={dragDisabled}
         stopPropagation
         checkbox={{
