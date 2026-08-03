@@ -20,6 +20,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../schema';
 import {
   attachments,
+  iterationTeamBaselines,
   iterations,
   workItems,
   workflowStatuses,
@@ -91,9 +92,6 @@ async function seedNxpTimeboxes(db: Db): Promise<void> {
         // Ends before the seeded active sprint starts (2026-06-16), so the two never overlap.
         startDate: '2026-06-01',
         endDate: '2026-06-12',
-        // Captured, so the Burndown Ideal has a baseline to descend from.
-        totalTaskEstimateAtStart: '24',
-        totalTaskEstimateCapturedAt: new Date('2026-06-01T08:00:00Z'),
       },
       {
         id: NXP_ITER_FUTURE_ID,
@@ -108,6 +106,26 @@ async function seedNxpTimeboxes(db: Db): Promise<void> {
         endDate: '2026-07-10',
       },
     ])
+    .onConflictDoNothing();
+
+  /**
+   * The finished sprint's Burndown baseline, in `iteration_team_baselines` (0098).
+   *
+   * `teamId: null` here is the table's "work with no resolvable team" row, which IS summed into All
+   * Teams — not the measured-null of the snapshot tables. That is the truth for this fixture: both the
+   * iteration and its accepted story are deliberately team-less, so `coalesce(task.team,
+   * parent.team, iteration.team)` resolves to nothing and the whole 24 hours land in that row.
+   */
+  await db
+    .insert(iterationTeamBaselines)
+    .values({
+      id: uuidv7(),
+      workspaceId: WORKSPACE_ID,
+      iterationId: NXP_ITER_PAST_ID,
+      teamId: null,
+      totalTaskEstimateAtStart: '24',
+      capturedAt: new Date('2026-06-01T08:00:00Z'),
+    })
     .onConflictDoNothing();
 }
 

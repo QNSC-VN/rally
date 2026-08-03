@@ -353,8 +353,17 @@ export class ReportingService {
       return { unit, points: [], historyState: 'no-window', idealTarget: null, iterations: [] };
     }
 
-    const [snapshots, band] = await Promise.all([
+    const [snapshots, target, band] = await Promise.all([
       this.repo.getReleaseBurnupRows(workspaceId, release.id, scope, unit),
+      /**
+       * The Ideal target for THIS scope.
+       *
+       * It used to be two scope-blind columns on `releases`, so a team-scoped burnup drew that team's
+       * Accepted line against the whole release's goal while the measured series beside it was
+       * correctly narrowed — every team looked permanently behind. RT §7 recomputes the whole Burnup
+       * from the selected Team's scope, Ideal included.
+       */
+      this.repo.findReleaseTeamTarget(workspaceId, release.id, scope),
       this.repo.findIterationsInWindow(
         workspaceId,
         args.projectId,
@@ -366,7 +375,7 @@ export class ReportingService {
 
     const { points, historyState, idealTarget } = buildBurnup({
       axis: calendarDays(release.startDate, release.releaseDate),
-      idealTarget: unit === 'points' ? release.idealTargetPoints : release.idealTargetCount,
+      idealTarget: target === null ? null : unit === 'points' ? target.points : target.count,
       snapshots,
     });
 
