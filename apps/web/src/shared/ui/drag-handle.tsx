@@ -4,6 +4,15 @@ import { BRAND } from '@/shared/config/brand'
 export type DragHandleProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   /** Render an invisible, inert spacer (keeps column alignment when reorder is off). */
   disabled?: boolean
+  /**
+   * Accessible name, when the caller can NAME the row this grip moves ("Reorder FE-3").
+   *
+   * The default is a hardcoded English `Drag to reorder`, which is the same on every row of every
+   * grid — a screen-reader user tabbing a list of them hears one sentence repeated with no way to tell
+   * which row they are on. Callers that know the row pass its key; the default stays for the grids
+   * that render a grip per row without a handy label.
+   */
+  label?: string
 }
 
 /**
@@ -40,7 +49,7 @@ function GripDots() {
  * and `attributes` onto it. `attributes` belongs here, on the activator, not on the row — see below.
  */
 export const DragHandle = forwardRef<HTMLButtonElement, DragHandleProps>(function DragHandle(
-  { disabled = false, className = '', ...rest },
+  { disabled = false, label, className = '', ...rest },
   ref,
 ) {
   return (
@@ -65,7 +74,7 @@ export const DragHandle = forwardRef<HTMLButtonElement, DragHandleProps>(functio
       // reorder control that does nothing.
       aria-hidden={disabled || undefined}
       tabIndex={disabled ? -1 : undefined}
-      aria-label={disabled ? undefined : 'Drag to reorder'}
+      aria-label={disabled ? undefined : (label ?? 'Drag to reorder')}
       className={`flex w-5 shrink-0 items-center justify-center border-none bg-transparent p-0 ${
         disabled
           ? 'cursor-default opacity-0'

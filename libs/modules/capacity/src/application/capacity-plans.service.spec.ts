@@ -598,7 +598,8 @@ describe('CapacityPlansService', () => {
     });
 
     it('accumulates ITEMS in rank order against the TOTAL capacity', async () => {
-      // 20 + 15 = 35 fits in 40 (10 + 30); the third takes it to 45.
+      // 20 + 15 = 35 against 40 (10 + 30), then the third reaches 45 — so THAT one is the tipping
+      // Feature and sits above the line (§189: "reaches or exceeds").
       repo.findViewById.mockResolvedValue(
         view({ teams: [planTeam('team-1', '10'), planTeam('team-2', '30')] }),
       );
@@ -610,7 +611,7 @@ describe('CapacityPlansService', () => {
 
       const detail = await service.getPlanDetail(actor, 'plan-1');
       expect(detail.items.map((i) => i.itemKey)).toEqual(['FE-1', 'FE-1', 'FE-1']);
-      expect(detail.itemCutlineIndex).toBe(1);
+      expect(detail.itemCutlineIndex).toBe(2);
     });
 
     it('counts a shared Feature ONCE, summing its allocations', async () => {
@@ -625,10 +626,11 @@ describe('CapacityPlansService', () => {
 
       const detail = await service.getPlanDetail(actor, 'plan-1');
       expect(detail.items).toHaveLength(2);
-      // 20 committed for the shared Feature, then 10 more takes it past 25.
+      // 20 committed for the shared Feature, then 10 more reaches 30 against 25 — the second Feature
+      // is the tipping one.
       expect(detail.items[0].estimated).toBe(20);
       expect(detail.items[0].teamIds).toEqual(['team-1', 'team-2']);
-      expect(detail.itemCutlineIndex).toBe(0);
+      expect(detail.itemCutlineIndex).toBe(1);
     });
 
     it('orders items strictly by RANK, even though unallocated rows come back last', async () => {
@@ -643,10 +645,12 @@ describe('CapacityPlansService', () => {
       expect(detail.items[0].unallocated).toBe(true);
     });
 
-    it('answers -1 when the FIRST item already exceeds the plan', async () => {
+    it('puts the line after the FIRST item when that alone exceeds the plan', async () => {
+      // It reaches capacity by itself, so it is the tipping Feature. This answered -1 before §189 was
+      // applied, which put every row of a single-item plan below its own cutline.
       repo.findViewById.mockResolvedValue(view({ teams: [planTeam('team-1', '5')] }));
       repo.listAllocations.mockResolvedValue([row({ value: '20' })]);
-      expect((await service.getPlanDetail(actor, 'plan-1')).itemCutlineIndex).toBe(-1);
+      expect((await service.getPlanDetail(actor, 'plan-1')).itemCutlineIndex).toBe(0);
     });
 
     it('draws NO line when no team has entered a capacity', async () => {
@@ -887,6 +891,54 @@ describe('CapacityPlansService', () => {
       );
       expect(result.featuresUpdated).toBe(1);
       expect(result.skipped).toEqual([]);
+    });
+
+    it("KEEPS a Feature's own Release when it belongs to a different one", async () => {
+      /**
+       * §226 lets the Team picker pull in a Feature from any release, so these rows exist now — and
+       * publish must not be what silently moves such a Feature into this plan's release.
+       *
+       * The dates ARE written: the plan genuinely describes when this team will work on it. Only the
+       * Release is left alone, and the row is reported so the planner can see it happened. This is the
+       * rule the allocate-time refusal was standing in for.
+       */
+      repo.listAllocations.mockResolvedValue([allocation({ itemReleaseId: 'rel-other' })]);
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(repo.applyPlanToFeature).toHaveBeenCalledWith(
+        'fe-1',
+        WORKSPACE,
+        'proj-a',
+        { plannedStartDate: '2026-07-01', plannedEndDate: '2026-07-31' },
+        expect.anything(),
+      );
+      // No `releaseId` key at all — `undefined` would be a different instruction to the repository.
+      expect(
+        'releaseId' in (repo.applyPlanToFeature.mock.calls[0][3] as Record<string, unknown>),
+      ).toBe(false);
+      expect(result.featuresUpdated).toBe(1);
+      expect(result.skipped).toEqual([
+        { portfolioItemId: 'fe-1', itemKey: 'FE-1', reason: 'other_release' },
+      ]);
+    });
+
+    it('reports `other_release` ahead of a window mismatch — they are different facts', async () => {
+      // Both hold: the plan spans outside its release AND the Feature belongs elsewhere. The Feature's
+      // own Release is the one a planner has to act on, and it is why the field was skipped.
+      repo.findById.mockResolvedValue(
+        plan({ plannedStartDate: '2026-06-01', plannedEndDate: '2026-08-31' }),
+      );
+      repo.findViewById.mockResolvedValue(
+        view({ plannedStartDate: '2026-06-01', plannedEndDate: '2026-08-31' }),
+      );
+      repo.listAllocations.mockResolvedValue([allocation({ itemReleaseId: 'rel-other' })]);
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(result.skipped).toEqual([
+        { portfolioItemId: 'fe-1', itemKey: 'FE-1', reason: 'other_release' },
+      ]);
     });
 
     it('writes the DATES ONLY when the plan sits INSIDE the release — AC-019 wants equality', async () => {
@@ -1617,28 +1669,62 @@ describe('CapacityPlansService', () => {
       expect(detail.unallocated).toBe(3);
     });
 
-    it.each([
-      ['ARCHIVED', { archivedAt: new Date() }, 'CAPACITY_ALLOCATION_ARCHIVED'],
-      ['CANCELLED', { state: 'cancelled' }, 'CAPACITY_ALLOCATION_CANCELLED'],
-      ['in another RELEASE', { releaseId: 'rel-other' }, 'CAPACITY_ALLOCATION_OTHER_RELEASE'],
-    ])('refuses a Feature that is %s', async (_label, over, code) => {
-      // The BA flow's eligibility rules (§4.4). The picker hides all three, but a picker is not a
-      // rule — a stale tab or a scripted client reaches the API directly.
+    /** A Feature the guard sees, with the one field each case varies. */
+    function eligibilityItem(over: Record<string, unknown>) {
       portfolio.getItem.mockResolvedValue({
         id: 'fe-1',
         type: 'feature',
         projectId: 'proj-a',
         refinedEstimate: null,
+        refinedItemCountEstimate: 0,
         preliminaryEstimate: 'm',
         archivedAt: null,
         state: 'developing',
         releaseId: null,
         ...over,
       } as never);
+    }
+
+    it.each([
+      ['ARCHIVED', { archivedAt: new Date() }, 'CAPACITY_ALLOCATION_ARCHIVED'],
+      ['CANCELLED', { state: 'cancelled' }, 'CAPACITY_ALLOCATION_CANCELLED'],
+    ])('refuses a Feature that is %s', async (_label, over, code) => {
+      // The BA flow's eligibility rules (§4.4). The picker hides both, but a picker is not a rule — a
+      // stale tab or a scripted client reaches the API directly.
+      eligibilityItem(over);
 
       await expect(
         service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' }),
       ).rejects.toMatchObject({ code });
+      expect(repo.createAllocation).not.toHaveBeenCalled();
+    });
+
+    it('ALLOWS a Feature from another release when a TEAM is named', async () => {
+      /**
+       * §226: the Team-level picker has "no Release filter", because "a planner needs to see the
+       * Project's whole Feature inventory when staffing a Team", and §252 requires the allocation to
+       * render. This was refused on every path, which made that rule unimplementable.
+       *
+       * What the refusal protected is now enforced at publish, where it belongs: the Feature keeps its
+       * own Release and the row is reported.
+       */
+      eligibilityItem({ releaseId: 'rel-other' });
+
+      await service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' });
+
+      expect(repo.createAllocation).toHaveBeenCalledWith(
+        expect.objectContaining({ teamId: 'team-1' }),
+      );
+    });
+
+    it('still refuses one for the UNALLOCATED bucket', async () => {
+      // The plan-level `Add Feature` creates a parked row and keeps the eligibility list, Release
+      // included (§228-233). Naming no team is the only signal the API has for which picker asked.
+      eligibilityItem({ releaseId: 'rel-other' });
+
+      await expect(
+        service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: null }),
+      ).rejects.toMatchObject({ code: 'CAPACITY_ALLOCATION_OTHER_RELEASE' });
       expect(repo.createAllocation).not.toHaveBeenCalled();
     });
 

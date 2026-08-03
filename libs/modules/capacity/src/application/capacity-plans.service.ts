@@ -141,10 +141,11 @@ export interface CapacityPlanDetail extends Omit<CapacityPlanView, 'teams'> {
   teams: CapacityPlanTeamWithMetrics[];
   items: CapacityPlanItem[];
   /**
-   * Index of the last ITEM (in rank order) that fits inside the plan's total capacity.
+   * Index of the ITEM (in rank order) the Capacity Cutline is drawn AFTER — §189's tipping Feature,
+   * the first one whose cumulative Estimated reaches or exceeds the plan's total capacity.
    *
-   * `-1` when the first item already exceeds it; `null` when no team has entered a capacity, so
-   * there is nothing to draw a line against.
+   * The last index when nothing reaches capacity, which renders no line; `null` when no team has
+   * entered a capacity, so there is nothing to draw one against.
    */
   itemCutlineIndex: number | null;
   allocations: CapacityAllocationView[];
@@ -167,11 +168,14 @@ export interface PublishSkip {
    * `unallocated` — the allocation names no team, so there is no plan to inherit.
    * `release_span_mismatch` — the plan's window reaches outside its release, so Rally writes
    * the dates but not the Release field.
+   * `other_release` — the Feature is already committed to a DIFFERENT release. §226 lets the Team
+   * picker pull such a Feature in, and publish must not be what moves it: dates written, Release
+   * left alone, row reported.
    * `archived` — the Feature is archived, so the write matched no row. Reported rather than counted:
    * the plan still holds the allocation, and a planner who sees "3 Features updated" for two writes
    * has no way to find the third.
    */
-  reason: 'unallocated' | 'release_span_mismatch' | 'archived';
+  reason: 'unallocated' | 'release_span_mismatch' | 'archived' | 'other_release';
 }
 
 export interface PublishResult {
@@ -479,6 +483,20 @@ export class CapacityPlansService {
             continue;
           }
 
+          /**
+           * A Feature that already belongs to ANOTHER release keeps it.
+           *
+           * §226 lets the Team picker pull in a Feature on any release, so those rows now exist — and
+           * publishing must not be how their Release silently changes. The dates are still written (the
+           * plan does describe when this team will work on it); the Release is not, and the row is
+           * reported, exactly as a window mismatch is.
+           *
+           * This is what the allocate-time guard was really protecting, and it belongs here: the rule
+           * is about what publish WRITES, not about what a planner may staff.
+           */
+          const ownsOtherRelease =
+            row.itemReleaseId !== null && row.itemReleaseId !== plan.releaseId;
+
           const written = await this.repo.applyPlanToFeature(
             row.portfolioItemId,
             actor.workspaceId,
@@ -488,7 +506,7 @@ export class CapacityPlansService {
             {
               plannedStartDate: plan.plannedStartDate,
               plannedEndDate: plan.plannedEndDate,
-              ...(spansReleases ? {} : { releaseId: plan.releaseId }),
+              ...(spansReleases || ownsOtherRelease ? {} : { releaseId: plan.releaseId }),
             },
             tx,
           );
@@ -502,7 +520,15 @@ export class CapacityPlansService {
           }
           featuresUpdated += 1;
 
-          if (spansReleases) {
+          if (ownsOtherRelease) {
+            // Reported ahead of the window mismatch: this Feature's Release was left alone because it
+            // is committed elsewhere, which is a different fact from the plan's window not matching.
+            skipped.push({
+              portfolioItemId: row.portfolioItemId,
+              itemKey: row.itemKey,
+              reason: 'other_release',
+            });
+          } else if (spansReleases) {
             // Dates written, Release deliberately not. Reported per Feature because that is
             // the row the planner has to fix.
             skipped.push({
@@ -703,8 +729,14 @@ export class CapacityPlansService {
 
     // Called for the CHECK **and** for the value: the target must be a Feature in the plan's project
     // and not archived, and a blank Estimate copies that Feature's own top-down estimate into the row.
-    const item = await this.requireAllocatableFeature(actor, plan, input.portfolioItemId);
     const teamId = input.teamId ?? null;
+    // A team-assigned allocation may cross releases (§226); a parked one must satisfy eligibility.
+    const item = await this.requireAllocatableFeature(
+      actor,
+      plan,
+      input.portfolioItemId,
+      teamId !== null,
+    );
     if (teamId !== null) await this.requirePlanTeam(planId, teamId);
 
     /**
@@ -1441,11 +1473,12 @@ export class CapacityPlansService {
     items.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
 
     /**
-     * Rally's cutline: "Items above the cutline fit within the defined plan capacity."
+     * The Capacity Cutline, §189: after the first Feature whose cumulative Estimated reaches or exceeds
+     * the plan's capacity, so that Feature is the last one above the line.
      *
-     * PLAN-wide, on the item list, in rank order — the shape Rally documents. An earlier
-     * version drew it per team on the team grid; that answered a different question (what one
-     * team drops) than the one Rally's line answers (what this PLAN drops).
+     * PLAN-wide, on the item list, in rank order — the shape Rally documents. An earlier version drew it
+     * per team on the team grid; that answered a different question (what one team drops) than the one
+     * the line answers (what this PLAN drops).
      */
     const itemCutlineIndex = computeCutlineIndex(
       items.map((item) => item.estimated),
@@ -1552,6 +1585,8 @@ export class CapacityPlansService {
     actor: JwtPayload,
     plan: CapacityPlan,
     portfolioItemId: string,
+    /** True when a TEAM is being named — §226's Team picker ignores Release. */
+    allowOtherRelease = false,
   ) {
     const item = await this.portfolioItems.getItem(actor, portfolioItemId);
     if (item.type !== 'feature') {
@@ -1587,12 +1622,22 @@ export class CapacityPlansService {
       );
     }
     /**
-     * "Release is Unscheduled or equals the Plan Release."
+     * "Release is Unscheduled or equals the Plan Release" — for the PLAN-LEVEL picker only.
      *
-     * A Feature already committed to ANOTHER release would take this plan's window on publish,
-     * silently moving work between releases — which is the one thing publish is careful not to do.
+     * §225-233 give the two pickers different scopes on purpose. The Team-level `Add Features` has
+     * "**no Release filter**", because "a planner needs to see the Project's whole Feature inventory
+     * when staffing a Team", and §252 requires those allocations to render. The plan-level `Add
+     * Feature` keeps the eligibility list, release included.
+     *
+     * The distinction the API can see is whether a TEAM is named: a team-level add and the Allocate
+     * dialog both assign to a team, while the plan-level picker creates an unallocated row. So a
+     * team-assigned allocation may cross releases and a parked one may not.
+     *
+     * What that used to protect is now protected where it belongs: `publishPlan` no longer writes this
+     * plan's Release over a Feature that already belongs to another one — it skips and reports it. The
+     * guard was standing in for a publish rule, which made §226 unimplementable.
      */
-    if (item.releaseId !== null && item.releaseId !== plan.releaseId) {
+    if (!allowOtherRelease && item.releaseId !== null && item.releaseId !== plan.releaseId) {
       throw new PreconditionFailedException(
         'CAPACITY_ALLOCATION_OTHER_RELEASE',
         'That Feature belongs to another release; clear its Release or plan it there',

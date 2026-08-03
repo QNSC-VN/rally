@@ -47,6 +47,14 @@ export function AddFeaturesModal({
     projectId: plan.projectId,
   })
 
+  /** Features already allocated to THIS team — §247's `Added` rows. */
+  const inThisTeam = useMemo(
+    () =>
+      new Set(plan.allocations.filter((a) => a.teamId === teamId).map((a) => a.portfolioItemId)),
+    [plan.allocations, teamId],
+  )
+
+  /** Every Feature already on the plan in any form — what the PLAN-level picker excludes. */
   const onPlan = useMemo(
     () => new Set(plan.allocations.map((a) => a.portfolioItemId)),
     [plan.allocations],
@@ -56,22 +64,38 @@ export function AddFeaturesModal({
     () =>
       features
         /**
-         * The BA flow's eligibility rules (§4.4), mirrored here so the list only offers what the API
-         * will accept: same project (the query already scopes that), not archived, not cancelled,
-         * and either unscheduled or already in this plan's release.
-         *
-         * The API enforces all of them too — a picker is a courtesy, not a rule — but offering a
-         * Feature that will be refused turns a planner's click into an error toast.
+         * Not archived, not cancelled — both pickers, and both enforced by the API too. A picker is a
+         * courtesy, not a rule, but offering a Feature that will be refused turns a click into a toast.
          */
         .filter((f) => f.archivedAt === null && f.state !== 'cancelled')
-        .filter((f) => f.releaseId === null || f.releaseId === plan.releaseId)
-        .filter((f) => !onPlan.has(f.id))
+        /**
+         * The two pickers have DIFFERENT scopes, and §225-233 is explicit about why.
+         *
+         * Team-level `Add Features` applies **no Release filter**: "a Feature on any Release, or none,
+         * may be pulled into a Team, because a planner needs to see the Project's whole Feature
+         * inventory when staffing a Team". The plan-level `Add Feature` keeps the eligibility list,
+         * Release included, and offers only Features not yet on the plan.
+         *
+         * This filtered by release on BOTH paths, so the team picker could not do the one thing §226
+         * describes — and the API refused those allocations anyway, which is why that guard now keys
+         * off whether a team is named.
+         */
+        .filter((f) => teamId !== null || f.releaseId === null || f.releaseId === plan.releaseId)
+        /**
+         * §247: a Feature already in the SELECTED TEAM stays visible, "marked as added, with selection
+         * disabled … deliberately not removed from the list, so the planner can see what is already in
+         * the Team". Only the plan-level picker drops rows, because "not yet in this Plan" is its
+         * documented scope.
+         */
+        .filter((f) => teamId !== null || !onPlan.has(f.id))
         .map((f) => ({
           id: f.id,
           name: `${f.itemKey} — ${f.name}`,
           icon: <TypeBadge type="feature" size={16} />,
+          disabled: teamId !== null && inThisTeam.has(f.id),
+          disabledNote: t('addFeatures.added'),
         })),
-    [features, onPlan, plan.releaseId],
+    [features, inThisTeam, onPlan, plan.releaseId, t, teamId],
   )
 
   /**

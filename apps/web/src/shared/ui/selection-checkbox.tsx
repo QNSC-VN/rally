@@ -17,6 +17,13 @@ interface SelectionCheckboxProps {
   onChange: () => void
   /** Required for a11y — e.g. "Select all" or "Select PROJ-123". */
   ariaLabel: string
+  /**
+   * Un-tickable, for a row that is shown but cannot be chosen.
+   *
+   * Capacity's Feature picker needs it: a Feature already in the selected Team stays listed and
+   * disabled rather than disappearing (SRS §247).
+   */
+  disabled?: boolean
   className?: string
 }
 
@@ -25,6 +32,7 @@ export function SelectionCheckbox({
   indeterminate = false,
   onChange,
   ariaLabel,
+  disabled,
   className,
 }: SelectionCheckboxProps) {
   const ref = useRef<HTMLInputElement>(null)
@@ -38,8 +46,13 @@ export function SelectionCheckbox({
       ref={ref}
       type="checkbox"
       checked={checked}
+      disabled={disabled}
       onChange={onChange}
-      className={cn('h-3.5 w-3.5 cursor-pointer rounded', className)}
+      className={cn(
+        'h-3.5 w-3.5 rounded',
+        disabled ? 'cursor-default' : 'cursor-pointer',
+        className,
+      )}
       style={{ accentColor: BRAND.primary }}
       aria-label={ariaLabel}
     />

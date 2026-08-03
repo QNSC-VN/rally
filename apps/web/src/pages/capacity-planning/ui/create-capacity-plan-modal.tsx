@@ -6,6 +6,8 @@ import { Loader2 } from 'lucide-react'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
+import { DetailReadonlyValue } from '@/shared/ui/detail'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { Input } from '@/shared/ui/input'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
@@ -30,9 +32,12 @@ import {
  */
 export function CreateCapacityPlanModal({
   projectId,
+  projectName,
   onClose,
 }: {
   projectId: string
+  /** Named, not just scoped: §77 shows the Project as a read-only row on this dialog. */
+  projectName: string | null
   onClose: () => void
 }) {
   const { t } = useTranslation('capacity')
@@ -83,6 +88,25 @@ export function CreateCapacityPlanModal({
             {errors.form}
           </p>
         )}
+
+        {/* The three rows §77-81 asks for and this dialog had none of: Project ("Current Project
+            context, read-only"), Plan Type ("Fixed `Single Release`") and Portfolio Item Type ("Fixed
+            `Feature`"). They are not inputs and never will be — a capacity plan covers one release and
+            allocates Features, which is the model, not a choice — but stating them is what tells a
+            planner what they are about to create. `DetailReadonlyValue` is the same collapsed-field
+            treatment the detail rails use. */}
+        <FormField label={t('create.projectLabel')}>
+          <DetailReadonlyValue>{projectName ?? EMPTY_VALUE}</DetailReadonlyValue>
+        </FormField>
+
+        <div className="flex gap-3">
+          <FormField label={t('create.planTypeLabel')} className="flex-1">
+            <DetailReadonlyValue>{t('create.planTypeValue')}</DetailReadonlyValue>
+          </FormField>
+          <FormField label={t('create.itemTypeLabel')} className="flex-1">
+            <DetailReadonlyValue>{t('create.itemTypeValue')}</DetailReadonlyValue>
+          </FormField>
+        </div>
 
         <FormField
           label={t('create.nameLabel')}

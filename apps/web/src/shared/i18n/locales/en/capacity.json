@@ -29,7 +29,12 @@
     "unitFixedHint": "The unit cannot be changed after the plan is created — every number on the plan uses it.",
     "createButton": "Create",
     "created": "\"{{name}}\" created",
-    "createFailed": "Failed to create the capacity plan"
+    "createFailed": "Failed to create the capacity plan",
+    "projectLabel": "Project",
+    "planTypeLabel": "Plan Type",
+    "planTypeValue": "Single Release",
+    "itemTypeLabel": "Portfolio Item Type",
+    "itemTypeValue": "Feature"
   },
   "detail": {
     "notFound": "Capacity plan not found.",
@@ -189,7 +194,8 @@
     "skipReason": {
       "unallocated": "no team assigned, so there was no plan for it to take",
       "release_span_mismatch": "the plan’s window reaches outside its release, so the dates were written but the Release was not",
-      "archived": "it is archived, so the plan had nothing to write to — remove it from the plan or unarchive it"
+      "archived": "it is archived, so the plan had nothing to write to — remove it from the plan or unarchive it",
+      "other_release": "it already belongs to another release, so its Release was left alone — the planned dates were still written"
     },
     "acknowledge": "Done",
     "failed": "Could not publish the plan",
@@ -297,7 +303,8 @@
     "titleForTeam": "Add Features to {{team}}",
     "actionForTeam": "Add Features to this team",
     "confirm": "Add to Plan",
-    "searchPlaceholder": "Search Features…"
+    "searchPlaceholder": "Search Features…",
+    "added": "Added"
   },
   "move": {
     "action": "Move to another plan",

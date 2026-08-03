@@ -53,6 +53,8 @@ import { ProgressBar } from '@/shared/ui/progress-bar'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { formatDateTime } from '@/shared/lib/utils'
 import { PORTFOLIO_STATES, PRELIMINARY_ESTIMATE_SIZES } from '../model/portfolio-states'
+import { StatusBadge } from '@/shared/ui/status-badge'
+import { portfolioStateStyle } from '@/features/portfolio/status-colors'
 
 /** The workspace roster as `OwnerSelectField` wants it. */
 interface MemberOption {
@@ -172,6 +174,14 @@ export function PortfolioDetailSidebar({
             value: s,
             label: t(`states.${s}`, { defaultValue: s }),
           }))}
+          triggerContent={
+            <StatusBadge
+              style={portfolioStateStyle(
+                item.state,
+                t(`states.${item.state}`, { defaultValue: item.state }),
+              )}
+            />
+          }
           onChange={(v) => onUpdate({ state: v as PortfolioItemDetail['state'] })}
         />
       </DetailField>
@@ -236,29 +246,41 @@ export function PortfolioDetailSidebar({
 
       {/* Both forecasts are NOT NULL DEFAULT 0 (migration 0079), so an empty input means 0
           rather than null — 0 IS the "not forecast" value and falls through to the Preliminary
-          Estimate mapping. */}
+          Estimate mapping.
+
+          A reader gets `DetailReadonlyValue`, not `<Input readOnly>`. These were the only two fields
+          in the rail that kept a real textbox for someone who cannot write: focusable, in the tab
+          order, announced as an editable field, and — being `type="number"` — still stepping on
+          arrow-up with nothing to save. Every neighbour already collapses, this component exists for
+          exactly that, and this same file used it twice already. */}
       <DetailField label={t('detail.fields.refinedEstimate')}>
-        <Input
-          type="number"
-          min={0}
-          step="0.01"
-          readOnly={readOnly}
-          value={String(item.refinedEstimate)}
-          aria-label={t('detail.fields.refinedEstimate')}
-          onChange={(e) => onUpdate({ refinedEstimate: Number(e.target.value || 0) })}
-        />
+        {readOnly ? (
+          <DetailReadonlyValue mono>{item.refinedEstimate}</DetailReadonlyValue>
+        ) : (
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            value={String(item.refinedEstimate)}
+            aria-label={t('detail.fields.refinedEstimate')}
+            onChange={(e) => onUpdate({ refinedEstimate: Number(e.target.value || 0) })}
+          />
+        )}
       </DetailField>
 
       <DetailField label={t('detail.fields.refinedItemCountEstimate')}>
-        <Input
-          type="number"
-          min={0}
-          step="1"
-          readOnly={readOnly}
-          value={String(item.refinedItemCountEstimate)}
-          aria-label={t('detail.fields.refinedItemCountEstimate')}
-          onChange={(e) => onUpdate({ refinedItemCountEstimate: Number(e.target.value || 0) })}
-        />
+        {readOnly ? (
+          <DetailReadonlyValue mono>{item.refinedItemCountEstimate}</DetailReadonlyValue>
+        ) : (
+          <Input
+            type="number"
+            min={0}
+            step="1"
+            value={String(item.refinedItemCountEstimate)}
+            aria-label={t('detail.fields.refinedItemCountEstimate')}
+            onChange={(e) => onUpdate({ refinedItemCountEstimate: Number(e.target.value || 0) })}
+          />
+        )}
       </DetailField>
 
       {/* SRS.md:106 asks for Planned Start Date as plain free text, "intentionally not a date
