@@ -34,6 +34,9 @@ interface OwnerSelectFieldProps {
   placeholder?: string
   id?: string
   disabled?: boolean
+  /** Marks the field and refuses the empty option — Portfolio's create modal, where Owner is required. */
+  required?: boolean
+  error?: string
 }
 
 export function OwnerSelectField({
@@ -43,9 +46,11 @@ export function OwnerSelectField({
   label = 'Owner',
   placeholder = 'Unassigned',
   disabled,
+  required,
+  error,
 }: OwnerSelectFieldProps) {
   return (
-    <FormField label={label}>
+    <FormField label={label} required={required} error={error}>
       <SearchableSelect
         variant="field"
         value={value ?? ''}

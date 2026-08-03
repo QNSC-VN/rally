@@ -23,7 +23,12 @@ import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { and, eq } from 'drizzle-orm';
 import type { PreliminaryEstimateMap } from '../../../../../db/schema/enums';
-import { computePortfolioProgress, type PortfolioProgress } from '../domain/portfolio-rollup';
+import {
+  computePortfolioProgress,
+  defaultAllocationEstimate,
+  type PortfolioProgress,
+  type ResolvedEstimate,
+} from '../domain/portfolio-rollup';
 import { PreliminaryEstimateMapService } from './preliminary-estimate-map.service';
 import {
   PORTFOLIO_ITEM_REPOSITORY,
@@ -57,6 +62,19 @@ export interface PortfolioItemWithProgress extends PortfolioItemView {
    * instead — which this app already renders.
    */
   health: HealthResult;
+  /**
+   * The resolved top-down estimate per unit, with the tier that produced it.
+   *
+   * `Refined > 0`, else the Preliminary size mapping, else 0 with tier `none` — the same chain the
+   * progress bars above are divided by, and the same one a capacity plan copies from when a planner
+   * leaves Estimate blank. Shipped because every client otherwise re-derives it, and one of them
+   * (the Epic Children tab) instead rendered the raw `refinedEstimate`, showing 0 for work sized by
+   * a T-shirt only.
+   */
+  estimate: {
+    points: ResolvedEstimate;
+    count: ResolvedEstimate;
+  };
 }
 
 /** One child type's share of the accepted-children rollup. */
@@ -333,6 +351,7 @@ export class PortfolioItemsService {
   ): Promise<PortfolioItemWithProgress> {
     const existing = await this.requireItem(actor, id);
     await this.access.assertProjectPermission(actor, existing.projectId, 'portfolio:edit');
+    assertNotArchived(existing);
 
     // A project move is authorised in BOTH directions: taking work out of a project and
     // putting work into one are each an edit of that project's portfolio, and a Project
@@ -598,6 +617,7 @@ export class PortfolioItemsService {
   ): Promise<PortfolioItemWithProgress> {
     const item = await this.requireItem(actor, id);
     await this.access.assertProjectPermission(actor, item.projectId, 'portfolio:edit');
+    assertNotArchived(item);
 
     if (!opts.beforeId && !opts.afterId) {
       throw new PreconditionFailedException(
@@ -797,6 +817,29 @@ export class PortfolioItemsService {
         preliminaryPoints: size.points,
         preliminaryCount: size.count,
       }),
+      /**
+       * The RESOLVED top-down estimate, and which tier produced it.
+       *
+       * Already computed here for the progress bars and then thrown away, so every client had to
+       * re-derive it — and the Epic Children tab did not, rendering `refinedEstimate` raw. That is 0
+       * for a Feature sized only by a T-shirt, and the wire documents 0 as "not forecast", so the
+       * column and its totals row read zero for work that has an estimate.
+       *
+       * Both units, because the portfolio shows both (`% Done by Est.` and `% Done by Count`) and a
+       * capacity plan picks one per plan. `defaultAllocationEstimate` rather than `resolveEstimate`:
+       * an item has no allocated tier of its own — that belongs to a plan. Precedent for shipping
+       * value-plus-tier: `capacity-plan-response.dto.ts`.
+       */
+      estimate: {
+        points: defaultAllocationEstimate({
+          refined: Number(item.refinedEstimate),
+          preliminary: size.points,
+        }),
+        count: defaultAllocationEstimate({
+          refined: item.refinedItemCountEstimate,
+          preliminary: size.count,
+        }),
+      },
     };
   }
 
@@ -804,4 +847,32 @@ export class PortfolioItemsService {
   private estimateMap(workspaceId: string): Promise<PreliminaryEstimateMap> {
     return this.estimateMaps.forWorkspace(workspaceId);
   }
+}
+
+/**
+ * An ARCHIVED item is read-only. Restoring it is the way back.
+ *
+ * SRS §5.5 archives instead of deleting, and §15 of the Capacity spec calls archived work "not
+ * actionable planning demand" — every rollup, every plan total and the cutline already exclude it. It
+ * was still fully editable: the only `archivedAt` checks anywhere on the write path looked at the
+ * PARENT (an archived Epic cannot take a Feature, an archived Epic's Feature cannot be restored), so
+ * an archived Feature could be renamed, re-stated, re-ranked and re-pointed at a Release while
+ * contributing nothing to any number on the screen.
+ *
+ * Worse on the Children tab: `Add Item` there is create-then-link, and the link is refused by
+ * `assertFeatureLinkable` (`WORK_ITEM_FEATURE_LINK_ARCHIVED`) — so the Story was created, the PATCH
+ * failed, and a parentless Story was left in the backlog by an action that reported an error.
+ *
+ * `setArchived` deliberately does NOT call this: unarchiving is a write on an archived row, and it is
+ * the only one that can be.
+ */
+function assertNotArchived(item: { itemKey: string; archivedAt: Date | null }): void {
+  // `== null`, not `=== null`: the column is NOT NULL-or-a-date in production, but a partially-mocked
+  // row in a unit test must read as active rather than as archived — a guard that fires on a missing
+  // field would refuse every write for the wrong reason.
+  if (item.archivedAt == null) return;
+  throw new PreconditionFailedException(
+    'PORTFOLIO_ITEM_ARCHIVED',
+    `${item.itemKey} is archived — restore it before editing`,
+  );
 }

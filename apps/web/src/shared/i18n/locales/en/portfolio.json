@@ -175,7 +175,9 @@
     "createWithDetails": "Create with details",
     "createButton": "Create",
     "created": "\"{{name}}\" created",
-    "createFailed": "Failed to create the portfolio item"
+    "createFailed": "Failed to create the portfolio item",
+    "ownerRequired": "An Owner is required",
+    "unscheduled": "Unscheduled"
   },
   "archive": {
     "action": "Archive",
