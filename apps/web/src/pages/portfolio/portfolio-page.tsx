@@ -243,9 +243,21 @@ export function PortfolioPage() {
    * Disabled under a column sort: a running order means nothing there, which is the same guard the
    * arrows carried and why §273 asks the order to survive a return to the Rank column.
    */
+  /**
+   * The list is in TRUE rank order only when nothing is sorting or filtering it.
+   *
+   * A drop computes the row's new position from its on-screen neighbours, so under a search or a
+   * State filter those neighbours are not the rows the server has beside it — the move resolves to
+   * a position between two non-adjacent items and silently lands as a no-op. Caught by
+   * `portfolio.e2e.ts`, which narrows to its own two fixtures by search before reordering: the drop
+   * returned `200` and the order did not change. The Children tabs already guard exactly this way
+   * (`listIsRankOrdered`), and the up/down buttons this replaced were only accidentally safe,
+   * because they indexed the same filtered array on both sides.
+   */
+  const listIsRankOrdered = sortField === null && search.trim() === '' && stateFilter === 'all'
   const rerank = useRowRerank({
     items: sorted,
-    disabled: sortField !== null,
+    disabled: !listIsRankOrdered,
     onReorder: ({ id, beforeId, afterId }) =>
       rank.mutate({ id, beforeId, afterId }, { onError: (err) => notify.error(err.message) }),
   })
@@ -457,7 +469,7 @@ export function PortfolioPage() {
             item={item}
             rowNum={rowNum}
             revealed={revealed}
-            canRank={sortField === null && rowPerms.can(item.projectId, 'portfolio:edit')}
+            canRank={listIsRankOrdered && rowPerms.can(item.projectId, 'portfolio:edit')}
             canEdit={rowPerms.can(item.projectId, 'portfolio:edit')}
             members={members}
             canEditProject={canEditProject}
