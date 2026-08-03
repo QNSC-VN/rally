@@ -31,7 +31,13 @@ import { ReleasesService } from '@modules/releases';
 import { ReportSnapshotService, ReportingService } from '@modules/reporting';
 import { TeamStatusService } from '@modules/team-status';
 import { WorkItemsService } from '@modules/work-items';
-import { iterationDailySnapshots, iterations, teams, workItems } from '@db/schema/work';
+import {
+  iterationDailySnapshots,
+  iterationTeamBaselines,
+  iterations,
+  teams,
+  workItems,
+} from '@db/schema/work';
 import { users } from '@db/schema/identity';
 
 import {
@@ -132,31 +138,41 @@ describe('Phase 6 reports (e2e)', () => {
   it('captures the Ideal baseline once and writes one row per local day', async () => {
     await snapshots.takeSnapshots();
 
-    const [afterFirst] = await db
+    /**
+     * Read from `iteration_team_baselines`, not `iterations.total_task_estimate_at_start`.
+     *
+     * IB §4 makes the baseline per TEAM with All Teams as the sum, so migration 0098 moved it to one
+     * row per (iteration, team scope). The old single column could only ever hold a project-wide
+     * number, which is what made a team-scoped chart plot the whole project's Ideal.
+     */
+    const first = await db
       .select({
-        baseline: iterations.totalTaskEstimateAtStart,
-        capturedAt: iterations.totalTaskEstimateCapturedAt,
+        teamId: iterationTeamBaselines.teamId,
+        baseline: iterationTeamBaselines.totalTaskEstimateAtStart,
+        capturedAt: iterationTeamBaselines.capturedAt,
       })
-      .from(iterations)
-      .where(eq(iterations.id, iterationId));
-    expect(Number(afterFirst.baseline)).toBe(8);
-    expect(afterFirst.capturedAt).not.toBeNull();
+      .from(iterationTeamBaselines)
+      .where(eq(iterationTeamBaselines.iterationId, iterationId));
+    expect(first).toHaveLength(1);
+    expect(Number(first[0].baseline)).toBe(8);
+    expect(first[0].capturedAt).not.toBeNull();
 
-    // Re-estimating after the iteration started must NOT move the Ideal line (IB §5), and a
-    // second tick must not re-capture — `captureStartBaseline` only writes when the column is
-    // still null.
+    // Re-estimating after the iteration started must NOT move the Ideal line (IB §5), and a second
+    // tick must not re-capture — `captureTeamBaselines` uses `onConflictDoNothing` per scope, which is
+    // the same guarantee the old `IS NULL` predicate gave for a single column.
     await db.update(workItems).set({ updatedAt: new Date() }).where(eq(workItems.id, storyId));
     await snapshots.takeSnapshots();
 
-    const [afterSecond] = await db
+    const second = await db
       .select({
-        baseline: iterations.totalTaskEstimateAtStart,
-        capturedAt: iterations.totalTaskEstimateCapturedAt,
+        baseline: iterationTeamBaselines.totalTaskEstimateAtStart,
+        capturedAt: iterationTeamBaselines.capturedAt,
       })
-      .from(iterations)
-      .where(eq(iterations.id, iterationId));
-    expect(Number(afterSecond.baseline)).toBe(8);
-    expect(afterSecond.capturedAt?.getTime()).toBe(afterFirst.capturedAt?.getTime());
+      .from(iterationTeamBaselines)
+      .where(eq(iterationTeamBaselines.iterationId, iterationId));
+    expect(second).toHaveLength(1);
+    expect(Number(second[0].baseline)).toBe(8);
+    expect(second[0].capturedAt?.getTime()).toBe(first[0].capturedAt?.getTime());
 
     // Idempotent per (iteration, date): two ticks, one row.
     const rows = await db
@@ -312,6 +328,43 @@ describe('Phase 6 reports (e2e)', () => {
         ),
       );
     expect(again).toHaveLength(3);
+
+    /**
+     * ── the Ideal BASELINE has the same team grain as the bars ──
+     *
+     * This is what migration 0098 fixed. The baseline used to be one column on `iterations`, so both
+     * teams' charts were drawn against the project-wide 10 while Alpha's bars were 6 and Beta's 4.
+     * IB §6 compares `remainingToDo(d)` with `ideal(d)`, so the indicator read "On track" for a team
+     * that had burned nothing, and could not read "Behind plan" until a team exceeded every OTHER
+     * team's estimate too.
+     */
+    const baselines = await db
+      .select({
+        teamId: iterationTeamBaselines.teamId,
+        total: iterationTeamBaselines.totalTaskEstimateAtStart,
+      })
+      .from(iterationTeamBaselines)
+      .where(eq(iterationTeamBaselines.iterationId, shared.id));
+    // One row per team WITH work — and no All-Teams row, because §4 makes All Teams the SUM.
+    expect(new Set(baselines.map((r) => r.teamId))).toEqual(new Set([alpha, beta]));
+    expect(Number(baselines.find((r) => r.teamId === alpha)?.total)).toBe(6);
+    expect(Number(baselines.find((r) => r.teamId === beta)?.total)).toBe(4);
+
+    {
+      const [allTeams, alphaReport, betaReport] = await Promise.all([
+        reporting.getIterationBurndown(admin, { projectId, iterationId: shared.id }),
+        reporting.getIterationBurndown(admin, {
+          projectId,
+          iterationId: shared.id,
+          teamId: alpha,
+        }),
+        reporting.getIterationBurndown(admin, { projectId, iterationId: shared.id, teamId: beta }),
+      ]);
+      // Each team is measured against its OWN plan, and All Teams is the sum of the two (§4).
+      expect(alphaReport.totalTaskEstimateAtStart).toBe(6);
+      expect(betaReport.totalTaskEstimateAtStart).toBe(4);
+      expect(allTeams.totalTaskEstimateAtStart).toBe(10);
+    }
   });
 
   it('reports NO WINDOW for a dateless iteration instead of failing', async () => {

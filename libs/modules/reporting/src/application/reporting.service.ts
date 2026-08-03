@@ -4,7 +4,7 @@ import type { JwtPayload } from '@platform';
 import { PreliminaryEstimateMapService } from '@modules/portfolio';
 import { IReportingRepository, REPORTING_REPOSITORY } from '../domain/ports/reporting.repository';
 import type { IterationRow } from '../domain/ports/reporting.repository';
-import { buildBurndownSeries, combineBaselines, combineTeamSnapshots } from '../domain/burndown';
+import { buildBurndownSeries, combineTeamSnapshots } from '../domain/burndown';
 import {
   bucketFeatures,
   buildBurnup,
@@ -91,7 +91,7 @@ export class ReportingService {
 
     const [snapshots, scheduled] = await Promise.all([
       this.repo.getIterationSnapshots(workspaceId, iterationIds, scope, settings.timeZone),
-      this.repo.countScheduledWork(workspaceId, iterationIds),
+      this.repo.countScheduledWork(workspaceId, iterationIds, scope),
     ]);
 
     const timebox = this.toTimebox(selected, participating);
@@ -99,10 +99,15 @@ export class ReportingService {
       startDate: timebox.startDate ?? '',
       endDate: timebox.endDate ?? '',
       workingDays: settings.workingDays,
-      // "For All Teams, the baseline is the sum of the participating Team baselines."
-      totalTaskEstimateAtStart: combineBaselines(
-        participating.map((i) => i.totalTaskEstimateAtStart),
-      ),
+      /**
+       * "For All Teams, the baseline is the sum of the participating Team baselines." (IB §4)
+       *
+       * Read from `iteration_team_baselines` in the SAME scope the snapshots were measured in. It used
+       * to sum `iterations.totalTaskEstimateAtStart` — one project-wide number per iteration — so a
+       * team-scoped chart drew the whole project's Ideal against one team's bars, and §6's indicator
+       * said "On track" for a team that had burned nothing.
+       */
+      totalTaskEstimateAtStart: await this.repo.sumTeamBaselines(workspaceId, iterationIds, scope),
       snapshots: combineTeamSnapshots(snapshots),
     });
 

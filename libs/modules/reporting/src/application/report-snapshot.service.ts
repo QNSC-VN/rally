@@ -84,12 +84,47 @@ export class ReportSnapshotService {
       const localDate = localDates.get(iteration.workspaceId);
       const timeZone = timeZones.get(iteration.workspaceId);
       if (!localDate || !timeZone) continue;
+
+      /**
+       * Only inside the iteration's own window — the guard the release loop below already has.
+       *
+       * `findActiveIterations` selects on `state = 'committed'` and nothing else, and committing early
+       * is legal (`IterationsService` checks only that the current state is `planning`). So an
+       * iteration committed before it starts had its IMMUTABLE baseline captured at commit time —
+       * commonly zero, because tasks are broken down after commitment — and `captureStartBaseline`'s
+       * `IS NULL` guard then made that permanent.
+       *
+       * A captured `0` is the dangerous part: it is not null, so it passes every "no baseline" check.
+       * `idealLine(0, N)` returns all zeros, the client's `noBaseline` note stays hidden, a flat zero
+       * line is drawn as a measured plan, and the status indicator pins to "Behind plan" for the whole
+       * sprint. The same loop also wrote daily rows for dates entirely outside the window.
+       *
+       * IB §4: capture the baseline "when the Iteration starts".
+       */
+      if (
+        (iteration.startDate && localDate < iteration.startDate) ||
+        (iteration.endDate && localDate > iteration.endDate)
+      ) {
+        continue;
+      }
+
       try {
-        // The Ideal baseline is captured on the first tick that sees the iteration committed,
-        // and never again — `captureStartBaseline` only writes when the column is still null.
-        if (iteration.totalTaskEstimateAtStart === null) {
-          const total = await this.repo.sumTaskEstimate(iteration.workspaceId, iteration.id);
-          await this.repo.captureStartBaseline(iteration.workspaceId, iteration.id, total, now);
+        /**
+         * The Ideal baseline, ONE ROW PER TEAM, captured on the first tick inside the window.
+         *
+         * IB §4 makes the baseline per team and All Teams the sum of the participating team baselines,
+         * so this is grouped by the resolved team rather than being a single iteration-wide number.
+         * `captureTeamBaselines` uses `onConflictDoNothing`, so a later tick adds nothing and the line
+         * cannot move when tasks are added or re-estimated — the same guarantee the old `IS NULL`
+         * predicate gave, now expressible per scope.
+         *
+         * Attempted on every in-window tick rather than gated on a column: a team that had no work on
+         * the iteration's first day acquires its own baseline the first time it does, which is the
+         * closest thing to "at Iteration start" that exists for that team.
+         */
+        const perTeam = await this.repo.sumTaskEstimateByTeam(iteration.workspaceId, iteration.id);
+        if (perTeam.length > 0) {
+          await this.repo.captureTeamBaselines(iteration.workspaceId, iteration.id, perTeam, now);
           result.baselinesCaptured += 1;
         }
 
