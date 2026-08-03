@@ -14,10 +14,19 @@
  * either. A child defect is reached from Quality or the Backlog; the link itself is not lost.
  *
  * This docblock claimed "3 tabs" throughout the tab's whole life, so the comment was never the
- * thing that drifted — the tab bar was. `Connections` is the other addition the same note flags
- * ("Linked Items and Comments beyond the current mockup/SRS"); it is DELIBERATELY still here,
- * pending the separate BA decision that note asks for. Do not remove it on the strength of this
- * comment alone.
+ * thing that drifted — the tab bar was.
+ *
+ * THREE OTHER ADDITIONS ARE STILL HERE ON PURPOSE. Do not remove any of them on the strength of
+ * this comment; each has a different status, and only `Defects` had an instruction to Dev.
+ *
+ *  - `LinkedItemsBlock` and `CommentThread` (both on the Details tab) — the same note flags these
+ *    as "beyond the current mockup/SRS", but assigns the action to BA/Mockup, not Dev: "evaluate
+ *    extra Linked Items and Comments for Future Backlog". That evaluation has not happened —
+ *    `04_Developement_tracking/Future_Backlog/` holds only Team Board, Release Planning and
+ *    Iteration Status Board. Pending a BA decision, not a dev cleanup.
+ *  - `Connections` (SCM pull requests + changesets) — NOT what the note means by "Linked Items";
+ *    that is `LinkedItemsBlock` above. Connections appears in NO BA document: not approved, not
+ *    rejected, not recorded as an extra. It postdates the audit and nobody has ruled on it.
  */
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
