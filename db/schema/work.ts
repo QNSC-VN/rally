@@ -323,6 +323,45 @@ export const iterations = workSchema.table(
   }),
 );
 
+// ── iteration_team_baselines (burndown Ideal, per team) ───────────────────
+
+/**
+ * The Burndown Ideal baseline, one row per (iteration, team scope).
+ *
+ * IB §4 makes the baseline per TEAM and All Teams the SUM of the participating team baselines —
+ * deliberately unlike `iteration_daily_snapshots`, where `team_id IS NULL` is a MEASURED All Teams row
+ * that is never summed. Here `team_id IS NULL` means "tasks whose team resolves to nothing", so
+ * summing the rows loses no hours.
+ *
+ * Added by migration 0098; `iterations.total_task_estimate_at_start` was one column per iteration, so a
+ * team-scoped chart drew the whole project's Ideal against one team's bars.
+ */
+export const iterationTeamBaselines = workSchema.table(
+  'iteration_team_baselines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    iterationId: uuid('iteration_id')
+      .notNull()
+      .references(() => iterations.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+    totalTaskEstimateAtStart: numeric('total_task_estimate_at_start', {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // COALESCE, because a plain unique index does not constrain NULLs — the no-team row would
+    // duplicate on every capture. Same shape as `uq_ids_iteration_team_date` (0093).
+    uniqueScope: uniqueIndex('uq_itb_iteration_team').on(
+      t.iterationId,
+      sql`coalesce(${t.teamId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+    ),
+    workspaceIterationIdx: index('ix_itb_workspace_iteration').on(t.workspaceId, t.iterationId),
+  }),
+);
+
 // ── iteration_daily_snapshots (burndown / velocity read model) ────────────
 
 export const iterationDailySnapshots = workSchema.table(

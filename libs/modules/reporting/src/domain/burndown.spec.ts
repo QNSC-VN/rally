@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBurndownSeries,
-  combineBaselines,
   combineTeamSnapshots,
   idealLine,
   type StoredSnapshot,
@@ -176,12 +175,6 @@ describe('buildBurndownSeries', () => {
 });
 
 describe('All Teams aggregation', () => {
-  it('sums the participating baselines and keeps null when none exist', () => {
-    expect(combineBaselines([16, 24, null])).toBe(40);
-    expect(combineBaselines([null, null])).toBeNull();
-    expect(combineBaselines([])).toBeNull();
-  });
-
   it('fuses the Teams rows of one shared timebox per date', () => {
     expect(
       combineTeamSnapshots([

@@ -225,6 +225,34 @@ difference is the whole design. Read this before changing a report or the snapsh
   not the only writer: `create` set it, `update` omitted it, and `db/seeds/**` inserts dated
   iterations directly — 40 rows had dates and no group, three of them sharing a window with four
   that were grouped, so each became its own bar.
+- **The Ideal BASELINE is per TEAM too, and All Teams is the SUM** (`iteration_team_baselines`,
+  migration 0098). Two different rules for two different quantities, both stated by IB §4: the
+  snapshot rows' `team_id IS NULL` is a MEASURED All Teams row that is never summed, while here
+  `team_id IS NULL` means "work whose team cannot be resolved" and every row IS summed for All Teams.
+  Migration 0093 gave the rows a team dimension and left the baseline as one column on `iterations`, so
+  a team-scoped chart drew the WHOLE PROJECT's Ideal against one team's bars — and because §6 compares
+  `remainingToDo(d)` with `ideal(d)`, the indicator read "On track" for a team that had burned nothing
+  and could not read "Behind plan" until a team exceeded every other team's estimate as well. Capture
+  groups by the same `coalesce(task, parent, iteration)` team the hours are measured with, so the
+  baseline and its bars can never be scoped differently. **The release Ideal target
+  (`releases.ideal_target_*`) still has this defect** — it is captured only under `teamId === null`.
+- **The snapshot job only writes INSIDE the timebox window.** `findActiveIterations` selects on
+  `state = 'committed'` and nothing else, and committing early is legal — so an iteration committed
+  before it started had its *immutable* baseline captured at commit time, commonly zero because tasks
+  are broken down after commitment. A captured `0` is the trap: it is not null, so it passes every "no
+  baseline" check, `idealLine(0, N)` returns zeros, the `noBaseline` note stays hidden, and a flat zero
+  line is drawn as a measured plan. The release loop always had this guard; the iteration loop now does
+  too.
+- **Eligibility must be counted in the SAME scope as the measurement.** Velocity's eligibility join
+  carried no team predicate while `getVelocityItems` narrowed by `coalesce(item, iteration)`, so a
+  shared timebox became an eligible bar for a team whose work was then filtered out of it — a
+  zero-point bar for a sprint the team never worked in, dividing Trend, Last 3, Best 3 and Worst 3.
+  `countScheduledWork` had the mirror image: counted project-wide, a team with nothing in a shared
+  sprint was told its snapshot history was missing. Both now take the scope.
+- **A LIVE fact must not outrank FROZEN history.** `hasScheduledWork` is a live count and the series is
+  frozen, so a rolled-over iteration reported `historyState: 'complete'` with a full recorded series
+  and the screen replaced it with "no scheduled work". §5 makes only MISSING SNAPSHOTS unavailable, so
+  the live emptiness is consulted last. Same mistake as the missing-baseline one, in a different place.
 - **Burndown history carries a TEAM** (`iteration_daily_snapshots.team_id`, migration 0093).
   `team_id IS NULL` is the All Teams row and every scope is MEASURED independently — the All Teams
   row is never the sum of the team rows, or a task two teams both touch counts twice. Frozen
