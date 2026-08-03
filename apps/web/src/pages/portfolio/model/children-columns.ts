@@ -2,7 +2,6 @@ import { type ColumnSpec } from '@/shared/ui/table'
 import type { PortfolioChild, PortfolioItem } from '@/features/portfolio/api'
 
 export type ChildColKey =
-  | 'type'
   | 'id'
   | 'name'
   | 'priority'
@@ -11,6 +10,9 @@ export type ChildColKey =
   | 'scheduleState'
   | 'iteration'
   | 'release'
+  | 'taskEstimate'
+  | 'toDo'
+  | 'actual'
 
 /**
  * A Feature's Children tab — the BA's column list, in its order.
@@ -25,20 +27,26 @@ export type ChildColKey =
  * in the app does. That is what makes the columns resizable, reorderable and sortable without any of
  * it being written here.
  */
+/**
+ * No `Type` column. The ID cell already carries the type as its badge glyph — the same
+ * `TypeBadge` a dedicated column would have rendered — so the column repeated one field twice in
+ * adjacent cells. Backlog and Iteration Status both show type through the ID cell alone.
+ */
 export const PORTFOLIO_CHILD_COLUMNS: ColumnSpec<PortfolioChild, unknown, ChildColKey>[] = [
-  { key: 'type', label: 'Type', defaultWidth: 56, minWidth: 48, align: 'center' },
   { key: 'id', label: 'ID', defaultWidth: 104, minWidth: 88, locked: true, sortCol: 'itemKey' },
-  {
-    key: 'name',
-    label: 'Name',
-    defaultWidth: 260,
-    minWidth: 160,
-    locked: true,
-    grow: true,
-    sortCol: 'title',
-  },
+  /**
+   * NOT `grow: true`, deliberately — the same choice Iteration Status and the Backlog make for
+   * their Name columns.
+   *
+   * `styleFor` gives a grow column `minWidth: <its current width>` as a floor it may expand past.
+   * Paired with the row's `min-w-max`, that floor means the TABLE widens to fit a long title
+   * instead of the title wrapping inside its cell: 260px of minimum, and text that never breaks.
+   * A plain fixed-width column gets a real width, so `break-words` in the cell can do its job.
+   */
+  { key: 'name', label: 'Name', defaultWidth: 260, minWidth: 160, locked: true, sortCol: 'title' },
   { key: 'priority', label: 'Priority', defaultWidth: 96, minWidth: 80, sortCol: 'priority' },
-  // `Est` is the BA's label, and the Totals row sums this column — the one number the tab foots.
+  // `Est` is the BA's label for the Story/Defect Plan Estimate — points, not hours. The three
+  // hour columns below belong to Tasks and are a different measure entirely.
   {
     key: 'estimate',
     label: 'Est',
@@ -57,6 +65,17 @@ export const PORTFOLIO_CHILD_COLUMNS: ColumnSpec<PortfolioChild, unknown, ChildC
   },
   { key: 'iteration', label: 'Iteration', defaultWidth: 140, minWidth: 100, sortCol: 'iteration' },
   { key: 'release', label: 'Release', defaultWidth: 150, minWidth: 110, sortCol: 'release' },
+  /**
+   * The three Task-hour columns, labelled and sized as Iteration Status labels and sizes them.
+   *
+   * They are blank on a Story/Defect row and carry values on its disclosed Tasks: hours live on
+   * Tasks in this product, which is exactly why Iteration Status shows the same three beside
+   * `Plan Estimate` rather than folding them into one cell. The disclosed rows previously packed
+   * both numbers into a single `To Do 3h · Actual 5h` string in a column that named neither.
+   */
+  { key: 'taskEstimate', label: 'Task Est', defaultWidth: 80, minWidth: 68, align: 'right' },
+  { key: 'toDo', label: 'To Do', defaultWidth: 70, minWidth: 60, align: 'right' },
+  { key: 'actual', label: 'Actual', defaultWidth: 70, minWidth: 60, align: 'right' },
 ]
 
 export type EpicChildColKey =
@@ -73,15 +92,9 @@ export type EpicChildColKey =
 export const EPIC_CHILD_COLUMNS: ColumnSpec<PortfolioItem, unknown, EpicChildColKey>[] = [
   { key: 'rank', label: 'Rank', defaultWidth: 64, minWidth: 56, align: 'right' },
   { key: 'id', label: 'ID', defaultWidth: 104, minWidth: 88, locked: true, sortCol: 'itemKey' },
-  {
-    key: 'name',
-    label: 'Name',
-    defaultWidth: 240,
-    minWidth: 150,
-    locked: true,
-    grow: true,
-    sortCol: 'name',
-  },
+  // Fixed width, not `grow` — see the note on the Feature tab's Name column above: a grow column
+  // gets a minWidth floor and no ceiling, so a long title widens the table instead of wrapping.
+  { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150, locked: true, sortCol: 'name' },
   { key: 'team', label: 'Team', defaultWidth: 140, minWidth: 100, sortCol: 'team' },
   { key: 'state', label: 'State', defaultWidth: 150, minWidth: 110, sortCol: 'state' },
   { key: 'complete', label: 'Complete', defaultWidth: 92, minWidth: 76, align: 'right' },

@@ -68,23 +68,8 @@ export function EpicChildrenTable({
     },
   })
 
-  /**
-   * Column styles computed ONCE per layout change, not per cell.
-   *
-   * Every cell used to call `table.styleFor(key, { flexShrink: 0 })` inline, which allocates a fresh
-   * style object per cell per render and pins every column — including `name`, which the column spec
-   * declares as `grow`. It now flexes to fill like the Tasks tab's Name column does.
-   */
-  const colStyles = useMemo(
-    () =>
-      Object.fromEntries(
-        EPIC_CHILD_COLUMNS.map((c) => [
-          c.key,
-          table.styleFor(c.key, c.key === 'name' ? { flex: 1, minWidth: 150 } : { flexShrink: 0 }),
-        ]),
-      ) as Record<EpicChildColKey, CSSProperties>,
-    [table],
-  )
+  // Column sizing comes straight from the shared engine — see `useDataTable().colStyles`.
+  const colStyles = table.colStyles
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase()

@@ -4087,6 +4087,7 @@ export interface components {
       iterationId: string | null
       /** @description The BA's `Iteration` column */
       iterationName: string | null
+      rank: string
       /** Format: uuid */
       projectId: string
       releaseId: string | null

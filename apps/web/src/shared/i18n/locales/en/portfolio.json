@@ -126,7 +126,7 @@
     },
     "children": {
       "featuresHeading": "Child Features",
-      "itemsHeading": "Linked Work Items",
+      "itemsHeading": "Children",
       "empty": "Nothing linked yet.",
       "epicNote": "An Epic rolls up through its child Features.",
       "search": "Search linked items",
@@ -143,6 +143,12 @@
       "editEstimate": "{{key}} plan estimate",
       "editState": "{{key}} schedule state",
       "editRelease": "{{key}} release",
+      "addItem": "Add New",
+      "added": "{{key}} linked to this Feature",
+      "filterType": "Type",
+      "allTypes": "All Types",
+      "filterState": "State",
+      "allStates": "All States",
       "tasksLoading": "Loading tasks...",
       "noTasks": "No tasks on this item.",
       "taskHours": "To Do {{todo}}h · Actual {{actual}}h"

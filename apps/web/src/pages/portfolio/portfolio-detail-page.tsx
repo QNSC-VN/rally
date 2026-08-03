@@ -41,6 +41,8 @@ import { useProjectPermissions } from '@/features/access/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { useReleases } from '@/features/releases/api'
 import { useMilestones } from '@/features/milestones/api'
+import { useUpdateAnyWorkItem } from '@/features/work-items/api'
+import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
 import { PortfolioItemType } from '@/entities/work-item/model/types'
 import { DetailLayout, DetailSectionHeading, DetailTwoPane } from '@/shared/ui/detail'
 import {
@@ -68,6 +70,10 @@ export function PortfolioDetailPage() {
   const { itemId } = useParams({ from: '/auth/portfolio/$itemId' })
   const [tab, setTab] = useState('details')
   const [confirmArchive, setConfirmArchive] = useState(false)
+  const [showAddChild, setShowAddChild] = useState(false)
+  // `featureId` lives on the work-item UPDATE body, so a new child is created first and linked
+  // second — the same two-step the e2e fixtures use to attach a Story to a Feature.
+  const linkChild = useUpdateAnyWorkItem()
 
   const { data: server, isLoading } = usePortfolioItem(itemId)
   const isEpic = server?.type === 'epic'
@@ -334,6 +340,7 @@ export function PortfolioDetailPage() {
               projectId={server?.projectId}
               canEdit={canEdit}
               isLoading={childrenLoading}
+              onAddItem={() => setShowAddChild(true)}
             />
           )}
         </div>
@@ -360,6 +367,28 @@ export function PortfolioDetailPage() {
             .catch((err: unknown) => notify.error(errorMessage(err)))
         }}
       />
+
+      {/*
+        §5.2's `Add Item`: the SAME creation flow Backlog uses, restricted to Story/Defect (the
+        modal already offers only those two), pre-filled with this Feature's Project, and linked
+        to the Feature on the way out.
+        `featureId` is on the UPDATE body, not create, so the link is a second call — the same
+        two-step the e2e fixtures use. It runs before the toast so a failed link is reported as a
+        failure rather than hidden behind a success message.
+      */}
+      {showAddChild && server?.projectId && (
+        <CreateWorkItemModal
+          projectId={server.projectId}
+          onClose={() => setShowAddChild(false)}
+          onCreated={(created) => {
+            setShowAddChild(false)
+            void linkChild
+              .mutateAsync({ id: created.id, input: { featureId: itemId } })
+              .then(() => notify.success(t('detail.children.added', { key: created.itemKey })))
+              .catch((err: unknown) => notify.error(errorMessage(err)))
+          }}
+        />
+      )}
 
       <SaveCancelBar
         visible={isDirty}

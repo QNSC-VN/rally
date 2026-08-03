@@ -37,6 +37,7 @@ import type { PortfolioChild } from '@/features/portfolio/api'
 import type { Release } from '@/features/releases/api'
 import type { ProjectMember } from '@/features/teams/api'
 import { PRIORITY_LABEL, PRIORITY_VALUES } from '@/entities/work-item/model/types'
+import { PORTFOLIO_CHILD_COLUMNS } from '../model/children-columns'
 
 const mockGET = apiClient.GET as ReturnType<typeof vi.fn>
 const mockPATCH = apiClient.PATCH as ReturnType<typeof vi.fn>
@@ -77,9 +78,15 @@ describe('FeatureChildrenTable', () => {
   it('renders every column the BA lists, including the two that were not on the wire', () => {
     // `Priority` and `Iteration` had no source until this slice added them to the children query, so
     // six of the BA's nine columns could not be shown at all.
+    //
+    // `Type` is deliberately NOT among them: the ID cell renders the type badge, so a Type column
+    // showed the same field twice in adjacent cells. Backlog and Iteration Status both carry type
+    // through the ID cell alone.
     renderTable(<FeatureChildrenTable children={[child()]} projectId="p1" />)
+    // Not `queryByText('Type')` — the collapsed filter panel has a Type control with that label.
+    // The assertion is about the COLUMN, so it reads the column spec the grid was built from.
+    expect(PORTFOLIO_CHILD_COLUMNS.map((c) => c.key)).not.toContain('type')
     for (const heading of [
-      'Type',
       'ID',
       'Name',
       'Priority',
@@ -98,27 +105,28 @@ describe('FeatureChildrenTable', () => {
     expect(screen.getByText('Sprint 26.1')).toBeTruthy()
   })
 
-  it('foots the Est column, which is the one total the BA asks for', () => {
+  it('has NO totals row — the grid it is modelled on has none', () => {
+    // Iteration Status foots nothing, and the one number this footed (summed Plan Estimate) is a
+    // roll-up the Feature's own Details tab already reports through its progress bars.
     renderTable(
       <FeatureChildrenTable
         children={[child(), child({ id: 'c2', itemKey: 'US-2', storyPoints: 3 })]}
         projectId="p1"
       />,
     )
-    expect(screen.getByText('Totals (2)')).toBeTruthy()
-    expect(screen.getByText('8')).toBeTruthy()
+    expect(screen.queryByText(/^Totals/)).toBeNull()
+    // The per-row estimates are still shown; only the footer is gone.
+    expect(screen.getByText('5')).toBeTruthy()
+    expect(screen.getByText('3')).toBeTruthy()
   })
 
   it('shows a DASH for an unestimated child rather than zero', () => {
-    // A Story nobody has sized is not a Story worth zero points, and the total must not pretend it is.
+    // A Story nobody has sized is not a Story worth zero points.
     renderTable(<FeatureChildrenTable children={[child({ storyPoints: null })]} projectId="p1" />)
     expect(screen.getByText('—')).toBeTruthy()
-    expect(screen.getByText('Totals (1)')).toBeTruthy()
   })
 
-  it('narrows on search, and the TOTAL follows the visible rows', () => {
-    // A total that ignored the search would disagree with the rows above it, and nothing on screen
-    // would say which set it described.
+  it('narrows on search', () => {
     renderTable(
       <FeatureChildrenTable
         children={[
@@ -132,11 +140,10 @@ describe('FeatureChildrenTable', () => {
       target: { value: 'flaky' },
     })
     expect(screen.queryByText('Upgrade the workspace')).toBeNull()
-    expect(screen.getByText('Totals (1)')).toBeTruthy()
-    // TWICE: the surviving row's own Est and the total, which is the point — with one row visible the
-    // two must agree, and the 5-point row that was filtered out contributes to neither.
-    expect(screen.getAllByText('13')).toHaveLength(2)
-    expect(screen.queryByText('18')).toBeNull()
+    expect(screen.getByText('Flaky pipeline')).toBeTruthy()
+    // The surviving row keeps its own estimate; the filtered-out 5-point row is gone entirely.
+    expect(screen.getByText('13')).toBeTruthy()
+    expect(screen.queryByText('5')).toBeNull()
   })
 
   it('says the list is EMPTY differently from "nothing matched"', () => {
@@ -221,14 +228,82 @@ describe('FeatureChildrenTable', () => {
     expect(screen.getByText('Sprint 26.1')).toBeTruthy()
   })
 
+  // ── Toolbar + drag ─────────────────────────────────────────────────────────
+
+  it('renders the shared toolbar: search, Add New, Filters and Show Fields', () => {
+    const onAddItem = vi.fn()
+    renderTable(
+      <FeatureChildrenTable children={[child()]} projectId="p1" canEdit onAddItem={onAddItem} />,
+    )
+
+    expect(screen.getByRole('searchbox', { name: 'Search linked items' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Filters/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Show Fields/i })).toBeTruthy()
+
+    // Add New must actually DO something — it first shipped permanently disabled.
+    fireEvent.click(screen.getByRole('button', { name: /Add New/i }))
+    expect(onAddItem).toHaveBeenCalled()
+  })
+
+  it('hides Add New when there is no creation flow or no edit right', () => {
+    const { unmount } = renderTable(
+      <FeatureChildrenTable children={[child()]} projectId="p1" canEdit />,
+    )
+    expect(screen.queryByRole('button', { name: /Add New/i })).toBeNull()
+    unmount()
+
+    renderTable(
+      <FeatureChildrenTable
+        children={[child()]}
+        projectId="p1"
+        canEdit={false}
+        onAddItem={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /Add New/i })).toBeNull()
+  })
+
+  it('gives each row a drag grip, and takes it away when the order is not rank', async () => {
+    // The rows arrive ordered by `workItems.rank` and the work-item rank endpoint can rewrite it,
+    // so the list was always reorderable — it simply had no grip.
+    const { unmount } = renderTable(
+      <FeatureChildrenTable children={[child()]} projectId="p1" canEdit />,
+    )
+    expect(screen.getByRole('button', { name: /drag/i })).toBeTruthy()
+    unmount()
+
+    // Read-only: no grip, because there is nothing this reader may persist.
+    renderTable(<FeatureChildrenTable children={[child()]} projectId="p1" canEdit={false} />)
+    expect(screen.queryByRole('button', { name: /drag/i })).toBeNull()
+  })
+
+  it('disables the grip while a filter reorders the list away from rank', async () => {
+    renderTable(
+      <FeatureChildrenTable
+        children={[child(), child({ id: 'c2', itemKey: 'DE-9', type: 'defect' })]}
+        projectId="p1"
+        canEdit
+      />,
+    )
+    expect(screen.getAllByRole('button', { name: /drag/i }).length).toBe(2)
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters/i }))
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'defect' } })
+
+    // A filtered list is no longer rank order, so a drop would compute neighbours the server
+    // does not share.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /drag/i })).toBeNull())
+  })
+
   // ── FR-012: expand to Tasks, read-only ─────────────────────────────────────
 
-  it('discloses a child’s Tasks read-only, fetched only once expanded (FR-012)', async () => {
+  it('discloses a child’s Tasks, fetched only once expanded (FR-012)', async () => {
     mockGET.mockResolvedValue({
       data: [
         {
           id: 'tk1',
           itemKey: 'TA-1',
+          type: 'task',
           title: 'Write the migration',
           scheduleState: 'in_progress',
           estimateHours: 8,
@@ -253,10 +328,148 @@ describe('FeatureChildrenTable', () => {
       params: { path: { id: 'c1' } },
     })
     expect(screen.getByText('TA-1')).toBeTruthy()
-    expect(screen.getByText('To Do 3h · Actual 5h')).toBeTruthy()
-    // Read-only per §5.2: the disclosed rows carry no editable control.
-    const row = task.closest<HTMLElement>('div.flex')!
-    expect(within(row).queryByRole('textbox')).toBeNull()
+
+    const subRow = task.closest<HTMLElement>('div.flex')!
+    // One cell per column, in the parent's order — the sub-row first shipped borrowing keys, with
+    // Task state drawn in the `priority` column and the hours in `scheduleState`, so values sat
+    // under headings that named something else and a column resize moved them somewhere new.
+    // Every column contributes a cell carrying that column's CSS `order`. (`name` flexes rather
+    // than taking a fixed width, which is why this reads `order` and not `width`.)
+    const ordered = [...subRow.children].filter((el) => (el as HTMLElement).style.order !== '')
+    expect(ordered).toHaveLength(PORTFOLIO_CHILD_COLUMNS.length)
+
+    // The three hour fields each get their OWN column, as they do on Iteration Status. They were
+    // packed into one `To Do 3h · Actual 5h` string in a column that named neither.
+    expect(screen.queryByText(/To Do 3h · Actual 5h/)).toBeNull()
+    for (const hours of ['8', '3', '5']) {
+      expect(within(subRow).getByText(hours)).toBeTruthy()
+    }
+
+    // READ-ONLY, per §5.2 and FR-012: "expand to reveal its linked Tasks, read-only". No editor
+    // anywhere in the row — a previous revision made these editable and that was wrong, because
+    // the BA states the contrast explicitly (acceptance item 10: child rows inline-editable,
+    // Tasks read-only).
+    expect(within(subRow).queryByRole('textbox')).toBeNull()
+    expect(within(subRow).queryByRole('combobox')).toBeNull()
+    // Owner is plain text, and state is a BADGE — the control the BA names.
+    expect(within(subRow).getByText('Admin User')).toBeTruthy()
+  })
+
+  it('will not edit a disclosed Task hour, even with edit rights (§5.2, FR-012)', async () => {
+    mockGET.mockResolvedValue({
+      data: [
+        {
+          id: 'tk1',
+          itemKey: 'TA-1',
+          type: 'task',
+          title: 'Write the migration',
+          scheduleState: 'in_progress',
+          estimateHours: 8,
+          todoHours: 3,
+          actualHours: 5,
+          assigneeId: 'u1',
+        },
+      ],
+      error: undefined,
+      response: { status: 200 },
+    })
+    mockPATCH.mockResolvedValue({ data: {}, error: undefined, response: { status: 200 } })
+    renderTable(<FeatureChildrenTable children={[child()]} projectId="p1" canEdit />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show tasks for US-1' }))
+
+    // `3` is the To Do value. Clicking it opens nothing: the three hour columns are plain text on
+    // a disclosed Task, so a Task's hours are edited on the Work Item Detail's Tasks tab, which
+    // owns the totals rolling up from them.
+    const todo = await screen.findByText('3')
+    fireEvent.click(todo)
+
+    expect(screen.queryByRole('textbox', { name: /to do hours/i })).toBeNull()
+    await waitFor(() => expect(mockPATCH).not.toHaveBeenCalled())
+  })
+
+  it('gives the PARENT row a cell per column too, or the two rows fall out of step', async () => {
+    // The regression this pins: `Task Est` / `To Do` / `Actual` were added to the header and to the
+    // disclosed Task rows, but not to the Story/Defect row above them. The parent then rendered
+    // three cells short, so every value after `Est` slid one column left — Owner appeared under
+    // Est, the state stepper under Owner — and the grid read as broken.
+    mockGET.mockResolvedValue({
+      data: [
+        {
+          id: 'tk1',
+          itemKey: 'TA-1',
+          type: 'task',
+          title: 'Write the migration',
+          scheduleState: 'in_progress',
+          estimateHours: 8,
+          todoHours: 3,
+          actualHours: 5,
+          assigneeId: 'u1',
+        },
+      ],
+      error: undefined,
+      response: { status: 200 },
+    })
+    renderTable(<FeatureChildrenTable children={[child()]} projectId="p1" canEdit />)
+
+    const cellCount = (row: HTMLElement) =>
+      [...row.children].filter((el) => (el as HTMLElement).style.order !== '').length
+
+    const parentRow = screen.getByText('Upgrade the workspace').closest<HTMLElement>('div.flex')!
+    expect(cellCount(parentRow)).toBe(PORTFOLIO_CHILD_COLUMNS.length)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show tasks for US-1' }))
+    const subRow = (await screen.findByText('Write the migration')).closest<HTMLElement>(
+      'div.flex',
+    )!
+    expect(cellCount(subRow)).toBe(PORTFOLIO_CHILD_COLUMNS.length)
+  })
+
+  it('WRAPS long ID and Name rather than clipping them, as every other grid does', () => {
+    const longTitle =
+      'Upgrade the NX workspace to v21 and migrate every generator, executor and preset'
+    renderTable(
+      <FeatureChildrenTable
+        children={[child({ itemKey: 'US-100234', title: longTitle })]}
+        projectId="p1"
+      />,
+    )
+
+    // The row must be free to GROW: a fixed `h-*`, or `items-center` with no room, would cut the
+    // second line off. `min-h` sets a floor, not a ceiling.
+    const row = screen.getByText(longTitle).closest<HTMLElement>('div.flex')!
+    expect(row.className).toContain('min-h-')
+    // `(?<!min-)h-[` — a fixed height, as distinct from the `min-h-[..]` floor above.
+    expect(row.className).not.toMatch(/(?<!min-)\bh-\[/)
+
+    // And the text cells must not clip or ellipsize what wraps.
+    for (const text of [longTitle, 'US-100234']) {
+      const cell = screen.getByText(text)
+      expect(cell.className).toContain('whitespace-normal')
+      expect(cell.className).not.toContain('truncate')
+    }
+
+    // The Name cell needs a real CEILING, or the text has no edge to wrap against. A `grow`
+    // column gets `minWidth: <width>` and no maxWidth — a floor it expands past — so paired with
+    // the row's `min-w-max` the TABLE widened to fit a long title and nothing ever wrapped. That
+    // is why `name` is a fixed-width column here, as it is on Iteration Status and the Backlog.
+    const nameCell = screen.getByText(longTitle).parentElement!
+    expect(nameCell.style.maxWidth).not.toBe('')
+    expect(nameCell.style.width).not.toBe('')
+  })
+
+  it('keeps the Name editor inside its column when it opens', async () => {
+    // A long Name opened an editor wider than its own column and spilled across the cells beside
+    // it. Cause: a local `inputClassName` replaced the shared `FULL_CELL_INPUT`, dropping its
+    // `w-full`. Iteration Status passes no override for exactly this reason.
+    const longTitle = 'CI pipeline fails intermittently on Windows build agents'
+    renderTable(
+      <FeatureChildrenTable children={[child({ title: longTitle })]} projectId="p1" canEdit />,
+    )
+
+    fireEvent.click(screen.getByText(longTitle))
+    const input = await screen.findByRole('textbox', { name: 'US-1 name' })
+    expect(input.className).toContain('w-full')
   })
 
   it('says so when a disclosed child has no Tasks', async () => {
