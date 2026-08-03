@@ -4,6 +4,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import {
+  iterationTeamBaselines,
   iterationDailySnapshots,
   iterations,
   memberCapacity,
@@ -172,17 +173,36 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     }));
   }
 
-  async countScheduledWork(workspaceId: string, iterationIds: string[]): Promise<number> {
+  async countScheduledWork(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<number> {
     if (iterationIds.length === 0) return 0;
+    const iteration = alias(iterations, 'scheduled_iteration');
     const rows = await this.db
       .select({ n: sql<number>`count(*)::int` })
       .from(workItems)
+      // Joined only so the team can be resolved the two-tier way; the membership predicate is still
+      // the item's own `iteration_id`.
+      .leftJoin(iteration, eq(iteration.id, workItems.iterationId))
       .where(
         and(
           eq(workItems.workspaceId, workspaceId),
           inArray(workItems.iterationId, iterationIds),
           inArray(workItems.type, [...LEAF_TYPES]),
           isNull(workItems.deletedAt),
+          /**
+           * The SAME scope the series was measured in.
+           *
+           * Counted project-wide, a Team with no work in a SHARED iteration still saw
+           * `hasScheduledWork: true` — because the count saw the other teams' items — so instead of
+           * "no scheduled work" the reader was told the snapshot history was missing and sent to look
+           * for a broken cron job.
+           */
+          scope.kind === 'team'
+            ? sql`coalesce(${workItems.teamId}, ${iteration.teamId}) = ${scope.teamId}::uuid`
+            : undefined,
         ),
       );
     return rows[0]?.n ?? 0;
@@ -220,6 +240,20 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           eq(workItems.iterationId, iterations.id),
           inArray(workItems.type, [...LEAF_TYPES]),
           isNull(workItems.deletedAt),
+          /**
+           * Eligibility is decided over the SAME population the bar is later measured from.
+           *
+           * Velocity SRS §2: an iteration is eligible only when "at least one Story or Defect is
+           * currently assigned to it", and "for a selected Team, use that Team only". This join
+           * carried no team predicate at all, while `getVelocityItems` narrows by
+           * `coalesce(item.team_id, iteration.team_id)` — so a shared timebox admitted by
+           * `teamOrSharedTimebox` became an eligible bar for a team whose work was then filtered out
+           * of it. The result was a zero-point bar for a sprint the team never worked in, and those
+           * zeros divided Trend, Last 3, Best 3 and Worst 3.
+           */
+          scope.kind === 'team'
+            ? sql`coalesce(${workItems.teamId}, ${iterations.teamId}) = ${scope.teamId}::uuid`
+            : undefined,
         ),
       )
       .where(
@@ -590,7 +624,17 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           // Overlap, not containment: an iteration straddling the release start belongs under
           // the axis just as much as one fully inside it.
           sql`${iterations.startDate} <= ${endDate} and ${iterations.endDate} >= ${startDate}`,
-          scope.kind === 'team' ? eq(iterations.teamId, scope.teamId) : undefined,
+          /**
+           * `teamOrSharedTimebox`, not a strict equality.
+           *
+           * This was the ONE team-scoped iteration query in this file that did not use the helper two
+           * functions below, and SQL equality never matches NULL — so every shared (team-less)
+           * iteration was dropped. Measured locally: release `v2.0` is crossed only by `Sprint 26.2`,
+           * whose `team_id` is NULL, so All Teams showed the burnup's secondary iteration band and
+           * selecting ANY team made the whole row vanish — telling the reader the release crosses no
+           * sprints. `findTimeboxSiblings` and `findEligibleTimeboxes` already got this right.
+           */
+          scope.kind === 'team' ? teamOrSharedTimebox(scope.teamId) : undefined,
         ),
       )
       .orderBy(asc(iterations.startDate), asc(iterations.id));
@@ -655,20 +699,96 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     return [...new Set([...iterationRows, ...releaseRows].map((row) => row.workspaceId))];
   }
 
-  async sumTaskEstimate(workspaceId: string, iterationId: string): Promise<number> {
+  async sumTaskEstimateByTeam(
+    workspaceId: string,
+    iterationId: string,
+  ): Promise<Array<{ teamId: string | null; total: number }>> {
     const parent = alias(workItems, 'parent');
+    const iteration = alias(iterations, 'baseline_iteration');
+    /**
+     * The SAME three-tier team resolution the hours are measured with
+     * (`coalesce(task, parent, iteration)`), so the baseline and the bars it is compared against can
+     * never be scoped differently. A row with no resolvable team groups under `NULL` and is summed
+     * into All Teams rather than dropped.
+     */
+    const resolvedTeam = sql<string | null>`coalesce(${tasks.teamId}, ${parent.teamId}, ${iteration.teamId})`;
     const rows = await this.db
-      .select({ total: sql<number>`coalesce(sum(${tasks.estimateHours}), 0)::float8` })
+      .select({
+        teamId: resolvedTeam.as('team_id'),
+        total: sql<number>`coalesce(sum(${tasks.estimateHours}), 0)::float8`,
+      })
       .from(tasks)
       .innerJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
+      .leftJoin(
+        iteration,
+        sql`${iteration.id} = coalesce(${tasks.iterationId}, ${parent.iterationId})`,
+      )
       .where(
         and(
           eq(tasks.workspaceId, workspaceId),
           isNull(tasks.deletedAt),
           sql`(${tasks.iterationId} = ${iterationId}::uuid or ${parent.iterationId} = ${iterationId}::uuid)`,
         ),
+      )
+      .groupBy(resolvedTeam);
+    return rows.map((r) => ({ teamId: r.teamId, total: Number(r.total) }));
+  }
+
+  async captureTeamBaselines(
+    workspaceId: string,
+    iterationId: string,
+    rows: Array<{ teamId: string | null; total: number }>,
+    at: Date,
+  ): Promise<void> {
+    if (rows.length === 0) return;
+    /**
+     * `onConflictDoNothing`, which is what makes this a ONE-TIME capture per scope.
+     *
+     * The Ideal line must not move when tasks are added or re-estimated after the iteration starts, so
+     * a second tick inserts nothing rather than overwriting. This replaces the old `IS NULL` predicate
+     * on `iterations.total_task_estimate_at_start`, which could only express one baseline per
+     * iteration.
+     */
+    await this.db
+      .insert(iterationTeamBaselines)
+      .values(
+        rows.map((row) => ({
+          workspaceId,
+          iterationId,
+          teamId: row.teamId,
+          totalTaskEstimateAtStart: String(row.total),
+          capturedAt: at,
+        })),
+      )
+      .onConflictDoNothing();
+  }
+
+  async sumTeamBaselines(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<number | null> {
+    if (iterationIds.length === 0) return null;
+    /**
+     * IB §4: "For All Teams, the baseline is the SUM of the participating Team baselines."
+     *
+     * Returns `null` — not 0 — when no row exists for the scope, because "no baseline was recorded"
+     * and "the recorded baseline was zero" are different facts and only the first may hide the Ideal
+     * line. A pre-0098 iteration has one no-team row, so All Teams keeps its old number while a
+     * team-scoped read honestly finds nothing.
+     */
+    const rows = await this.db
+      .select({ total: sql<number | null>`sum(${iterationTeamBaselines.totalTaskEstimateAtStart})::float8` })
+      .from(iterationTeamBaselines)
+      .where(
+        and(
+          eq(iterationTeamBaselines.workspaceId, workspaceId),
+          inArray(iterationTeamBaselines.iterationId, iterationIds),
+          scope.kind === 'team' ? eq(iterationTeamBaselines.teamId, scope.teamId) : undefined,
+        ),
       );
-    return rows[0]?.total ?? 0;
+    const total = rows[0]?.total;
+    return total === null || total === undefined ? null : Number(total);
   }
 
   async captureStartBaseline(

@@ -190,20 +190,6 @@ export function buildBurndownSeries(input: {
 }
 
 /**
- * Sum the participating Teams' baselines for an All Teams view.
- *
- * "For All Teams, the baseline is the sum of the participating Team baselines for the
- * shared timebox." Returns null when NO participating iteration has a baseline — that is
- * `no-baseline`, not zero. A Team that has one contributes it; a Team that does not is
- * simply absent from the sum, which is the same treatment its missing snapshots get.
- */
-export function combineBaselines(baselines: readonly (number | null)[]): number | null {
-  const present = baselines.filter((b): b is number => b !== null);
-  if (present.length === 0) return null;
-  return roundForDisplay(present.reduce((a, b) => a + b, 0));
-}
-
-/**
  * Fuse the per-Team snapshot rows of one shared timebox into one series per date.
  *
  * Summing is correct for both measures here and needs no de-duplication: a task's To Do

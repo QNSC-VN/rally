@@ -122,7 +122,18 @@ export interface IReportingRepository {
     /** The workspace's calendar, for deciding whether each capture closed its own local day. */
     timeZone: string,
   ): Promise<StoredSnapshot[]>;
-  countScheduledWork(workspaceId: string, iterationIds: string[]): Promise<number>;
+  /**
+   * Leaf items scheduled into these iterations, IN THE GIVEN SCOPE.
+   *
+   * The scope argument is not optional: this count decides whether the reader is told "no scheduled
+   * work", and counting project-wide told a Team with nothing in a shared sprint that the snapshot
+   * history was missing instead.
+   */
+  countScheduledWork(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<number>;
 
   // ── Velocity ──────────────────────────────────────────────────────────────
   /**
@@ -222,17 +233,35 @@ export interface IReportingRepository {
   findWorkspacesWithOpenSnapshots(): Promise<string[]>;
 
   /**
-   * SUM(task.estimate) over the tasks in an iteration's scope, for the one-time Ideal
-   * baseline capture (IB-BR-03).
+   * SUM(task.estimate) over an iteration's scope, GROUPED BY the resolved team, for the one-time
+   * Ideal baseline capture (IB-BR-03).
+   *
+   * Grouped because IB §4 makes the baseline per team; the resolution is the same
+   * `coalesce(task, parent, iteration)` the hours are measured with, so the baseline and the bars it is
+   * compared against cannot be scoped differently. `teamId: null` is work with no resolvable team.
    */
-  sumTaskEstimate(workspaceId: string, iterationId: string): Promise<number>;
-  /** Stores the baseline once. A second call must not overwrite an existing capture. */
-  captureStartBaseline(
+  sumTaskEstimateByTeam(
     workspaceId: string,
     iterationId: string,
-    totalTaskEstimate: number,
+  ): Promise<Array<{ teamId: string | null; total: number }>>;
+  /** Stores each scope's baseline once. A second call must not overwrite an existing capture. */
+  captureTeamBaselines(
+    workspaceId: string,
+    iterationId: string,
+    rows: Array<{ teamId: string | null; total: number }>,
     at: Date,
   ): Promise<void>;
+  /**
+   * The baseline for a scope: that team's row, or the SUM of every row for All Teams (IB §4).
+   *
+   * `null` means no baseline was recorded — distinct from a recorded zero, because only the first may
+   * hide the Ideal line.
+   */
+  sumTeamBaselines(
+    workspaceId: string,
+    iterationIds: string[],
+    scope: TeamScope,
+  ): Promise<number | null>;
 
   /**
    * Stores the release's Ideal target once, from the planned scope on its FIRST snapshot day.
