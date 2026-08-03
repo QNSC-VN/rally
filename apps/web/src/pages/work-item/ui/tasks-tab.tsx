@@ -366,11 +366,11 @@ function TaskRow({
       ref={setNodeRef}
       className="group flex min-h-[36px] min-w-max items-center border-b border-border-inner bg-card px-3 text-ui-md text-foreground transition-colors hover:bg-primary-lighter"
       style={dragStyle}
-      {...(dragDisabled ? {} : attributes)}
     >
       <RowGutter
         ref={setActivatorNodeRef}
         dragListeners={dragDisabled ? undefined : listeners}
+        dragAttributes={dragDisabled ? undefined : attributes}
         dragDisabled={dragDisabled}
         stopPropagation
         checkbox={{

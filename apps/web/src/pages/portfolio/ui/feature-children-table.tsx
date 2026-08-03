@@ -395,7 +395,7 @@ function ChildRow({
   })()
 
   return (
-    <div ref={setNodeRef} style={dragStyle} {...(dragDisabled ? {} : attributes)}>
+    <div ref={setNodeRef} style={dragStyle}>
       <div
         // `min-w-max` (not an inline style) so the row is as wide as its columns and the
         // horizontal scroll region covers all of them.
@@ -410,6 +410,7 @@ function ChildRow({
         <RowGutter
           ref={setActivatorNodeRef}
           dragListeners={dragDisabled ? undefined : listeners}
+          dragAttributes={dragDisabled ? undefined : attributes}
           dragDisabled={dragDisabled}
           stopPropagation
           checkbox={{ checked: selected, onChange: onToggleSelect, ariaLabel: selectLabel }}
