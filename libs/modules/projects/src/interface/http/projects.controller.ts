@@ -409,6 +409,13 @@ export class ProjectsController {
   // ── Project Members ───────────────────────────────────────────────────────
 
   @Get(':id/members')
+  // The project's own roster, so `project:view` scoped to that project — expressible as a decorator
+  // because the id is right there in the path. It carried nothing, and a route with no metadata is
+  // OPEN, so any authenticated caller could read the membership of a project they have no access to.
+  // All three tier roles hold `project:view`, so every principal who can legitimately see the project
+  // can still see its roster.
+  // No `resource`: the param IS the project id, so there is nothing to resolve.
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List project members' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(401, 404)
