@@ -319,6 +319,23 @@ export const capacityPlanStatusEnum = pgEnum('capacity_plan_status', ['draft', '
 // Matches Rally, where the same choice is made when the plan is created.
 export const capacityPlanUnitEnum = pgEnum('capacity_plan_unit', ['points', 'count']);
 
+/**
+ * Where an allocation row's committed value CAME FROM (Capacity SRS §185-186).
+ *
+ * `feature_estimate` — the planner left Estimate blank, so the Feature's top-down estimate
+ * (Refined, else the Preliminary size mapping) was copied into the row at that moment.
+ * `manual` — the planner typed the number.
+ *
+ * The label is why the value can be a fixed snapshot at all. Migration 0077 had made `value`
+ * nullable so a blank row could resolve on read, precisely because "a defaulted 8 and a
+ * deliberate 8 were indistinguishable" — this column is the distinction, which lets the value
+ * be stored (§11: `fixed allocation.value set during planning/replanning`) without losing it.
+ */
+export const capacityAllocationSourceEnum = pgEnum('capacity_allocation_source', [
+  'feature_estimate',
+  'manual',
+]);
+
 // ── TypeScript types (derived — never drift from DB) ──────────────────────
 
 export type UserStatus = (typeof userStatusEnum.enumValues)[number];
@@ -345,6 +362,7 @@ export type ScmConnectionType = (typeof scmConnectionTypeEnum.enumValues)[number
 export type ScmInboxStatus = (typeof scmInboxStatusEnum.enumValues)[number];
 export type ScmBackfillStatus = (typeof scmBackfillStatusEnum.enumValues)[number];
 export type MilestoneStatus = (typeof milestoneStatusEnum.enumValues)[number];
+export type CapacityAllocationSource = (typeof capacityAllocationSourceEnum.enumValues)[number];
 export type PortfolioItemType = (typeof portfolioItemTypeEnum.enumValues)[number];
 export type PortfolioItemState = (typeof portfolioItemStateEnum.enumValues)[number];
 export type PreliminaryEstimateSize = (typeof preliminaryEstimateSizeEnum.enumValues)[number];

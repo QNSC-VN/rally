@@ -70,13 +70,13 @@
     "primaryBadge": "Primary",
     "primaryUpdated": "Primary team updated",
     "noAllocations": "No Features allocated yet",
-    "allocationCleared": "Allocation cleared — this team now carries the Feature estimate",
     "allocationRemoveFailed": "Could not remove the Feature from the plan",
     "from": "from",
     "allocatedFrom": "Owned by {{team}}, allocated to this team",
     "to": "to",
     "allocatedTo": "Owned here, also allocated to {{team}}",
-    "allocatedCount": "{{count}} teams"
+    "allocatedCount": "{{count}} teams",
+    "allocationRecopied": "Re-copied the Feature's estimate"
   },
   "tiers": {
     "allocated": "Alloc",
@@ -313,5 +313,14 @@
     "moved": "{{item}} moved to {{plan}}",
     "movedParked": "{{item}} moved to {{plan}}, unassigned — its teams are not on that plan",
     "failed": "Could not move the Feature"
+  },
+  "sources": {
+    "feature_estimate": "Feature Estimate",
+    "manual": "Manual",
+    "rows": {
+      "committed": "Committed",
+      "refined": "Refined now",
+      "preliminary": "Preliminary now"
+    }
   }
 }

@@ -4,7 +4,8 @@ import { Check, Trophy, Star, Users } from 'lucide-react'
 import { Tooltip } from '@/shared/ui/tooltip'
 
 import { BRAND } from '@/shared/config/brand'
-import { type EstimateTier } from '@/features/capacity-planning/api'
+import { type AllocationSource, type EstimateTier } from '@/features/capacity-planning/api'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 
 /**
  * Which tier a Feature's Estimated figure came from.
@@ -67,6 +68,74 @@ export interface EstimateBreakdown {
   allocated: number | null
   refined: number | null
   preliminary: number | null
+}
+
+/**
+ * Where ONE allocation row's committed value came from — §185-186.
+ *
+ * Distinct from {@link EstimateTierIcon}, and the distinction is the point of migration 0101. A tier
+ * answers "which of three candidates produced this Feature's Estimated figure", which is a question
+ * about a FEATURE. An allocation row no longer resolves anything: it holds a fixed number, and the
+ * only thing left to say about it is whether a planner typed it or it was copied from the Feature's
+ * forecast at allocation time.
+ *
+ * The panel names both top-down candidates as they stand NOW, which is what makes a stale copy
+ * visible: a `Feature Estimate` row committing 5 beside a Refined forecast of 21 is a plan that was
+ * baselined before the re-forecast, and seeing that gap is how a planner knows to re-copy.
+ */
+export function AllocationSourceIcon({
+  source,
+  value,
+  breakdown,
+}: {
+  source: AllocationSource
+  /** The row's own committed value, so the panel can show it against the two forecasts. */
+  value: number
+  breakdown: { refined: number | null; preliminary: number | null }
+}) {
+  const { t } = useTranslation('capacity')
+  const Icon = source === 'manual' ? Users : Star
+  const style = source === 'manual' ? TIER_STYLE.allocated : TIER_STYLE.refined
+  const rows = [
+    { key: 'committed' as const, value, RowIcon: Icon, inForce: true },
+    { key: 'refined' as const, value: breakdown.refined, RowIcon: Star, inForce: false },
+    { key: 'preliminary' as const, value: breakdown.preliminary, RowIcon: Trophy, inForce: false },
+  ]
+  const label = `${t(`sources.${source}`)}: ${rows
+    .map((r) => `${t(`sources.rows.${r.key}`)} ${r.value ?? EMPTY_VALUE}`)
+    .join(', ')}`
+
+  return (
+    <Tooltip
+      side="left"
+      delayDuration={150}
+      content={
+        <span className="block w-44">
+          <span className="mb-1 block font-semibold">{t(`sources.${source}`)}</span>
+          {rows.map(({ key, value: rowValue, RowIcon, inForce }) => (
+            <span key={key} className="flex items-center gap-1.5 py-px">
+              <RowIcon size={11} className={inForce ? '' : 'opacity-40'} />
+              <span className={inForce ? 'flex-1' : 'flex-1 opacity-40'}>
+                {t(`sources.rows.${key}`)}
+              </span>
+              <span className={inForce ? 'tabular-nums' : 'tabular-nums opacity-40'}>
+                {rowValue ?? EMPTY_VALUE}
+              </span>
+              <Check
+                size={11}
+                className={inForce ? '' : 'invisible'}
+                style={{ color: BRAND.success }}
+              />
+            </span>
+          ))}
+        </span>
+      }
+    >
+      <span role="img" aria-label={label} className="flex items-center">
+        <Icon size={13} style={{ color: style.color }} />
+      </span>
+    </Tooltip>
+  )
 }
 
 export function EstimateTierIcon({

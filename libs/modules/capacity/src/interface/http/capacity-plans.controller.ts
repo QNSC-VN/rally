@@ -99,10 +99,10 @@ function toDto(p: CapacityPlanDetail): CapacityPlanResponseDto {
       name: a.name,
       teamId: a.teamId,
       isPrimary: a.isPrimary,
-      // numeric arrives as a string from Drizzle; the API contract is a number. Null stays null —
-      // it is the difference between "allocated nothing" and "not allocated".
-      value: a.value === null ? null : Number(a.value),
-      tier: a.tier,
+      // numeric arrives as a string from Drizzle; the API contract is a number. Never null since
+      // 0101 — every row carries a fixed value, and `source` says where it came from.
+      value: Number(a.value),
+      source: a.source,
       rank: a.rank,
       state: a.state,
       projectId: a.projectId,

@@ -82,7 +82,28 @@ export function AddFeaturesModal({
    */
   async function add(ids: string[]) {
     for (const portfolioItemId of ids) {
-      await allocate.mutateAsync({ id: plan.id, portfolioItemId, teamId })
+      /**
+       * The value the two pickers default to is DIFFERENT, and the BA states both.
+       *
+       * §246, Team-level `Add Features`: "create one allocation row for the selected Team with default
+       * allocation value `0`" — the planner is staffing a team and will size the work afterwards. But
+       * "If the Feature already has an Unallocated row, move that existing row to the selected Team and
+       * keep its current allocation value", so a 0 must NOT be sent when one exists: omitting the value
+       * is what tells the API to preserve it.
+       *
+       * The plan-level picker creates an unassigned row, where §185's blank-Estimate rule applies —
+       * omit the value and the Feature's own estimate is copied in. That number then survives the row
+       * later being assigned to a team, which is the same §244 rule seen from the other end.
+       */
+      const parked = plan.allocations.some(
+        (a) => a.portfolioItemId === portfolioItemId && a.teamId === null,
+      )
+      await allocate.mutateAsync({
+        id: plan.id,
+        portfolioItemId,
+        teamId,
+        ...(teamId !== null && !parked ? { value: 0 } : {}),
+      })
     }
   }
 

@@ -79,9 +79,11 @@ export function AllocateFeatureModal({
   /**
    * Refined, else Preliminary — with ZERO treated as absent, not as a value.
    *
-   * `refined ?? preliminary` kept a refined estimate of 0, so `Total allocated` read 0 for a Feature
-   * whose blank row Apply would charge at its preliminary size. The backend already resolves the tier
-   * this way ("Refined … -> if > 0"), so this only stops the dialog from disagreeing with it.
+   * The same two tiers, in the same order, that the server copies in for a blank Estimate
+   * (`defaultAllocationEstimate`, §185): the dialog has to PREDICT what Apply will store, and a
+   * `Total allocated` readout that disagreed with the row it is about to create would be worse than
+   * none. `refined ?? preliminary` kept a refined estimate of 0, so this reads 0 as absent — which is
+   * what "Refined … -> if > 0" means server-side.
    */
   const topDown =
     estimates === null
@@ -106,7 +108,9 @@ export function AllocateFeatureModal({
           key: a.id,
           allocationId: a.id,
           teamId: a.teamId ?? '',
-          value: a.value === null ? '' : String(a.value),
+          // Always a number now: every row carries a fixed committed value. Emptying the field is what
+          // asks for the Feature's estimate to be copied in again.
+          value: String(a.value),
         })),
   )
   const [error, setError] = useState<string | null>(null)
@@ -214,8 +218,8 @@ export function AllocateFeatureModal({
         continue
       }
 
-      // An existing row: PATCH only the fields that moved. `value: null` is a real edit — it clears
-      // the allocation so the row charges the Feature's own estimate again.
+      // An existing row: PATCH only the fields that moved. `value: null` is a real edit — it re-copies
+      // the Feature's estimate into the row as it stands now (§185), relabelling it `feature_estimate`.
       const teamMoved = row.teamId !== (prior.teamId ?? '')
       const valueMoved = value !== prior.value
       if (!teamMoved && !valueMoved) continue

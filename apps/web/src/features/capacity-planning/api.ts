@@ -284,7 +284,10 @@ export function useRemoveCapacityTeam() {
 // ── Allocations ──────────────────────────────────────────────────────────────
 
 export type CapacityAllocation = CapacityPlan['allocations'][number]
-export type EstimateTier = CapacityAllocation['tier']
+/** Where an allocation row's committed value came from — SRS §185-186. */
+export type AllocationSource = CapacityAllocation['source']
+/** Which tier produced a FEATURE's Estimated figure (AC-014). Item rows only, not allocation rows. */
+export type EstimateTier = CapacityPlan['items'][number]['tier']
 export type CapacityMetrics = CapacityAllocation['metrics']
 export type CapacityWarning = CapacityMetrics['warnings'][number]
 
@@ -294,9 +297,10 @@ export type AllocateBody =
 /**
  * Commit demand for a Feature.
  *
- * Omitting `value` accepts the server's default, which is Refined → Preliminary and
- * deliberately SKIPS the allocated tier — a blank field must not commit the sum of the
- * allocations it is being used to create.
+ * Omitting `value` COPIES the Feature's top-down estimate into the row and labels it
+ * `feature_estimate` (§185) — Refined → Preliminary, deliberately skipping Total Allocated so a blank
+ * field cannot commit the sum of the allocations it is being used to create. A supplied value is
+ * stored as `manual` (§186). Either way the number is fixed at that moment, not resolved per read.
  */
 export function useAllocate() {
   return useMutation({

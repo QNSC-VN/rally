@@ -59,11 +59,12 @@ const CapacityAllocationSchema = z.object({
   isPrimary: z.boolean(),
   value: z
     .number()
-    .nullable()
-    .describe('Explicitly allocated points, or null when the team was assigned without a slice'),
-  tier: z
-    .enum(['allocated', 'refined', 'preliminary', 'none'])
-    .describe('Which estimate tier the Feature figure came from — drives the UI badge'),
+    .describe('The FIXED committed value on this row (SRS §11) — never resolved on read'),
+  source: z
+    .enum(['feature_estimate', 'manual'])
+    .describe(
+      "Where `value` came from: copied from the Feature's top-down estimate (§185) or typed by a planner (§186)",
+    ),
   rank: z.string().describe("The Feature's LexoRank — the nested table shows the plan's Rank too"),
   state: z.enum(PORTFOLIO_ITEM_STATES).describe("The Feature's own workflow state"),
   projectId: z.string().uuid(),
@@ -80,11 +81,12 @@ const CapacityAllocationSchema = z.object({
     ),
   estimateBreakdown: z
     .object({
-      allocated: z.number().nullable(),
       refined: z.number().nullable(),
       preliminary: z.number().nullable(),
     })
-    .describe("All three candidates behind Estimated, for Rally's Estimate tooltip"),
+    .describe(
+      "The Feature's two top-down candidates: what a blank Estimate would copy, and what a `feature_estimate` row can be compared against once the forecast has moved",
+    ),
   metrics: CapacityMetricsSchema,
 });
 
@@ -149,11 +151,14 @@ const CapacityPlanItemSchema = z.object({
     ),
   estimateBreakdown: z
     .object({
-      allocated: z.number().nullable(),
+      allocated: z
+        .number()
+        .nullable()
+        .describe('Total Allocated — SUM over TEAM-ASSIGNED rows; null when the Feature has none'),
       refined: z.number().nullable(),
       preliminary: z.number().nullable(),
     })
-    .describe('All three candidates behind Estimated, for the estimate-source tooltip'),
+    .describe("All three candidates behind AC-014's Feature Estimated, for the tier tooltip"),
   teamIds: z.array(z.string().uuid()),
   primaryTeamId: z
     .string()

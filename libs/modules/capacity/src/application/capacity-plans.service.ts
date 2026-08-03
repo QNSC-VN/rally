@@ -15,6 +15,7 @@ import {
   PreliminaryEstimateMapService,
   computeCapacityWarnings,
   computeCutlineIndex,
+  defaultAllocationEstimate,
   type CapacityWarning,
   type EstimateTier,
   resolveEstimate,
@@ -31,7 +32,10 @@ import {
   CAPACITY_PLAN_REPOSITORY,
   type ICapacityPlanRepository,
 } from '../domain/ports/capacity-plan.repository';
-import type { PreliminaryEstimateSize } from '../../../../../db/schema/enums';
+import type {
+  CapacityAllocationSource,
+  PreliminaryEstimateSize,
+} from '../../../../../db/schema/enums';
 import type {
   CapacityAllocationView,
   CapacityMetrics,
@@ -280,7 +284,8 @@ export class CapacityPlansService {
    * edit or publish a plan is certainly meant to see it — so no role needs all three listed.
    */
   private async canSeeDrafts(actor: JwtPayload, projectId: string): Promise<boolean> {
-    if (await this.access.hasProjectPermission(actor, projectId, 'capacity:view_draft')) return true;
+    if (await this.access.hasProjectPermission(actor, projectId, 'capacity:view_draft'))
+      return true;
     if (await this.access.hasProjectPermission(actor, projectId, 'capacity:manage')) return true;
     return this.access.hasProjectPermission(actor, projectId, 'capacity:publish');
   }
@@ -648,10 +653,8 @@ export class CapacityPlansService {
          */
         const parked = await this.repo.findAllocationFor(id, row.portfolioItemId, null);
         if (parked) {
-          const merged = mergeParkedValue(parked.value, row.value);
-          if (merged !== parked.value) {
-            await this.repo.updateAllocation(parked.id, { value: merged }, tx);
-          }
+          const merged = mergeParked([parked, row]);
+          await this.repo.updateAllocation(parked.id, merged, tx);
           await this.repo.deleteAllocation(row.id, tx);
           continue;
         }
@@ -698,22 +701,25 @@ export class CapacityPlansService {
     const plan = await this.requireDraft(actor, planId);
     await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
 
-    // Called for the CHECK, not for a value: the target must be a Feature in the plan's project and
-    // not archived. Its estimate is no longer copied into the row — a null allocation resolves that
-    // on read instead — so nothing here needs the returned item.
-    await this.requireAllocatableFeature(actor, plan, input.portfolioItemId);
+    // Called for the CHECK **and** for the value: the target must be a Feature in the plan's project
+    // and not archived, and a blank Estimate copies that Feature's own top-down estimate into the row.
+    const item = await this.requireAllocatableFeature(actor, plan, input.portfolioItemId);
     const teamId = input.teamId ?? null;
     if (teamId !== null) await this.requirePlanTeam(planId, teamId);
 
     /**
-     * A blank Estimate stores NULL, it no longer defaults a number into the row.
+     * A blank Estimate COPIES the Feature's top-down estimate into the row and labels it
+     * `feature_estimate` (§185). A supplied one is stored as `manual` (§186).
      *
-     * That is Rally's assignment: the Feature is planned against this team and the plan charges the
-     * Feature's own estimate there. Writing the estimate INTO the row instead — which is what this
-     * used to do — froze a copy of it, so a later change to the Feature stopped moving the plan and
-     * the `Allocation` column could never be blank the way Rally's is.
+     * Between 0077 and 0101 a blank stored NULL and the charge was resolved per read. That made a
+     * planner's committed demand move whenever anyone edited the Feature's Refined Estimate — the plan
+     * changed with no action on the plan — and made §337's `SUM(allocation.value)` uncomputable from
+     * the stored rows. The snapshot restores both; `source` is what keeps 0077's distinction between a
+     * copied number and a typed one, which is why the value can be fixed at all.
      */
-    const value = input.value === undefined ? null : input.value;
+    const supplied = input.value !== undefined;
+    const value = supplied ? input.value! : await this.featureEstimate(actor, plan, item);
+    const source: CapacityAllocationSource = supplied ? 'manual' : 'feature_estimate';
 
     /**
      * Assigning a team CONSUMES the Feature's unallocated placeholder rather than adding beside it.
@@ -731,15 +737,17 @@ export class CapacityPlansService {
           input.portfolioItemId,
         );
         /**
-         * The parked row's own value SURVIVES an assignment that does not supply one.
+         * The parked row's own value SURVIVES an assignment that does not supply one — §244: "move
+         * that existing row to the selected Team and keep its current allocation value."
          *
-         * The BA states it directly: "If an existing Unassigned allocation already has a value, keep
-         * that value." This used to write `null` over it, so choosing a team from the assignment cell
-         * silently discarded a number a planner had entered while the Feature was still parked.
+         * `supplied`, not "is the value non-null": every row carries a number now, so an omitted
+         * Estimate has to be distinguished from a typed one by the request, not by the stored value.
+         * Its `source` travels with it untouched, because moving a row does not change where its
+         * number came from.
          */
         await this.repo.updateAllocation(parked.id, {
           teamId,
-          ...(value === null ? {} : { value: String(value) }),
+          ...(supplied ? { value: String(value), source } : {}),
           isPrimary: !alreadyHasPrimary,
         });
         return this.getPlanDetail(actor, planId);
@@ -756,11 +764,12 @@ export class CapacityPlansService {
        * this team". Adding meant applying the same dialog twice doubled committed demand, and there
        * was no way to correct a slice downwards through this path at all.
        *
-       * A blank value leaves the existing slice alone rather than clearing it: clearing is
-       * `updateAllocation` with an explicit null, which is a different request.
+       * A blank value leaves the existing slice alone rather than overwriting it with the Feature's
+       * estimate: re-copying is `updateAllocation` with an explicit null, which is a different
+       * request, and the dialog pre-fills the current value so a blank field there means "cleared".
        */
-      if (value !== null) {
-        await this.repo.updateAllocation(existing.id, { value: String(value) });
+      if (supplied) {
+        await this.repo.updateAllocation(existing.id, { value: String(value), source });
       }
     } else {
       /**
@@ -782,7 +791,8 @@ export class CapacityPlansService {
         planId,
         portfolioItemId: input.portfolioItemId,
         teamId,
-        value: value === null ? null : String(value),
+        value: String(value),
+        source,
         isPrimary: teamId !== null && !alreadyHasPrimary,
       });
     }
@@ -833,6 +843,21 @@ export class CapacityPlansService {
       }
     }
 
+    /**
+     * `value: null` RE-COPIES the Feature's current top-down estimate, relabelled `feature_estimate`.
+     *
+     * It used to write NULL and hand the row back to a resolving read. There is no NULL to write any
+     * more (§11 makes the value fixed), and the gesture it expresses — a planner emptying the cell —
+     * still has a meaning: "charge whatever this Feature is estimated at", which is §185 evaluated
+     * again now. The number is taken at THIS moment, so a re-copy is a deliberate re-baseline rather
+     * than a subscription to future edits.
+     */
+    let recopied: number | null = null;
+    if (input.value === null) {
+      const item = await this.portfolioItems.getItem(actor, allocation.portfolioItemId);
+      recopied = await this.featureEstimate(actor, plan, item);
+    }
+
     await this.uow.run(async (tx) => {
       // Parking a row in the Unallocated bucket strips its primary flag: the check constraint
       // forbids a primary with no team, so this is the difference between a clear rule and a
@@ -841,10 +866,12 @@ export class CapacityPlansService {
       await this.repo.updateAllocation(
         allocationId,
         {
-          // `null` clears the explicit allocation; `undefined` leaves it untouched.
+          // `undefined` leaves the value and its source untouched.
           ...(input.value === undefined
             ? {}
-            : { value: input.value === null ? null : String(input.value) }),
+            : input.value === null
+              ? { value: String(recopied), source: 'feature_estimate' as const }
+              : { value: String(input.value), source: 'manual' as const }),
           ...(input.teamId === undefined ? {} : { teamId: input.teamId }),
           ...(losesTeam ? { isPrimary: false } : {}),
         },
@@ -1103,6 +1130,8 @@ export class CapacityPlansService {
             portfolioItemId: input.portfolioItemId,
             teamId: row.teamId,
             value: row.value,
+            // A carried row is the SAME commitment on another plan, so its source travels with it.
+            source: row.source,
             isPrimary: ownerSurvives ? row.isPrimary : at === 0,
           },
           tx,
@@ -1113,28 +1142,20 @@ export class CapacityPlansService {
        * Everything that could not keep its team becomes ONE unassigned row, not one per lost team:
        * the target has no way to tell those rows apart, so N of them would read as N commitments.
        *
-       * Its value is the SUM of what those rows carried, folded with `mergeParkedValue` — the same
-       * helper `removeTeam` uses for the same situation. It used to be hard-coded `null`, which
-       * silently destroyed every number a planner had typed for a team the target does not hold:
-       * FE-1 with Team A = 8 and Team B = 5 moved to a plan holding only Team A arrived as 8 plus a
-       * valueless placeholder, and the parked row then resolved through Refined → Preliminary, so
-       * the plan reported an estimate nobody entered. With no team carried at all, the whole
-       * committed demand was replaced by a forecast.
-       *
-       * `null` survives as `null` when none of the lost rows stated a value: that is "planned, not
-       * yet estimated", and the Feature's own estimate answers for it (AC-014).
+       * Its value is the SUM of what those rows carried, folded with `mergeParked` — the same helper
+       * `removeTeam` uses for the same situation. It used to be hard-coded `null`, which silently
+       * destroyed every number a planner had typed for a team the target does not hold: FE-1 with
+       * Team A = 8 and Team B = 5 moved to a plan holding only Team A arrived as 8 plus a valueless
+       * placeholder, and the parked row then resolved through Refined → Preliminary, so the plan
+       * reported an estimate nobody entered.
        */
-      const parkedValue = lost.reduce<string | null>(
-        (acc, row) => mergeParkedValue(acc, row.value),
-        null,
-      );
       if (lost.length > 0) {
         await this.repo.createAllocation(
           {
             planId: input.targetPlanId,
             portfolioItemId: input.portfolioItemId,
             teamId: null,
-            value: parkedValue,
+            ...mergeParked(lost),
           },
           tx,
         );
@@ -1193,30 +1214,23 @@ export class CapacityPlansService {
 
     const allocations: CapacityAllocationView[] = rows.map((row) => {
       /**
-       * What this team is charged for this Feature.
+       * What this team is charged for this Feature: the STORED value, nothing resolved.
        *
-       * An EXPLICIT value wins and reads as the `allocated` tier. A null value means the planner
-       * assigned the Feature here without allocating a slice — Rally's primary assignment — so the
-       * charge falls back to the Feature's own estimate, Refined then Preliminary, and the tier
-       * says which. That fallback is per ROW rather than shared, matching Rally's documented
-       * behaviour that allocating 40 to each of two teams totals 80: nothing is split.
-       *
-       * `row.totalAllocated` (the SUM over this Feature's team rows) is deliberately NOT the input
-       * for a null row — folding it in would charge one team with what the others were allocated.
+       * Until 0101 a null value meant "charge the Feature's own estimate here" and was resolved on
+       * every read through `resolveEstimate`. SRS §11 makes it a fixed value set during planning
+       * (`fixed allocation.value set during planning/replanning`), and §337 defines Team Estimated as
+       * `SUM(allocation.value)` — neither is expressible while the number is reconstructed per read,
+       * and a resolving read moved a Draft plan's committed demand whenever anyone edited the
+       * Feature's Refined Estimate. `source` says which of §185/§186 produced it.
        */
-      const explicit = row.value === null ? null : Number(row.value);
-      const resolved = resolveEstimate({
-        totalAllocated: explicit ?? 0,
-        refined: row.refined,
-        preliminary: inUnit(row.preliminarySize),
-      });
+      const committed = Number(row.value);
       /**
        * An ARCHIVED Feature is charged NOTHING.
        *
        * The BA: an archived item "is not actionable planning demand". Its row stays visible so the
        * planner can see the stale commitment and remove it, but it contributes zero to the team's
-       * load, to the plan totals and to the cutline. The tier still reports where the number WOULD
-       * have come from, so the row explains itself rather than looking empty.
+       * load, to the plan totals and to the cutline. The stored value is still returned, so the row
+       * explains itself rather than looking empty.
        */
       const archived = row.itemArchivedAt !== null;
       return {
@@ -1226,18 +1240,17 @@ export class CapacityPlansService {
         teamId: row.teamId,
         isPrimary: row.isPrimary,
         value: row.value,
+        source: row.source,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         itemKey: row.itemKey,
         name: row.name,
-        tier: resolved.tier,
         rank: row.rank,
         state: row.state,
         projectId: row.itemProjectId,
         projectName: row.itemProjectName,
         archived,
         estimateBreakdown: {
-          allocated: explicit,
           refined: row.refined,
           // 0 means the workspace maps this size to nothing, which reads as "no estimate" rather
           // than as a real zero — the tooltip shows a dash for it.
@@ -1248,18 +1261,23 @@ export class CapacityPlansService {
           // so the sums below, which add these up, cannot pick it back up.
           complete: archived ? 0 : row.complete,
           rollup: archived ? 0 : row.rollup,
-          estimated: archived ? 0 : resolved.value,
+          estimated: archived ? 0 : committed,
           // A Feature row has no capacity of its own — the ceiling belongs to the team.
           capacity: null,
           warnings: computeCapacityWarnings({
             kind: 'feature',
             rollup: row.rollup,
-            estimated: resolved.value,
+            estimated: committed,
             capacity: null,
-            // Carries Rally's "Feature Missing Estimate Error": tier `none` means no
-            // allocation, no refined forecast and no preliminary mapping, so there is
-            // nothing to plan this Feature against.
-            tier: resolved.tier,
+            /**
+             * Rally's "Feature Missing Estimate Error" on a row that commits nothing.
+             *
+             * A zero commitment is what a Feature added through the Team picker starts at (§246), and
+             * what a blank Estimate copies when the Feature has neither a Refined forecast nor a
+             * sized Preliminary. Either way there is no demand to plan against, which is what the
+             * warning says.
+             */
+            tier: committed > 0 ? 'allocated' : 'none',
           }),
         },
       };
@@ -1333,6 +1351,9 @@ export class CapacityPlansService {
            * skipped here and `parkedEstimate` supplies the fallback below, so "planned but not yet
            * assigned" reads as the Feature's size rather than as zero.
            */
+          // Accumulates `Total Allocated` — SUM over TEAM-ASSIGNED rows only — and is replaced after
+          // the loop by AC-014's resolution. A parked row contributes nothing here by design (§294):
+          // "An Unallocated placeholder does not override Refined or Preliminary."
           estimated: row.teamId === null ? 0 : allocations[index].metrics.estimated,
           /**
            * An ARCHIVED Feature charges nothing, on BOTH tabs.
@@ -1349,12 +1370,12 @@ export class CapacityPlansService {
           rollup: row.itemArchivedAt !== null ? 0 : row.itemRollup,
           complete: row.itemArchivedAt !== null ? 0 : row.itemComplete,
           archived: row.itemArchivedAt !== null,
-          tier: allocations[index].tier,
-          // Filled in after the loop: both depend on the FINAL aggregate, so computing them per row
-          // would report the first allocation's view of a Feature that has several.
+          // Filled in after the loop: all three depend on the FINAL aggregate, so computing them per
+          // row would report the first allocation's view of a Feature that has several.
+          tier: 'none',
           warnings: [],
           estimateBreakdown: {
-            allocated: row.teamId !== null && row.value !== null ? Number(row.value) : null,
+            allocated: row.teamId === null ? null : allocations[index].metrics.estimated,
             refined: row.refined,
             // 0 means the workspace maps this size to nothing, which reads as "no estimate" rather
             // than as a real zero — the same treatment the allocation row's tooltip gets.
@@ -1367,50 +1388,51 @@ export class CapacityPlansService {
         });
       } else {
         const item = items[at];
-        if (row.teamId !== null) item.estimated += allocations[index].metrics.estimated;
-        if (row.teamId !== null && row.value !== null) {
+        if (row.teamId !== null) {
+          item.estimated += allocations[index].metrics.estimated;
           item.estimateBreakdown.allocated =
-            (item.estimateBreakdown.allocated ?? 0) + Number(row.value);
+            (item.estimateBreakdown.allocated ?? 0) + allocations[index].metrics.estimated;
         }
         if (row.teamId === null) item.unallocated = true;
         else item.teamIds.push(row.teamId);
         if (row.isPrimary) item.primaryTeamId = row.teamId;
-        // A Feature with several allocations takes the strongest tier it has: an entered
-        // allocation outranks a forecast, and that is what the row's number now is.
-        if (allocations[index].tier === 'allocated') item.tier = 'allocated';
       }
-    }
-    /**
-     * A Feature with no team at all still carries its own estimate.
-     *
-     * Its parked row was skipped above so it could not be added to a team's commitment; here the
-     * resolved figure comes back for the rows where it is the ONLY thing there is. Read from the
-     * parked allocation's own resolved metrics, so it follows the same Refined → Preliminary
-     * precedence as every other row rather than re-deriving it.
-     */
-    for (const [index, row] of rows.entries()) {
-      if (row.teamId !== null) continue;
-      const at = seen.get(row.portfolioItemId);
-      if (at === undefined) continue;
-      const item = items[at];
-      if (item.teamIds.length === 0) item.estimated = allocations[index].metrics.estimated;
     }
 
     /**
-     * The Feature-level warnings, from the SAME rule function every other row uses.
+     * `Feature Estimated` — the planning view, AC-014, applied to the whole Feature.
      *
-     * Computed here because both inputs are aggregates: `estimated` is summed over the Feature's team
-     * rows above, and the tier is the strongest any row reported. `kind: 'feature'` restricts the rules
-     * to the two the BA specifies for this tab — a Feature has no capacity of its own, so the
-     * capacity comparisons cannot fire.
+     * "Total Allocated, Refined Estimate, then temporary Preliminary Estimate mapping", where Total
+     * Allocated counts only team-assigned rows. Each row's own number is now a fixed stored value, so
+     * this is the ONE place a tier is still resolved, and it is resolved from the aggregate — which is
+     * what it always described.
+     *
+     * It used to be inferred instead: the item took whichever tier its first allocation row reported,
+     * upgraded to `allocated` if any row had an explicit value, and a Feature with only a parked row
+     * had its estimate copied from that row in a second pass. Three approximations of one rule; a
+     * Feature holding a 0-valued team row beside a Refined forecast of 21, for instance, reported the
+     * commitment's tier while showing neither number.
+     *
+     * The warnings follow the same aggregate, `kind: 'feature'` — a Feature has no capacity of its
+     * own, so the capacity comparisons cannot fire, and `tier: 'none'` is Rally's "Feature Missing
+     * Estimate Error".
      */
     for (const item of items) {
+      const resolved = resolveEstimate({
+        totalAllocated: item.estimated,
+        refined: item.estimateBreakdown.refined,
+        preliminary: item.estimateBreakdown.preliminary ?? 0,
+      });
+      item.tier = resolved.tier;
+      // An archived Feature is charged nothing on either tab (§15) — but the tier still reports where
+      // the number WOULD have come from, so the row explains itself rather than looking empty.
+      item.estimated = item.archived ? 0 : resolved.value;
       item.warnings = computeCapacityWarnings({
         kind: 'feature',
         rollup: item.rollup,
         estimated: item.estimated,
         capacity: null,
-        tier: item.tier,
+        tier: resolved.tier,
       });
     }
 
@@ -1579,6 +1601,37 @@ export class CapacityPlansService {
     return item;
   }
 
+  /**
+   * What a blank Estimate copies: the Feature's top-down estimate in the PLAN'S UNIT (§185).
+   *
+   * `defaultAllocationEstimate`, which is Refined → Preliminary and deliberately skips the allocated
+   * tier — folding allocations back in would mean a blank field commits the sum of the very
+   * allocations it is being used to create (§294). Until now that function had no production caller
+   * at all: the rule lived in the read path's `resolveEstimate` and, separately, in the Allocate
+   * dialog's own arithmetic.
+   *
+   * Zero is a legitimate answer, for a Feature with neither a Refined forecast nor a sized
+   * Preliminary. It is stored as zero rather than refused, because "in the plan, not yet estimated"
+   * is a real state — the row then carries `feature_missing_estimate`, which is the BA's report for it.
+   */
+  private async featureEstimate(
+    actor: JwtPayload,
+    plan: CapacityPlan,
+    item: {
+      preliminaryEstimate: PreliminaryEstimateSize;
+      refinedEstimate: string;
+      refinedItemCountEstimate: number;
+    },
+  ): Promise<number> {
+    const map = await this.estimateMaps.forWorkspace(actor.workspaceId);
+    const size = map[item.preliminaryEstimate];
+    return defaultAllocationEstimate(
+      plan.unit === 'points'
+        ? { refined: Number(item.refinedEstimate), preliminary: size.points }
+        : { refined: item.refinedItemCountEstimate, preliminary: size.count },
+    ).value;
+  }
+
   // ── Guards ────────────────────────────────────────────────────────────────
 
   /**
@@ -1689,18 +1742,27 @@ export class CapacityPlansService {
 }
 
 /**
- * The value a merged unassigned row should carry when a removed team's row folds into it.
+ * What a merged unassigned row carries when other rows fold into it.
  *
- * `null` means "charge the Feature's own estimate", so it is not zero and cannot be added to:
+ * Every row now holds a real number (§11), so the value is simply their SUM — the demand those rows
+ * represented together, which must not be discarded by a team removal or by a move to a plan that
+ * does not hold the team.
  *
- *  - both null  → still null: nothing was ever stated, and the Feature's estimate still answers.
- *  - one stated → that number, because a figure a planner typed must not be discarded by a removal.
- *  - both stated → their sum, which is the demand the two rows represented together.
+ * It used to be a three-case fold over nullable values, where `null` meant "charge the Feature's own
+ * estimate" and therefore could not be added to. That case is gone with the nulls.
+ *
+ * The SOURCE survives only when exactly ONE row folds in: a single `feature_estimate` row moved
+ * intact is still the Feature's estimate, but a sum of two rows is a number no single rule produced,
+ * so calling it `feature_estimate` would claim the Feature is estimated at a figure it is not.
  */
-export function mergeParkedValue(parked: string | null, removed: string | null): string | null {
-  if (parked === null) return removed;
-  if (removed === null) return parked;
-  return String(Number(parked) + Number(removed));
+export function mergeParked(
+  rows: ReadonlyArray<{ value: string; source: CapacityAllocationSource }>,
+): { value: string; source: CapacityAllocationSource } {
+  const total = rows.reduce((sum, row) => sum + Number(row.value), 0);
+  return {
+    value: String(total),
+    source: rows.length === 1 ? rows[0].source : 'manual',
+  };
 }
 
 /**

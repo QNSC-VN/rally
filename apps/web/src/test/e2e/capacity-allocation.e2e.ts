@@ -211,22 +211,22 @@ test.describe('Capacity allocation', () => {
     }
   }
 
-  test('allocates a Feature to a team, shows its tier, then removes it', async ({ page }) => {
+  test('allocates a Feature to a team, names the value SOURCE, then removes it', async ({ page }) => {
     await openPlan(page)
 
     // ── Add, then allocate ──────────────────────────────────────────────────
-    // Estimate left blank on purpose: a blank assigns without allocating, so the row stores null and
-    // the plan charges the Feature's own estimate there — Rally's primary assignment.
+    // Estimate left blank on purpose: §185 copies the Feature's own top-down estimate into the row and
+    // labels its source `Feature Estimate`.
     await allocateFeature(page, /FE-1/, /Team Alpha/)
 
-    // ── The allocated row appears under its team, with a tier badge ──────────
+    // ── The allocated row appears under its team, naming where its number came from ──
     await expandTeam(page)
     const row = page.locator('div.group').filter({ hasText: 'Guest checkout flow' }).first()
     await expect(row).toBeVisible()
-    // The tier is Rally's trailing glyph, and its accessible name lists all three candidates with
-    // the one in force ticked — the text badge it replaced sat beside the name and read as part of
-    // the title.
-    await expect(row.getByRole('img', { name: /Estimate: Allocated/ })).toBeVisible()
+    // The trailing glyph's accessible name says the SOURCE and lists the Feature's current forecasts,
+    // so a copy that has fallen behind them is visible. It used to name a tier, which described a
+    // resolve-on-read the row no longer does.
+    await expect(row.getByRole('img', { name: /Feature Estimate:/ })).toBeVisible()
 
     // Survives a reload: the allocation was persisted, not just held in cache. Expansion is
     // local state, so the reload collapses the team again — reopen it.

@@ -722,8 +722,11 @@ async function seedFlow() {
   /**
    * The plan's allocations — one row per state the BA flow reaches (§4.4–§4.6).
    *
-   *   FE-1  Alpha, primary, NO explicit value → charged its Preliminary size: Rally's assignment
-   *   FE-2  Alpha, primary, explicit 5        → an allocated slice, the strongest estimate tier
+   *   FE-1  Alpha, primary, source `feature_estimate` → 5, COPIED from its Preliminary size M at
+   *                                             allocation time (§185). The badge says `Feature
+   *                                             Estimate`, and the number no longer follows later
+   *                                             edits to the Feature — that is the fixed snapshot
+   *   FE-2  Alpha, primary, `manual` 5        → a number a planner typed (§186)
    *   FE-3  Alpha primary 8 + Beta 13         → SPLIT: `→ to Beta` on one row, `← from Alpha` on the
    *                                             other, a boxed count on the Features tab, and the
    *                                             only case where Remove All Assignments does work
@@ -742,7 +745,9 @@ async function seedFlow() {
         portfolioItemId: NXP_FEATURE_1_ID,
         teamId: TEAM_ALPHA_ID,
         isPrimary: true,
-        value: null,
+        // 5 = the Preliminary M mapping, which is what a blank Estimate copied.
+        value: '5',
+        source: 'feature_estimate' as const,
       },
       {
         planId: NXP_CAPACITY_PLAN_ID,
@@ -750,6 +755,7 @@ async function seedFlow() {
         teamId: TEAM_ALPHA_ID,
         isPrimary: true,
         value: '5',
+        source: 'manual' as const,
       },
       {
         planId: NXP_CAPACITY_PLAN_ID,
@@ -757,6 +763,7 @@ async function seedFlow() {
         teamId: TEAM_ALPHA_ID,
         isPrimary: true,
         value: '8',
+        source: 'manual' as const,
       },
       {
         planId: NXP_CAPACITY_PLAN_ID,
@@ -764,6 +771,7 @@ async function seedFlow() {
         teamId: TEAM_BETA_ID,
         isPrimary: false,
         value: '13',
+        source: 'manual' as const,
       },
       {
         planId: NXP_CAPACITY_PLAN_ID,
@@ -771,6 +779,7 @@ async function seedFlow() {
         teamId: null,
         isPrimary: false,
         value: '3',
+        source: 'manual' as const,
       },
     ])
     .onConflictDoNothing();
@@ -814,6 +823,7 @@ async function seedFlow() {
       teamId: TEAM_BETA_ID,
       isPrimary: true,
       value: '21',
+      source: 'manual' as const,
     })
     .onConflictDoNothing();
 

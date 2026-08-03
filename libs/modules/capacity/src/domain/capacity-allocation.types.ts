@@ -1,5 +1,8 @@
-import type { PortfolioItemState, PreliminaryEstimateSize } from '../../../../../db/schema/enums';
-import type { EstimateTier } from '@modules/portfolio';
+import type {
+  CapacityAllocationSource,
+  PortfolioItemState,
+  PreliminaryEstimateSize,
+} from '../../../../../db/schema/enums';
 import type { CapacityWarning } from '@modules/portfolio';
 
 /**
@@ -24,15 +27,22 @@ export interface CapacityAllocation {
    */
   isPrimary: boolean;
   /**
-   * The points a planner explicitly allocated to this team, or NULL for "not explicitly
-   * allocated".
+   * The committed demand on this row — a FIXED value, never resolved on read (SRS §11).
    *
-   * Rally's model: an item is ASSIGNED to one primary team, and points are ALLOCATED to the
-   * additional ones. The primary assignment carries no number of its own — the item's estimate is
-   * what the plan charges there — so Rally's `Allocation` column is blank on those rows. Null
-   * carries that state; the read path resolves it through `resolveEstimate`.
+   * It was nullable between 0077 and 0101, with null meaning "charge the Feature's estimate here",
+   * resolved per read. That made a planner's commitment move whenever someone edited the Feature's
+   * Refined Estimate, and made `SUM(allocation.value)` (§337) unusable. The value is now copied in
+   * at allocation time and {@link source} says whether it was copied or typed.
    */
-  value: string | null;
+  value: string;
+  /**
+   * Whether {@link value} was COPIED from the Feature's top-down estimate or typed by a planner.
+   *
+   * §185-186. This is what lets the value be fixed: 0077 went nullable precisely because "a
+   * defaulted 8 and a deliberate 8 were indistinguishable", and this label is that distinction
+   * without a resolving read.
+   */
+  source: CapacityAllocationSource;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,7 +64,7 @@ export interface CapacityMetrics {
   complete: number;
   /** Live child points, whatever their state. */
   rollup: number;
-  /** Committed demand — SUM(allocation.value). */
+  /** Committed demand — SUM(allocation.value), read from the stored rows (§337). */
   estimated: number;
   /** Entered ceiling, or null when the planner has not entered one. Null ≠ 0. */
   capacity: number | null;
@@ -76,8 +86,6 @@ export interface CapacityAllocationRow extends CapacityAllocation {
   refined: number | null;
   /** The T-shirt size; the service maps it through workspace settings. */
   preliminarySize: PreliminaryEstimateSize;
-  /** SUM(value) over TEAM-ASSIGNED rows for this Feature on this plan. */
-  totalAllocated: number;
   rollup: number;
   complete: number;
   /** The Feature's LexoRank — the order Rally's cutline accumulates down. */
@@ -115,8 +123,6 @@ export interface CapacityAllocationRow extends CapacityAllocation {
 export interface CapacityAllocationView extends CapacityAllocation {
   itemKey: string;
   name: string;
-  /** Which tier the Feature's Estimated figure came from, for the UI badge. */
-  tier: EstimateTier;
   /**
    * The Feature's LexoRank, so the nested table can show the same `Rank` column the plan's item
    * list does. Rally's sub-table leads with it: a planner reading one team's Features still wants
@@ -140,17 +146,16 @@ export interface CapacityAllocationView extends CapacityAllocation {
    */
   archived: boolean;
   /**
-   * All THREE candidate estimates, so the row's trailing glyph can show Rally's `Estimate` tooltip:
-   * Allocated / Refined / Preliminary, with the one in force ticked.
+   * The Feature's two TOP-DOWN candidates, for the Allocate dialog's read-only header (§175) and for
+   * the row's source tooltip.
    *
-   * Sent as the raw candidates rather than as the winner alone because the tooltip's whole job is
-   * showing what was NOT used — a planner checking whether 60 is a commitment or a T-shirt size is
-   * comparing the three.
+   * Still sent even though the row's own number is now stored: a planner deciding whether to leave
+   * Estimate blank needs to see what blank would copy, and a `feature_estimate` row that no longer
+   * matches the Feature's current forecast is worth being able to see — that gap IS the fixed
+   * snapshot doing its job.
    */
   estimateBreakdown: {
-    /** What a planner explicitly allocated to this team; null when they only assigned it. */
-    allocated: number | null;
-    /** Top-down forecast on the Feature. */
+    /** Top-down forecast on the Feature, in the plan's unit. */
     refined: number | null;
     /** T-shirt size mapped through workspace settings, in the plan's unit. */
     preliminary: number | null;
@@ -163,16 +168,17 @@ export interface CreateCapacityAllocationInput {
   /** Null parks the demand in the Unallocated bucket. */
   teamId?: string | null;
   /**
-   * Points explicitly allocated to this team. OMIT to assign without allocating, which stores NULL
-   * and charges the Feature's own estimate here — Rally's primary assignment.
+   * Points to commit to this team. OMIT to copy the Feature's top-down estimate (Refined, else the
+   * Preliminary size mapping) into the row and label it `feature_estimate` — §185.
    */
   value?: number;
 }
 
 export interface UpdateCapacityAllocationInput {
   /**
-   * `null` CLEARS the explicit allocation, returning the row to charging the Feature's estimate.
-   * `undefined` leaves it alone, so an emptied cell has to send null on purpose.
+   * `null` RE-COPIES the Feature's current top-down estimate into the row and relabels it
+   * `feature_estimate` — the emptied-cell gesture, which used to clear the value to NULL and hand
+   * the row back to a resolving read. `undefined` leaves both alone.
    */
   value?: number | null;
   /** Moving demand between teams, or into/out of the Unallocated bucket. */
