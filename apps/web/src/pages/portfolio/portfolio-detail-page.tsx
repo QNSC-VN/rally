@@ -26,6 +26,7 @@ import { FileText, History, ListTree } from 'lucide-react'
 
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { AcceptedChildrenBlock } from '@/features/portfolio/ui/accepted-children-block'
+import { CreatePortfolioItemModal } from './ui/create-portfolio-item-modal'
 import { EpicChildrenTable } from './ui/epic-children-table'
 import { FeatureChildrenTable } from './ui/feature-children-table'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -71,6 +72,8 @@ export function PortfolioDetailPage() {
   const [tab, setTab] = useState('details')
   const [confirmArchive, setConfirmArchive] = useState(false)
   const [showAddChild, setShowAddChild] = useState(false)
+  /** Create a child Feature from an EPIC's Children tab, with this Epic as the fixed parent. */
+  const [showAddFeature, setShowAddFeature] = useState(false)
   // `featureId` lives on the work-item UPDATE body, so a new child is created first and linked
   // second — the same two-step the e2e fixtures use to attach a Story to a Feature.
   const linkChild = useUpdateAnyWorkItem()
@@ -347,6 +350,7 @@ export function PortfolioDetailPage() {
               features={childFeatures}
               canEdit={canEdit}
               isLoading={featuresLoading}
+              onAddFeature={() => setShowAddFeature(true)}
             />
           ) : (
             <FeatureChildrenTable
@@ -403,6 +407,17 @@ export function PortfolioDetailPage() {
               .then(() => notify.success(t('detail.children.added', { key: created.itemKey })))
               .catch((err: unknown) => notify.error(errorMessage(err)))
           }}
+        />
+      )}
+
+      {/* An EPIC's children are Features, so its Children tab creates one — through the same
+          modal the Portfolio list uses, with this Epic pinned as the parent. */}
+      {showAddFeature && server?.projectId && (
+        <CreatePortfolioItemModal
+          projectId={server.projectId}
+          type={PortfolioItemType.Feature}
+          fixedParentId={itemId}
+          onClose={() => setShowAddFeature(false)}
         />
       )}
 

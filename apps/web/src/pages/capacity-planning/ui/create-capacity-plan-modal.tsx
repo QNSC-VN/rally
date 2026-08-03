@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { Input } from '@/shared/ui/input'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { notify } from '@/shared/lib/toast'
@@ -102,7 +103,15 @@ export function CreateCapacityPlanModal({
             variant="field"
             value={releaseId}
             ariaLabel={t('create.releaseLabel')}
-            options={available.map((r) => ({ value: r.id, label: r.name }))}
+            searchPlaceholder="Search"
+            // `TypeBadge type="release"` — the glyph the Backlog and Portfolio release
+            // pickers already use, so a release looks the same wherever it is chosen.
+            options={available.map((r) => ({
+              value: r.id,
+              label: r.name,
+              searchText: `${r.releaseKey ?? ''} ${r.name}`,
+              icon: <TypeBadge type="release" size={16} />,
+            }))}
             onChange={(v) => setReleaseId(v ?? '')}
           />
         </FormField>

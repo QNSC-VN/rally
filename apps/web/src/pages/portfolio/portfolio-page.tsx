@@ -17,7 +17,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, Archive, ChevronDown, PackageOpen, Plus } from 'lucide-react'
+import { AlertTriangle, Archive, PackageOpen, Plus } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -47,7 +47,6 @@ import { usePortfolioCellOptions } from './model/use-cell-options'
 import { PORTFOLIO_STATES } from './model/portfolio-states'
 import { PortfolioRow } from './ui/portfolio-row'
 import { PortfolioTypeSwitcher } from './ui/portfolio-type-switcher'
-import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 import { CreatePortfolioItemModal } from './ui/create-portfolio-item-modal'
 
 export function PortfolioPage() {
@@ -60,9 +59,10 @@ export function PortfolioPage() {
   /**
    * Which type the create dialog is opening for, or null when it is closed.
    *
-   * A type rather than a boolean because the BA's `New Portfolio Item` menu offers `New Epic`
-   * AND `New Feature` (SRS §4, §11.2), so the choice is no longer "whatever level the list is
-   * showing" — a planner looking at Features can create an Epic without switching first.
+   * Still a type rather than a boolean, but it is now always set from `type` — the Type
+   * switcher above the grid IS the choice, so Add New creates the level being viewed. It
+   * previously came from a `New Epic` / `New Feature` dropdown (SRS §4, §11.2), which asked
+   * for the same decision a second time and could contradict the switcher.
    */
   const [createType, setCreateType] = useState<PortfolioItemType | null>(null)
   /**
@@ -343,25 +343,22 @@ export function PortfolioPage() {
         }
         fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
         actions={
+          // ONE CLICK, and the Type switcher beside the title decides what gets created —
+          // viewing Features creates a Feature, viewing Epics creates an Epic. The label
+          // follows the switcher so the button says what it will do before it is pressed.
+          //
+          // This replaces an `ActionMenu` offering `New Epic` / `New Feature`, which is what
+          // SRS §4 and §11.2 describe ("opens a menu with…", acceptance 27). The menu made the
+          // same choice twice: a planner already picked a level with the switcher, then picked
+          // it again in a dropdown, and the two could disagree. Every other grid in the app
+          // creates the kind of row it is showing — Iteration Status, the Tasks tab and the
+          // Feature Children tab all do — so this is the app-wide pattern rather than a
+          // Portfolio-only shortcut. Flagged for the BA: those three lines need amending.
           canCreate ? (
-            <ActionMenu
-              ariaLabel={t('create.menuLabel')}
-              trigger={
-                <Button size="sm">
-                  <Plus size={13} /> {t('create.menuLabel')}
-                  <ChevronDown size={13} />
-                </Button>
-              }
-            >
-              <ActionMenuItem
-                label={t('create.titleEpic')}
-                onClick={() => setCreateType(PortfolioItemType.Epic)}
-              />
-              <ActionMenuItem
-                label={t('create.titleFeature')}
-                onClick={() => setCreateType(PortfolioItemType.Feature)}
-              />
-            </ActionMenu>
+            <Button size="sm" onClick={() => setCreateType(type)}>
+              <Plus size={13} />{' '}
+              {type === PortfolioItemType.Epic ? t('create.titleEpic') : t('create.titleFeature')}
+            </Button>
           ) : undefined
         }
         bulkActions={(selection) => (

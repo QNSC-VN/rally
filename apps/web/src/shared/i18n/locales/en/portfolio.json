@@ -176,8 +176,11 @@
     "createButton": "Create",
     "created": "\"{{name}}\" created",
     "createFailed": "Failed to create the portfolio item",
+    "projectLabel": "Project",
     "ownerRequired": "An Owner is required",
-    "unscheduled": "Unscheduled"
+    "unassigned": "Unassigned",
+    "unscheduled": "Unscheduled",
+    "noTeam": "No team"
   },
   "archive": {
     "action": "Archive",

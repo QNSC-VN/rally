@@ -13,6 +13,9 @@ import {
   RankCell,
 } from '@/shared/ui/table'
 import { TableTotalsRow } from '@/shared/ui/table-totals-row'
+import { Plus } from 'lucide-react'
+
+import { Button } from '@/shared/ui/button'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { InlineSelect } from '@/shared/ui/native-select'
@@ -55,10 +58,18 @@ export function EpicChildrenTable({
   features,
   canEdit = false,
   isLoading = false,
+  onAddFeature,
 }: {
   features: PortfolioItem[]
   canEdit?: boolean
   isLoading?: boolean
+  /**
+   * Create a Feature under THIS Epic. Omitted when the caller cannot create.
+   *
+   * An Epic's children are Features, so this tab's Add New makes a Feature — the same rule
+   * the Feature Children tab follows for its own Story/Defect children.
+   */
+  onAddFeature?: () => void
 }) {
   const { t } = useTranslation('portfolio')
   const navigate = useNavigate()
@@ -127,9 +138,21 @@ export function EpicChildrenTable({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      {/* The same toolbar the Feature Children tab uses — search, Filters, Show Fields. No Add
-          New: a child Feature is created from the Portfolio list, not from inside its Epic. */}
+      {/* The same toolbar the Feature Children tab uses — search, Add New, Filters, Show Fields.
+          Add New creates a FEATURE, because that is what an Epic's children are; the Feature
+          Children tab's own Add New creates a Story/Defect for the same reason. This tab
+          previously had no Add New at all, on the reasoning that a child Feature is made from
+          the Portfolio list — but that is one more navigation for the level the user is already
+          looking at, and P5-PI-FR-032 puts Epic Detail on the Feature detail template, which
+          has one. */}
       <PageToolbar
+        actions={
+          canEdit && onAddFeature ? (
+            <Button size="sm" onClick={onAddFeature}>
+              <Plus size={14} /> {t('create.titleFeature')}
+            </Button>
+          ) : undefined
+        }
         search={{
           value: search,
           onChange: setSearch,
