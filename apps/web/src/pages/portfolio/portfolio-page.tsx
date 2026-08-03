@@ -17,7 +17,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, Archive, PackageOpen, Plus } from 'lucide-react'
+import { AlertTriangle, Archive, PackageOpen, Pencil, Plus } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -30,8 +30,9 @@ import { type RowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable, useRowRerank } from '@/shared/ui/table'
+import { useDataTable } from '@/shared/ui/table'
 import { ListPageScaffold } from '@/shared/ui/list-page/list-page-scaffold'
+import { BulkActionButton } from '@/shared/ui/bulk-action-bar'
 import { ListPageHeader } from '@/shared/ui/list-page/list-page-header'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
@@ -42,7 +43,7 @@ import {
   useSetPortfolioItemArchived,
   type PortfolioItem,
 } from '@/features/portfolio/api'
-import { PORTFOLIO_COLUMNS, type ColKey } from './model/columns'
+import { PORTFOLIO_COLUMNS, portfolioSortValue, type ColKey } from './model/columns'
 import { usePortfolioCellOptions } from './model/use-cell-options'
 import { PORTFOLIO_STATES } from './model/portfolio-states'
 import { PortfolioRow } from './ui/portfolio-row'
@@ -201,8 +202,10 @@ export function PortfolioPage() {
     if (!sortField) return filtered
     const dir = sortDir === 'desc' ? -1 : 1
     return [...filtered].sort((a, b) => {
-      const av = (a as unknown as Record<string, string | number | null>)[sortField] ?? ''
-      const bv = (b as unknown as Record<string, string | number | null>)[sortField] ?? ''
+      // `portfolioSortValue`, not `item[sortField]`: the old lookup sorted Project by its uuidv7 and
+      // could not reach a nested or derived field at all — see the note on that function.
+      const av = portfolioSortValue(a, sortField)
+      const bv = portfolioSortValue(b, sortField)
       if (av < bv) return -dir
       if (av > bv) return dir
       return 0
@@ -221,12 +224,37 @@ export function PortfolioPage() {
    * grip is gated per row too — this flag only turns the whole mechanism off.
    */
   const rank = useRankPortfolioItem()
-  const rerank = useRowRerank({
-    items: sorted,
-    disabled: sortField !== null,
-    onReorder: ({ id, beforeId, afterId }) =>
-      rank.mutate({ id, beforeId, afterId }, { onError: (err) => notify.error(err.message) }),
-  })
+
+  /**
+   * The BA's `Move up` / `Move down` (§37, FR-005), one position at a time.
+   *
+   * This grid used to DRAG, which §14 lists under Not included — and a drag has no keyboard until the
+   * shared grip is given a sensor, where two buttons have one for free. Same endpoint either way: the
+   * portfolio rank is one order, and the Backlog reads it too.
+   *
+   * `beforeId`/`afterId` are the rows the item lands BETWEEN, so a move up targets the pair one
+   * position higher. `undefined` at the ends of the list, and while a column sort is active: a running
+   * order means nothing under any other sort, which is also why §273 asks for the order to survive
+   * returning to the Rank column.
+   */
+  const moveHandlers = useCallback(
+    (id: string): { onMoveUp?: () => void; onMoveDown?: () => void } => {
+      if (sortField !== null) return {}
+      const at = sorted.findIndex((i) => i.id === id)
+      if (at === -1) return {}
+      const run = (beforeId: string | null, afterId: string | null) => () =>
+        rank.mutate({ id, beforeId, afterId }, { onError: (err) => notify.error(err.message) })
+      return {
+        ...(at > 0 ? { onMoveUp: run(at >= 2 ? sorted[at - 2].id : null, sorted[at - 1].id) } : {}),
+        ...(at < sorted.length - 1
+          ? {
+              onMoveDown: run(sorted[at + 1].id, at + 2 < sorted.length ? sorted[at + 2].id : null),
+            }
+          : {}),
+      }
+    },
+    [rank, sortField, sorted],
+  )
 
   /**
    * Archive every selected row that CAN be archived, and report every one that could not.
@@ -245,7 +273,7 @@ export function PortfolioPage() {
    * through so the planner can act on exactly those.
    */
   async function archiveSelected(selection: RowSelection) {
-    const selected = rerank.items.filter((i) => selection.selectedIds.has(i.id))
+    const selected = sorted.filter((i) => selection.selectedIds.has(i.id))
     const [allowed, forbidden] = selected.reduce<[PortfolioItem[], PortfolioItem[]]>(
       ([ok, no], item) =>
         rowPerms.can(item.projectId, 'portfolio:archive')
@@ -363,15 +391,27 @@ export function PortfolioPage() {
         }
         bulkActions={(selection) => (
           <>
-            <button
-              type="button"
-              onClick={() => setConfirmArchive(true)}
+            {/* §464: `Edit` is "Enabled for exactly one selection and opens that Portfolio Item's
+                normal Detail page". One row, because there is no multi-item edit form and the BA does
+                not ask for one. DISABLED rather than hidden on a wider selection, so the rule is
+                visible: the label says what is available, the state says why it is not yet. */}
+            <BulkActionButton
+              label={t('bulk.edit')}
+              icon={<Pencil size={12} />}
+              disabled={selection.count !== 1}
+              title={selection.count === 1 ? undefined : t('bulk.editOneOnly')}
+              onClick={() => {
+                const [only] = [...selection.selectedIds]
+                if (only) openDetail(only)
+              }}
+            />
+            <BulkActionButton
+              destructive
+              label={t('archive.action')}
+              icon={<Archive size={12} />}
               disabled={setArchived.isPending}
-              className="flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium text-destructive transition-colors hover:bg-card disabled:opacity-50"
-            >
-              <Archive size={12} />
-              {t('archive.action')}
-            </button>
+              onClick={() => setConfirmArchive(true)}
+            />
             <ConfirmDialog
               open={confirmArchive}
               title={t('archive.title')}
@@ -388,11 +428,7 @@ export function PortfolioPage() {
         headerColumns={table.headerColumns}
         colStyles={table.colStyles}
         sort={{ col: sortField ?? '', dir: sortDir ?? 'asc', onSort: (c) => toggle(c as ColKey) }}
-        items={rerank.items}
-        dnd={{
-          dndContextProps: rerank.dndContextProps,
-          sortableContextProps: rerank.sortableContextProps,
-        }}
+        items={sorted}
         loading={isLoading}
         skeleton={{ rows: 8, cols: 8 }}
         error={
@@ -417,13 +453,16 @@ export function PortfolioPage() {
           ) : undefined
         }
         revealRowId={revealId}
-        renderRow={(item, { gutterProps, revealed }) => (
+        renderRow={(item, { gutterProps, revealed, rowNum }) => (
           <PortfolioRow
             key={item.id}
             item={item}
+            rowNum={rowNum}
+            moveHandlers={
+              rowPerms.can(item.projectId, 'portfolio:edit') ? moveHandlers(item.id) : {}
+            }
             revealed={revealed}
             canEdit={rowPerms.can(item.projectId, 'portfolio:edit')}
-            canRank={sortField === null && rowPerms.can(item.projectId, 'portfolio:edit')}
             members={members}
             canEditProject={canEditProject}
             options={optionsFor(item.projectId)}

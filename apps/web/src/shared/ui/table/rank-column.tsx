@@ -50,11 +50,20 @@ export function rankColumn<Row, Ctx>(): ColumnSpec<Row, Ctx, 'rank'> {
  */
 export function RankCell({
   rowNum,
+  actions,
   style,
   className,
 }: {
   /** 1-based position in the CURRENT list, including any page offset. */
   rowNum: number
+  /**
+   * Reorder controls rendered AFTER the number, inside the same cell.
+   *
+   * Portfolio Items ranks this way — "up/down reorder buttons only, no drag-and-drop" (SRS §37) —
+   * and the controls belong in the Rank cell because that is the number they change. A grid that
+   * drags passes nothing and gets the plain number it always had.
+   */
+  actions?: React.ReactNode
   style?: React.CSSProperties
   className?: string
 }) {
@@ -62,11 +71,12 @@ export function RankCell({
     <div
       style={style}
       className={cn(
-        'shrink-0 px-2 text-right font-mono text-ui-xs text-muted-foreground tabular-nums',
+        'flex shrink-0 items-center justify-end gap-0.5 px-2 font-mono text-ui-xs text-muted-foreground tabular-nums',
         className,
       )}
     >
       {rowNum}
+      {actions}
     </div>
   )
 }

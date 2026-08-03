@@ -17,6 +17,8 @@
 import { BRAND } from '@/shared/config/brand'
 import type { ReactNode } from 'react'
 
+import { cn } from '@/shared/lib/utils'
+
 interface BulkActionBarProps {
   selectedCount: number
   onClear: () => void
@@ -24,6 +26,50 @@ interface BulkActionBarProps {
   error?: string | null
   /** Page-specific action controls. */
   children?: ReactNode
+}
+
+/**
+ * One action button for the bulk bar.
+ *
+ * Six pages hand-rolled the identical element — `flex items-center gap-1 rounded px-2 py-1 text-ui-sm
+ * font-medium … hover:bg-card disabled:opacity-50` — and they had already drifted: only some carried
+ * `transition-colors`, and the destructive colour was repeated per call site. Every one of them was
+ * also a raw `<button>` in a consumer layer, which the FE ratchet counts.
+ *
+ * `destructive` is the only variant, because a bulk bar has exactly two kinds of action: the one that
+ * removes things and the ones that do not.
+ */
+export function BulkActionButton({
+  label,
+  icon,
+  onClick,
+  disabled,
+  destructive,
+  title,
+}: {
+  label: string
+  icon?: ReactNode
+  onClick: () => void
+  disabled?: boolean
+  /** Why the action is unavailable — shown on hover, since a disabled button cannot explain itself. */
+  title?: string
+  destructive?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={cn(
+        'flex items-center gap-1 rounded px-2 py-1 text-ui-sm font-medium transition-colors hover:bg-card disabled:opacity-50',
+        destructive ? 'text-destructive' : 'text-foreground',
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  )
 }
 
 export function BulkActionBar({ selectedCount, onClear, error, children }: BulkActionBarProps) {

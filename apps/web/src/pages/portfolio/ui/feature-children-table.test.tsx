@@ -107,17 +107,18 @@ describe('FeatureChildrenTable', () => {
     expect(screen.getByText('Sprint 26.1')).toBeTruthy()
   })
 
-  it('has NO totals row — the grid it is modelled on has none', () => {
-    // Iteration Status foots nothing, and the one number this footed (summed Plan Estimate) is a
-    // roll-up the Feature's own Details tab already reports through its progress bars.
+  it('foots the Plan Estimate, as §114 asks', () => {
+    // "a pagination footer, and a Totals row summing Plan Estimate". A previous revision left both
+    // out, reasoning from Iteration Status — which foots nothing, but is not this tab.
     renderTable(
       <FeatureChildrenTable
         children={[child(), child({ id: 'c2', itemKey: 'US-2', storyPoints: 3 })]}
         projectId="p1"
       />,
     )
-    expect(screen.queryByText(/^Totals/)).toBeNull()
-    // The per-row estimates are still shown; only the footer is gone.
+    expect(screen.getByText(/^Totals/)).toBeTruthy()
+    // 5 + 3, footed once — and the per-row estimates are still there beside it.
+    expect(screen.getByText('8')).toBeTruthy()
     expect(screen.getByText('5')).toBeTruthy()
     expect(screen.getByText('3')).toBeTruthy()
   })
@@ -146,8 +147,9 @@ describe('FeatureChildrenTable', () => {
     })
     expect(screen.queryByText('Upgrade the workspace')).toBeNull()
     expect(screen.getByText('Flaky pipeline')).toBeTruthy()
-    // The surviving row keeps its own estimate; the filtered-out 5-point row is gone entirely.
-    expect(screen.getByText('13')).toBeTruthy()
+    // The surviving row keeps its own estimate, and the totals row now foots 13 alone — so the
+    // number appears twice, which is the point: the footer describes what is on screen.
+    expect(screen.getAllByText('13')).toHaveLength(2)
     expect(screen.queryByText('5')).toBeNull()
   })
 
