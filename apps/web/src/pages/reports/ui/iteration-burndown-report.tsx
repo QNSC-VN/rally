@@ -53,16 +53,28 @@ export function IterationBurndownReport({
    * were genuinely measured — the reader saw "no burndown to show" for an iteration with a week
    * of real history. It is a note under the chart now (`noBaselineNote`), not an empty state.
    */
+  /**
+   * MEASURED HISTORY OUTRANKS "no scheduled work".
+   *
+   * `hasScheduledWork` is a LIVE count, and the series is FROZEN — so an iteration whose items were
+   * reassigned after the sprint (the normal roll-over) reported `historyState: 'complete'` with a full
+   * recorded series, and this branch replaced it with "no scheduled work". That is the same mistake as
+   * the missing-baseline one above: a live fact discarding days that were genuinely measured. §5 makes
+   * only MISSING SNAPSHOTS unavailable.
+   *
+   * So the live emptiness is now the LAST resort, consulted only once the snapshots have said they
+   * have nothing either.
+   */
   const emptyDescription =
     selectedId === null
       ? t('burndown.empty.noIteration')
       : data?.historyState === 'no-window'
         ? t('burndown.empty.noWindow')
-        : data?.hasScheduledWork === false
-          ? t('burndown.empty.noScheduledWork')
-          : data?.historyState === 'missing'
-            ? t('burndown.empty.noHistory')
-            : undefined
+        : data?.historyState === 'missing'
+          ? data?.hasScheduledWork === false
+            ? t('burndown.empty.noScheduledWork')
+            : t('burndown.empty.noHistory')
+          : undefined
 
   // Null baseline = no Ideal trajectory, reported beside the measured series rather than instead
   // of them. `totalTaskEstimateAtStart` is the wire's answer now that `historyState` is snapshot-only.
