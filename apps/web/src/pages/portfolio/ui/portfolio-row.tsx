@@ -146,11 +146,20 @@ export function PortfolioRow({
           zIndex: isDragging ? 1 : undefined,
           position: isDragging ? 'relative' : undefined,
         }}
-        {...attributes}
+        /**
+         * An explicit handle for tests, instead of `[aria-roledescription="sortable"]`.
+         *
+         * dnd-kit's `attributes` now live on the grip, where the activator is — so that attribute
+         * describes the grip and no longer marks the row. Three Playwright specs were locating rows
+         * through it, which is why they broke: a test should not depend on where a drag library happens
+         * to put its ARIA. This says "row", and means it regardless of the library.
+         */
+        data-portfolio-row={item.id}
       >
         <RowGutter
           ref={setActivatorNodeRef}
           dragListeners={listeners}
+          dragAttributes={attributes}
           dragDisabled={!canRank}
           {...gutterProps}
         />

@@ -1,3 +1,4 @@
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
@@ -166,12 +167,12 @@ export function MoveToPlanModal({
                   onChange={() => setTargetId(candidate.id)}
                   ariaLabel={candidate.planKey ?? candidate.name}
                 />
-                <span className="font-medium text-primary-light">{candidate.planKey ?? '—'}</span>
+                <span className="font-medium text-primary-light">{candidate.planKey ?? EMPTY_VALUE}</span>
                 <span className="min-w-0 flex-1 truncate text-foreground">{candidate.name}</span>
                 {/* The release, because that is what makes two plans different — and the status,
                     because a published target is what the second button is for. */}
                 <span className="shrink-0 text-muted-foreground">
-                  {candidate.releaseName ?? '—'}
+                  {candidate.releaseName ?? EMPTY_VALUE}
                 </span>
                 <StatusBadge style={CAPACITY_STATUS_STYLE[candidate.status]} />
               </label>

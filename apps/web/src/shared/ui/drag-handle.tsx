@@ -1,7 +1,7 @@
 import { forwardRef } from 'react'
 import { BRAND } from '@/shared/config/brand'
 
-export type DragHandleProps = React.HTMLAttributes<HTMLDivElement> & {
+export type DragHandleProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   /** Render an invisible, inert spacer (keeps column alignment when reorder is off). */
   disabled?: boolean
 }
@@ -36,25 +36,44 @@ function GripDots() {
  * cluttering the grid. The parent row MUST carry the `group` class for the
  * hover reveal to work.
  *
- * Wire it to dnd-kit's sortable: pass `setActivatorNodeRef` as `ref`, spread
- * `listeners` onto it, and put `attributes` on the row element itself.
+ * Wire it to dnd-kit's sortable: pass `setActivatorNodeRef` as `ref`, and spread BOTH `listeners`
+ * and `attributes` onto it. `attributes` belongs here, on the activator, not on the row — see below.
  */
-export const DragHandle = forwardRef<HTMLDivElement, DragHandleProps>(function DragHandle(
+export const DragHandle = forwardRef<HTMLButtonElement, DragHandleProps>(function DragHandle(
   { disabled = false, className = '', ...rest },
   ref,
 ) {
   return (
-    <div
+    /**
+     * A real `<button>`, because this is the only control for a documented feature and it was a plain
+     * `div`: unreachable by Tab, so rank reorder was pointer-only on every grid. dnd-kit's
+     * `KeyboardSensor` activates from the ACTIVATOR's `onKeyDown` (part of `listeners`), which a
+     * non-focusable node can never receive.
+     *
+     * `attributes` now spreads here too. On the row it made every ROW announce as a button and take its
+     * own tab stop, while the element that actually starts a drag had neither — focus landed on one
+     * node and the key handler lived on another, which is why adding a sensor alone would not have been
+     * enough.
+     *
+     * `focus-visible` only: a persistent ring on a grip that is hidden until row hover would be visual
+     * noise, but a keyboard user must be able to see where they are.
+     */
+    <button
       ref={ref}
+      type="button"
+      // Hidden from the a11y tree when it is a pure spacer, so a child or header row does not offer a
+      // reorder control that does nothing.
+      aria-hidden={disabled || undefined}
+      tabIndex={disabled ? -1 : undefined}
       aria-label={disabled ? undefined : 'Drag to reorder'}
-      className={`flex w-5 shrink-0 items-center justify-center ${
+      className={`flex w-5 shrink-0 items-center justify-center border-none bg-transparent p-0 ${
         disabled
           ? 'cursor-default opacity-0'
-          : 'cursor-grab text-muted-foreground opacity-70 transition-opacity duration-100 hover:opacity-100 active:cursor-grabbing'
+          : 'cursor-grab text-muted-foreground opacity-70 transition-opacity duration-100 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current active:cursor-grabbing'
       } ${className}`}
       {...(disabled ? {} : rest)}
     >
       <GripDots />
-    </div>
+    </button>
   )
 })

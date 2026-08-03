@@ -1,3 +1,4 @@
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { useMemo, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
@@ -251,7 +252,7 @@ function EpicChildRow({
       </div>
       <div style={colStyles.team} className="min-w-0 px-2">
         <span className="break-words whitespace-normal text-muted-foreground">
-          {feature.teamName ?? '—'}
+          {feature.teamName ?? EMPTY_VALUE}
         </span>
       </div>
       <div style={colStyles.state} className="min-w-0 px-2">
@@ -274,7 +275,7 @@ function EpicChildRow({
       </div>
       <div style={colStyles.owner} className="min-w-0 px-2">
         <span className="break-words whitespace-normal text-muted-foreground">
-          {feature.ownerName ?? '—'}
+          {feature.ownerName ?? EMPTY_VALUE}
         </span>
       </div>
     </div>

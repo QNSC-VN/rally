@@ -2,7 +2,10 @@
   "title": "Backlog",
   "selectProject": "Select a project to view the backlog.",
   "loadError": "Failed to load backlog.",
-  "empty": "No backlog items match your filters.",
+  "empty": {
+    "noMatch": "No backlog items match your filters.",
+    "none": "No backlog items yet."
+  },
   "createButton": "Create Work Item",
   "createFirst": "+ Create Work Item",
   "created": "{{type}} \"{{title}}\" created",

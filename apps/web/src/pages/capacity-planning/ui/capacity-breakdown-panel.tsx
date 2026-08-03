@@ -1,3 +1,4 @@
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { useTranslation } from 'react-i18next'
 
 import { BRAND } from '@/shared/config/brand'
@@ -102,7 +103,7 @@ export function CapacityBreakdownPanel({ plan }: { plan: CapacityPlan }) {
               <div className="w-20 shrink-0 text-right">
                 <div className="flex items-baseline justify-end gap-1">
                   <span className="text-ui-md font-semibold text-foreground tabular-nums">
-                    {value === null ? '—' : value}
+                    {value === null ? EMPTY_VALUE : value}
                   </span>
                   <span className="text-ui-2xs text-foreground-subtle tabular-nums">
                     {key === 'capacity'
@@ -136,7 +137,7 @@ export function CapacityBreakdownPanel({ plan }: { plan: CapacityPlan }) {
                   className="text-ui-md font-semibold tabular-nums"
                   style={{ color: gapValue === null ? BRAND.textMuted : BRAND.textPrimary }}
                 >
-                  {gapValue === null ? '—' : gapValue}
+                  {gapValue === null ? EMPTY_VALUE : gapValue}
                 </div>
               </div>
             </div>

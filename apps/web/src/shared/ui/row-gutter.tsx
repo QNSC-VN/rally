@@ -17,6 +17,14 @@ export interface RowGutterProps {
   }
   /** dnd-kit activator listeners (spread onto the grip). Omit for header/child. */
   dragListeners?: DraggableSyntheticListeners
+  /**
+   * dnd-kit `attributes` from `useSortable`, spread onto the GRIP.
+   *
+   * They used to go on the row element, which made every row announce as a button and take a tab stop
+   * while the grip — the thing that actually starts a drag — was a non-focusable `div`. Focus and the
+   * key handler ended up on different nodes, so keyboard reorder could not work at all.
+   */
+  dragAttributes?: React.HTMLAttributes<HTMLElement> & { role?: string; tabIndex?: number }
   /** Render the grip as an inert, invisible spacer (header + child rows, or when
    *  reorder is disabled) while preserving the exact gutter width. */
   dragDisabled?: boolean
@@ -37,13 +45,17 @@ export interface RowGutterProps {
  *
  * Pass `ref` to dnd-kit's `setActivatorNodeRef`.
  */
-export const RowGutter = forwardRef<HTMLDivElement, RowGutterProps>(function RowGutter(
-  { checkbox, dragListeners, dragDisabled = false, stopPropagation = false },
+export const RowGutter = forwardRef<HTMLButtonElement, RowGutterProps>(function RowGutter(
+  { checkbox, dragListeners, dragAttributes, dragDisabled = false, stopPropagation = false },
   dragRef,
 ) {
   return (
     <>
-      <DragHandle ref={dragRef} disabled={dragDisabled} {...(dragDisabled ? {} : dragListeners)} />
+      <DragHandle
+        ref={dragRef}
+        disabled={dragDisabled}
+        {...(dragDisabled ? {} : { ...dragAttributes, ...dragListeners })}
+      />
       <div
         className="flex w-6 shrink-0 items-center justify-center"
         onClick={stopPropagation ? (e) => e.stopPropagation() : undefined}

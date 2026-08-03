@@ -1,13 +1,38 @@
 import { useState } from 'react'
 import {
   closestCenter,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { arrayMove, verticalListSortingStrategy, type SortingStrategy } from '@dnd-kit/sortable'
+import {
+  arrayMove,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  type SortingStrategy,
+} from '@dnd-kit/sortable'
+
+/**
+ * The sensor set every rank-reorder surface uses — pointer AND keyboard.
+ *
+ * Exported because two pages (Backlog, Iteration Status) drive `<DndContext>` directly instead of
+ * through {@link useRowRerank}, and each had hand-rolled `useSensors(useSensor(PointerSensor, …))`.
+ * That duplication is exactly why they were pointer-only: there was no single place to add the
+ * keyboard sensor. One definition now, so a third surface cannot diverge again.
+ *
+ * `sortableKeyboardCoordinates` translates arrow keys into the coordinates
+ * `verticalListSortingStrategy` expects, rather than the pixel deltas a pointer produces. Space or
+ * Enter on the grip starts and drops; Escape cancels.
+ */
+export function useRerankSensors() {
+  return useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+}
 
 /** Minimal shape a row must satisfy to be rank-reorderable. */
 interface Rerankable {
@@ -74,7 +99,7 @@ export function useRowRerank<T extends Rerankable>({
     setLocalItems(items)
   }
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  const sensors = useRerankSensors()
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event

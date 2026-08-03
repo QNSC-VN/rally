@@ -114,9 +114,7 @@ test.describe('Portfolio', () => {
     // It is a real grid row, not just a highlight: the same row is reachable as a sortable row
     // on the page the user was sent to.
     const search = page.getByRole('searchbox', { name: /Search portfolio/i })
-    await expect(
-      page.locator('[aria-roledescription="sortable"]').filter({ hasText: unique }),
-    ).toBeVisible()
+    await expect(page.locator('[data-portfolio-row]').filter({ hasText: unique })).toBeVisible()
 
     // ── Inline rename ───────────────────────────────────────────────────────
     // The Name cell is the inline editor; the ID cell is the click-to-open link.
@@ -168,7 +166,7 @@ test.describe('Portfolio', () => {
     // carries the numbers and a status sentence, and specifically NOT the missing-dates
     // note. That is what proves the dates reached `computeHealth`.
     await search.fill('Guest checkout flow')
-    const fe1 = page.locator('[aria-roledescription="sortable"]').filter({ hasText: 'FE-1' })
+    const fe1 = page.locator('[data-portfolio-row]').filter({ hasText: 'FE-1' })
     const fe1Tip = await fe1.locator('[title*="Accepted points"]').first().getAttribute('title')
     expect(fe1Tip).toContain('Status:')
     expect(fe1Tip).toContain('Accepted points:')
@@ -183,7 +181,7 @@ test.describe('Portfolio', () => {
     // carries the tooltip. Before this slice it carried nothing and the row read as a
     // rendering bug.
     await search.fill('Saved payment methods')
-    const fe2 = page.locator('[aria-roledescription="sortable"]').filter({ hasText: 'FE-2' })
+    const fe2 = page.locator('[data-portfolio-row]').filter({ hasText: 'FE-2' })
     const fe2Tip = await fe2.locator('[title*="Accepted points"]').first().getAttribute('title')
     expect(fe2Tip).toContain('no estimated work is linked yet')
 
@@ -235,7 +233,7 @@ test.describe('Portfolio', () => {
     const search = page.getByRole('searchbox', { name: /Search portfolio/i })
     await search.fill(tag)
 
-    const rows = page.locator('[aria-roledescription="sortable"]')
+    const rows = page.locator('[data-portfolio-row]')
     await expect(rows).toHaveCount(2)
     /** The ID cell only — row text also carries rollup numbers that move on their own. */
     const keyOf = async (i: number) => {

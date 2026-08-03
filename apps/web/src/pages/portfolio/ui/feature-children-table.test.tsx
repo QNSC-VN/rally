@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 
+import { EMPTY_VALUE } from '@/shared/lib/utils'
+
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
 
 vi.mock('@/shared/api/http-client', () => ({
@@ -123,7 +125,10 @@ describe('FeatureChildrenTable', () => {
   it('shows a DASH for an unestimated child rather than zero', () => {
     // A Story nobody has sized is not a Story worth zero points.
     renderTable(<FeatureChildrenTable children={[child({ storyPoints: null })]} projectId="p1" />)
-    expect(screen.getByText('—')).toBeTruthy()
+    // `getAllByText`, because several columns now share the app-wide `EMPTY_VALUE` placeholder — which
+    // is the point: this cell used an em-dash while the sidebar on the same screen used `--`, so a
+    // reader could not tell whether the two meant the same thing.
+    expect(screen.getAllByText(EMPTY_VALUE).length).toBeGreaterThan(0)
   })
 
   it('narrows on search', () => {

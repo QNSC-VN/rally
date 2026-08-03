@@ -1,3 +1,4 @@
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loader2, Plus, X } from 'lucide-react'
@@ -271,13 +272,13 @@ export function AllocateFeatureModal({
             <span>
               {t('allocate.prelimEstimate')}{' '}
               <span className="font-medium text-foreground tabular-nums">
-                {estimates?.preliminary ?? '—'}
+                {estimates?.preliminary ?? EMPTY_VALUE}
               </span>
             </span>
             <span>
               {t('allocate.refinedEstimate')}{' '}
               <span className="font-medium text-foreground tabular-nums">
-                {estimates?.refined ?? '—'}
+                {estimates?.refined ?? EMPTY_VALUE}
               </span>
             </span>
           </div>
