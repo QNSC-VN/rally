@@ -48,6 +48,20 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'   # semver only — no -rc suffix
 
+  # Manual redeploy of whatever main currently holds. DEVELOP ONLY — a prod deploy
+  # still requires a semver tag, so this cannot be used to skip that gate.
+  #
+  # Exists because a merged backend fix can otherwise become undeployable. #358 hit
+  # exactly that: its Backend · CI run was CANCELLED when the next PR merged seconds
+  # later, and the deploy gate below fails closed on a missing CI run — correctly.
+  # Re-running the deploy cannot help (the cancelled CI run is what is missing), and
+  # every PR that followed was apps/web, which paths-ignore skips. The fix sat on main,
+  # undeployed, while develop kept serving the broken image.
+  #
+  # An empty commit does NOT work as a substitute: paths-ignore is evaluated against the
+  # changed-file list, and a commit that changes nothing matches every ignore rule.
+  workflow_dispatch:
+
 concurrency:
   # Serialize by ENVIRONMENT, not raw ref: all prod (tag) deploys share one
   # group so prod DB migrations never run concurrently; develop shares another.
