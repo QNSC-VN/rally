@@ -573,6 +573,19 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
 - **Sessions live only in the cache.** That is why it sits outside the ECS tasks:
   it survives task replacement, so a deploy does not log everyone out. Replacing
   the cache node _does_ log everyone out — treat that as a user-visible change.
+- **A secret REF is not always an ARN.** With `secrets_use_bundle`, the secrets module's
+  `secret_arns` output returns `"<bundle arn>:<key>::"` — the ECS `valueFrom` form. ECS
+  understands it; the Secrets Manager API does not, and rejects the whole string with
+  `ValidationException: Invalid name`. So a value passed as a `secrets` entry is fine
+  either way, but one passed as a plain **env var for the app to dereference at runtime**
+  (`IDENTITY_HOME_SECRET_REF`, `GITHUB_APP_PRIVATE_KEY_SECRET_REF`) must be parsed.
+  `SecretsManagerSecretResolver` is the one place that happens — it splits the key off the
+  7-field ARN and reads it out of the bundle's JSON, which is what lets `use_bundle` flip
+  in either direction with no app change. **Never call `GetSecretValue` with a raw ref.**
+  This broke SSO login on develop for a day: every `POST /v1/bff/login/sso` was a 500 while
+  the deploy, the migrator and the seed all reported success, because the seed stores the
+  ref in `sso_connections.client_secret_ref` and only the *login* path dereferences it.
+  IAM lists have the same trap from the other side and need `secret_iam_arns` instead.
 - **An infra change alone does not take effect — it needs a deploy.** Terraform
   owns the task definition's environment and the Pages project's `API_ORIGIN`, but
   `ecs-service` sets `ignore_changes = [task_definition]` and Pages env changes
