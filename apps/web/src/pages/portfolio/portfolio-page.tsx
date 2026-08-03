@@ -30,7 +30,7 @@ import { type RowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable } from '@/shared/ui/table'
+import { useDataTable, useRowRerank } from '@/shared/ui/table'
 import { ListPageScaffold } from '@/shared/ui/list-page/list-page-scaffold'
 import { BulkActionButton } from '@/shared/ui/bulk-action-bar'
 import { ListPageHeader } from '@/shared/ui/list-page/list-page-header'
@@ -226,35 +226,41 @@ export function PortfolioPage() {
   const rank = useRankPortfolioItem()
 
   /**
-   * The BA's `Move up` / `Move down` (§37, FR-005), one position at a time.
+   * Drag-to-rank, through the SAME `useRankPortfolioItem` endpoint the up/down arrows used.
    *
-   * This grid used to DRAG, which §14 lists under Not included — and a drag has no keyboard until the
-   * shared grip is given a sensor, where two buttons have one for free. Same endpoint either way: the
-   * portfolio rank is one order, and the Backlog reads it too.
+   * DELIBERATE DIVERGENCE, flagged for the BA: §14 lists "drag-and-drop Rank reordering" under Not
+   * included and §37 makes Rank "up/down reorder buttons only, no drag-and-drop", so PR 369 built
+   * the arrows and removed the grip. The arrows are correct against those lines; they are also the only
+   * rank affordance in the app that is not a grip — Backlog, Iteration Status, Quality, Capacity
+   * Planning and both Children tabs all drag. One grid reordering a different way is the
+   * inconsistency this restores, at the cost of three SRS lines that need amending.
    *
-   * `beforeId`/`afterId` are the rows the item lands BETWEEN, so a move up targets the pair one
-   * position higher. `undefined` at the ends of the list, and while a column sort is active: a running
-   * order means nothing under any other sort, which is also why §273 asks for the order to survive
-   * returning to the Rank column.
+   * PR 369's stated reason for preferring buttons was that "a drag has no keyboard until the shared
+   * grip is given a sensor". That is no longer true: `useRerankSensors` wires `KeyboardSensor` for
+   * every grid and `DragHandle` is a real focusable button, so Space/Arrow/Space reorders without a
+   * pointer — verified in a browser on this grid.
+   *
+   * Disabled under a column sort: a running order means nothing there, which is the same guard the
+   * arrows carried and why §273 asks the order to survive a return to the Rank column.
    */
-  const moveHandlers = useCallback(
-    (id: string): { onMoveUp?: () => void; onMoveDown?: () => void } => {
-      if (sortField !== null) return {}
-      const at = sorted.findIndex((i) => i.id === id)
-      if (at === -1) return {}
-      const run = (beforeId: string | null, afterId: string | null) => () =>
-        rank.mutate({ id, beforeId, afterId }, { onError: (err) => notify.error(err.message) })
-      return {
-        ...(at > 0 ? { onMoveUp: run(at >= 2 ? sorted[at - 2].id : null, sorted[at - 1].id) } : {}),
-        ...(at < sorted.length - 1
-          ? {
-              onMoveDown: run(sorted[at + 1].id, at + 2 < sorted.length ? sorted[at + 2].id : null),
-            }
-          : {}),
-      }
-    },
-    [rank, sortField, sorted],
-  )
+  /**
+   * The list is in TRUE rank order only when nothing is sorting or filtering it.
+   *
+   * A drop computes the row's new position from its on-screen neighbours, so under a search or a
+   * State filter those neighbours are not the rows the server has beside it — the move resolves to
+   * a position between two non-adjacent items and silently lands as a no-op. Caught by
+   * `portfolio.e2e.ts`, which narrows to its own two fixtures by search before reordering: the drop
+   * returned `200` and the order did not change. The Children tabs already guard exactly this way
+   * (`listIsRankOrdered`), and the up/down buttons this replaced were only accidentally safe,
+   * because they indexed the same filtered array on both sides.
+   */
+  const listIsRankOrdered = sortField === null && search.trim() === '' && stateFilter === 'all'
+  const rerank = useRowRerank({
+    items: sorted,
+    disabled: !listIsRankOrdered,
+    onReorder: ({ id, beforeId, afterId }) =>
+      rank.mutate({ id, beforeId, afterId }, { onError: (err) => notify.error(err.message) }),
+  })
 
   /**
    * Archive every selected row that CAN be archived, and report every one that could not.
@@ -273,7 +279,7 @@ export function PortfolioPage() {
    * through so the planner can act on exactly those.
    */
   async function archiveSelected(selection: RowSelection) {
-    const selected = sorted.filter((i) => selection.selectedIds.has(i.id))
+    const selected = rerank.items.filter((i) => selection.selectedIds.has(i.id))
     const [allowed, forbidden] = selected.reduce<[PortfolioItem[], PortfolioItem[]]>(
       ([ok, no], item) =>
         rowPerms.can(item.projectId, 'portfolio:archive')
@@ -428,7 +434,11 @@ export function PortfolioPage() {
         headerColumns={table.headerColumns}
         colStyles={table.colStyles}
         sort={{ col: sortField ?? '', dir: sortDir ?? 'asc', onSort: (c) => toggle(c as ColKey) }}
-        items={sorted}
+        items={rerank.items}
+        dnd={{
+          dndContextProps: rerank.dndContextProps,
+          sortableContextProps: rerank.sortableContextProps,
+        }}
         loading={isLoading}
         skeleton={{ rows: 8, cols: 8 }}
         error={
@@ -458,10 +468,8 @@ export function PortfolioPage() {
             key={item.id}
             item={item}
             rowNum={rowNum}
-            moveHandlers={
-              rowPerms.can(item.projectId, 'portfolio:edit') ? moveHandlers(item.id) : {}
-            }
             revealed={revealed}
+            canRank={listIsRankOrdered && rowPerms.can(item.projectId, 'portfolio:edit')}
             canEdit={rowPerms.can(item.projectId, 'portfolio:edit')}
             members={members}
             canEditProject={canEditProject}

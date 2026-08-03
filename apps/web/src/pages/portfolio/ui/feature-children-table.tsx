@@ -25,7 +25,7 @@ import { RowGutter } from '@/shared/ui/row-gutter'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
-import { OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { OwnerCell, OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { ScheduleStateBadge, TypeBadge } from '@/entities/work-item/ui/badges'
@@ -718,10 +718,13 @@ function ChildTaskRow({
       {/* A Task has no Priority, and no Plan Estimate — that is the parent's points value. */}
       <div style={colStyles.priority} className="px-2" />
       <div style={colStyles.estimate} className="px-2" />
-      <div style={colStyles.owner} className="min-w-0 truncate px-2">
-        <span className="text-ui-xs text-muted-foreground">
-          {owner?.displayName ?? owner?.email ?? '--'}
-        </span>
+      {/* The shared read-only cell, so a disclosed Task's Owner carries the same round avatar as
+          the parent row directly above it. Read-only does not mean glyph-less — the Epic Children
+          tab's Owner is read-only too and shows one. The STATE beside it stays a
+          `ScheduleStateBadge` rather than the parent's `StateStepper`: §5.2 names it a "state
+          badge" for these rows specifically, and a stepper would also imply it is editable. */}
+      <div style={colStyles.owner} className="flex min-w-0 items-center px-2">
+        <OwnerCell name={owner?.displayName ?? owner?.email ?? null} />
       </div>
       <div style={colStyles.scheduleState} className="flex min-w-0 items-center px-2">
         <ScheduleStateBadge state={task.scheduleState} />

@@ -1,3 +1,10 @@
+/**
+ * CURRENTLY NO CALLER. Built for the Portfolio grid's up/down Rank controls (SRS §37, FR-005) and
+ * unused since that grid moved back to the shared drag grip, so every rank-ordered surface reorders
+ * the same way. Kept rather than deleted: §37 still specifies buttons for Portfolio, so the BA may
+ * reinstate them, and `RankCell`'s `actions` slot exists for exactly this. Delete both together if
+ * that decision goes the other way.
+ */
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'

@@ -23,6 +23,8 @@ import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { RowGutter } from '@/shared/ui/row-gutter'
+import { TeamCell } from '@/shared/ui/team-cell'
+import { OwnerCell } from '@/shared/ui/owner-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { useTableSort, type SortDir } from '@/shared/lib/hooks/use-table-sort'
 import { useRankPortfolioItem, type PortfolioItem } from '@/features/portfolio/api'
@@ -302,10 +304,12 @@ function EpicChildRow({
       <div style={colStyles.name} className="min-w-0 px-2" title={feature.name}>
         <span className="break-words whitespace-normal text-foreground">{feature.name}</span>
       </div>
-      <div style={colStyles.team} className="min-w-0 px-2">
-        <span className="break-words whitespace-normal text-muted-foreground">
-          {feature.teamName ?? EMPTY_VALUE}
-        </span>
+      {/* The shared cells, so a child Feature's Team and Owner carry the same square
+          `TeamAvatar` and round `OwnerAvatar` the Portfolio grid and the Feature Children tab
+          render. Both were bare text — the one column pair still reading as plain strings while
+          every neighbouring surface showed a glyph. */}
+      <div style={colStyles.team} className="flex min-w-0 items-center px-2">
+        <TeamCell name={feature.teamName ?? null} />
       </div>
       <div style={colStyles.state} className="min-w-0 px-2">
         <StatusBadge style={portfolioStateStyle(feature.state, stateLabel)} />
@@ -330,10 +334,8 @@ function EpicChildRow({
       >
         {feature.estimate.points.tier === 'none' ? EMPTY_VALUE : feature.estimate.points.value}
       </div>
-      <div style={colStyles.owner} className="min-w-0 px-2">
-        <span className="break-words whitespace-normal text-muted-foreground">
-          {feature.ownerName ?? EMPTY_VALUE}
-        </span>
+      <div style={colStyles.owner} className="flex min-w-0 items-center px-2">
+        <OwnerCell name={feature.ownerName ?? null} />
       </div>
     </div>
   )
