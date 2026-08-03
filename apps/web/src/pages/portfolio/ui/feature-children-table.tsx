@@ -18,17 +18,15 @@ import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { ScheduleStateBadge, TypeBadge } from '@/entities/work-item/ui/badges'
 import { NUMERIC_CELL_CLASS } from '@/shared/lib/utils'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
-import { SCHEDULE_STATE_STEPS, SIMPLIFIED_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
+import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import {
   PRIORITY_LABEL,
   PRIORITY_VALUES,
   SCHEDULE_STATE_LABEL,
-  SIMPLIFIED_STATE_TO_SCHEDULE_STATE,
   ScheduleState,
-  getSimplifiedState,
 } from '@/entities/work-item/model/types'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useTableSort, type SortDir } from '@/shared/lib/hooks/use-table-sort'
@@ -92,6 +90,9 @@ const text = (value: string | null): string => value ?? ''
  * for Name and Est, `SearchableSelect` for Priority and Release, `OwnerSelectCell`, `StateStepper` —
  * so the two surfaces cannot disagree about how a field is edited. Iteration stays read-only text,
  * which §5.2 calls a deliberate scope trim.
+ *
+ * The editing stops at the CHILD row. A disclosed Task is read-only (§5.2, FR-012) — see
+ * {@link ChildTaskRow} for why that is a decision rather than a gap.
  *
  * The toolbar is the shared `PageToolbar` — search, `Add New`, Filters and Show Fields — laid out
  * as Iteration Status lays it out, minus the KPI strip, which this tab has no metrics for. `Add
@@ -559,7 +560,6 @@ function ChildRow({
           workItemId={child.id}
           colStyles={colStyles}
           members={members}
-          canEdit={canEdit}
           onOpenTask={onOpenTask}
         />
       )}
@@ -580,14 +580,12 @@ function ChildTaskRows({
   workItemId,
   colStyles,
   members,
-  canEdit,
   onOpenTask,
 }: {
   workItemId: string
   colStyles: Record<ChildColKey, CSSProperties>
   /** A task carries `assigneeId`, not a name — the roster resolves it, as the Tasks tab does. */
   members: ProjectMember[]
-  canEdit: boolean
   onOpenTask: (itemKey: string) => void
 }) {
   const { t } = useTranslation('portfolio')
@@ -621,7 +619,6 @@ function ChildTaskRows({
           task={task}
           colStyles={colStyles}
           members={members}
-          canEdit={canEdit}
           onOpen={() => onOpenTask(task.itemKey)}
         />
       ))}
@@ -630,64 +627,40 @@ function ChildTaskRows({
 }
 
 /**
- * One disclosed Task.
+ * One disclosed Task — READ-ONLY, per §5.2 and FR-012.
  *
- * ONE CELL PER COLUMN in the parent's order, and every control is the one Iteration Status uses on
- * its own Task sub-rows: `StateStepper` over `SIMPLIFIED_STATE_STEPS` for state (a Task moves
- * through Defined/In-Progress/Completed, not the full I/D/P/C/A/R bar), `OwnerSelectCell` for
- * owner, and `InlineEditableCell` for each of the three hour fields.
+ * "Each row can expand to reveal its linked Tasks, read-only: ID, Name, state badge, Owner,
+ * Estimate, To Do/Actual hours." The BA draws the line deliberately, and draws it in the same
+ * breath as the opposite rule for the row above: acceptance item 10 reads "Children-tab rows are
+ * inline-editable on the confirmed fields and expandable to show linked Tasks read-only." §5.2's
+ * column list marks each child column "(inline edit)" and then marks these rows read-only. Four
+ * separate statements, one contrast — not an omission.
  *
- * Editable, not read-only. §5.2 says the disclosed Tasks are read-only — but that predates Task
- * hours being editable from every other grid in the app, and a row that renders a picker on the
- * Backlog and flat text here is the inconsistency this whole pass is about. Gated on the same
- * `canEdit` as the parent row, so a reader without `portfolio:edit` still sees flat values.
+ * A previous revision made these editable, arguing the read-only line predated Task hours being
+ * editable elsewhere. That was wrong: the contrast is stated, not implied, so the argument was
+ * against a decision rather than a gap. Editing a Task belongs on the Work Item Detail's Tasks
+ * tab, which owns the totals that roll up from these hours.
  *
- * `Estimate`, `To Do` and `Actual` are three INDEPENDENT fields (CLAUDE.md) — none derives from
- * another, so each commits on its own.
+ * `state badge`, not a stepper, for the same reason — the BA names the control.
+ *
+ * ONE CELL PER COLUMN in the parent's order, so a resize or reorder moves both rows together.
  */
 function ChildTaskRow({
   task,
   colStyles,
   members,
-  canEdit,
   onOpen,
 }: {
   task: WorkItem
   colStyles: Record<ChildColKey, CSSProperties>
   members: ProjectMember[]
-  canEdit: boolean
   onOpen: () => void
 }) {
-  const update = useUpdateWorkItem(task.id)
-  const stop = (event: React.MouseEvent) => event.stopPropagation()
   const owner = members.find((m) => m.userId === task.assigneeId)
 
-  /** Hours are numeric and non-negative; a cleared field is null, not zero. */
-  const commitHours = (field: 'estimateHours' | 'todoHours' | 'actualHours', raw: string) => {
-    const next = raw.trim() === '' ? null : Number(raw)
-    if (next !== null && (Number.isNaN(next) || next < 0)) return
-    const current = task[field] != null ? Number(task[field]) : null
-    if (next !== current) update.mutate({ [field]: next })
-  }
-
-  const hourCell = (
-    field: 'estimateHours' | 'todoHours' | 'actualHours',
-    style: CSSProperties,
-    label: string,
-  ) => (
-    // `[&>*]:w-full` so the editor still spans the cell inside this flex wrapper — `fullCell`
-    // sets `w-full`, which a flex child ignores without a basis.
-    <div style={style} className="flex items-center px-0 [&>*]:w-full" onClick={stop}>
-      <InlineEditableCell
-        value={task[field] != null ? String(task[field]) : ''}
-        canEdit={canEdit}
-        fullCell
-        onCommit={(raw) => commitHours(field, raw)}
-        displayValue={task[field] ?? '--'}
-        className={`${NUMERIC_CELL_CLASS} text-muted-foreground`}
-        inputClassName="w-full rounded border border-primary bg-transparent px-0.5 text-right font-mono text-ui-xs text-foreground focus:outline-none"
-        ariaLabel={`${task.itemKey} ${label}`}
-      />
+  const hourCell = (value: number | string | null | undefined, style: CSSProperties) => (
+    <div style={style} className={`px-2 ${NUMERIC_CELL_CLASS} text-muted-foreground`}>
+      {value ?? '--'}
     </div>
   )
 
@@ -704,39 +677,20 @@ function ChildTaskRow({
       {/* A Task has no Priority, and no Plan Estimate — that is the parent's points value. */}
       <div style={colStyles.priority} className="px-2" />
       <div style={colStyles.estimate} className="px-2" />
-      <div
-        style={colStyles.owner}
-        className="flex min-w-0 items-center overflow-hidden px-0"
-        onClick={stop}
-      >
-        <OwnerSelectCell
-          ownerName={owner ? (owner.displayName ?? owner.email ?? null) : null}
-          assigneeId={task.assigneeId}
-          members={members}
-          canEdit={canEdit}
-          onChange={(userId) => update.mutate({ assigneeId: userId })}
-          ariaLabel={`${task.itemKey} owner`}
-        />
+      <div style={colStyles.owner} className="min-w-0 truncate px-2">
+        <span className="text-ui-xs text-muted-foreground">
+          {owner?.displayName ?? owner?.email ?? '--'}
+        </span>
       </div>
-      <div style={colStyles.scheduleState} className="flex items-center px-2" onClick={stop}>
-        <StateStepper
-          steps={SIMPLIFIED_STATE_STEPS}
-          value={
-            SIMPLIFIED_STATE_TO_SCHEDULE_STATE[
-              getSimplifiedState(task.scheduleState as ScheduleState)
-            ]
-          }
-          canEdit={canEdit}
-          onChange={(next) => update.mutate({ scheduleState: next })}
-          ariaLabel={`${task.itemKey} state`}
-        />
+      <div style={colStyles.scheduleState} className="flex min-w-0 items-center px-2">
+        <ScheduleStateBadge state={task.scheduleState} />
       </div>
       {/* A Task inherits its parent's Iteration and Release — not its own fields to show. */}
       <div style={colStyles.iteration} className="px-2" />
       <div style={colStyles.release} className="px-2" />
-      {hourCell('estimateHours', colStyles.taskEstimate, 'task estimate')}
-      {hourCell('todoHours', colStyles.toDo, 'to do hours')}
-      {hourCell('actualHours', colStyles.actual, 'actual hours')}
+      {hourCell(task.estimateHours, colStyles.taskEstimate)}
+      {hourCell(task.todoHours, colStyles.toDo)}
+      {hourCell(task.actualHours, colStyles.actual)}
     </div>
   )
 }

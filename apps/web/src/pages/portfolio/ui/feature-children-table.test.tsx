@@ -345,12 +345,17 @@ describe('FeatureChildrenTable', () => {
       expect(within(subRow).getByText(hours)).toBeTruthy()
     }
 
-    // Owner and State are the SHARED editable controls, not the flat text this row used to show.
-    expect(within(subRow).getByLabelText('TA-1 owner')).toBeTruthy()
-    expect(within(subRow).getByLabelText('TA-1 state')).toBeTruthy()
+    // READ-ONLY, per §5.2 and FR-012: "expand to reveal its linked Tasks, read-only". No editor
+    // anywhere in the row — a previous revision made these editable and that was wrong, because
+    // the BA states the contrast explicitly (acceptance item 10: child rows inline-editable,
+    // Tasks read-only).
+    expect(within(subRow).queryByRole('textbox')).toBeNull()
+    expect(within(subRow).queryByRole('combobox')).toBeNull()
+    // Owner is plain text, and state is a BADGE — the control the BA names.
+    expect(within(subRow).getByText('Admin User')).toBeTruthy()
   })
 
-  it('commits a Task hour edit from the disclosed row', async () => {
+  it('will not edit a disclosed Task hour, even with edit rights (§5.2, FR-012)', async () => {
     mockGET.mockResolvedValue({
       data: [
         {
@@ -372,22 +377,15 @@ describe('FeatureChildrenTable', () => {
     renderTable(<FeatureChildrenTable children={[child()]} projectId="p1" canEdit />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Show tasks for US-1' }))
-    // `3` is the To Do value; clicking the cell opens its editor (the resting cell is plain text,
-    // so the accessible name only exists once editing starts).
+
+    // `3` is the To Do value. Clicking it opens nothing: the three hour columns are plain text on
+    // a disclosed Task, so a Task's hours are edited on the Work Item Detail's Tasks tab, which
+    // owns the totals rolling up from them.
     const todo = await screen.findByText('3')
     fireEvent.click(todo)
 
-    const input = await screen.findByRole('textbox', { name: 'TA-1 to do hours' })
-    fireEvent.change(input, { target: { value: '2' } })
-    fireEvent.blur(input)
-
-    // Estimate / To Do / Actual are three INDEPENDENT fields — editing one writes only that one.
-    await waitFor(() =>
-      expect(mockPATCH).toHaveBeenCalledWith('/v1/work-items/{id}', {
-        params: { path: { id: 'tk1' } },
-        body: { todoHours: 2 },
-      }),
-    )
+    expect(screen.queryByRole('textbox', { name: /to do hours/i })).toBeNull()
+    await waitFor(() => expect(mockPATCH).not.toHaveBeenCalled())
   })
 
   it('gives the PARENT row a cell per column too, or the two rows fall out of step', async () => {
