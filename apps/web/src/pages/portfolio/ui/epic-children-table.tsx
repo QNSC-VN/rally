@@ -120,7 +120,7 @@ export function EpicChildrenTable({
     (acc, feature) => ({
       complete: acc.complete + feature.rollup.completedPoints,
       rollup: acc.rollup + feature.rollup.rollupPoints,
-      estimated: acc.estimated + feature.refinedEstimate,
+      estimated: acc.estimated + feature.estimate.points.value,
     }),
     { complete: 0, rollup: 0, estimated: 0 },
   )
@@ -303,11 +303,16 @@ function EpicChildRow({
       <div style={colStyles.rollup} className="px-2 text-right text-muted-foreground tabular-nums">
         {feature.rollup.rollupPoints}
       </div>
+      {/* The RESOLVED estimate, not the raw `refinedEstimate` column.
+          That column is NOT NULL DEFAULT 0 and 0 means "not forecast" — it falls through to the
+          Preliminary size mapping everywhere else — so a Feature sized only by a T-shirt read 0 here
+          and in the totals row below, while its own detail page showed the mapped number. The API
+          resolves the tier once and ships both units. */}
       <div
         style={colStyles.estimated}
         className="px-2 text-right text-muted-foreground tabular-nums"
       >
-        {feature.refinedEstimate}
+        {feature.estimate.points.tier === 'none' ? EMPTY_VALUE : feature.estimate.points.value}
       </div>
       <div style={colStyles.owner} className="min-w-0 px-2">
         <span className="break-words whitespace-normal text-muted-foreground">

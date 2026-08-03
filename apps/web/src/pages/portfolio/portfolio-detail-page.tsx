@@ -91,7 +91,19 @@ export function PortfolioDetailPage() {
   // Edit rights follow the ITEM's project, not the selected one: this page is reachable
   // from a cross-project grid, so the two are frequently different.
   const { can } = useProjectPermissions(server?.projectId)
-  const canEdit = can('portfolio:edit')
+  /**
+   * An ARCHIVED item is read-only, whatever the caller may do (`PORTFOLIO_ITEM_ARCHIVED`).
+   *
+   * Archived work contributes to no rollup, plan total or cutline, and the API now refuses every write
+   * on it except Restore. Leaving the fields live meant every edit came back as an error toast — and
+   * `Add Item` was worse than that: it creates the Story first and links it second, and the link is
+   * refused (`WORK_ITEM_FEATURE_LINK_ARCHIVED`), so the action reported a failure having left a
+   * parentless Story in the backlog.
+   *
+   * Restore stays available: the archive menu item reads its own state and is not gated on this.
+   */
+  const mayEdit = can('portfolio:edit')
+  const canEdit = mayEdit && server?.archivedAt == null
 
   const { workspace } = useAppContext()
   const { data: members = [] } = useWorkspaceMembers(workspace?.workspaceId)
@@ -199,7 +211,9 @@ export function PortfolioDetailPage() {
       activeTab={tab}
       onTabChange={setTab}
       actions={
-        canEdit ? (
+        // `mayEdit`, NOT `canEdit`: Restore is the one write an archived item accepts, so gating this
+        // menu on the archived state would make the state permanent.
+        mayEdit ? (
           <ActionMenu ariaLabel={t('detail.actions.menu')} onDark>
             <ActionMenuItem
               label={item.archivedAt ? t('detail.actions.restore') : t('archive.action')}
@@ -340,7 +354,9 @@ export function PortfolioDetailPage() {
               projectId={server?.projectId}
               canEdit={canEdit}
               isLoading={childrenLoading}
-              onAddItem={() => setShowAddChild(true)}
+              // No `Add Item` on an archived Feature: the link would be refused and the Story it
+              // created first would be orphaned.
+              onAddItem={canEdit ? () => setShowAddChild(true) : undefined}
             />
           )}
         </div>

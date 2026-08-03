@@ -98,6 +98,8 @@ export const ErrorCodes = {
   PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION: 'PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION',
   /** Restoring a Feature is refused while its Epic is still archived. */
   PORTFOLIO_PARENT_ARCHIVED: 'PORTFOLIO_PARENT_ARCHIVED',
+  /** Every write except Restore is refused on an archived item — it is not actionable work. */
+  PORTFOLIO_ITEM_ARCHIVED: 'PORTFOLIO_ITEM_ARCHIVED',
   PORTFOLIO_ITEM_TEAM_MISMATCH: 'PORTFOLIO_ITEM_TEAM_MISMATCH',
   PORTFOLIO_ITEM_INVALID_PARENT: 'PORTFOLIO_ITEM_INVALID_PARENT',
   /** Archiving an Epic that still has active child Features would orphan them. */

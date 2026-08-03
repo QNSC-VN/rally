@@ -323,9 +323,7 @@ describe('computeCapacityWarnings', () => {
   it('treats a zero capacity as missing rather than as a ceiling of zero', () => {
     // Dividing a target by zero is meaningless, and a planner who typed 0 has not yet
     // stated a real ceiling — Rally's missing-capacity error is the honest report.
-    expect(team({ rollup: 5, estimated: 5, capacity: 0 })).toEqual([
-      'team_missing_capacity',
-    ]);
+    expect(team({ rollup: 5, estimated: 5, capacity: 0 })).toEqual(['team_missing_capacity']);
   });
 });
 

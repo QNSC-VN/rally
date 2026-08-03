@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AccessService } from '@modules/access';
 import { PortfolioItemsService } from '@modules/portfolio';
+import { WorkItemsService } from '@modules/work-items';
 import { ProjectsService } from '@modules/projects';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
@@ -38,6 +39,7 @@ import {
 describe('portfolio write paths (e2e)', () => {
   let app: NestFastifyApplication;
   let portfolio: PortfolioItemsService;
+  let items: WorkItemsService;
   let projects: ProjectsService;
   let access: AccessService;
   let db: DrizzleDB;
@@ -49,6 +51,7 @@ describe('portfolio write paths (e2e)', () => {
   beforeAll(async () => {
     app = await bootRallyApp();
     portfolio = app.get(PortfolioItemsService);
+    items = app.get(WorkItemsService);
     projects = app.get(ProjectsService);
     access = app.get(AccessService);
     db = app.get<DrizzleDB>(DRIZZLE);
@@ -325,6 +328,55 @@ describe('portfolio write paths (e2e)', () => {
 
       await portfolio.setArchived(admin, created.id, false);
       expect((await listed()).data.map((i) => i.id)).toContain(created.id);
+    });
+
+    it('is READ-ONLY once archived — no edit, no re-rank, and no orphaned child', async () => {
+      /**
+       * Archived work is excluded from every rollup, plan total and cutline, but was fully editable:
+       * the only `archivedAt` checks on the write path looked at the PARENT.
+       *
+       * The `Add Item` case is the one that lost data. That flow is create-then-link, and the link is
+       * refused by `assertFeatureLinkable` (`WORK_ITEM_FEATURE_LINK_ARCHIVED`) — so a Story was created,
+       * the PATCH failed, and a parentless Story was left in the backlog by an action that reported an
+       * error to the planner. Asserted here against real SQL because the leak is a row nobody sees.
+       */
+      const feature = await portfolio.createItem(admin, {
+        projectId: projectAId,
+        type: 'feature',
+        name: `Archived RO ${uniqueKey()}`,
+      });
+      await portfolio.setArchived(admin, feature.id, true);
+
+      await expect(
+        portfolio.updateItem(admin, feature.id, { name: 'Renamed while archived' }),
+      ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_ARCHIVED' });
+
+      const neighbour = await portfolio.createItem(admin, {
+        projectId: projectAId,
+        type: 'feature',
+        name: `Archived RO neighbour ${uniqueKey()}`,
+      });
+      await expect(
+        portfolio.rankItem(admin, feature.id, { afterId: neighbour.id }),
+      ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_ARCHIVED' });
+
+      // The Story is refused BEFORE it exists: the link guard already said no, and the FE no longer
+      // offers the action, but the API is what has to make the orphan unreachable.
+      const story = await items.createWorkItem(
+        admin,
+        projectAId,
+        'story',
+        `Orphan probe ${uniqueKey()}`,
+      );
+      await expect(
+        items.updateWorkItem(admin, story.id, { featureId: feature.id }),
+      ).rejects.toMatchObject({ code: 'WORK_ITEM_FEATURE_LINK_ARCHIVED' });
+
+      // Restore still works — it is the only write an archived row accepts.
+      await expect(portfolio.setArchived(admin, feature.id, false)).resolves.toBeTruthy();
+      await expect(
+        portfolio.updateItem(admin, feature.id, { name: 'Renamed after restore' }),
+      ).resolves.toBeTruthy();
     });
 
     it('is a SOFT delete — the row survives with archived_at set', async () => {

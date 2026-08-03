@@ -1,5 +1,22 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 import { login, selectProject } from './helpers'
+
+/**
+ * Picks an Owner in a create dialog, which SRS §344 makes required for both types.
+ *
+ * The dialog now refuses to submit without one, so every create in this file has to choose someone —
+ * the first person on the list, whoever the seed made them. Factored out because four tests create an
+ * item and none of them are about the Owner field itself.
+ */
+async function pickOwner(dialog: Locator) {
+  await dialog.getByRole('button', { name: 'Owner' }).click()
+  // The popover PORTALS out of the dialog, and its options are plain buttons rather than `option`
+  // roles — so this reaches for the seeded admin by name at page level.
+  await dialog
+    .page()
+    .getByRole('button', { name: /Admin User/ })
+    .click()
+}
 
 /**
  * Portfolio list + detail (P5).
@@ -99,6 +116,7 @@ test.describe('Portfolio', () => {
     await page.getByRole('button', { name: 'New Feature', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'New Feature' })
     await dialog.getByRole('textbox', { name: 'Name' }).fill(unique)
+    await pickOwner(dialog)
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
     await expect(dialog).toBeHidden()
 
@@ -226,6 +244,7 @@ test.describe('Portfolio', () => {
       await page.getByRole('button', { name: 'New Feature', exact: true }).click()
       const dialog = page.getByRole('dialog', { name: 'New Feature' })
       await dialog.getByRole('textbox', { name: 'Name' }).fill(`${tag} ${suffix}`)
+      await pickOwner(dialog)
       await dialog.getByRole('button', { name: 'Create', exact: true }).click()
       await expect(dialog).toBeHidden()
     }
@@ -307,6 +326,7 @@ test.describe('Portfolio', () => {
 
     const dialog = page.getByRole('dialog', { name: 'New Epic' })
     await dialog.getByRole('textbox', { name: 'Name' }).fill(unique)
+    await pickOwner(dialog)
     // An Epic has no parent by CHECK constraint (`ck_portfolio_epic_shape`), so the dialog must
     // not offer the Epic picker a Feature gets.
     await expect(dialog.getByRole('combobox', { name: 'Epic' })).toHaveCount(0)
@@ -424,6 +444,7 @@ test.describe('Portfolio', () => {
     await page.getByRole('button', { name: 'New Feature', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'New Feature' })
     await dialog.getByRole('textbox', { name: 'Name' }).fill(unique)
+    await pickOwner(dialog)
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
     await expect(dialog).toBeHidden()
 

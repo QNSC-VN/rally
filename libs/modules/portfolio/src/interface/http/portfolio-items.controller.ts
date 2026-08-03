@@ -81,6 +81,7 @@ function toDto(i: PortfolioItemWithProgress): PortfolioItemResponseDto {
     rollup: i.rollup,
     progress: i.progress,
     health: i.health,
+    estimate: i.estimate,
   };
 }
 

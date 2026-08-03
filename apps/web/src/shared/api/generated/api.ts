@@ -3956,6 +3956,18 @@ export interface components {
         percentElapsed: number | null
         indeterminate: ('no_dates' | 'no_work') | null
       }
+      estimate: {
+        points: {
+          value: number
+          /** @enum {string} */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+        }
+        count: {
+          value: number
+          /** @enum {string} */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+        }
+      }
     }
     PortfolioItemDetailResponseDto: {
       /** Format: uuid */
@@ -4045,6 +4057,18 @@ export interface components {
         percentDone: number | null
         percentElapsed: number | null
         indeterminate: ('no_dates' | 'no_work') | null
+      }
+      estimate: {
+        points: {
+          value: number
+          /** @enum {string} */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+        }
+        count: {
+          value: number
+          /** @enum {string} */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
+        }
       }
       acceptedChildren: {
         total: {

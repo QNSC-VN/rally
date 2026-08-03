@@ -862,6 +862,111 @@ describe('PortfolioItemsService', () => {
     });
   });
 
+  describe('an ARCHIVED item is read-only', () => {
+    /**
+     * SRS §5.5 archives instead of deleting, and every rollup, plan total and cutline already excludes
+     * archived work. The only `archivedAt` checks on the write path looked at the PARENT, so an archived
+     * Feature could still be renamed, re-stated, re-ranked and re-pointed at a Release while
+     * contributing nothing to any number on screen.
+     */
+    beforeEach(() => {
+      repo.findViewById.mockResolvedValue(view());
+    });
+
+    it('refuses an edit', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        itemKey: 'FE-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        archivedAt: new Date(),
+      } as never);
+
+      await expect(service.updateItem(actor, 'pi-1', { name: 'Renamed' })).rejects.toMatchObject({
+        code: 'PORTFOLIO_ITEM_ARCHIVED',
+      });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses a rank move', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        itemKey: 'FE-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        rank: 'm',
+        archivedAt: new Date(),
+      } as never);
+
+      await expect(service.rankItem(actor, 'pi-1', { afterId: 'pi-2' })).rejects.toMatchObject({
+        code: 'PORTFOLIO_ITEM_ARCHIVED',
+      });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('still allows RESTORE, which is the only write on an archived row', async () => {
+      // `setArchived` deliberately skips the guard: unarchiving is by definition a write on an
+      // archived item, and refusing it would make the state permanent.
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        itemKey: 'FE-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        parentId: null,
+        archivedAt: new Date(),
+      } as never);
+      repo.setArchived.mockResolvedValue(view());
+
+      await expect(service.setArchived(actor, 'pi-1', false)).resolves.toBeTruthy();
+      expect(repo.setArchived).toHaveBeenCalledWith('pi-1', false, 'ws-1');
+    });
+  });
+
+  describe('the resolved top-down estimate travels on the item', () => {
+    /**
+     * Computed here for the progress bars and then discarded, so every client re-derived it — and the
+     * Epic Children tab did not, rendering `refinedEstimate` raw. That column is NOT NULL DEFAULT 0
+     * where 0 means "not forecast", so a Feature sized by a T-shirt only reported 0 in the column and
+     * in its totals row.
+     */
+    it('prefers the refined forecast', async () => {
+      repo.findViewById.mockResolvedValue(
+        view({ refinedEstimate: '30', refinedItemCountEstimate: 4 }),
+      );
+
+      const item = await service.getItem(actor, 'pi-1');
+
+      expect(item.estimate.points).toEqual({ value: 30, tier: 'refined' });
+      expect(item.estimate.count).toEqual({ value: 4, tier: 'refined' });
+    });
+
+    it('falls through a ZERO refined forecast to the Preliminary mapping', async () => {
+      // 'm' is 5 points / 3 items in the seeded default map.
+      repo.findViewById.mockResolvedValue(
+        view({ refinedEstimate: '0', refinedItemCountEstimate: 0, preliminaryEstimate: 'm' }),
+      );
+
+      const item = await service.getItem(actor, 'pi-1');
+
+      expect(item.estimate.points).toEqual({ value: 5, tier: 'preliminary' });
+      expect(item.estimate.count).toEqual({ value: 3, tier: 'preliminary' });
+    });
+
+    it('reports `none` for an item nobody has sized, rather than a confident zero', async () => {
+      repo.findViewById.mockResolvedValue(
+        view({
+          refinedEstimate: '0',
+          refinedItemCountEstimate: 0,
+          preliminaryEstimate: 'no_entry',
+        }),
+      );
+
+      const item = await service.getItem(actor, 'pi-1');
+
+      expect(item.estimate.points).toEqual({ value: 0, tier: 'none' });
+    });
+  });
+
   describe('rankItem', () => {
     const feature = (over = {}) =>
       ({ id: 'pi-1', type: 'feature', projectId: 'proj-a', rank: 'm', ...over }) as never;

@@ -39,6 +39,29 @@ const ProgressSchema = z.object({
     .describe('Accepted count / refined-or-preliminary count forecast. May exceed 1.'),
 });
 
+/**
+ * The RESOLVED top-down estimate per unit, and which tier produced it.
+ *
+ * `Refined > 0` → `refined`, else the workspace's Preliminary size mapping → `preliminary`, else 0 and
+ * `none`. The same chain the progress ratios divide by, and the same one a capacity plan copies from
+ * for a blank Estimate — served so no client has to re-derive it. The Epic Children tab did not, and
+ * rendered `refinedEstimate` raw: that column is NOT NULL DEFAULT 0 where 0 means "not forecast", so
+ * a Feature sized only by a T-shirt reported 0 in the column and in its totals row.
+ *
+ * Both units travel because the portfolio shows both, and no tier is `allocated`: an allocation belongs
+ * to a capacity plan, not to the item.
+ */
+const EstimateSchema = z.object({
+  points: z.object({
+    value: z.number(),
+    tier: z.enum(['allocated', 'refined', 'preliminary', 'none']),
+  }),
+  count: z.object({
+    value: z.number(),
+    tier: z.enum(['allocated', 'refined', 'preliminary', 'none']),
+  }),
+});
+
 /** Raw child aggregates, so a client can show the underlying numbers beside the bars. */
 const RollupSchema = z.object({
   rollupPoints: z.number(),
@@ -108,6 +131,7 @@ const PortfolioItemSchema = z.object({
   rollup: RollupSchema,
   progress: ProgressSchema,
   health: HealthSchema,
+  estimate: EstimateSchema,
 });
 export class PortfolioItemResponseDto extends createZodDto(PortfolioItemSchema) {}
 
