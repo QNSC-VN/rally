@@ -31,7 +31,7 @@ import { InlineSelect } from '@/shared/ui/native-select'
 import { ListPageHeader } from '@/shared/ui/list-page/list-page-header'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { IterationPicker } from '@/shared/ui/timebox-picker'
-import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
+import { DataTableFrame, useDataTable, type ColumnSpec, rankColumn } from '@/shared/ui/table'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
@@ -63,7 +63,7 @@ type ColKey =
   | 'owner'
 
 const TEAM_STATUS_COLUMNS: ColumnSpec<TeamStatusTaskRow, unknown, ColKey>[] = [
-  { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 56, locked: true },
+  { ...rankColumn(), sortCol: undefined },
   { key: 'id', label: 'ID', defaultWidth: 132, minWidth: 120, locked: true },
   { key: 'name', label: 'Task Name', defaultWidth: 240, minWidth: 150, locked: true },
   { key: 'workProduct', label: 'Work Product', defaultWidth: 140 },

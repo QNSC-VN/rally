@@ -9,6 +9,7 @@ import {
 } from '@/entities/work-item/model/types'
 
 export type QualityColKey =
+  | 'rank'
   | 'id'
   | 'name'
   | 'userStory'
@@ -22,6 +23,8 @@ export type QualityColKey =
   | 'owner'
 
 export interface QualityCtx {
+  /** 1-based position of the row being rendered — the Rank column's value. */
+  rowNum: number
   canManage: boolean
   projectId: string
   openItem: (itemKey: string) => void

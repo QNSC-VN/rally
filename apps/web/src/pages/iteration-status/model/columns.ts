@@ -1,5 +1,9 @@
-import { type ColumnSpec } from '@/shared/ui/table'
-import { type DataTableHeaderColumn } from '@/shared/ui/table'
+import {
+  RANK_COLUMN_MIN_WIDTH,
+  RANK_COLUMN_WIDTH,
+  type ColumnSpec,
+  type DataTableHeaderColumn,
+} from '@/shared/ui/table'
 
 export type ColKey =
   | 'rank'
@@ -23,7 +27,7 @@ export type ColKey =
   | 'devOwner'
 
 export const ITERATION_STATUS_COLUMNS: ColumnSpec<unknown, unknown, ColKey>[] = [
-  { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 56 },
+  { key: 'rank', label: 'Rank', defaultWidth: RANK_COLUMN_WIDTH, minWidth: RANK_COLUMN_MIN_WIDTH },
   { key: 'id', label: 'ID', defaultWidth: 132, minWidth: 120 },
   { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150 },
   { key: 'feature', label: 'Feature', defaultWidth: 200, minWidth: 120 },
@@ -51,7 +55,9 @@ export const OWNER_UNASSIGNED = '__unassigned__'
 // Sticky-header column metadata (labels + sort keys + alignment) for the grid
 // header. Shared by the page (headerProps) and the chrome Toolbar's DataTableHeader.
 export const HEADER_META: DataTableHeaderColumn<ColKey>[] = [
-  { key: 'rank', label: 'Rank', sortCol: 'rank', align: 'center' },
+  // Right, matching the shared rank column: a number read down a column only lines up if
+  // the cells share an edge. This was centred and the digits wandered.
+  { key: 'rank', label: 'Rank', sortCol: 'rank', align: 'right' },
   { key: 'id', label: 'ID', sortCol: 'id' },
   { key: 'name', label: 'Name', sortCol: 'name' },
   { key: 'feature', label: 'Feature' },
