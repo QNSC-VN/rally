@@ -192,18 +192,23 @@ export const CapacityPlanSchema = z.object({
   totalCapacity: z.number().nullable(),
   items: z.array(CapacityPlanItemSchema).describe('One row per Feature, in RANK order'),
   /**
-   * Rally's cutline: the index of the last ITEM that fits inside the plan's total capacity.
+   * The Capacity Cutline: the index of the ITEM the line is drawn AFTER.
    *
-   * Plan-wide and on the item list, which is where Rally draws it — "Items above the cutline fit
-   * within the defined plan capacity". An index rather than a per-row boolean, because the line
-   * sits BETWEEN two rows and a per-row flag would let a client render a "fits" row below a
-   * "does not fit" one.
+   * SRS §189 — "rendered after the first Feature where cumulative planning Estimated reaches or exceeds
+   * Plan total Capacity" — so this is the TIPPING Feature, which sits above the line. It used to be the
+   * last Feature that still fit, putting the tipping one below.
+   *
+   * Plan-wide and on the item list, which is where Rally draws it too. An index rather than a per-row
+   * boolean, because the line sits BETWEEN two rows and a per-row flag would let a client render a
+   * "fits" row below a "does not fit" one.
    */
   itemCutlineIndex: z
     .number()
     .int()
     .nullable()
-    .describe('-1 = the first item already exceeds capacity; null = no capacity entered'),
+    .describe(
+      'The item the line is drawn after; the last index when nothing reaches capacity (no line); null = no capacity entered',
+    ),
   allocations: z.array(CapacityAllocationSchema),
   /**
    * Demand parked without a team.
@@ -272,9 +277,9 @@ const PublishResultSchema = z.object({
       portfolioItemId: z.string().uuid(),
       itemKey: z.string(),
       reason: z
-        .enum(['unallocated', 'release_span_mismatch', 'archived'])
+        .enum(['unallocated', 'release_span_mismatch', 'archived', 'other_release'])
         .describe(
-          'unallocated: no team, so no plan to inherit. release_span_mismatch: the plan window reaches outside its release, so Rally writes the dates but not the Release.',
+          'unallocated: no team, so no plan to inherit. release_span_mismatch: the plan window reaches outside its release, so the dates are written but not the Release. archived: the Feature is not actionable demand. other_release: the Feature already belongs to a different release (§226 allows the allocation; publish must not move it).',
         ),
     }),
   ),

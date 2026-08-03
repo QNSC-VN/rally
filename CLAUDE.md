@@ -442,6 +442,22 @@ Feature. That leaves an active Feature under a hidden parent, which is what `ass
 on every other write. The message names the Epic's key, because an archived parent is invisible in
 every list.
 
+## Declared divergences from the BA, in Capacity Planning
+
+Both were ruled on. Neither is drift, and neither should be "fixed" on sight.
+
+- **Rollup and Complete keep Rally's Project+Release child filter.** The BA's Features-tab formula is
+  `SUM(child.planEstimate WHERE child belongs to Feature)` with no qualifier (§314), and the nested
+  per-team one adds only Team (§267). The code filters children by the plan's Project AND Release, which
+  is Rally's documented rule: "If a portfolio item includes allocated points/counts, the Project and
+  Release fields in the story must match the plan for that story to be included in the Rollup
+  calculation." Without it a long-lived Feature inflates every plan that touches it — the plan charges
+  work belonging to another release — so the filter stays and the BA formula is the divergence.
+- **Nested `Dependencies` renders `0`, not `—`.** The BA's catalog suggests a dash (§205); Rally's column
+  is a COUNT, dependencies are genuinely unimplemented rather than unknown, and `0` is true where a dash
+  would read as "not known". Note this is the one place the app's own absent-value rule (`--` everywhere
+  else) is deliberately not applied.
+
 ## An allocation's value is a FIXED SNAPSHOT with a source label
 
 `capacity_plan_allocations.value` is NOT NULL and carries `source` (`feature_estimate` | `manual`),
