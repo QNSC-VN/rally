@@ -11,8 +11,11 @@ import { login, selectProject } from './helpers'
 /**
  * Opens the create dialog for the level the list is SHOWING.
  *
- * #367 replaced the `New Portfolio Item` menu with one button that follows the Type switcher, and
+ * PR 367 replaced the `New Portfolio Item` menu with one button that follows the Type switcher, and
  * these four tests still clicked the menu — so they were failing on `main`, not against this branch.
+ *
+ * (PR numbers are written `PR 367` throughout this repo's comments, without a leading hash: the
+ * design-token ratchet matches a hash followed by hex digits and would read one as a raw colour.)
  */
 async function openCreate(page: Page, type: 'Feature' | 'Epic') {
   await page.getByRole('button', { name: `New ${type}`, exact: true }).click()
@@ -312,7 +315,7 @@ test.describe('Portfolio', () => {
     page,
   }) => {
     /**
-     * #367 replaced the BA's `New Portfolio Item` menu (SRS §4, §11.2, acceptance 27) with one button
+     * PR 367 replaced the BA's `New Portfolio Item` menu (SRS §4, §11.2, acceptance 27) with one button
      * that follows the Type switcher, on the grounds that the menu made the same choice twice. That
      * deviation is flagged in the page's own comment for the BA to rule on; this test pins the
      * behaviour as shipped, and the label — the button has to say which level it will create.
