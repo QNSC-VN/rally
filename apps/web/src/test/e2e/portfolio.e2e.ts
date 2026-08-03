@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { login, selectProject } from './helpers'
 
 /**
@@ -8,14 +8,18 @@ import { login, selectProject } from './helpers'
  * the first person on the list, whoever the seed made them. Factored out because four tests create an
  * item and none of them are about the Owner field itself.
  */
-async function pickOwner(dialog: Locator) {
-  await dialog.getByRole('button', { name: 'Owner' }).click()
-  // The popover PORTALS out of the dialog, and its options are plain buttons rather than `option`
-  // roles — so this reaches for the seeded admin by name at page level.
-  await dialog
-    .page()
-    .getByRole('button', { name: /Admin User/ })
-    .click()
+/**
+ * Opens the create dialog for the level the list is SHOWING.
+ *
+ * PR 367 replaced the `New Portfolio Item` menu with one button that follows the Type switcher, and
+ * these four tests still clicked the menu — so they were failing on `main`, not against this branch.
+ *
+ * (PR numbers are written `PR 367` throughout this repo's comments, without a leading hash: the
+ * design-token ratchet matches a hash followed by hex digits and would read one as a raw colour.)
+ */
+async function openCreate(page: Page, type: 'Feature' | 'Epic') {
+  await page.getByRole('button', { name: `New ${type}`, exact: true }).click()
+  return page.getByRole('dialog', { name: `New ${type}` })
 }
 
 /**
@@ -110,13 +114,8 @@ test.describe('Portfolio', () => {
     // Scoped to the dialog throughout: the grid header also exposes a "Name column"
     // label and a "Resize Name column" separator, so an unscoped getByLabel('Name')
     // matches three elements.
-    // The BA's `New Portfolio Item` MENU, not a bare Add New — it offers both types, so the
-    // level the list happens to be showing no longer decides what gets created.
-    await page.getByRole('button', { name: /New Portfolio Item/i }).click()
-    await page.getByRole('button', { name: 'New Feature', exact: true }).click()
-    const dialog = page.getByRole('dialog', { name: 'New Feature' })
+    const dialog = await openCreate(page, 'Feature')
     await dialog.getByRole('textbox', { name: 'Name' }).fill(unique)
-    await pickOwner(dialog)
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
     await expect(dialog).toBeHidden()
 
@@ -220,31 +219,26 @@ test.describe('Portfolio', () => {
     await expect(page.getByText('Total Accepted Children')).toBeVisible()
   })
 
-  test('drag reorders rows, and the grip disappears under a column sort', async ({ page }) => {
+  test('Rank up/down reorders rows, persists, and stands down under a column sort', async ({
+    page,
+  }) => {
     /**
-     * Creates its OWN pair and narrows to them by search.
+     * §37 makes Rank "up/down reorder buttons only, **no drag-and-drop**", and §14 lists drag under
+     * Not included. This grid dragged; the buttons are the replacement, and FR-005 is the requirement
+     * ("User can reorder Features via Rank up/down controls").
      *
-     * The previous version dragged whichever two rows happened to sort first in a cross-project
-     * grid of hundreds, then compared whole-row innerText after a reload. Both halves were
-     * fragile: another spec inserting a row shifted the positions, and the row text contains
-     * rollup numbers that move whenever any linked Story changes — so the assertion failed while
-     * the drag had worked. It failed more often on baseline than on a branch, which is the
-     * signature of shared state rather than a bug.
-     *
-     * Searching does NOT disable the grip (only a column SORT does, which the last assertion
-     * covers), and a rank derived between two filtered neighbours still flips their relative
-     * order — which is the whole claim.
+     * Creates its OWN pair and narrows to them by search. The previous version reordered whichever
+     * two rows happened to sort first in a cross-project grid of hundreds, then compared whole-row
+     * innerText after a reload — and row text carries rollup numbers that move whenever any linked
+     * Story changes, so the assertion failed while the reorder had worked.
      */
-    const tag = `DRAG-${Date.now()}`
+    const tag = `RANK-${Date.now()}`
     await login(page)
     await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
 
     for (const suffix of ['A', 'B']) {
-      await page.getByRole('button', { name: /New Portfolio Item/i }).click()
-      await page.getByRole('button', { name: 'New Feature', exact: true }).click()
-      const dialog = page.getByRole('dialog', { name: 'New Feature' })
+      const dialog = await openCreate(page, 'Feature')
       await dialog.getByRole('textbox', { name: 'Name' }).fill(`${tag} ${suffix}`)
-      await pickOwner(dialog)
       await dialog.getByRole('button', { name: 'Create', exact: true }).click()
       await expect(dialog).toBeHidden()
     }
@@ -257,23 +251,19 @@ test.describe('Portfolio', () => {
     /** The ID cell only — row text also carries rollup numbers that move on their own. */
     const keyOf = async (i: number) => {
       const text = (await rows.nth(i).innerText()).trim()
-      return text.split('\n')[0]
+      // Rank now leads the row, so the key is the SECOND line.
+      const lines = text.split('\n')
+      return lines[1] ?? lines[0]
     }
     const before = [await keyOf(0), await keyOf(1)]
     expect(before[0]).not.toBe(before[1])
 
-    const grips = page.getByLabel('Drag to reorder')
-    await expect(grips.first()).toBeVisible()
-
-    // Real pointer drag: dnd-kit's PointerSensor has a 4px activation distance, so the move has
-    // to be stepped rather than a single jump.
-    const from = await grips.nth(1).boundingBox()
-    const to = await grips.nth(0).boundingBox()
-    if (!from || !to) throw new Error('drag handles not measurable')
-    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2 - 8, { steps: 12 })
-    await page.mouse.up()
+    // The second row moves up one position. The button names the row it acts on, which is what makes
+    // it usable in a screen-reader list — and findable here without a positional selector.
+    await rows
+      .nth(1)
+      .getByRole('button', { name: /Move .* up one position/ })
+      .click()
 
     await expect(async () => expect(await keyOf(0)).toBe(before[1])).toPass({ timeout: 5000 })
 
@@ -284,19 +274,32 @@ test.describe('Portfolio', () => {
     await expect(rows).toHaveCount(2)
     expect(await keyOf(0)).toBe(before[1])
 
-    // Sorting by a column removes the grip entirely: rank only means anything in natural rank
-    // order, so a drag under a Name sort would derive a rank from neighbours whose order has
-    // nothing to do with rank.
+    // The FIRST row cannot move up: the control is disabled rather than absent, so the cell does not
+    // change width as rows move.
+    await expect(
+      rows.nth(0).getByRole('button', { name: /Move .* up one position/ }),
+    ).toBeDisabled()
+
+    /**
+     * Under a column sort every button is DISABLED.
+     *
+     * Rank only means anything in rank order: a move computed from Name-sorted neighbours would land
+     * the row somewhere unrelated. Disabled rather than removed, for the same reason as the first
+     * row's — a cell whose controls come and go shifts the number beside them. §273 asks for the order
+     * to survive coming back to the Rank column, which the last two assertions check.
+     */
     await page.getByLabel('Name column', { exact: true }).click()
-    await expect(page.getByLabel('Drag to reorder')).toHaveCount(0)
+    for (const index of [0, 1]) {
+      await expect(
+        rows.nth(index).getByRole('button', { name: /Move .* up one position/ }),
+      ).toBeDisabled()
+    }
+
+    await page.getByLabel('Rank column', { exact: true }).click()
+    await expect(rows).toHaveCount(2)
+    expect(await keyOf(0)).toBe(before[1])
 
     // Clean up both fixtures in ONE bulk action so the grid does not grow a pair per run.
-    // Restore natural rank order first — the checkbox column is unaffected, but leaving a sort on
-    // would hide the grip assertions above from the next reader.
-    await page.getByLabel('Name column', { exact: true }).click()
-    await search.fill(tag)
-    await expect(rows).toHaveCount(2)
-
     for (const index of [0, 1]) {
       await rows.nth(index).getByRole('checkbox').check()
     }
@@ -308,35 +311,32 @@ test.describe('Portfolio', () => {
     await expect(rows).toHaveCount(0)
   })
 
-  test('New Portfolio Item creates an EPIC while the list is showing Features', async ({
+  test('creates the LEVEL the list is showing, and says so before it is pressed', async ({
     page,
   }) => {
-    // The point of the BA's menu (SRS §4, §11.2): the type is chosen in the menu, not inherited
-    // from the switcher, so a planner looking at Features can create an Epic without switching
-    // first. The old toolbar button could only ever create the level on screen.
+    /**
+     * PR 367 replaced the BA's `New Portfolio Item` menu (SRS §4, §11.2, acceptance 27) with one button
+     * that follows the Type switcher, on the grounds that the menu made the same choice twice. That
+     * deviation is flagged in the page's own comment for the BA to rule on; this test pins the
+     * behaviour as shipped, and the label — the button has to say which level it will create.
+     */
     const unique = `E2E Epic ${Date.now()}`
     await login(page)
     await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
 
-    await page.getByRole('button', { name: /New Portfolio Item/i }).click()
-    // Both types on offer from one menu.
-    await expect(page.getByRole('button', { name: 'New Epic', exact: true })).toBeVisible()
+    // Showing Features: one button, and it offers a Feature.
     await expect(page.getByRole('button', { name: 'New Feature', exact: true })).toBeVisible()
-    await page.getByRole('button', { name: 'New Epic', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'New Epic', exact: true })).toHaveCount(0)
 
-    const dialog = page.getByRole('dialog', { name: 'New Epic' })
+    await page.getByLabel('Type').selectOption('epic')
+    const dialog = await openCreate(page, 'Epic')
     await dialog.getByRole('textbox', { name: 'Name' }).fill(unique)
-    await pickOwner(dialog)
     // An Epic has no parent by CHECK constraint (`ck_portfolio_epic_shape`), so the dialog must
     // not offer the Epic picker a Feature gets.
     await expect(dialog.getByRole('combobox', { name: 'Epic' })).toHaveCount(0)
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
     await expect(dialog).toBeHidden()
 
-    // It landed on the EPIC list, which is where an Epic belongs — the Feature list the user was
-    // standing on does not show it.
-    await expect(page.getByText(unique, { exact: true })).toHaveCount(0)
-    await page.getByLabel('Type').selectOption('epic')
     await page.getByRole('searchbox', { name: /Search portfolio/i }).fill(unique)
     await expect(page.getByText(unique, { exact: true })).toBeVisible()
   })
@@ -440,11 +440,8 @@ test.describe('Portfolio', () => {
     await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
 
     // A Feature that CAN be archived…
-    await page.getByRole('button', { name: /New Portfolio Item/i }).click()
-    await page.getByRole('button', { name: 'New Feature', exact: true }).click()
-    const dialog = page.getByRole('dialog', { name: 'New Feature' })
+    const dialog = await openCreate(page, 'Feature')
     await dialog.getByRole('textbox', { name: 'Name' }).fill(unique)
-    await pickOwner(dialog)
     await dialog.getByRole('button', { name: 'Create', exact: true }).click()
     await expect(dialog).toBeHidden()
 

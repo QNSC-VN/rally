@@ -18,6 +18,9 @@ import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
+import { PaginationFooter } from '@/shared/ui/pagination-footer'
+import { TableTotalsRow } from '@/shared/ui/table-totals-row'
+import { useClientPagination } from '@/shared/lib/hooks/use-client-pagination'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
@@ -35,7 +38,6 @@ import {
   SCHEDULE_STATE_LABEL,
   ScheduleState,
 } from '@/entities/work-item/model/types'
-import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useTableSort, type SortDir } from '@/shared/lib/hooks/use-table-sort'
 import { useReleases, type Release } from '@/features/releases/api'
 import { useProjectMembers, type ProjectMember } from '@/features/teams/api'
@@ -105,11 +107,14 @@ const text = (value: string | null): string => value ?? ''
  * as Iteration Status lays it out, minus the KPI strip, which this tab has no metrics for. `Add
  * New` opens the Backlog creation flow (§5.2) and links the new item to this Feature.
  *
- * NO totals row: Iteration Status foots nothing, and the one number this used to sum — Plan
- * Estimate — is a roll-up the Feature's own Details tab already reports through its progress bars.
+ * §114 asks for both a "pagination footer" and "a Totals row summing Plan Estimate", and FR-010 repeats
+ * the pagination half. Both are here. The footer paginates on the CLIENT — the endpoint returns a
+ * Feature's children in one response, so there is no page to fetch — and the totals foot the VISIBLE
+ * rows, so the number cannot disagree with the rows above it.
  *
- * The pagination footer is the one remaining §5.2 item. It is a server decision, since these rows
- * arrive whole from one endpoint.
+ * A previous revision left both out, reasoning that Iteration Status foots nothing and that the sum is
+ * a roll-up the Details tab already reports. True of that grid, but §114 asks for it on THIS tab, and
+ * the Epic Children tab beside it now foots its own three columns.
  */
 export function FeatureChildrenTable({
   children,
@@ -167,8 +172,6 @@ export function FeatureChildrenTable({
     return sortChildren(rows, sortField, sortDir)
   }, [children, search, typeFilter, stateFilter, sortField, sortDir])
 
-  const selection = useRowSelection(visible)
-
   // Option lists for the editable cells, scoped to the Feature's own project — the same two
   // queries the Backlog row uses, so the choices offered here are the choices offered there.
   const { data: releases = [] } = useReleases(projectId)
@@ -209,6 +212,21 @@ export function FeatureChildrenTable({
       else next.add(id)
       return next
     })
+
+  /**
+   * §114's pagination footer, on the CLIENT.
+   *
+   * `/portfolio-items/{id}/children` returns a Feature's children in one response, so there is no page
+   * to fetch — the footer paginates what is already here, exactly as Projects and the workspace member
+   * list do through the same hook.
+   *
+   * Fed the FILTERED set, so narrowing the search re-pages instead of leaving the reader on an empty
+   * page 3 (`useClientPagination` clamps the page for that reason).
+   */
+  const pagination = useClientPagination(rerank.items, 25)
+
+  /** §114: "a Totals row summing Plan Estimate", over the rows on screen. */
+  const totalEstimate = visible.reduce((sum, child) => sum + (child.storyPoints ?? 0), 0)
 
   const activeFilterCount = (typeFilter !== 'all' ? 1 : 0) + (stateFilter !== 'all' ? 1 : 0)
 
@@ -284,9 +302,13 @@ export function FeatureChildrenTable({
 
       <SelectableTable
         className="rounded border border-border-strong"
-        rows={rerank.items}
-        selection={selection}
-        selectAllAriaLabel={t('detail.children.selectAll')}
+        rows={pagination.pageItems}
+        // NOT selectable: there is no bulk action on either children tab, in the SRS or in the code,
+        // so a checkbox column produced a bulk bar reading "1 selected · Clear" and offering nothing —
+        // a control whose only outcome is undoing itself. `leadingExtra` keeps the header's leading
+        // width, because the rows still render a gutter for the drag grip.
+        selectable={false}
+        leadingExtra={<RowGutter dragDisabled />}
         headerProps={{ ...table.headerProps, colStyles }}
         sort={{
           col: sortField ?? '',
@@ -299,9 +321,20 @@ export function FeatureChildrenTable({
         }}
         loading={isLoading}
         skeleton={{ rows: 4, cols: PORTFOLIO_CHILD_COLUMNS.length }}
-        // No totals row. Iteration Status — the grid this tab is modelled on — has none, and the
-        // one number it footed (summed Plan Estimate) is a roll-up the Feature's own Details tab
-        // already reports through its progress bars and Accepted-Children meter.
+        // §114: "a Totals row summing Plan Estimate". Footed over the VISIBLE rows — the search and
+        // both filters narrow them — so the total always describes what is on screen.
+        totals={
+          visible.length > 0 ? (
+            <TableTotalsRow
+              columns={PORTFOLIO_CHILD_COLUMNS}
+              colStyles={colStyles}
+              leading={<RowGutter dragDisabled />}
+              label={t('detail.children.totals', { count: visible.length })}
+              values={{ estimate: String(totalEstimate) }}
+            />
+          ) : undefined
+        }
+        footer={visible.length > 0 ? <PaginationFooter {...pagination.footerProps} /> : undefined}
         empty={
           visible.length === 0 ? (
             <EmptyState
@@ -311,17 +344,16 @@ export function FeatureChildrenTable({
             />
           ) : undefined
         }
-        renderRow={(child, { selected, onToggleSelect }) => (
+        renderRow={(child) => (
           <ChildRow
             key={child.id}
             child={child}
+            // Position in the WHOLE filtered list, not on this page: the Rank column would restart
+            // at 1 on page 2 otherwise.
             rowNum={rerank.items.indexOf(child) + 1}
             colStyles={colStyles}
             canEdit={canEdit}
             dragDisabled={dragDisabled}
-            selected={selected}
-            onToggleSelect={onToggleSelect}
-            selectLabel={t('detail.children.selectChild', { key: child.itemKey })}
             expanded={expandedIds.has(child.id)}
             onToggleExpand={() => toggleExpanded(child.id)}
             expandLabel={t('detail.children.expandTasks', { key: child.itemKey })}
@@ -352,9 +384,6 @@ function ChildRow({
   colStyles,
   canEdit,
   dragDisabled,
-  selected,
-  onToggleSelect,
-  selectLabel,
   expanded,
   onToggleExpand,
   expandLabel,
@@ -369,9 +398,6 @@ function ChildRow({
   colStyles: Record<ChildColKey, CSSProperties>
   canEdit: boolean
   dragDisabled: boolean
-  selected: boolean
-  onToggleSelect: () => void
-  selectLabel: string
   expanded: boolean
   onToggleExpand: () => void
   expandLabel: string
@@ -423,7 +449,6 @@ function ChildRow({
           dragAttributes={dragDisabled ? undefined : attributes}
           dragDisabled={dragDisabled}
           stopPropagation
-          checkbox={{ checked: selected, onChange: onToggleSelect, ariaLabel: selectLabel }}
         />
         <RankCell rowNum={rowNum} style={colStyles.rank} />
         {/* The expand chevron sits with the ID, where the removed Type column used to hold it.

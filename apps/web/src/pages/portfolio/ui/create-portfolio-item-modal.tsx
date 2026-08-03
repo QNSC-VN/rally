@@ -159,7 +159,8 @@ export function CreatePortfolioItemModal({
       : (teams[0]?.id ?? '')
   const effectiveTeamId = teamId || defaultTeamId
   const effectiveOwnerId =
-    ownerId || (currentUserId && members.some((m) => m.userId === currentUserId) ? currentUserId : '')
+    ownerId ||
+    (currentUserId && members.some((m) => m.userId === currentUserId) ? currentUserId : '')
   // Only Epics in the SAME project are offerable: a Feature's Release must belong to its
   // project, and mixing projects across one Epic makes the rollup span projects in a way
   // the spec does not ask for.

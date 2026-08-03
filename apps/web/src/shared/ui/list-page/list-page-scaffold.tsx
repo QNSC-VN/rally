@@ -130,6 +130,8 @@ export interface ListPageScaffoldProps<Row extends { id: string }, K extends str
        * that decides whether the row is on screen at all.
        */
       revealed: boolean
+      /** 1-based position in the whole list, page offset included — for a `Rank` column. */
+      rowNum: number
     },
   ) => ReactNode
   /** Initial rows-per-page (default 25). */
@@ -313,7 +315,7 @@ export function ListPageScaffold<Row extends { id: string }, K extends string>({
         }
       >
         {wrapDnd(
-          paged.map((row) => {
+          paged.map((row, at) => {
             const checkbox = selectable
               ? {
                   checked: selection.isSelected(row.id),
@@ -323,6 +325,14 @@ export function ListPageScaffold<Row extends { id: string }, K extends string>({
               : undefined
             return renderRow(row, {
               selected: selectable && selection.isSelected(row.id),
+              /**
+               * 1-based position in the WHOLE list, page offset included — the `Rank` column's value.
+               *
+               * Computed here because only the scaffold knows the current page: every grid that shows
+               * Rank was recomputing `(page - 1) * pageSize + index + 1` from its own state, and a
+               * grid whose paging the scaffold owns could not compute it correctly at all.
+               */
+              rowNum: (page - 1) * pageSize + at + 1,
               revealed: revealIndex >= 0 && row.id === revealRowId,
               // `dragDisabled` here because this node has no sortable state — a
               // draggable row builds its own gutter from `gutterProps` instead.

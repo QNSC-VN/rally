@@ -22,7 +22,6 @@ import { InlineSelect } from '@/shared/ui/native-select'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useTableSort, type SortDir } from '@/shared/lib/hooks/use-table-sort'
 import { useRankPortfolioItem, type PortfolioItem } from '@/features/portfolio/api'
 import { EPIC_CHILD_COLUMNS, type EpicChildColKey } from '../model/children-columns'
@@ -107,8 +106,6 @@ export function EpicChildrenTable({
   /** The states these Features are actually in, so the filter never offers an empty result. */
   const featureStates = useMemo(() => [...new Set(features.map((f) => f.state))].sort(), [features])
 
-  const selection = useRowSelection(visible)
-
   /**
    * Drag-to-rank, through the same endpoint the Portfolio list uses.
    *
@@ -186,8 +183,12 @@ export function EpicChildrenTable({
       <SelectableTable
         className="rounded border border-border-strong"
         rows={rerank.items}
-        selection={selection}
-        selectAllAriaLabel={t('detail.children.selectAllFeatures')}
+        // NOT selectable: there is no bulk action on either children tab, in the SRS or in the code,
+        // so a checkbox column produced a bulk bar reading "1 selected · Clear" and offering nothing —
+        // a control whose only outcome is undoing itself. `leadingExtra` keeps the header's leading
+        // width, because the rows still render a gutter for the drag grip.
+        selectable={false}
+        leadingExtra={<RowGutter dragDisabled />}
         headerProps={{ ...table.headerProps, colStyles }}
         sort={{
           col: sortField ?? '',
@@ -227,20 +228,17 @@ export function EpicChildrenTable({
             />
           ) : undefined
         }
-        renderRow={(feature, { selected, onToggleSelect }) => (
+        renderRow={(feature) => (
           <EpicChildRow
             key={feature.id}
             feature={feature}
             rowNum={rerank.items.indexOf(feature) + 1}
             colStyles={colStyles}
             dragDisabled={dragDisabled}
-            selected={selected}
-            onToggleSelect={onToggleSelect}
             onOpen={() =>
               void navigate({ to: '/portfolio/$itemId', params: { itemId: feature.id } })
             }
             stateLabel={t(`states.${feature.state}`, { defaultValue: feature.state })}
-            selectLabel={t('detail.children.selectFeature', { key: feature.itemKey })}
           />
         )}
       />
@@ -259,21 +257,15 @@ function EpicChildRow({
   rowNum,
   colStyles,
   dragDisabled,
-  selected,
-  onToggleSelect,
   onOpen,
   stateLabel,
-  selectLabel,
 }: {
   feature: PortfolioItem
   rowNum: number
   colStyles: Record<EpicChildColKey, CSSProperties>
   dragDisabled: boolean
-  selected: boolean
-  onToggleSelect: () => void
   onOpen: () => void
   stateLabel: string
-  selectLabel: string
 }) {
   const {
     setNodeRef,
@@ -300,7 +292,6 @@ function EpicChildRow({
         dragAttributes={dragDisabled ? undefined : attributes}
         dragDisabled={dragDisabled}
         stopPropagation
-        checkbox={{ checked: selected, onChange: onToggleSelect, ariaLabel: selectLabel }}
       />
       <RankCell rowNum={rowNum} style={colStyles.rank} />
       <div style={colStyles.id} className="flex items-center px-2">

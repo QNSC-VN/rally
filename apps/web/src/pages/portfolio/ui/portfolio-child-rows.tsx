@@ -47,11 +47,7 @@ import {
   type PortfolioItemState,
 } from '@/features/portfolio/api'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import {
-  ScheduleState,
-  SCHEDULE_STATE_LABEL,
-  SCHEDULE_STATE_VALUES,
-} from '@/entities/work-item/model/types'
+import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
@@ -61,8 +57,8 @@ import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-opt
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { Spinner } from '@/shared/ui/spinner'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { useFieldCommit } from '@/shared/lib/hooks/use-field-commit'
-import { useUpdateWorkItem } from '@/features/work-items/api'
 import { type ColKey } from '../model/columns'
 import { PORTFOLIO_STATES } from '../model/portfolio-states'
 
@@ -135,6 +131,11 @@ function ChildFeatureRow({
 
   return (
     <ChildRow>
+      {/* Rank is BLANK on a child Feature — FR-038 and §60: "their order is contextual to the parent
+          preview", so a number here would claim a position in a list this row is not part of. The cell
+          is still rendered, or every column after it shifts left. */}
+      <div className="px-2" style={colStyleFor('rank')} />
+
       <div className={`flex items-center pr-2 ${NESTED_ROW_INDENT}`} style={colStyleFor('id')}>
         <IdCell type={feature.type} itemKey={feature.itemKey} onOpen={() => onOpen(feature.id)} />
       </div>
@@ -263,132 +264,61 @@ function ChildFeatureRow({
 }
 
 /**
- * A disclosed Story / Defect — read-only, and see this module's header for why: the
- * endpoint returns display names without the ids a picker would bind to.
+ * A disclosed Story / Defect — a READ-ONLY preview, exactly as §61 defines it.
+ *
+ * "Type, ID, Name, Release, Project, Team, Owner are shown; **State and the two Percent Done columns
+ * are intentionally left blank in this preview** … the preview rows themselves are not inline-editable
+ * and do not navigate anywhere on click." §252 and AC-5 say the same twice more, and give the reason:
+ * the Children tab and the item's own detail cover both in depth, and here they were judged clutter.
+ *
+ * It used to be a fully editable row — a schedule-state picker, an inline name editor, Release, Team
+ * and Owner selects, and an ID that navigated. Five controls in a five-row preview, none of which the
+ * spec asks for, and the State one showed a SECOND vocabulary in a column whose parent rows show
+ * portfolio states.
+ *
+ * Percent Done was already blank for its own reason (a single work item has no rollup), which is the
+ * same conclusion the spec reaches.
  */
 function ChildWorkItemRow({
   child,
   colStyleFor,
-  members,
-  canEdit,
-  options,
-  onOpen,
 }: {
   child: PortfolioChild
   colStyleFor: ColStyleFor
-  members: OwnerSelectMember[]
-  canEdit: boolean
-  options: PortfolioCellOptions
-  onOpen: (itemKey: string) => void
 }) {
-  const { t } = useTranslation('portfolio')
-  const update = useUpdateWorkItem(child.id)
-  const { save: commit } = useFieldCommit(update)
+  /** One read-only cell shape for the seven of them, so they cannot drift apart. */
+  const cell = (col: ColKey, value: string | null) => (
+    <div className="min-w-0 px-2 break-words whitespace-normal" style={colStyleFor(col)}>
+      {value ?? EMPTY_VALUE}
+    </div>
+  )
 
   return (
     <ChildRow>
+      {/* Blank Rank: a preview row has no position of its own to report (§466 says the same of a
+          child Feature). The cell is still rendered, or every column after it would shift left. */}
+      <div className="px-2" style={colStyleFor('rank')} />
+
       <div className={`flex items-center pr-2 ${NESTED_ROW_INDENT}`} style={colStyleFor('id')}>
-        <IdCell type={child.type} itemKey={child.itemKey} onOpen={() => onOpen(child.itemKey)} />
+        {/* Type glyph + key, NOT a link: §61 is explicit that these rows do not navigate. `IdCell` is
+            a button by design, so the preview renders the pair itself rather than passing a no-op
+            handler that would still look and focus like a link. */}
+        <span className="flex items-center gap-1.5">
+          <TypeBadge type={child.type} size={16} />
+          <span className="font-mono text-ui-xs text-muted-foreground">{child.itemKey}</span>
+        </span>
       </div>
 
-      <div
-        className="min-w-0 px-0"
-        style={colStyleFor('name')}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <InlineEditableCell
-          fullCell
-          value={child.title}
-          canEdit={canEdit}
-          onCommit={(v) => {
-            const next = v.trim()
-            if (next && next !== child.title) commit({ title: next }, t('row.nameUpdated'))
-          }}
-          ariaLabel={t('columns.name')}
-          title={child.title}
-          className="block w-full break-words whitespace-normal text-foreground"
-        />
-      </div>
-
-      {/* SCHEDULE state, not portfolio state — a Story lives on the work-item lifecycle.
-          The column therefore carries two different vocabularies depending on the row's
-          depth, which is why it is a picker on both: a stepper for the children (as
-          Iteration Status uses) beside a select for the parents would read as two
-          unrelated controls stacked in one column. */}
-      <div
-        className="min-w-0 px-0"
-        style={colStyleFor('state')}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <SearchableSelect
-          variant="cell"
-          value={child.scheduleState}
-          readOnly={!canEdit}
-          ariaLabel={t('detail.fields.state')}
-          options={SCHEDULE_STATE_VALUES.map((sc) => ({
-            value: sc,
-            label: SCHEDULE_STATE_LABEL[sc],
-          }))}
-          onChange={(v) => {
-            if (v && v !== child.scheduleState)
-              commit({ scheduleState: v as ScheduleState }, t('row.stateUpdated'))
-          }}
-        />
-      </div>
-
-      <div
-        className="flex min-w-0 items-center overflow-hidden px-0"
-        style={colStyleFor('release')}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <ReleaseSelectCell
-          releaseId={child.releaseId}
-          releaseName={child.releaseName}
-          releases={options.releases}
-          canEdit={canEdit}
-          ariaLabel={t('detail.fields.release')}
-          onChange={(v) => commit({ releaseId: v }, t('row.releaseUpdated'))}
-        />
-      </div>
-
-      {/* Percent Done is a portfolio rollup — a single Story has none, so these stay
-          empty rather than showing a 0% bar that would read as "no progress". */}
+      {cell('name', child.title)}
+      {/* State: deliberately blank. */}
+      <div className="px-2" style={colStyleFor('state')} />
+      {cell('release', child.releaseName)}
+      {/* Percent Done ×2: blank, for the same reason and by the same rule. */}
       <div className="px-2" style={colStyleFor('percentDonePoints')} />
       <div className="px-2" style={colStyleFor('percentDoneCount')} />
-
-      <div className="min-w-0 px-2 break-words whitespace-normal" style={colStyleFor('project')}>
-        {child.projectName ?? '--'}
-      </div>
-
-      <div
-        className="flex min-w-0 items-center overflow-hidden px-0"
-        style={colStyleFor('team')}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <TeamSelectCell
-          teamId={child.teamId}
-          teamName={child.teamName}
-          teams={options.teams}
-          canEdit={canEdit}
-          ariaLabel={t('detail.fields.team')}
-          onChange={(v) => commit({ teamId: v }, t('row.teamUpdated'))}
-        />
-      </div>
-
-      <div
-        className="min-w-0 overflow-hidden px-0"
-        style={colStyleFor('owner')}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <OwnerSelectCell
-          ownerName={child.ownerName}
-          assigneeId={child.assigneeId}
-          members={members}
-          canEdit={canEdit}
-          ariaLabel={t('detail.fields.owner')}
-          onChange={(v) => commit({ assigneeId: v }, t('row.ownerUpdated'))}
-        />
-      </div>
+      {cell('project', child.projectName)}
+      {cell('team', child.teamName)}
+      {cell('owner', child.ownerName)}
     </ChildRow>
   )
 }
@@ -436,8 +366,6 @@ export function PortfolioChildRows({
 
   const openPortfolioItem = (id: string) =>
     void navigate({ to: '/portfolio/$itemId', params: { itemId: id } })
-  const openWorkItem = (itemKey: string) =>
-    void navigate({ to: '/item/$itemKey', params: { itemKey } })
 
   const rows = isEpic
     ? (features.data ?? []).map((f) => (
@@ -454,17 +382,7 @@ export function PortfolioChildRows({
       ))
     : (children.data ?? [])
         .slice(0, CHILD_PREVIEW_LIMIT)
-        .map((c) => (
-          <ChildWorkItemRow
-            key={c.id}
-            child={c}
-            colStyleFor={colStyleFor}
-            members={members}
-            canEdit={canEditProject(c.projectId)}
-            options={optionsFor(c.projectId)}
-            onOpen={openWorkItem}
-          />
-        ))
+        .map((c) => <ChildWorkItemRow key={c.id} child={c} colStyleFor={colStyleFor} />)
 
   /**
    * How many linked items the preview is NOT showing.
