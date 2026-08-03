@@ -297,16 +297,7 @@ export const iterations = workSchema.table(
     // NULL for a dateless iteration: it belongs to no timebox and is excluded from
     // All Teams aggregation rather than collapsed into a shared bucket.
     timeboxGroupId: uuid('timebox_group_id'),
-    // Burndown Ideal baseline (IB-BR-03): SUM(task.estimate) frozen ONCE at iteration
-    // start. Adding, removing or re-estimating tasks afterwards must NOT move the
-    // line, so this is a capture, never a computed-on-read value.
-    totalTaskEstimateAtStart: numeric('total_task_estimate_at_start', {
-      precision: 10,
-      scale: 2,
-    }),
-    totalTaskEstimateCapturedAt: timestamp('total_task_estimate_captured_at', {
-      withTimezone: true,
-    }),
+    // The Burndown Ideal baseline lives in `iteration_team_baselines` (0098), per team.
     completedAt: timestamp('completed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -359,6 +350,45 @@ export const iterationTeamBaselines = workSchema.table(
       sql`coalesce(${t.teamId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
     ),
     workspaceIterationIdx: index('ix_itb_workspace_iteration').on(t.workspaceId, t.iterationId),
+  }),
+);
+
+// ── release_team_targets (burnup Ideal target, per team) ──────────────────
+
+/**
+ * The release Burnup Ideal target, one row per (release, team scope).
+ *
+ * Added by migration 0099. It was two columns on `releases`, captured only under the All Teams scope,
+ * so every team's burnup was measured against the whole release's target while its Accepted line was
+ * correctly narrowed — each team looked permanently behind.
+ *
+ * `team_id IS NULL` is the MEASURED All Teams row, exactly as in `release_daily_snapshots`, and is never
+ * summed. RT §4.1 makes All Teams measured rather than summed because a Feature whose children span two
+ * teams lands in BOTH teams' derived buckets, so a SUM would count it twice — and the Ideal has to be
+ * measured over the same population as the Accepted series it is compared against. This is the opposite
+ * of `iteration_team_baselines`, where §4 defines All Teams as the sum of the team baselines.
+ *
+ * Points and count share a row because `Chart Unit` is a display switch over one population.
+ */
+export const releaseTeamTargets = workSchema.table(
+  'release_team_targets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    releaseId: uuid('release_id')
+      .notNull()
+      .references(() => releases.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+    idealTargetPoints: numeric('ideal_target_points', { precision: 8, scale: 2 }).notNull(),
+    idealTargetCount: integer('ideal_target_count').notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqueScope: uniqueIndex('uq_rtt_release_team').on(
+      t.releaseId,
+      sql`coalesce(${t.teamId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+    ),
+    workspaceReleaseIdx: index('ix_rtt_workspace_release').on(t.workspaceId, t.releaseId),
   }),
 );
 
@@ -433,12 +463,7 @@ export const releases = workSchema.table(
     planEstimate: numeric('plan_estimate', { precision: 8, scale: 2 }),
     // Release Tracking's Ideal line baseline (RT-BR-09). The Ideal trajectory runs from
     // 0 at Release start to THIS approved target at Release end. Deliberately persisted:
-    // reconstructing it from today's mutable Planned value would silently redraw every
-    // past ideal whenever scope changed, which the SRS forbids. NULL = no baseline
-    // approved, which renders as an explicit unavailable state, never as a zero line.
-    // Two columns because Ideal is drawn in whichever unit `Chart Unit` selects.
-    idealTargetPoints: numeric('ideal_target_points', { precision: 8, scale: 2 }),
-    idealTargetCount: integer('ideal_target_count'),
+    // The Burnup Ideal target lives in `release_team_targets` (0099), per team.
     version: varchar('version', { length: 100 }),
     theme: text('theme'),
     notes: text('notes'),
@@ -575,10 +600,6 @@ export const capacityPlans = workSchema.table(
     // advisory and writes nothing.
     plannedStartDate: date('planned_start_date'),
     plannedEndDate: date('planned_end_date'),
-    // Advisory load ceiling, below 100%. Rally's own guidance is to leave ~20% of a
-    // team's capacity for unplanned work, so a team at 95% needs a warning even
-    // though it is not technically over capacity. Never blocks an action.
-    targetLoadPct: integer('target_load_pct').notNull().default(80),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     publishedBy: uuid('published_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -145,6 +145,14 @@ export interface CapacityPlanDetail extends Omit<CapacityPlanView, 'teams'> {
   itemCutlineIndex: number | null;
   allocations: CapacityAllocationView[];
   unallocated: number;
+  /**
+   * The PLAN's own advisory warnings, from the same rule function every row uses.
+   *
+   * The plan-level bars had none: `computeCapacityWarnings` was called for allocation rows, team rows
+   * and Feature rows, and never over the totals, so a plan whose combined demand exceeded its combined
+   * capacity read as clean while the rows beneath it flagged.
+   */
+  warnings: CapacityWarning[];
 }
 
 /** Why a Feature did not take the full publish. Reported, never thrown. */
@@ -1279,7 +1287,6 @@ export class CapacityPlansService {
               rollup,
               estimated,
               capacity,
-              targetLoadPct: plan.targetLoadPct,
             }),
           },
         };
@@ -1404,7 +1411,6 @@ export class CapacityPlansService {
         estimated: item.estimated,
         capacity: null,
         tier: item.tier,
-        targetLoadPct: null,
       });
     }
 
@@ -1423,6 +1429,31 @@ export class CapacityPlansService {
       items.map((item) => item.estimated),
       totalEnteredCapacity(teams),
     );
+
+    /**
+     * The PLAN's own warnings, over the summed team rows.
+     *
+     * `kind: 'team'` because a plan is judged by exactly the team rules — its demand against its
+     * capacity — and the two Feature rules (missing estimate, rollup vs estimated) belong to a single
+     * Feature, not to an aggregate of them. `rollup_exceeds_estimated` still applies: plan-wide,
+     * children having outgrown the commitment is the same fact it always was.
+     *
+     * `totalEnteredCapacity` is the same denominator the cutline above uses, so a plan whose cutline
+     * drops items cannot report itself inside capacity. It is null while nobody has entered one, which
+     * `computeCapacityWarnings` reports as `team_missing_capacity` — honest for a plan that cannot be
+     * measured yet, and the same answer the team rows give.
+     *
+     * Computed BEFORE the reader narrowing below, over every team: like `totalCapacity` and the
+     * cutline, this is a fact about the plan. A reader shown the plan's totals with no warning on them
+     * would be the exact defect this fixes, one scope down.
+     */
+    const planCapacity = totalEnteredCapacity(teams);
+    const planWarnings = computeCapacityWarnings({
+      kind: 'team',
+      rollup: teams.reduce((sum, team) => sum + team.metrics.rollup, 0),
+      estimated: teams.reduce((sum, team) => sum + team.metrics.estimated, 0),
+      capacity: planCapacity,
+    });
 
     /**
      * AC-010: a reader "sees only its assigned Team" inside a published plan.
@@ -1445,6 +1476,7 @@ export class CapacityPlansService {
         teams: visibleTeams,
         items,
         itemCutlineIndex,
+        warnings: planWarnings,
         allocations: allocations.filter((a) => a.teamId !== null && mine.has(a.teamId)),
         unallocated: allocations
           .filter((a) => a.teamId === null)
@@ -1457,6 +1489,7 @@ export class CapacityPlansService {
       teams,
       items,
       itemCutlineIndex,
+      warnings: planWarnings,
       allocations,
       /** Demand parked without a team. Excluded from Total Allocated by design. */
       unallocated: allocations

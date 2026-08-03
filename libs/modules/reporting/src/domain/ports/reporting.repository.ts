@@ -21,7 +21,6 @@ export interface IterationRow {
   name: string;
   startDate: string | null;
   endDate: string | null;
-  totalTaskEstimateAtStart: number | null;
 }
 
 /** One shared timebox, with the per-Team iterations it fuses. */
@@ -40,8 +39,6 @@ export interface ReleaseRow {
   name: string;
   startDate: string | null;
   releaseDate: string | null;
-  idealTargetPoints: number | null;
-  idealTargetCount: number | null;
 }
 
 /** An iteration the daily job is currently snapshotting. */
@@ -264,24 +261,43 @@ export interface IReportingRepository {
   ): Promise<number | null>;
 
   /**
-   * Stores the release's Ideal target once, from the planned scope on its FIRST snapshot day.
+   * Stores a release's Ideal target for ONE scope, once, from that scope's planned totals on its
+   * FIRST snapshot day.
    *
-   * The same capture-once rule as the iteration baseline, for the same reason (RT-BR-09): the
-   * Ideal must not be reconstructed from today's mutable Planned value, or every past day's
-   * trajectory silently redraws whenever scope changes. `ideal_target_points` /
-   * `ideal_target_count` had no writer anywhere in the codebase before this, so the Ideal line
-   * could never be drawn at all.
+   * Per team, not per release: RT §7's acceptance example 7 recomputes the whole Burnup from the
+   * selected Team's scope, and the Ideal sits inside that definition. A single release-level target
+   * made every team's Accepted line race the WHOLE release's goal. `teamId: null` is the MEASURED All
+   * Teams row, as in `release_daily_snapshots` and unlike `iteration_team_baselines`: RT §4.1 measures
+   * All Teams because a Feature spanning two teams sits in both teams' derived buckets, so a sum would
+   * count it twice.
+   *
+   * Capture-once per scope, for RT-BR-09: the Ideal must not be reconstructed from today's mutable
+   * Planned value, or every past day's trajectory silently redraws whenever scope changes.
    *
    * Points and count move together: `Chart Unit` is a display switch over one population, so a
    * release with a target in one unit and not the other would draw an Ideal on one toggle
    * setting and not the other.
    */
-  captureReleaseIdealTarget(
+  captureReleaseTeamTarget(input: {
+    workspaceId: string;
+    releaseId: string;
+    teamId: string | null;
+    plannedPoints: number;
+    plannedCount: number;
+    at: Date;
+  }): Promise<void>;
+
+  /**
+   * The Ideal target for a scope: that scope's single row, All Teams included — never a sum.
+   *
+   * `null` means no target was ever captured — distinct from a captured zero, because only the first
+   * may hide the Ideal line.
+   */
+  findReleaseTeamTarget(
     workspaceId: string,
     releaseId: string,
-    plannedPoints: number,
-    plannedCount: number,
-  ): Promise<void>;
+    scope: TeamScope,
+  ): Promise<{ points: number; count: number } | null>;
 
   /**
    * Today's measured values for one iteration: SUM(task.todo) in hours, and the cumulative

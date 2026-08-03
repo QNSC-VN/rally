@@ -5,6 +5,7 @@ import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import {
   iterationTeamBaselines,
+  releaseTeamTargets,
   iterationDailySnapshots,
   iterations,
   memberCapacity,
@@ -92,7 +93,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       .from(iterations)
       .where(and(eq(iterations.id, iterationId), eq(iterations.workspaceId, workspaceId)))
       .limit(1);
-    return rows[0] ? toIterationRow(rows[0]) : null;
+    return rows[0] ?? null;
   }
 
   async findTimeboxSiblings(
@@ -120,7 +121,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       .from(iterations)
       .where(where)
       .orderBy(asc(iterations.name), asc(iterations.id));
-    return rows.map(toIterationRow);
+    return rows;
   }
 
   // ── Iteration Burndown ────────────────────────────────────────────────────
@@ -443,15 +444,13 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         name: releases.name,
         startDate: releases.startDate,
         releaseDate: releases.releaseDate,
-        idealTargetPoints: releases.idealTargetPoints,
-        idealTargetCount: releases.idealTargetCount,
       })
       .from(releases)
       .where(and(eq(releases.id, releaseId), eq(releases.workspaceId, workspaceId)))
       .limit(1);
-    const r = rows[0];
-    if (!r) return null;
-    return { ...r, idealTargetPoints: nullableNum(r.idealTargetPoints) };
+    // The Ideal target is no longer a column here: it is per team in `release_team_targets`, read via
+    // `findReleaseTeamTarget` in the SAME scope the measured series is read in.
+    return rows[0] ?? null;
   }
 
   async getReleaseFeatures(
@@ -638,7 +637,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         ),
       )
       .orderBy(asc(iterations.startDate), asc(iterations.id));
-    return rows.map(toIterationRow);
+    return rows;
   }
 
   // ── the daily snapshot job ────────────────────────────────────────────────
@@ -651,7 +650,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
       // iteration has no execution to burn down, and an `accepted` one is finished — writing
       // rows for either would put flat lines on charts nobody is looking at.
       .where(eq(iterations.state, 'committed'));
-    return rows.map((r) => ({ ...toIterationRow(r), workspaceId: r.workspaceId }));
+    return rows;
   }
 
   async findActiveReleases(): Promise<ActiveReleaseRow[]> {
@@ -711,7 +710,9 @@ export class ReportingDrizzleRepository implements IReportingRepository {
      * never be scoped differently. A row with no resolvable team groups under `NULL` and is summed
      * into All Teams rather than dropped.
      */
-    const resolvedTeam = sql<string | null>`coalesce(${tasks.teamId}, ${parent.teamId}, ${iteration.teamId})`;
+    const resolvedTeam = sql<
+      string | null
+    >`coalesce(${tasks.teamId}, ${parent.teamId}, ${iteration.teamId})`;
     const rows = await this.db
       .select({
         teamId: resolvedTeam.as('team_id'),
@@ -778,7 +779,9 @@ export class ReportingDrizzleRepository implements IReportingRepository {
      * team-scoped read honestly finds nothing.
      */
     const rows = await this.db
-      .select({ total: sql<number | null>`sum(${iterationTeamBaselines.totalTaskEstimateAtStart})::float8` })
+      .select({
+        total: sql<number | null>`sum(${iterationTeamBaselines.totalTaskEstimateAtStart})::float8`,
+      })
       .from(iterationTeamBaselines)
       .where(
         and(
@@ -791,53 +794,73 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     return total === null || total === undefined ? null : Number(total);
   }
 
-  async captureStartBaseline(
-    workspaceId: string,
-    iterationId: string,
-    totalTaskEstimate: number,
-    at: Date,
-  ): Promise<void> {
-    // `IS NULL` in the predicate is what makes this a ONE-TIME capture: the Ideal line must
-    // not move when tasks are added or re-estimated after the iteration starts, so a second
-    // tick of the job matches zero rows rather than overwriting the baseline.
+  async captureReleaseTeamTarget(input: {
+    workspaceId: string;
+    releaseId: string;
+    teamId: string | null;
+    plannedPoints: number;
+    plannedCount: number;
+    at: Date;
+  }): Promise<void> {
+    /**
+     * `onConflictDoNothing`, which is what makes this a ONE-TIME capture PER SCOPE.
+     *
+     * RT-BR-09 forbids deriving the Ideal from today's mutable Planned value, so a second tick must add
+     * nothing rather than move the target as scope changes. This replaces an `UPDATE … WHERE
+     * ideal_target_points IS NULL` on two `releases` columns, which could only ever express one target
+     * per release — the reason every team's burnup was drawn against the whole release's plan.
+     */
     await this.db
-      .update(iterations)
-      .set({
-        totalTaskEstimateAtStart: String(totalTaskEstimate),
-        totalTaskEstimateCapturedAt: at,
+      .insert(releaseTeamTargets)
+      .values({
+        workspaceId: input.workspaceId,
+        releaseId: input.releaseId,
+        teamId: input.teamId,
+        idealTargetPoints: String(input.plannedPoints),
+        idealTargetCount: Math.round(input.plannedCount),
+        capturedAt: input.at,
       })
-      .where(
-        and(
-          eq(iterations.workspaceId, workspaceId),
-          eq(iterations.id, iterationId),
-          isNull(iterations.totalTaskEstimateAtStart),
-        ),
-      );
+      .onConflictDoNothing();
   }
 
-  async captureReleaseIdealTarget(
+  async findReleaseTeamTarget(
     workspaceId: string,
     releaseId: string,
-    plannedPoints: number,
-    plannedCount: number,
-  ): Promise<void> {
-    // `isNull` on BOTH columns, mirroring `captureStartBaseline`: the write is the capture, so a
-    // second tick matches zero rows instead of moving the target as scope changes. Guarding on
-    // one column alone would let a half-written pair be completed on a later, different day.
-    await this.db
-      .update(releases)
-      .set({
-        idealTargetPoints: String(plannedPoints),
-        idealTargetCount: Math.round(plannedCount),
+    scope: TeamScope,
+  ): Promise<{ points: number; count: number } | null> {
+    /**
+     * The ONE row for this scope — never a sum.
+     *
+     * All Teams reads the `team_id IS NULL` row, which was MEASURED over the whole release, exactly as
+     * `getReleaseBurnupRows` reads its Accepted series. Summing the team rows instead would double a
+     * Feature whose children span two teams, because it lands in both teams' derived buckets (RT §4.1),
+     * and would leave the Ideal measured over a different population than the line beneath it.
+     * `iteration_team_baselines` sums because IB §4 says to; this table must not.
+     *
+     * Returns `null`, not zeros, when the scope has no row: "no approved target" and "a target of zero"
+     * are different facts and only the first may hide the Ideal line. A pre-0099 release carries only
+     * the no-team row, so All Teams keeps exactly its old number while a team-scoped burnup honestly
+     * finds nothing.
+     */
+    const rows = await this.db
+      .select({
+        points: releaseTeamTargets.idealTargetPoints,
+        count: releaseTeamTargets.idealTargetCount,
       })
+      .from(releaseTeamTargets)
       .where(
         and(
-          eq(releases.workspaceId, workspaceId),
-          eq(releases.id, releaseId),
-          isNull(releases.idealTargetPoints),
-          isNull(releases.idealTargetCount),
+          eq(releaseTeamTargets.workspaceId, workspaceId),
+          eq(releaseTeamTargets.releaseId, releaseId),
+          scope.kind === 'team'
+            ? eq(releaseTeamTargets.teamId, scope.teamId)
+            : isNull(releaseTeamTargets.teamId),
         ),
-      );
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return { points: Number(row.points), count: row.count };
   }
 
   async measureIterationDay(
@@ -909,7 +932,9 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     const iteration = alias(iterations, 'scope_iteration');
     const taskTeams = await this.db
       .selectDistinct({
-        teamId: sql<string | null>`coalesce(${tasks.teamId}, ${parent.teamId}, ${iteration.teamId})`,
+        teamId: sql<
+          string | null
+        >`coalesce(${tasks.teamId}, ${parent.teamId}, ${iteration.teamId})`,
       })
       .from(tasks)
       .innerJoin(parent, and(eq(parent.id, tasks.parentId), isNull(parent.deletedAt)))
@@ -1044,7 +1069,6 @@ const ITERATION_COLUMNS = {
   name: iterations.name,
   startDate: iterations.startDate,
   endDate: iterations.endDate,
-  totalTaskEstimateAtStart: iterations.totalTaskEstimateAtStart,
 } as const;
 
 /**
@@ -1063,19 +1087,6 @@ const ITERATION_COLUMNS = {
  */
 function teamOrSharedTimebox(teamId: string) {
   return or(eq(iterations.teamId, teamId), isNull(iterations.teamId));
-}
-
-function toIterationRow(row: {
-  id: string;
-  projectId: string;
-  teamId: string | null;
-  timeboxGroupId: string | null;
-  name: string;
-  startDate: string | null;
-  endDate: string | null;
-  totalTaskEstimateAtStart: string | null;
-}): IterationRow {
-  return { ...row, totalTaskEstimateAtStart: nullableNum(row.totalTaskEstimateAtStart) };
 }
 
 /**

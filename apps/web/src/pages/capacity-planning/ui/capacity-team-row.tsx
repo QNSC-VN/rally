@@ -31,7 +31,6 @@ export function CapacityTeamRow({
   planId,
   team,
   unitLabel,
-  targetLoadPct,
   canManage,
   colStyleFor,
   gutter,
@@ -45,8 +44,6 @@ export function CapacityTeamRow({
   team: CapacityPlanTeam
   /** "points" / "items" — the plan's fixed unit, shown beside the number. */
   unitLabel: string
-  /** Draws the advisory target marker on the bar. */
-  targetLoadPct: number
   canManage: boolean
   colStyleFor: (key: TeamColKey, base?: CSSProperties) => CSSProperties
   gutter: ReactNode
@@ -168,7 +165,6 @@ export function CapacityTeamRow({
           rollup={team.metrics.rollup}
           estimated={team.metrics.estimated}
           capacity={team.metrics.capacity}
-          targetLoadPct={targetLoadPct}
           warningLabels={warnings}
           /**
            * The BAR names the team's warnings now.

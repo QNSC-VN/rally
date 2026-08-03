@@ -38,8 +38,10 @@ import {
   projectTeams,
   workItems,
   iterationDailySnapshots,
+  iterationTeamBaselines,
   iterations,
   releaseDailySnapshots,
+  releaseTeamTargets,
   releases,
   teams,
   teamMembers,
@@ -696,7 +698,6 @@ async function seedFlow() {
       planKey: 'CP-1',
       name: 'NX Platform v2 capacity',
       unit: 'points' as const,
-      targetLoadPct: 80,
       // The release's own window (RE-1: 2026-07-01 → 07-31). Without planned dates there is
       // no window to forecast INTO, so Calculate Capacity Forecast could only ever refuse —
       // and publish (slice 7) writes these dates onto the Features it publishes.
@@ -792,7 +793,6 @@ async function seedFlow() {
       planKey: 'CP-2',
       name: 'Payments hardening capacity',
       unit: 'points' as const,
-      targetLoadPct: 80,
       plannedStartDate: '2026-08-01',
       plannedEndDate: '2026-08-31',
       status: 'published' as const,
@@ -1212,21 +1212,29 @@ async function seedReportHistory() {
   ];
 
   /**
-   * Set OUTRIGHT, not capture-once.
+   * The Burndown baseline, in `iteration_team_baselines` (0098) rather than on the iteration.
    *
-   * Production must never overwrite a captured baseline (`captureStartBaseline` guards on
-   * `IS NULL`) — but the seed owns this fixed-UUID iteration, and a shared dev database picks up
-   * whatever the e2e suites leave behind. A stale baseline of 5 under a 40-hour seeded burndown
-   * draws an Ideal line that contradicts the bars beside it, which is worse for a reviewer than
-   * no chart at all.
+   * Attributed to Team Alpha, because every task in this sprint is Alpha's — and that row is what the
+   * table sums into All Teams, so the Ideal reads 40 under either selection. A `teamId: null` row here
+   * would claim the work has no resolvable team, which is false for this fixture.
+   *
+   * Replaced OUTRIGHT, not captured-once. Production must never overwrite a captured baseline (the
+   * repository's insert uses `onConflictDoNothing`) — but the seed owns this fixed-UUID iteration, and
+   * a shared dev database picks up whatever the e2e suites leave behind. A stale baseline of 5 under a
+   * 40-hour seeded burndown draws an Ideal line that contradicts the bars beside it, which is worse
+   * for a reviewer than no chart at all.
    */
   await db
-    .update(iterations)
-    .set({
-      totalTaskEstimateAtStart: '40',
-      totalTaskEstimateCapturedAt: new Date('2026-06-16T08:00:00Z'),
-    })
-    .where(eq(iterations.id, NXP_ITER_CURRENT_ID));
+    .delete(iterationTeamBaselines)
+    .where(eq(iterationTeamBaselines.iterationId, NXP_ITER_CURRENT_ID));
+  await db.insert(iterationTeamBaselines).values({
+    id: uuidv7(),
+    workspaceId: WORKSPACE_ID,
+    iterationId: NXP_ITER_CURRENT_ID,
+    teamId: TEAM_ALPHA_ID,
+    totalTaskEstimateAtStart: '40',
+    capturedAt: new Date('2026-06-16T08:00:00Z'),
+  });
 
   /**
    * Two series per day: All Teams (`teamId: null`) and Team Alpha's own.
@@ -1271,34 +1279,56 @@ async function seedReportHistory() {
     { date: '2026-07-29', accepted: '8', count: 3 },
   ];
 
+  /**
+   * Two series per day, as the burndown above does: All Teams (`teamId: null`, MEASURED) and Team
+   * Alpha's own. Alpha carries every item in this release, so the numbers coincide — which is what
+   * measuring each scope independently produces, and it is what gives the team-scoped burnup a
+   * series to sit beneath its own Ideal target below.
+   */
   await db
     .insert(releaseDailySnapshots)
     .values(
-      burnup.map((row) => ({
-        id: uuidv7(),
-        workspaceId: WORKSPACE_ID,
-        releaseId: NXP_RELEASE_1_ID,
-        teamId: null,
-        snapshotDate: row.date,
-        acceptedPoints: row.accepted,
-        acceptedCount: row.count,
-        plannedPoints: '13',
-        plannedCount: 4,
-        preliminaryPoints: '21',
-        preliminaryCount: 6,
-        capturedAt: new Date(`${row.date}T17:00:00Z`),
-        finalized: true,
-      })),
+      burnup.flatMap((row) =>
+        [null, TEAM_ALPHA_ID].map((teamId) => ({
+          id: uuidv7(),
+          workspaceId: WORKSPACE_ID,
+          releaseId: NXP_RELEASE_1_ID,
+          teamId,
+          snapshotDate: row.date,
+          acceptedPoints: row.accepted,
+          acceptedCount: row.count,
+          plannedPoints: '13',
+          plannedCount: 4,
+          preliminaryPoints: '21',
+          preliminaryCount: 6,
+          capturedAt: new Date(`${row.date}T17:00:00Z`),
+          finalized: true,
+        })),
+      ),
     )
     .onConflictDoNothing();
 
-  // The Ideal target the burnup climbs toward — the same capture-once column the snapshot job
-  // writes on a release's first snapshot day, set here because that day is in the past. Outright,
-  // for the same reason as the baseline above.
-  await db
-    .update(releases)
-    .set({ idealTargetPoints: '13', idealTargetCount: 4 })
-    .where(eq(releases.id, NXP_RELEASE_1_ID));
+  /**
+   * The Ideal target the burnup climbs toward, per scope, in `release_team_targets`.
+   *
+   * One row per scope the snapshots above carry, because this table's `team_id IS NULL` row is the
+   * MEASURED All Teams target and is never summed — unlike `iteration_team_baselines`. Alpha owns every
+   * item in this release, so both rows read 13 points / 4 items.
+   *
+   * Replaced outright, again because the seed owns this release and the job's own write is capture-once.
+   */
+  await db.delete(releaseTeamTargets).where(eq(releaseTeamTargets.releaseId, NXP_RELEASE_1_ID));
+  await db.insert(releaseTeamTargets).values(
+    [null, TEAM_ALPHA_ID].map((teamId) => ({
+      id: uuidv7(),
+      workspaceId: WORKSPACE_ID,
+      releaseId: NXP_RELEASE_1_ID,
+      teamId,
+      idealTargetPoints: '13',
+      idealTargetCount: 4,
+      capturedAt: new Date('2026-07-06T17:00:00Z'),
+    })),
+  );
 }
 
 /**

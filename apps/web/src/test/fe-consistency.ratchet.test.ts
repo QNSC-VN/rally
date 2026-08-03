@@ -36,7 +36,7 @@ const MAX_INLINE_STYLE = 182 // `style={{` in pages/features/entities/widgets (r
 const MAX_ARBITRARY_TEXT = 2 // `text-[` app-wide (only text-[0] + one navy placeholder rgba remain)
 const MAX_RAW_FONT_SIZE = 12 // raw Tailwind text-{xs,sm,base,lg,xl,2xl,3xl} in consumer layers; use the text-ui-* scale. Residual = deliberate display text (login hero, big numbers, entity-title inputs)
 const MAX_HARDCODED_TEXT = 15 // capitalized JSX text nodes in consumer layers (P4 fleet done; residual = enum <option> labels)
-const MAX_FILE_LINES = 1006 // largest single source file — capacity-planning/capacity-plan-detail-page.tsx
+const MAX_FILE_LINES = 961 // largest single source file — capacity-planning/capacity-plan-detail-page.tsx
 // Lowered from 1009: `backlog-page.tsx` held the ceiling and sat exactly on it, so it could not take
 // another line. Its column definitions moved to `pages/backlog/model/columns.ts` (the shape Iteration
 // Status already uses), taking the page from 1009 to 921 and handing the ceiling to capacity planning.

@@ -167,7 +167,9 @@ export function MoveToPlanModal({
                   onChange={() => setTargetId(candidate.id)}
                   ariaLabel={candidate.planKey ?? candidate.name}
                 />
-                <span className="font-medium text-primary-light">{candidate.planKey ?? EMPTY_VALUE}</span>
+                <span className="font-medium text-primary-light">
+                  {candidate.planKey ?? EMPTY_VALUE}
+                </span>
                 <span className="min-w-0 flex-1 truncate text-foreground">{candidate.name}</span>
                 {/* The release, because that is what makes two plans different — and the status,
                     because a published target is what the second button is for. */}

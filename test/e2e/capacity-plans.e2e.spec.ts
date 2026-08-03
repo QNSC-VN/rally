@@ -5,9 +5,8 @@
  *
  *   • `uq_capacity_plan_project_release` — one plan per release, which only a real index
  *     can enforce under a race; the service pre-check just makes the error friendly;
- *   • `ck_capacity_target_load_range` and `ck_capacity_non_negative` actually reject the
- *     values the DTO claims they do, so the DTO bounds are a convenience rather than the
- *     only defence;
+ *   • `ck_capacity_non_negative` actually rejects the values the DTO claims it does, so the
+ *     DTO bounds are a convenience rather than the only defence;
  *   • `capacity` distinguishes NULL ("not entered") from 0, which is the rule the whole
  *     summary and every later warning depends on.
  *
@@ -132,8 +131,6 @@ describe('capacity plans (e2e)', () => {
       expect(created.unit).toBe('points');
       expect(created.projectName).toBe('Capacity A');
       expect(created.releaseName).toBeTruthy();
-      // Defaults from the column, not the DTO.
-      expect(created.targetLoadPct).toBe(80);
       // No team yet, so no capacity has been entered — null, NOT zero.
       expect(created.teams).toEqual([]);
       expect(created.totalCapacity).toBeNull();
@@ -188,24 +185,6 @@ describe('capacity plans (e2e)', () => {
           unit: 'points',
         }),
       ).rejects.toMatchObject({ code: 'CAPACITY_PLAN_RELEASE_MISMATCH' });
-    });
-
-    it('rejects a target load outside the CHECK range at the DATABASE level', async () => {
-      const releaseId = await newRelease();
-      const direct = db.insert(capacityPlans).values({
-        workspaceId: WORKSPACE_ID,
-        projectId: projectAId,
-        releaseId,
-        name: 'Bad target',
-        planKey: 'CP-BAD',
-        unit: 'points',
-        targetLoadPct: 0,
-      });
-      await expect(direct).rejects.toThrow();
-      const err = await direct.catch((e: unknown) => e);
-      expect(JSON.stringify((err as { cause?: unknown }).cause ?? err)).toContain(
-        'ck_capacity_target_load_range',
-      );
     });
 
     it('refuses a caller without capacity:manage on the project', async () => {
@@ -406,12 +385,10 @@ describe('capacity plans (e2e)', () => {
 
       const updated = await capacity.updatePlan(admin, p.id, {
         name: 'After',
-        targetLoadPct: 95,
         plannedStartDate: '2026-08-01',
       });
 
       expect(updated.name).toBe('After');
-      expect(updated.targetLoadPct).toBe(95);
       expect(updated.plannedStartDate).toBe('2026-08-01');
       // Untouched by an update that never mentioned them.
       expect(updated.unit).toBe('points');

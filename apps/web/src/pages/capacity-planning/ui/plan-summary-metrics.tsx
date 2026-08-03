@@ -6,6 +6,7 @@ import { CapacityBreakdownPanel } from './capacity-breakdown-panel'
 
 import { BRAND } from '@/shared/config/brand'
 import { CAPACITY_SEGMENTS } from '@/shared/ui/composite-bar'
+import { WarningIndicator } from '@/shared/ui/warning-indicator'
 import { planTotals, pctOfCapacity } from '@/features/capacity-planning/plan-totals'
 import type { CapacityPlan } from '@/features/capacity-planning/api'
 
@@ -143,13 +144,20 @@ export function PlanAssignmentCounts({ plan }: { plan: CapacityPlan }) {
         assigned: totals.assignedItems,
         unassigned: totals.unassignedItems,
       })}
-      {/* A NON-ZERO unassigned count is coloured: it is the number that means work in this plan has
-          nowhere to go. Zero stays muted — there is nothing to act on. */}
-      {totals.unassignedItems > 0 && (
-        <span className="ml-1 font-semibold" style={{ color: BRAND.warning }}>
-          ⚠
-        </span>
-      )}
+      {/* A NON-ZERO unassigned count is flagged: it is the number that means work in this plan has
+          nowhere to go. Zero renders nothing — there is nothing to act on.
+
+          This was a bare Unicode `⚠` with no `role`, no `aria-label` and no `title`: visible
+          trouble that a screen reader could not see and a mouse user could not explain. */}
+      <WarningIndicator
+        labels={
+          totals.unassignedItems > 0
+            ? [t('summary.unassignedWarning', { count: totals.unassignedItems })]
+            : []
+        }
+        size={11}
+        className="ml-1 inline-flex"
+      />
     </span>
   )
 }
