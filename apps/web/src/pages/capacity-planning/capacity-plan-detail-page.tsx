@@ -43,7 +43,6 @@ import {
   type CapacityPlanItem,
   type CapacityPlanTeam,
 } from '@/features/capacity-planning/api'
-import { CAPACITY_STATUS_STYLE } from '@/features/capacity-planning/status-colors'
 import { usePlanItemActions } from '@/features/capacity-planning/use-plan-item-actions'
 import { usePlanLookups } from '@/features/capacity-planning/use-plan-lookups'
 import {
@@ -58,6 +57,7 @@ import {
   type TeamColKey,
 } from './model/columns'
 import { CapacityItemRow } from './ui/capacity-item-row'
+import { PlanHeaderStatus } from './ui/plan-header-status'
 import { ItemAllocationRow } from './ui/item-allocation-row'
 import { SortableItemRow } from './ui/sortable-item-row'
 import { PlanAssignmentCounts, PlanSummaryMetrics } from './ui/plan-summary-metrics'
@@ -67,16 +67,12 @@ import { TeamCapacityRail } from './ui/team-capacity-rail'
 import { AddFeaturesModal } from './ui/add-features-modal'
 import { AllocateFeatureModal } from './ui/allocate-feature-modal'
 import { MoveToPlanModal } from './ui/move-to-plan-modal'
-import { StatusBadge } from '@/shared/ui/status-badge'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { SelectionModal } from '@/shared/ui/selection-modal'
-import { CompositeBar } from '@/shared/ui/composite-bar'
-import { CapacityBarTooltip } from './ui/capacity-bar-tooltip'
-import { planTotals } from '@/features/capacity-planning/plan-totals'
 import { useRankPortfolioItem } from '@/features/portfolio/api'
 import { CapacityForecastModal } from './ui/capacity-forecast-modal'
 import { PublishPlanModal } from './ui/publish-plan-modal'
@@ -504,9 +500,6 @@ export function CapacityPlanDetailPage() {
 
   const unitLabel = t(`units.${plan.unit}`)
 
-  // The same totals the summary panel and the Breakdown overlay read, so the header bar cannot
-  // disagree with the numbers printed beside it.
-  const planWide = planTotals(plan)
   // Resolved from the plan on every render rather than held in state, so a refetch that
   // changes a team's capacity cannot leave the open modal showing a stale row.
   const forecastTeam = plan.teams.find((team) => team.teamId === forecastTeamId) ?? null
@@ -541,44 +534,7 @@ export function CapacityPlanDetailPage() {
             plan.name
           )
         }
-        status={
-          <div className="flex items-center gap-2">
-            {/* Same `StatusBadge` + feature-owned colour map as releases, iterations, milestones
-                and projects — a capacity plan's state should not be the one status in the app
-                rendered as bare text. */}
-            <StatusBadge style={CAPACITY_STATUS_STYLE[plan.status]} />
-            {/* Light-on-dark, NOT the page's muted greys: this bar is `bg-primary-dark`, where
-                `text-muted-foreground` on a subtle border is very nearly invisible. Same
-                `bg-white/10` + `text-white` treatment the bar's own controls use. */}
-            {plan.releaseName !== null && (
-              <span className="rounded-full bg-white/10 px-2 py-px text-ui-xs text-white">
-                {plan.releaseName}
-              </span>
-            )}
-            {/* The PLAN's own bar, in the header — Rally's position for it. The same `CompositeBar`
-                every team row draws, so the whole plan can be read as over or under before any row
-                is scanned, and the header bar cannot layer or colour differently from the rows it
-                summarises. */}
-            <div className="w-56 shrink-0">
-              <CompositeBar
-                onDark
-                complete={planWide.complete}
-                rollup={planWide.rollup}
-                estimated={planWide.estimated}
-                capacity={planWide.capacity}
-                targetLoadPct={plan.targetLoadPct}
-                tooltip={
-                  <CapacityBarTooltip
-                    complete={planWide.complete}
-                    rollup={planWide.rollup}
-                    estimated={planWide.estimated}
-                    capacity={planWide.capacity}
-                  />
-                }
-              />
-            </div>
-          </div>
-        }
+        status={<PlanHeaderStatus plan={plan} />}
         // No counts on the tabs: Rally does not badge them here, and the numbers are already on
         // the page — the team grid's row count and the summary panel's assigned/unassigned split
         // say the same thing without competing with the tab labels.
@@ -858,7 +814,6 @@ export function CapacityPlanDetailPage() {
                       planId={plan.id}
                       team={team}
                       unitLabel={unitLabel}
-                      targetLoadPct={plan.targetLoadPct}
                       canManage={canManage}
                       colStyleFor={colStyleFor}
                       gutter={null}

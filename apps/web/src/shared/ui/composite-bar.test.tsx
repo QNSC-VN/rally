@@ -93,26 +93,6 @@ describe('CompositeBar', () => {
     expect(glyph.getAttribute('aria-label')).toContain('Child work already exceeds the capacity')
   })
 
-  it('draws the target marker only with a real capacity and a sub-100 target', () => {
-    const withTarget = render(
-      <CompositeBar complete={0} rollup={1} estimated={1} capacity={100} targetLoadPct={80} />,
-    )
-    // The marker is positioned by `left`, not `width`, so it is the only such element.
-    expect(withTarget.container.querySelector('[style*="left: 80%"]')).not.toBeNull()
-
-    // 100% means "reserve no headroom" — there is nothing to mark.
-    const noTarget = render(
-      <CompositeBar complete={0} rollup={1} estimated={1} capacity={100} targetLoadPct={100} />,
-    )
-    expect(noTarget.container.querySelector('[style*="left: 100%"]')).toBeNull()
-
-    // No capacity means no baseline for a percentage marker either.
-    const noCapacity = render(
-      <CompositeBar complete={0} rollup={1} estimated={1} capacity={null} targetLoadPct={80} />,
-    )
-    expect(noCapacity.container.querySelector('[style*="left: 80%"]')).toBeNull()
-  })
-
   it('fills the HEADROOM with the capacity hatch, starting where the commitment ends', () => {
     // Rally's green tail. It begins at `estimated`, not at `rollup`: the commitment is what has
     // claimed the space, even where no child work exists yet.

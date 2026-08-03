@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle } from 'lucide-react'
 
-import { BRAND } from '@/shared/config/brand'
+import { WarningIndicator } from '@/shared/ui/warning-indicator'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import type { CapacityPlanTeam } from '@/features/capacity-planning/api'
 
@@ -90,16 +89,9 @@ export function TeamCapacityRail({
                 ) : (
                   team.metrics.capacity
                 )}
-                {labels.length > 0 && (
-                  <span
-                    role="img"
-                    aria-label={labels.join('. ')}
-                    title={labels.join('\n')}
-                    className="flex items-center"
-                  >
-                    <AlertTriangle size={11} style={{ color: BRAND.warning }} />
-                  </span>
-                )}
+                {/* Was an AMBER triangle for the very same team warnings the grid draws in red, so
+                    one rule looked like two severities depending on which panel it was read in. */}
+                <WarningIndicator labels={labels} size={11} />
               </span>
             </div>
           )

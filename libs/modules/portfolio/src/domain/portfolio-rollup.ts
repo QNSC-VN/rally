@@ -149,18 +149,22 @@ export function defaultAllocationEstimate(
  * The first three mirror the errors Rally's Capacity Planning page raises by name:
  * "Feature Missing Estimate Error", "Feature Rollup Exceeds Estimate Error" and "Team
  * Estimate Exceeds Team Capacity", plus the missing-team-capacity case that Rally
- * describes as cascading into the others. `rollup_exceeds_capacity` and
- * `load_above_target` are ours: the first because a team's live children can outgrow the
- * ceiling even when the commitment did not, the second because Rally's own guidance is to
- * leave roughly 20% for unplanned work and `capacity_plans.target_load_pct` records it.
+ * describes as cascading into the others. `rollup_exceeds_capacity` is ours, because a
+ * team's live children can outgrow the ceiling even when the commitment did not.
+ *
+ * There was a sixth, `load_above_target`, fired when committed demand passed
+ * `capacity_plans.target_load_pct` (default 80) while still inside capacity. It is gone with the
+ * column: the BA's advisory set is these comparisons plus the missing-estimate rule, and nothing in
+ * it rations headroom. Worse, every surface drew it with the SAME red triangle as a real breach, so
+ * a plan at 85% of capacity — healthy, and the state Rally's own guidance recommends — was
+ * indistinguishable from one that had blown through its ceiling.
  */
 export type CapacityWarning =
   | 'feature_missing_estimate'
   | 'team_missing_capacity'
   | 'rollup_exceeds_estimated'
   | 'rollup_exceeds_capacity'
-  | 'estimated_exceeds_capacity'
-  | 'load_above_target';
+  | 'estimated_exceeds_capacity';
 
 export interface CapacityWarningInput {
   /**
@@ -180,12 +184,6 @@ export interface CapacityWarningInput {
   capacity: number | null;
   /** Which tier produced the Feature's estimate. Only read for `kind: 'feature'`. */
   tier?: EstimateTier;
-  /**
-   * Advisory ceiling as a percentage of capacity, below 100. Rally's guidance is to
-   * leave roughly 20% for unplanned work, so a team at 95% warrants a warning even
-   * though it is not over capacity. Omit to disable that check.
-   */
-  targetLoadPct?: number | null;
 }
 
 /** Evaluate the warning rules for one row. */
@@ -209,19 +207,11 @@ export function computeCapacityWarnings(input: CapacityWarningInput): CapacityWa
   // Children have outgrown the commitment: the plan under-committed for this work.
   if (input.rollup > input.estimated) warnings.push('rollup_exceeds_estimated');
 
+  // Strictly OVER the ceiling, both of them. A row that exactly fills its capacity is planned to
+  // the line, not in trouble, and nothing warns until it is past it.
   if (input.capacity !== null && input.capacity > 0) {
     if (input.rollup > input.capacity) warnings.push('rollup_exceeds_capacity');
     if (input.estimated > input.capacity) warnings.push('estimated_exceeds_capacity');
-
-    // Only meaningful below the hard limit — above capacity the two rules above
-    // already fired, and a second warning saying the same thing is noise.
-    const target = input.targetLoadPct;
-    if (target != null && target > 0 && target < 100) {
-      const ceiling = input.capacity * (target / 100);
-      if (input.estimated > ceiling && input.estimated <= input.capacity) {
-        warnings.push('load_above_target');
-      }
-    }
   }
 
   return warnings;

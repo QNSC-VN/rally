@@ -295,33 +295,35 @@ describe('computeCapacityWarnings', () => {
     });
   });
 
-  describe('target load — Rally advises leaving ~20% spare', () => {
-    it('warns above the target but under capacity', () => {
-      // 95 of 100 with an 80% target: not over capacity, but no room for a defect.
-      expect(team({ estimated: 95, targetLoadPct: 80 })).toContain('load_above_target');
+  describe('inside capacity is not a warning', () => {
+    /**
+     * There used to be a `load_above_target` rule: committed demand past
+     * `capacity_plans.target_load_pct` (default 80) while still under capacity. Nothing in the BA's
+     * advisory set rations headroom, and every surface drew it with the SAME red triangle as a real
+     * breach — so a team at 85%, healthy and exactly where Rally's guidance suggests, looked
+     * identical to one that had blown its ceiling.
+     */
+    it('says nothing about a team at 85% of capacity', () => {
+      expect(team({ rollup: 85, estimated: 85, capacity: 100 })).toEqual([]);
     });
 
-    it('stays silent at or below the target', () => {
-      expect(team({ estimated: 80, targetLoadPct: 80 })).toEqual([]);
+    it('says nothing about a team planned exactly to its ceiling', () => {
+      // Strictly-greater comparisons: 100 of 100 is planned to the line, not over it.
+      expect(team({ rollup: 100, estimated: 100, capacity: 100 })).toEqual([]);
     });
 
-    it('does not add the target warning once genuinely over capacity', () => {
-      // The over-capacity rule already fired; repeating the point is noise.
-      const w = team({ estimated: 130, targetLoadPct: 80 });
-      expect(w).toContain('estimated_exceeds_capacity');
-      expect(w).not.toContain('load_above_target');
-    });
-
-    it('is disabled by a target of 100 or an absent target', () => {
-      expect(team({ estimated: 95, targetLoadPct: 100 })).toEqual([]);
-      expect(team({ estimated: 95 })).toEqual([]);
+    it('still warns once genuinely over capacity', () => {
+      expect(team({ rollup: 130, estimated: 130, capacity: 100 })).toEqual([
+        'rollup_exceeds_capacity',
+        'estimated_exceeds_capacity',
+      ]);
     });
   });
 
   it('treats a zero capacity as missing rather than as a ceiling of zero', () => {
     // Dividing a target by zero is meaningless, and a planner who typed 0 has not yet
     // stated a real ceiling — Rally's missing-capacity error is the honest report.
-    expect(team({ rollup: 5, estimated: 5, capacity: 0, targetLoadPct: 80 })).toEqual([
+    expect(team({ rollup: 5, estimated: 5, capacity: 0 })).toEqual([
       'team_missing_capacity',
     ]);
   });

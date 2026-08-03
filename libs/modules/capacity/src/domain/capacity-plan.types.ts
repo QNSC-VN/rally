@@ -35,12 +35,6 @@ export interface CapacityPlan {
   unit: CapacityPlanUnit;
   plannedStartDate: string | null;
   plannedEndDate: string | null;
-  /**
-   * Advisory load ceiling below 100%. Rally's guidance is to leave headroom for unplanned
-   * work, so a team at 95% warrants a warning even though it is not over capacity. Never
-   * blocks an action.
-   */
-  targetLoadPct: number;
   publishedAt: Date | null;
   publishedBy: string | null;
   createdAt: Date;
@@ -91,7 +85,6 @@ export interface CreateCapacityPlanInput {
   unit: CapacityPlanUnit;
   plannedStartDate?: string | null;
   plannedEndDate?: string | null;
-  targetLoadPct?: number;
 }
 
 /**
@@ -105,5 +98,4 @@ export interface UpdateCapacityPlanInput {
   name?: string;
   plannedStartDate?: string | null;
   plannedEndDate?: string | null;
-  targetLoadPct?: number;
 }

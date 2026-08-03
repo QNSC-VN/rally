@@ -5,6 +5,7 @@ import { BRAND } from '@/shared/config/brand'
 import { CAPACITY_SEGMENTS, CompositeBar } from '@/shared/ui/composite-bar'
 import { planTotals, pctOfCapacity } from '@/features/capacity-planning/plan-totals'
 import type { CapacityPlan } from '@/features/capacity-planning/api'
+import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 
 /**
  * Rally's Breakdown panel — `By Story Points`.
@@ -32,6 +33,7 @@ import type { CapacityPlan } from '@/features/capacity-planning/api'
  */
 export function CapacityBreakdownPanel({ plan }: { plan: CapacityPlan }) {
   const { t } = useTranslation('capacity')
+  const warningText = useCapacityWarningText()
   const totals = planTotals(plan)
 
   const scale =
@@ -90,7 +92,9 @@ export function CapacityBreakdownPanel({ plan }: { plan: CapacityPlan }) {
           rollup={totals.rollup}
           estimated={totals.estimated}
           capacity={totals.capacity}
-          targetLoadPct={plan.targetLoadPct}
+          /* Same plan-level warnings the header bar names. The overlay is where a planner comes to
+             read the totals apart, so a breach shown there and not here would be the worse gap. */
+          warningLabels={warningText(plan.warnings)}
         />
       </div>
 

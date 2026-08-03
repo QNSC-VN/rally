@@ -6,6 +6,7 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { MetricValue } from '@/shared/ui/metric-value'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
+import { WarningIndicator } from '@/shared/ui/warning-indicator'
 import { BRAND } from '@/shared/config/brand'
 import { cn } from '@/shared/lib/utils'
 import type { CapacityPlanItem, CapacityWarning } from '@/features/capacity-planning/api'
@@ -238,22 +239,14 @@ export function CapacityItemRow({
         style={colStyleFor('rollup', { flexShrink: 0 })}
         className="flex items-center justify-end gap-1 px-2"
       >
-        {rollupWarning !== null && (
-          <span role="img" aria-label={rollupWarning} title={rollupWarning} className="flex">
-            <AlertTriangle size={12} style={{ color: BRAND.danger }} />
-          </span>
-        )}
+        <WarningIndicator labels={rollupWarning === null ? [] : [rollupWarning]} />
         <MetricValue value={item.rollup} pct={null} />
       </div>
       <div
         style={colStyleFor('estimated', { flexShrink: 0 })}
         className="flex items-center justify-end gap-1.5 px-2"
       >
-        {estimateWarning !== null && (
-          <span role="img" aria-label={estimateWarning} title={estimateWarning} className="flex">
-            <AlertTriangle size={12} style={{ color: BRAND.danger }} />
-          </span>
-        )}
+        <WarningIndicator labels={estimateWarning === null ? [] : [estimateWarning]} />
         {/* The breakdown makes this the SAME three-row tooltip a team's sub-table shows, rather than a
             bare glyph: the tab can now say which tier produced the number and what the others were. */}
         <EstimateTierIcon tier={item.tier} breakdown={item.estimateBreakdown} />

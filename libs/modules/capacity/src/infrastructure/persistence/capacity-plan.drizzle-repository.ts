@@ -117,7 +117,6 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
         unit: input.unit,
         plannedStartDate: input.plannedStartDate ?? null,
         plannedEndDate: input.plannedEndDate ?? null,
-        ...(input.targetLoadPct === undefined ? {} : { targetLoadPct: input.targetLoadPct }),
       })
       .returning();
     return this.mapPlan(rows[0]);
@@ -136,7 +135,6 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
     if (input.name !== undefined) set.name = input.name;
     if (input.plannedStartDate !== undefined) set.plannedStartDate = input.plannedStartDate;
     if (input.plannedEndDate !== undefined) set.plannedEndDate = input.plannedEndDate;
-    if (input.targetLoadPct !== undefined) set.targetLoadPct = input.targetLoadPct;
 
     const rows = await exec
       .update(capacityPlans)
@@ -833,7 +831,6 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       unit: row.unit,
       plannedStartDate: row.plannedStartDate,
       plannedEndDate: row.plannedEndDate,
-      targetLoadPct: row.targetLoadPct,
       publishedAt: row.publishedAt,
       publishedBy: row.publishedBy,
       createdAt: row.createdAt,

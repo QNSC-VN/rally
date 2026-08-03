@@ -4588,8 +4588,6 @@ export interface components {
       plannedStartDate: string | null
       /** @description YYYY-MM-DD */
       plannedEndDate: string | null
-      /** @description Advisory load ceiling, 1–99 */
-      targetLoadPct: number
       publishedAt: string | null
       publishedBy: string | null
       /** Format: date-time */
@@ -4614,7 +4612,6 @@ export interface components {
             | 'rollup_exceeds_estimated'
             | 'rollup_exceeds_capacity'
             | 'estimated_exceeds_capacity'
-            | 'load_above_target'
           )[]
         }
       }[]
@@ -4654,7 +4651,6 @@ export interface components {
           | 'rollup_exceeds_estimated'
           | 'rollup_exceeds_capacity'
           | 'estimated_exceeds_capacity'
-          | 'load_above_target'
         )[]
         /** @description All three candidates behind Estimated, for the estimate-source tooltip */
         estimateBreakdown: {
@@ -4727,11 +4723,18 @@ export interface components {
             | 'rollup_exceeds_estimated'
             | 'rollup_exceeds_capacity'
             | 'estimated_exceeds_capacity'
-            | 'load_above_target'
           )[]
         }
       }[]
       unallocated: number
+      /** @description The plan's own advisory warnings */
+      warnings: (
+        | 'feature_missing_estimate'
+        | 'team_missing_capacity'
+        | 'rollup_exceeds_estimated'
+        | 'rollup_exceeds_capacity'
+        | 'estimated_exceeds_capacity'
+      )[]
     }
     CreateCapacityPlanDto: {
       /** Format: uuid */
@@ -4743,13 +4746,11 @@ export interface components {
       unit: 'points' | 'count'
       plannedStartDate?: string | null
       plannedEndDate?: string | null
-      targetLoadPct?: number
     }
     UpdateCapacityPlanDto: {
       name?: string
       plannedStartDate?: string | null
       plannedEndDate?: string | null
-      targetLoadPct?: number
     }
     AddCapacityTeamDto: {
       /** Format: uuid */
@@ -4785,8 +4786,6 @@ export interface components {
         plannedStartDate: string | null
         /** @description YYYY-MM-DD */
         plannedEndDate: string | null
-        /** @description Advisory load ceiling, 1–99 */
-        targetLoadPct: number
         publishedAt: string | null
         publishedBy: string | null
         /** Format: date-time */
@@ -4811,7 +4810,6 @@ export interface components {
               | 'rollup_exceeds_estimated'
               | 'rollup_exceeds_capacity'
               | 'estimated_exceeds_capacity'
-              | 'load_above_target'
             )[]
           }
         }[]
@@ -4851,7 +4849,6 @@ export interface components {
             | 'rollup_exceeds_estimated'
             | 'rollup_exceeds_capacity'
             | 'estimated_exceeds_capacity'
-            | 'load_above_target'
           )[]
           /** @description All three candidates behind Estimated, for the estimate-source tooltip */
           estimateBreakdown: {
@@ -4924,11 +4921,18 @@ export interface components {
               | 'rollup_exceeds_estimated'
               | 'rollup_exceeds_capacity'
               | 'estimated_exceeds_capacity'
-              | 'load_above_target'
             )[]
           }
         }[]
         unallocated: number
+        /** @description The plan's own advisory warnings */
+        warnings: (
+          | 'feature_missing_estimate'
+          | 'team_missing_capacity'
+          | 'rollup_exceeds_estimated'
+          | 'rollup_exceeds_capacity'
+          | 'estimated_exceeds_capacity'
+        )[]
       }
       /** @description False for Rally's "Publish Without Updating Fields" */
       fieldsUpdated: boolean
@@ -4971,8 +4975,6 @@ export interface components {
         plannedStartDate: string | null
         /** @description YYYY-MM-DD */
         plannedEndDate: string | null
-        /** @description Advisory load ceiling, 1–99 */
-        targetLoadPct: number
         publishedAt: string | null
         publishedBy: string | null
         /** Format: date-time */
@@ -4997,7 +4999,6 @@ export interface components {
               | 'rollup_exceeds_estimated'
               | 'rollup_exceeds_capacity'
               | 'estimated_exceeds_capacity'
-              | 'load_above_target'
             )[]
           }
         }[]
@@ -5037,7 +5038,6 @@ export interface components {
             | 'rollup_exceeds_estimated'
             | 'rollup_exceeds_capacity'
             | 'estimated_exceeds_capacity'
-            | 'load_above_target'
           )[]
           /** @description All three candidates behind Estimated, for the estimate-source tooltip */
           estimateBreakdown: {
@@ -5110,11 +5110,18 @@ export interface components {
               | 'rollup_exceeds_estimated'
               | 'rollup_exceeds_capacity'
               | 'estimated_exceeds_capacity'
-              | 'load_above_target'
             )[]
           }
         }[]
         unallocated: number
+        /** @description The plan's own advisory warnings */
+        warnings: (
+          | 'feature_missing_estimate'
+          | 'team_missing_capacity'
+          | 'rollup_exceeds_estimated'
+          | 'rollup_exceeds_capacity'
+          | 'estimated_exceeds_capacity'
+        )[]
       }
       /** @constant */
       fieldsRolledBack: false
@@ -5195,8 +5202,6 @@ export interface components {
         plannedStartDate: string | null
         /** @description YYYY-MM-DD */
         plannedEndDate: string | null
-        /** @description Advisory load ceiling, 1–99 */
-        targetLoadPct: number
         publishedAt: string | null
         publishedBy: string | null
         /** Format: date-time */
@@ -5221,7 +5226,6 @@ export interface components {
               | 'rollup_exceeds_estimated'
               | 'rollup_exceeds_capacity'
               | 'estimated_exceeds_capacity'
-              | 'load_above_target'
             )[]
           }
         }[]
@@ -5261,7 +5265,6 @@ export interface components {
             | 'rollup_exceeds_estimated'
             | 'rollup_exceeds_capacity'
             | 'estimated_exceeds_capacity'
-            | 'load_above_target'
           )[]
           /** @description All three candidates behind Estimated, for the estimate-source tooltip */
           estimateBreakdown: {
@@ -5334,11 +5337,18 @@ export interface components {
               | 'rollup_exceeds_estimated'
               | 'rollup_exceeds_capacity'
               | 'estimated_exceeds_capacity'
-              | 'load_above_target'
             )[]
           }
         }[]
         unallocated: number
+        /** @description The plan's own advisory warnings */
+        warnings: (
+          | 'feature_missing_estimate'
+          | 'team_missing_capacity'
+          | 'rollup_exceeds_estimated'
+          | 'rollup_exceeds_capacity'
+          | 'estimated_exceeds_capacity'
+        )[]
       }
       /** Format: uuid */
       targetPlanId: string
