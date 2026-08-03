@@ -14,10 +14,13 @@ packages:
 overrides:
   fastify: "5.10.0"
   "esbuild@<0.25.0": ">=0.25.0"
-  # GHSA-mh99-v99m-4gvg — HIGH DoS (unbounded expansion OOM), vulnerable <=5.0.7,
-  # fixed 5.0.8. The range spans every published major, so force the whole tree to
-  # 5.0.8 (leaf util; the tree already accepted a forced 5.x across majors).
-  "brace-expansion": "5.0.8"
+  # GHSA-rgw5-rvv9-x895 — HIGH (CVSS 7.5) DoS via unbounded intermediate arrays,
+  # vulnerable <5.0.9, fixed 5.0.9. It explicitly BYPASSES the CVE-2026-14257
+  # mitigation, which is what the previous pin here was for (GHSA-mh99-v99m-4gvg,
+  # fixed 5.0.8) — so 5.0.8 is no longer a safe floor, not merely an older one.
+  # The range spans every published major, so force the whole tree to 5.0.9 (leaf
+  # util; the tree already accepted a forced 5.x across majors).
+  "brace-expansion": "5.0.9"
   "js-yaml@4": "^4.3.0"
   # GHSA-pm4m-ph32-ghv5 — js-yaml 5.x, fixed in 5.2.2. Transitive via cosmiconfig
   # (@nestjs/cli, commitlint) + @nestjs/swagger. Newly published advisory that
