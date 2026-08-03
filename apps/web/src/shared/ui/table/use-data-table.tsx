@@ -113,6 +113,26 @@ export function useDataTable<Row, Ctx, K extends string>(
     [columns],
   )
 
+  /**
+   * The per-column style map — the ONE place a grid gets its column sizing.
+   *
+   * `styleFor` derives everything from the {@link ColumnSpec}: a `grow` column becomes
+   * flexGrow/flexShrink/flexBasis with a `minWidth` floor and no ceiling, and every other column
+   * is pinned to its (possibly resized) width.
+   *
+   * Pages must NOT rebuild this map with `styleFor(key, { flex: 1, … })`, and the two branches
+   * fail differently, which is what made it dangerous:
+   *
+   *   • on a FIXED column the base is DISCARDED — `flex` is overwritten outright — so five pages
+   *     carried a block that did nothing but still had to be kept in step;
+   *   • on a GROW column the base SURVIVES beside the long-hands, so React applies both, warns
+   *     ("Updating a style property during rerender (flex) when a conflicting property is set")
+   *     and the column loses its sizing.
+   *
+   * A page marking a column `grow: true` therefore silently converted the first case into the
+   * second. Declare `grow` on the column and spread this map; pass no base.
+   * Pinned by `col-styles.test.ts`.
+   */
   const colStyles = useMemo<ColStyleMap<K>>(
     () => Object.fromEntries(columns.map((c) => [c.key, styleFor(c.key)])) as ColStyleMap<K>,
     [columns, styleFor],

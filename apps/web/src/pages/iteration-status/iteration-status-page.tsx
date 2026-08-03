@@ -95,7 +95,7 @@ export function IterationStatusPage() {
   const table = useDataTable<unknown, unknown, ColKey>(ITERATION_STATUS_COLUMNS, {
     storageKey: STORAGE_KEYS.ITERATION_STATUS_COLUMNS,
   })
-  const { startResize, order, hidden, toggleVisible, reorder, styleFor } = table
+  const { startResize, order, hidden, toggleVisible, reorder } = table
 
   useEffect(() => {
     if (projectId) {
@@ -361,30 +361,12 @@ export function IterationStatusPage() {
           }
         : { value: String(metrics.daysLeft), label: `of ${tDays} days left`, color: BRAND.warning }
 
-  const colStyles = useMemo(
-    () => ({
-      rank: styleFor('rank', { flexShrink: 0 }),
-      id: styleFor('id', { flexShrink: 0 }),
-      name: styleFor('name', { flex: 1, minWidth: 150 }),
-      feature: styleFor('feature', { flexShrink: 0 }),
-      iteration: styleFor('iteration', { flexShrink: 0 }),
-      state: styleFor('state', { flexShrink: 0 }),
-      flowState: styleFor('flowState', { flexShrink: 0 }),
-      block: styleFor('block', { flexShrink: 0 }),
-      blockedReason: styleFor('blockedReason', { flexShrink: 0 }),
-      planEstimate: styleFor('planEstimate', { flexShrink: 0 }),
-      taskEstimate: styleFor('taskEstimate', { flexShrink: 0 }),
-      toDo: styleFor('toDo', { flexShrink: 0 }),
-      tasksPct: styleFor('tasksPct', { flexShrink: 0 }),
-      actual: styleFor('actual', { flexShrink: 0 }),
-      owner: styleFor('owner', { flexShrink: 0 }),
-      defects: styleFor('defects', { flexShrink: 0 }),
-      defectStatus: styleFor('defectStatus', { flexShrink: 0 }),
-      milestones: styleFor('milestones', { flexShrink: 0 }),
-      devOwner: styleFor('devOwner', { flexShrink: 0 }),
-    }),
-    [styleFor],
-  )
+  // Column sizing comes straight from the shared engine — see `useDataTable().colStyles`.
+  //
+  // This used to name all nineteen columns by hand, so every column added to
+  // ITERATION_STATUS_COLUMNS needed a matching line here or it rendered unsized. The bases were
+  // discarded anyway: `styleFor`'s fixed-width branch overwrites `flex` outright.
+  const colStyles = table.colStyles
 
   // ── Empty / guard states ──────────────────────────────────────────────
   if (!projectId) {

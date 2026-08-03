@@ -6,7 +6,7 @@
  * Iteration selector reuses the same pattern as Iteration Status.
  */
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useMemo, useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronRight, Inbox } from 'lucide-react'
@@ -130,17 +130,13 @@ export function TeamStatusPage() {
     storageKey: STORAGE_KEYS.TEAM_STATUS_COLUMNS,
   })
 
-  // The name column grows to fill; all others are width-pinned by the engine.
-  const colStyles = useMemo(
-    () =>
-      Object.fromEntries(
-        TEAM_STATUS_COLUMNS.map((c) => [
-          c.key,
-          table.styleFor(c.key, c.key === 'name' ? { flex: 1, minWidth: 150 } : { flexShrink: 0 }),
-        ]),
-      ) as Record<ColKey, React.CSSProperties>,
-    [table],
-  )
+  // Column sizing comes straight from the shared engine — see `useDataTable().colStyles`.
+  //
+  // This used to rebuild the map with `{ flex: 1, minWidth: 150 }` on Name, under a comment
+  // saying that column grew to fill. It never did: `styleFor`'s fixed-width branch overwrites
+  // `flex` outright, and `name` is not declared `grow`, so the base was discarded. Mark the
+  // column `grow: true` in TEAM_STATUS_COLUMNS if that behaviour is actually wanted.
+  const colStyles = table.colStyles
 
   const { data: iterations = [] } = useIterations(projectId)
   const { data: members = [] } = useProjectMembers(projectId)

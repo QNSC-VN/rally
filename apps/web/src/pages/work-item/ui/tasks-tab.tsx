@@ -95,16 +95,9 @@ export function TasksTab({
     storageKey: STORAGE_KEYS.WORK_ITEM_TASKS_COLUMNS,
     leadingWidth: 48,
   })
-  const colStyles = useMemo(
-    () =>
-      Object.fromEntries(
-        TASK_COLUMNS.map((c) => [
-          c.key,
-          table.styleFor(c.key, c.key === 'name' ? { flex: 1, minWidth: 150 } : { flexShrink: 0 }),
-        ]),
-      ) as Record<TaskColKey, CSSProperties>,
-    [table],
-  )
+  // Column sizing comes straight from the shared engine — see `useDataTable().colStyles`. The
+  // `{ flex: 1, minWidth }` base this used to pass was discarded by `styleFor` in every case.
+  const colStyles = table.colStyles
 
   const teamName = (id?: string | null) =>
     id ? (teams.find((team) => team.id === id)?.name ?? '--') : '--'
