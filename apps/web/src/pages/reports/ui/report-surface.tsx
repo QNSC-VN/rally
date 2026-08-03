@@ -28,6 +28,7 @@ export function ReportSurface({
   children,
   /** Charts need the card's padding; tables render their own edge-to-edge frame. */
   padBody = false,
+  error,
   loading = false,
 }: {
   title: ReactNode
@@ -39,6 +40,15 @@ export function ReportSurface({
   strip?: ReactNode
   children: ReactNode
   padBody?: boolean
+  /**
+   * Rendered in place of the body when the query failed.
+   *
+   * This shell had no error slot at all, so every report handled failure itself somewhere BELOW the
+   * strip — which is why a failed request could leave four `0h` cards sitting above an error message.
+   * A report that passes this must also render its `strip` in an absent state; the two go together,
+   * because the strip is the caller's node and this component cannot reach inside it.
+   */
+  error?: ReactNode
   /**
    * Swap the BODY for a skeleton while keeping the header, controls and strip mounted.
    * The chart reports used to early-return a bare `<SkeletonList>` instead, so switching
@@ -66,7 +76,7 @@ export function ReportSurface({
       {strip}
 
       <div className={`flex min-h-0 flex-1 flex-col ${padBody ? 'p-4' : ''}`}>
-        {loading ? <SkeletonList rows={6} cols={3} /> : children}
+        {error ?? (loading ? <SkeletonList rows={6} cols={3} /> : children)}
       </div>
     </div>
   )

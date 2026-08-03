@@ -20,6 +20,7 @@ import { useReleaseTracking, type ChartUnit, type ReleaseBucket } from '@/featur
 import { reportScopeLabel } from '@/features/reporting/scope'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { NativeSelect } from '@/shared/ui/native-select'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { PageHeader } from '@/shared/ui/page-header'
 import { TimeboxPicker } from '@/shared/ui/timebox-picker'
 
@@ -166,7 +167,10 @@ export function ReleaseTrackingPage() {
                   }`}
                 >
                   <span className="block text-xl font-semibold text-foreground tabular-nums">
-                    {summary?.[key] ?? 0}
+                    {/* `--`, not `0`. `data` is undefined while the request is in flight and after
+                        it fails, and three large zeros beside the grid's error state read as "this
+                        release has no Features" — a data conclusion drawn from a network fault. */}
+                    {summary ? summary[key] : EMPTY_VALUE}
                   </span>
                   <span className="mt-1 block text-ui-xs font-semibold text-muted-foreground">
                     {t(`summary.${key}`)}
@@ -185,7 +189,7 @@ export function ReleaseTrackingPage() {
             >
               {BUCKETS.map((key) => (
                 <option key={key} value={key}>
-                  {`${t(`summary.${key}`)} (${summary?.[key] ?? 0})`}
+                  {`${t(`summary.${key}`)} (${summary ? summary[key] : EMPTY_VALUE})`}
                 </option>
               ))}
             </NativeSelect>
