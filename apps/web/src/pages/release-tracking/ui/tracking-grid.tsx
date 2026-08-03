@@ -22,7 +22,7 @@ import { CellLink } from '@/shared/ui/cell-link'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { RatioMeter } from '@/shared/ui/ratio-meter'
-import { SearchInput } from '@/shared/ui/search-input'
+import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
 
 import { IssuesPanel } from './issues-panel'
@@ -226,14 +226,21 @@ export function TrackingGrid({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-2 flex items-center gap-2">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder={t('searchPlaceholder')}
-          className="max-w-[280px]"
-        />
-      </div>
+      {/* SEARCH ONLY, through the shared toolbar every other grid uses — this was a bare
+          `SearchInput` in a hand-rolled flex row, which is the same drift the Portfolio children
+          tabs had. No Filters and no Add New, deliberately: RT §7 puts Project/Team in the global
+          context and RT-AC-02 requires that "no duplicate page-level Project/Team filter exists",
+          and the bucket selector is part of the page header rather than the grid. No Show Fields
+          either — §5 specifies only that "columns are horizontally resizable". */}
+      <PageToolbar
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: t('searchPlaceholder'),
+          ariaLabel: t('searchPlaceholder'),
+          width: 280,
+        }}
+      />
       <DataTableFrame<ColKey>
         header={table.headerProps}
         loading={isLoading && !report}

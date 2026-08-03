@@ -546,7 +546,7 @@ function ChildRow({
             value={child.releaseId ?? ''}
             readOnly={!canEdit}
             ariaLabel={t('detail.children.editRelease', { key: child.itemKey })}
-            placeholder="—"
+            placeholder={EMPTY_VALUE}
             options={[
               { value: '', label: EMPTY_VALUE },
               ...releases.map((r) => ({
