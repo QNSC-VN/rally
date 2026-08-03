@@ -4,8 +4,7 @@ import { Check, Trophy, Star, Users } from 'lucide-react'
 import { Tooltip } from '@/shared/ui/tooltip'
 
 import { BRAND } from '@/shared/config/brand'
-import { type AllocationSource, type EstimateTier } from '@/features/capacity-planning/api'
-import { EMPTY_VALUE } from '@/shared/lib/utils'
+import { type EstimateTier } from '@/features/capacity-planning/api'
 
 /**
  * Which tier a Feature's Estimated figure came from.
@@ -71,101 +70,69 @@ export interface EstimateBreakdown {
 }
 
 /**
- * Where ONE allocation row's committed value came from — §185-186.
+ * Rally's own placeholder inside this panel is an EM DASH, not the app's `--`.
  *
- * Distinct from {@link EstimateTierIcon}, and the distinction is the point of migration 0101. A tier
- * answers "which of three candidates produced this Feature's Estimated figure", which is a question
- * about a FEATURE. An allocation row no longer resolves anything: it holds a fixed number, and the
- * only thing left to say about it is whether a planner typed it or it was copied from the Feature's
- * forecast at allocation time.
- *
- * The panel names both top-down candidates as they stand NOW, which is what makes a stale copy
- * visible: a `Feature Estimate` row committing 5 beside a Refined forecast of 21 is a plan that was
- * baselined before the re-forecast, and seeing that gap is how a planner knows to re-copy.
+ * The app unified on `--` for absent values and this is the one deliberate exception: the panel is a
+ * replica of a vendor screenshot, matched row for row, and the dash is part of what is being matched. It
+ * is a fixed label in one tooltip rather than a data cell, so it does not reopen the placeholder rule —
+ * do not "fix" it back.
  */
-export function AllocationSourceIcon({
-  source,
-  value,
-  breakdown,
-}: {
-  source: AllocationSource
-  /** The row's own committed value, so the panel can show it against the two forecasts. */
-  value: number
-  breakdown: { refined: number | null; preliminary: number | null }
-}) {
-  const { t } = useTranslation('capacity')
-  const Icon = source === 'manual' ? Users : Star
-  const style = source === 'manual' ? TIER_STYLE.allocated : TIER_STYLE.refined
-  const rows = [
-    { key: 'committed' as const, value, RowIcon: Icon, inForce: true },
-    { key: 'refined' as const, value: breakdown.refined, RowIcon: Star, inForce: false },
-    { key: 'preliminary' as const, value: breakdown.preliminary, RowIcon: Trophy, inForce: false },
-  ]
-  const label = `${t(`sources.${source}`)}: ${rows
-    .map((r) => `${t(`sources.rows.${r.key}`)} ${r.value ?? EMPTY_VALUE}`)
-    .join(', ')}`
-
-  return (
-    <Tooltip
-      side="left"
-      delayDuration={150}
-      content={
-        <span className="block w-44">
-          <span className="mb-1 block font-semibold">{t(`sources.${source}`)}</span>
-          {rows.map(({ key, value: rowValue, RowIcon, inForce }) => (
-            <span key={key} className="flex items-center gap-1.5 py-px">
-              <RowIcon size={11} className={inForce ? '' : 'opacity-40'} />
-              <span className={inForce ? 'flex-1' : 'flex-1 opacity-40'}>
-                {t(`sources.rows.${key}`)}
-              </span>
-              <span className={inForce ? 'tabular-nums' : 'tabular-nums opacity-40'}>
-                {rowValue ?? EMPTY_VALUE}
-              </span>
-              <Check
-                size={11}
-                className={inForce ? '' : 'invisible'}
-                style={{ color: BRAND.success }}
-              />
-            </span>
-          ))}
-        </span>
-      }
-    >
-      <span role="img" aria-label={label} className="flex items-center">
-        <Icon size={13} style={{ color: style.color }} />
-      </span>
-    </Tooltip>
-  )
-}
+const RALLY_ABSENT = '—'
 
 export function EstimateTierIcon({
   tier,
   breakdown,
+  sourceNote,
 }: {
   tier: EstimateTier
   /** All three candidates. Omit to render the glyph alone (no panel to show). */
   breakdown?: EstimateBreakdown
+  /**
+   * How the row's stored value was produced (`Manual` / `Feature Estimate`), for the accessible name.
+   *
+   * Not rendered in the panel: Rally's has exactly three rows and a heading, and §185-186's source is a
+   * finer distinction than Rally draws. It still has to be reachable, so it goes into the glyph's name.
+   */
+  sourceNote?: string
 }) {
   const { t } = useTranslation('capacity')
   if (tier === 'none') return null
 
   const Icon = TIER_ICON[tier]
   const style = TIER_STYLE[tier]
-  const rows = (['allocated', 'refined', 'preliminary'] as const).map((key) => ({
-    key,
-    value: breakdown?.[key] ?? null,
-    RowIcon: TIER_ICON[key],
-    inForce: key === tier,
-  }))
+  /**
+   * A FORECAST of zero reads as the em dash, a committed zero reads as `0`.
+   *
+   * `refined_estimate` is NOT NULL DEFAULT 0 and `no_entry` maps to 0 points, and 0 is the "not
+   * forecast" value throughout the domain — `resolveEstimate` and `forecastTarget` both require `> 0`,
+   * so a zero candidate can never win. Printing `Refined 0` would offer a candidate that is not one;
+   * Rally's screenshot shows `—` in exactly that row.
+   *
+   * `allocated` is different: a row committing 0 is a real commitment (§246's Team-picker default), so
+   * it prints 0 and keeps its tick.
+   */
+  const rows = (['allocated', 'refined', 'preliminary'] as const).map((key) => {
+    const raw = breakdown?.[key] ?? null
+    return {
+      key,
+      value: key === 'allocated' ? raw : raw === null || raw === 0 ? null : raw,
+      RowIcon: TIER_ICON[key],
+      inForce: key === tier,
+    }
+  })
   // The accessible name says what the panel says: a hover-only tooltip is invisible to a screen
   // reader, and the tier is the fact the row is reporting. FULL tier names, not the badge's
   // 5-character abbreviations — this string is read aloud, and "Alloc" is not a word.
   const label = rows
-    .map((r) => `${t(`tiers.${r.key}Full`)} ${r.value ?? '--'}${r.inForce ? ' ✓' : ''}`)
+    .map((r) => `${t(`tiers.${r.key}Full`)} ${r.value ?? RALLY_ABSENT}${r.inForce ? ' ✓' : ''}`)
     .join(', ')
 
   const glyph = (
-    <span role="img" aria-label={`${t('tiers.heading')}: ${label}`} className="flex items-center">
+    <span
+      role="img"
+      aria-label={`${t('tiers.heading')}: ${label}${sourceNote ? `. ${sourceNote}` : ''}`}
+      className="flex items-center"
+    >
       <Icon size={13} style={{ color: style.color }} />
     </span>
   )
@@ -179,25 +146,37 @@ export function EstimateTierIcon({
       side="left"
       delayDuration={150}
       content={
-        <span className="block w-40">
+        <span className="block w-44">
           <span className="mb-1 block font-semibold">{t('tiers.heading')}</span>
           {rows.map(({ key, value, RowIcon, inForce }) => (
             <span key={key} className="flex items-center gap-1.5 py-px">
-              {/* Non-winning tiers are dimmed rather than hidden: the comparison IS the point, and
-                  a planner asking "is this 60 real?" needs to see what it beat. */}
-              <RowIcon size={11} className={inForce ? '' : 'opacity-40'} />
-              <span className={inForce ? 'flex-1' : 'flex-1 opacity-40'}>
+              {/* The losing tiers are STRUCK THROUGH, not merely dimmed — that is what Rally draws, and
+                  it says something dimming does not: this candidate was considered and beaten. Both the
+                  name and the number carry the line, as in the screenshot. Shown rather than hidden
+                  because the comparison IS the point: a planner asking "is this 10 real?" needs to see
+                  what it beat. */}
+              <RowIcon size={11} className={inForce ? '' : 'opacity-50'} />
+              <span className={inForce ? 'flex-1' : 'flex-1 line-through opacity-50'}>
                 {t(`tiers.${key}Full`)}
               </span>
-              <span className={inForce ? 'tabular-nums' : 'tabular-nums opacity-40'}>
-                {value ?? '--'}
+              <span className={inForce ? 'tabular-nums' : 'tabular-nums line-through opacity-50'}>
+                {value ?? RALLY_ABSENT}
               </span>
-              {/* Rally's tick marks the one in force. */}
-              <Check
-                size={11}
-                className={inForce ? '' : 'invisible'}
-                style={{ color: BRAND.success }}
-              />
+              {/* Rally's tick: a white check in a FILLED green disc, not a bare green glyph. The disc is
+                  what makes it read as a chosen state at 11px rather than as decoration. A spacer keeps
+                  the three value columns aligned when it is absent. */}
+              {inForce ? (
+                <span
+                  className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full"
+                  style={{ backgroundColor: BRAND.success }}
+                >
+                  {/* `text-white` rather than a hex: lucide inherits `currentColor`, and the design-token
+                      ratchet counts raw hex literals. */}
+                  <Check size={9} strokeWidth={3} className="text-white" />
+                </span>
+              ) : (
+                <span className="h-3.5 w-3.5 shrink-0" />
+              )}
             </span>
           ))}
         </span>
