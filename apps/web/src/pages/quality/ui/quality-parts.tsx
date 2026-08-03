@@ -31,7 +31,7 @@ import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
-import { type ColumnSpec } from '@/shared/ui/table'
+import { type ColumnSpec, rankColumn, RankCell } from '@/shared/ui/table'
 import {
   type QualityColKey,
   type QualityCtx,
@@ -311,6 +311,14 @@ function FlowStateSelectCell({ defect, canEdit }: { defect: DefectRow; canEdit: 
 }
 
 export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[] = [
+  // Rank as a real column, from the shared definition — it used to sit in the leading gutter with
+  // a bespoke sort header, so it could not be resized, reordered or hidden.
+  {
+    // Rank draws through the engine like every other column, so the row body stays free of
+    // per-column markup. The POSITION is per-render, not per-defect, so it rides on the ctx.
+    ...rankColumn<DefectRow, QualityCtx>(),
+    cell: (_row, ctx) => <RankCell rowNum={ctx.rowNum} />,
+  },
   {
     key: 'id',
     label: 'ID',
@@ -801,10 +809,7 @@ export function DefectTableRow({
           ariaLabel: `Select ${defect.itemKey}`,
         }}
       />
-      <div className="w-12 shrink-0 px-2 text-right font-mono text-ui-xs text-foreground-subtle tabular-nums">
-        {rowNum}
-      </div>
-      {renderCells(defect, { canManage, projectId, openItem })}
+      {renderCells(defect, { canManage, projectId, openItem, rowNum })}
     </div>
   )
 }

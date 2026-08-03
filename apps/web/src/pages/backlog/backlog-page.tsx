@@ -65,7 +65,7 @@ import {
   type ColumnKey,
 } from './model/columns'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable, useRerankSensors, SelectableTable, RankSortHeader } from '@/shared/ui/table'
+import { useDataTable, useRerankSensors, SelectableTable, RankCell } from '@/shared/ui/table'
 
 export function BacklogPage() {
   const { t } = useTranslation('backlog')
@@ -329,13 +329,6 @@ export function BacklogPage() {
             columnDrag: table.columnDrag,
           }}
           padClassName="gap-2 px-3"
-          leadingExtra={
-            <RankSortHeader
-              active={sortCol === 'rank'}
-              dir={sortDir}
-              onSort={() => toggleSort('rank')}
-            />
-          }
           dnd={{
             dndContextProps: {
               sensors: dndSensors,
@@ -730,10 +723,8 @@ function BacklogRow({
         }}
       />
 
-      {/* Row number */}
-      <div className="w-12 shrink-0 px-2 text-right font-mono text-ui-xs text-foreground-subtle tabular-nums">
-        {rowNum}
-      </div>
+      {/* Rank — a real column now, so it resizes/reorders/hides with the rest. */}
+      <RankCell rowNum={rowNum} style={colStyles.rank} />
 
       {/* ID — type glyph + key link (shared cell; the only nav affordance) */}
       <div className="shrink-0 overflow-hidden px-2" style={colStyles.id} onClick={stop}>
