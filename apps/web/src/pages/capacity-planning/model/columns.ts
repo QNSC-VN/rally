@@ -1,4 +1,4 @@
-import { type ColumnSpec } from '@/shared/ui/table'
+import { type ColumnSpec, rankColumn } from '@/shared/ui/table'
 import {
   type CapacityAllocation,
   type CapacityPlan,
@@ -174,7 +174,7 @@ export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemCo
   // until a plan carries a published snapshot to diff against — the BA calls it "neutral before
   // Publish", which is every plan today.
   { key: 'marker', label: '', defaultWidth: 24, minWidth: 24, align: 'center' },
-  { key: 'rank', label: 'Rank', defaultWidth: 66, minWidth: 56, align: 'right', sortCol: 'rank' },
+  { ...rankColumn(), locked: false },
   { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 84, locked: true, sortCol: 'itemKey' },
   // Sized for the ~1010px this tab has once the Team Capacity rail takes its 256: `grow` spends
   // surplus but never claws width back, so defaults that overflow simply hide the last column.
@@ -277,7 +277,7 @@ export type AllocColKey =
  */
 export const CAPACITY_ALLOCATION_COLUMNS: ColumnSpec<CapacityAllocation, unknown, AllocColKey>[] = [
   { key: 'actions', label: '', defaultWidth: 40, minWidth: 40, align: 'center' },
-  { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 52, align: 'right' },
+  { ...rankColumn(), locked: false, sortCol: undefined },
   { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 80, locked: true },
   { key: 'name', label: 'Name', defaultWidth: 176, minWidth: 130, locked: true, grow: true },
   { key: 'state', label: 'State', defaultWidth: 112, minWidth: 90 },

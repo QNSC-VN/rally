@@ -6,7 +6,13 @@ import { Plus } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { toast } from 'sonner'
 
-import { useDataTable, useRowRerank, useDragRowStyle, SelectableTable } from '@/shared/ui/table'
+import {
+  useDataTable,
+  useRowRerank,
+  useDragRowStyle,
+  RankCell,
+  SelectableTable,
+} from '@/shared/ui/table'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { InlineSelect } from '@/shared/ui/native-select'
@@ -309,6 +315,7 @@ export function FeatureChildrenTable({
           <ChildRow
             key={child.id}
             child={child}
+            rowNum={rerank.items.indexOf(child) + 1}
             colStyles={colStyles}
             canEdit={canEdit}
             dragDisabled={dragDisabled}
@@ -341,6 +348,7 @@ export function FeatureChildrenTable({
  */
 function ChildRow({
   child,
+  rowNum,
   colStyles,
   canEdit,
   dragDisabled,
@@ -356,6 +364,8 @@ function ChildRow({
   onOpenTask,
 }: {
   child: PortfolioChild
+  /** 1-based position in the visible list — what the Rank column shows. */
+  rowNum: number
   colStyles: Record<ChildColKey, CSSProperties>
   canEdit: boolean
   dragDisabled: boolean
@@ -415,6 +425,7 @@ function ChildRow({
           stopPropagation
           checkbox={{ checked: selected, onChange: onToggleSelect, ariaLabel: selectLabel }}
         />
+        <RankCell rowNum={rowNum} style={colStyles.rank} />
         {/* The expand chevron sits with the ID, where the removed Type column used to hold it.
             `IdCell` already renders the type badge, which is what that column duplicated. */}
         {/* The expand chevron sits with the ID, where the removed Type column used to hold it. */}
@@ -670,6 +681,9 @@ function ChildTaskRow({
     // Grows with a wrapped Name or ID, exactly as the parent row does.
     <div className="flex min-h-[30px] min-w-max items-center border-b border-border-inner bg-surface-subtle px-3 text-ui-sm">
       <RowGutter dragDisabled />
+      {/* A Task has no rank of its own — it follows its parent. Empty, but present, or the sub-row
+          falls out of step with the header. */}
+      <div style={colStyles.rank} className="px-2" />
       <div style={colStyles.id} className={`flex min-w-0 items-center pr-2 ${NESTED_ROW_INDENT}`}>
         <IdCell type={task.type} itemKey={task.itemKey} onOpen={onOpen} />
       </div>

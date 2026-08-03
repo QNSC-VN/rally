@@ -1,7 +1,8 @@
-import { type ColumnSpec } from '@/shared/ui/table'
+import { rankColumn, type ColumnSpec } from '@/shared/ui/table'
 import type { PortfolioChild, PortfolioItem } from '@/features/portfolio/api'
 
 export type ChildColKey =
+  | 'rank'
   | 'id'
   | 'name'
   | 'priority'
@@ -33,6 +34,9 @@ export type ChildColKey =
  * adjacent cells. Backlog and Iteration Status both show type through the ID cell alone.
  */
 export const PORTFOLIO_CHILD_COLUMNS: ColumnSpec<PortfolioChild, unknown, ChildColKey>[] = [
+  // Rank first, from the shared definition — the rows arrive in `workItems.rank` order and can be
+  // dragged, so the reader needs to see the position they are changing.
+  rankColumn(),
   { key: 'id', label: 'ID', defaultWidth: 104, minWidth: 88, locked: true, sortCol: 'itemKey' },
   /**
    * NOT `grow: true`, deliberately — the same choice Iteration Status and the Backlog make for
@@ -90,7 +94,7 @@ export type EpicChildColKey =
  * Complete/Rollup/Estimated where the Feature's carries Priority/Iteration.
  */
 export const EPIC_CHILD_COLUMNS: ColumnSpec<PortfolioItem, unknown, EpicChildColKey>[] = [
-  { key: 'rank', label: 'Rank', defaultWidth: 64, minWidth: 56, align: 'right' },
+  rankColumn(),
   { key: 'id', label: 'ID', defaultWidth: 104, minWidth: 88, locked: true, sortCol: 'itemKey' },
   // Fixed width, not `grow` — see the note on the Feature tab's Name column above: a grow column
   // gets a minWidth floor and no ceiling, so a long title widens the table instead of wrapping.

@@ -7,12 +7,17 @@
  * composition in the page.
  */
 import type { ColumnDef } from '@/shared/lib/hooks/use-column-layout'
-import type { DataTableHeaderColumn } from '@/shared/ui/table'
+import {
+  RANK_COLUMN_MIN_WIDTH,
+  RANK_COLUMN_WIDTH,
+  type DataTableHeaderColumn,
+} from '@/shared/ui/table'
 import { SCHEDULE_STATE_LABEL, SCHEDULE_STATE_VALUES } from '@/entities/work-item/model/types'
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
 export type ColumnKey =
+  | 'rank'
   | 'id'
   | 'name'
   | 'scheduleState'
@@ -24,6 +29,7 @@ export type ColumnKey =
   | 'iteration'
 
 export const COLUMN_MINS: Record<ColumnKey, number> = {
+  rank: RANK_COLUMN_MIN_WIDTH,
   id: 88,
   name: 180,
   scheduleState: 120,
@@ -36,6 +42,7 @@ export const COLUMN_MINS: Record<ColumnKey, number> = {
 }
 
 export const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
+  rank: RANK_COLUMN_WIDTH,
   id: 116,
   name: 260,
   scheduleState: 136,
@@ -48,6 +55,7 @@ export const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
 }
 
 export const COLUMN_LABELS: Record<ColumnKey, string> = {
+  rank: 'Rank',
   id: 'ID',
   name: 'Name',
   scheduleState: 'Schedule State',
@@ -59,7 +67,11 @@ export const COLUMN_LABELS: Record<ColumnKey, string> = {
   iteration: 'Iteration',
 }
 
+// Rank leads: the BA lists it first ("Sort icon on Rank, Type, ID, Name, ...") and it is the
+// order every other column is read against. It used to live in the leading gutter with a bespoke
+// `RankSortHeader`, which is why it could not be resized, reordered or hidden like the rest.
 export const COLUMNS: ColumnKey[] = [
+  'rank',
   'id',
   'name',
   'scheduleState',
@@ -83,6 +95,7 @@ export const BACKLOG_COLUMNS: ColumnDef<ColumnKey>[] = COLUMNS.map((key) => ({
  * from this map are not sortable (owner/release/iteration would sort by UUID).
  */
 export const COLUMN_SORT_FIELD: Partial<Record<ColumnKey, string>> = {
+  rank: 'rank',
   id: 'itemKey',
   name: 'title',
   scheduleState: 'scheduleState',
@@ -94,7 +107,7 @@ export const COLUMN_SORT_FIELD: Partial<Record<ColumnKey, string>> = {
 export const BACKLOG_HEADER_COLUMNS: DataTableHeaderColumn<ColumnKey>[] = COLUMNS.map((key) => ({
   key,
   label: COLUMN_LABELS[key],
-  align: key === 'estimate' ? ('center' as const) : undefined,
+  align: key === 'estimate' ? ('center' as const) : key === 'rank' ? ('right' as const) : undefined,
   sortCol: COLUMN_SORT_FIELD[key],
 }))
 

@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { RankCell } from '@/shared/ui/table'
 
 import { BRAND } from '@/shared/config/brand'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
@@ -183,9 +184,7 @@ export function StatusRow({
         />
 
         {/* Rank number */}
-        <div style={colStyles.rank} className="flex items-center justify-center px-2">
-          <span className="font-mono text-ui-xs text-muted-foreground tabular-nums">{rank}</span>
-        </div>
+        <RankCell rowNum={rank} style={colStyles.rank} />
 
         {/* ID — expand/collapse toggle lives here (Rally parity), to the left of
             the item type icon + key. */}

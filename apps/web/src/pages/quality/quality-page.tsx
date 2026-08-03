@@ -25,7 +25,7 @@ import { useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
 import { useRankAnyWorkItem, useCreateWorkItem } from '@/features/work-items/api'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
-import { useDataTable, useRowRerank, SelectableTable, RankSortHeader } from '@/shared/ui/table'
+import { useDataTable, useRowRerank, SelectableTable } from '@/shared/ui/table'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { QUALITY_COLUMNS, FilterSelect, LogDefectModal, DefectTableRow } from './ui/quality-parts'
 import {
@@ -341,13 +341,6 @@ export function QualityPage() {
           selection={selection}
           headerProps={table.headerProps}
           padClassName="gap-2 px-3"
-          leadingExtra={
-            <RankSortHeader
-              active={sortCol === 'rank'}
-              dir={sortDir}
-              onSort={() => handleSort('rank')}
-            />
-          }
           dnd={{
             dndContextProps: rerank.dndContextProps,
             sortableContextProps: rerank.sortableContextProps,

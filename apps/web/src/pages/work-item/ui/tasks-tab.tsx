@@ -37,6 +37,7 @@ import {
   useRowRerank,
   useDragRowStyle,
   type ColumnSpec,
+  rankColumn,
 } from '@/shared/ui/table'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { AddTaskModal } from '@/features/work-items/ui/add-task-modal'
@@ -50,7 +51,7 @@ type TaskColKey =
 // gets resize + reorder + show/hide and a fluid name column for free — replacing
 // the old fixed 1216px hand-rolled layout that overflowed the detail column.
 const TASK_COLUMNS: ColumnSpec<WorkItem, unknown, TaskColKey>[] = [
-  { key: 'rank', label: 'Rank', defaultWidth: 60, minWidth: 52, locked: true, sortCol: 'rank' },
+  rankColumn(),
   { key: 'id', label: 'ID', defaultWidth: 108, minWidth: 90, locked: true, sortCol: 'id' },
   { key: 'name', label: 'Name', defaultWidth: 240, minWidth: 150, locked: true, sortCol: 'name' },
   { key: 'state', label: 'State', defaultWidth: 132, minWidth: 110, sortCol: 'state' },
