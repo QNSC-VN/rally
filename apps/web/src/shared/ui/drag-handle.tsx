@@ -40,10 +40,18 @@ function GripDots() {
 /**
  * Drag-to-reorder grip for rank-ordered data grids (Backlog, Iteration Status).
  *
- * Sits in a fixed left gutter, hidden at rest and revealed on row hover (Rally
- * parity), so the reorder affordance appears right where the pointer is without
- * cluttering the grid. The parent row MUST carry the `group` class for the
- * hover reveal to work.
+ * Sits in a fixed left gutter, HIDDEN AT REST and revealed on row hover (Rally parity), so the
+ * reorder affordance appears right where the pointer is without cluttering the grid. Capacity
+ * Planning's own grip (`sortable-item-row.tsx`) already worked this way and is the model.
+ *
+ * THE PARENT ROW MUST CARRY THE `group` CLASS, or the grip never appears for a pointer user.
+ * Every row that passes `dragListeners` does; the ones that do not pass a bare `dragDisabled`
+ * spacer, which is `opacity-0` regardless. Adding a grip to a new grid means adding `group` to
+ * its row in the same change.
+ *
+ * This docblock described the hover reveal for a long time while the code rendered `opacity-70`
+ * — always visible, and inconsistent with Capacity Planning. The comment was right and the class
+ * was wrong; the class now matches.
  *
  * Wire it to dnd-kit's sortable: pass `setActivatorNodeRef` as `ref`, and spread BOTH `listeners`
  * and `attributes` onto it. `attributes` belongs here, on the activator, not on the row — see below.
@@ -78,7 +86,7 @@ export const DragHandle = forwardRef<HTMLButtonElement, DragHandleProps>(functio
       className={`flex w-5 shrink-0 items-center justify-center border-none bg-transparent p-0 ${
         disabled
           ? 'cursor-default opacity-0'
-          : 'cursor-grab text-muted-foreground opacity-70 transition-opacity duration-100 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current active:cursor-grabbing'
+          : 'cursor-grab text-muted-foreground opacity-0 transition-opacity duration-100 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current active:cursor-grabbing'
       } ${className}`}
       {...(disabled ? {} : rest)}
     >
