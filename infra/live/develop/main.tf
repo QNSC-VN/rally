@@ -82,8 +82,18 @@ module "stack" {
   // Develop tracks the newest image; production pins a release tag.
   image_tag = "latest"
 
-  // Develop seeds demo data after migrating; production must never.
-  seed_on_deploy        = true
+  // NO demo data in ANY deployed environment — develop mirrors production.
+  //
+  // Develop used to seed the demo fixture on every deploy, which put a second project, a capacity plan
+  // and a frozen report history into a database people were reading as real. A shared environment whose
+  // contents nobody can vouch for is worse than an empty one: every bug report has to start by asking
+  // which rows were fixtures. Fixtures now exist only where they can be trusted — a developer's own
+  // database (`pnpm db:seed:test`) and CI's ephemeral Postgres.
+  //
+  // The module default is already `false`; this stays written out so the intent is visible in the env
+  // that used to differ. `db/migrate.ts` also refuses the demo seed outright under NODE_ENV=production,
+  // so flipping this back would not be enough to reach a deployed database.
+  seed_on_deploy        = false
   platform_admin_emails = var.platform_admin_emails
 
   entra_tenant_id = var.entra_tenant_id

@@ -601,6 +601,52 @@ So: **a new permission needs a backfill migration**, not just a catalogue entry.
 when the permission is genuinely new (nobody can have revoked what never existed); a permission
 that already shipped must be merged, not forced, or the migration undoes someone's decision.
 
+## Seeds: what a DEPLOYED database is allowed to contain
+
+Three tiers, and only the first two ever reach a deployed environment:
+
+| tier | file | contents | where |
+|---|---|---|---|
+| reference | `db/seeds/reference.ts` | `access.system_roles` from `db/permissions.catalog.ts` | every env, every deploy |
+| bootstrap | `db/seeds/bootstrap.ts` | workspace + Entra SSO + `workspace_settings` + workspace-owned tier roles | every env, every deploy |
+| fixtures | `db/seeds/demo.ts` (+ `second-project.ts`, `reference-extras.ts`) | NXP/PAY projects, work items, capacity plan, frozen report history | LOCAL and CI only |
+
+`db/migrate.ts` gates the fixtures on `SEED_ON_DEPLOY` **and** refuses them outright under
+`NODE_ENV=production`, which is what deployed migrator tasks run with and nothing else does. Develop
+used to set `seed_on_deploy = true`, so a database people read as real carried a fixture project and a
+capacity plan; a shared environment whose contents nobody can vouch for is worse than an empty one,
+because every bug report starts by asking which rows were fixtures. Both environments are now `false`
+and the `NODE_ENV` floor means flipping one back would not be enough to reach a deployed database.
+
+`resetFixtureTables` (`db/seeds/reset.ts`) TRUNCATEs and is wired only into `pnpm db:seed:test` and the
+Playwright global setup — never into `seed()` or a migration. Its `FIXTURE_TABLES` list covers delivery
+data and touches nothing in `access.*`, `workspace.*` or `identity.*`, so roles, the workspace, SSO and
+users survive a reset. It does not name `iteration_team_baselines` or `release_team_targets`; those are
+removed by `CASCADE` through their `ON DELETE CASCADE` parents (migrations 0098/0099).
+
+## New business data: migration, seed, or neither
+
+Three categories, three different answers. Get the category right before writing either.
+
+**Reference data** — see "Permissions reach a workspace ONCE" above. Catalogue entry PLUS a backfill
+migration; the seed alone will not carry it to an existing workspace.
+
+**A schema or grain change over existing rows** — backfill inside the same migration, always.
+`0101_capacity_allocation_fixed_value.sql` is the model: it freezes TODAY's resolved value so no plan
+total moves on deploy, and it re-implements the service's own fallbacks in SQL (a per-size `COALESCE`
+over the default preliminary-estimate map, `LEFT JOIN` for a missing settings row) so a
+partially-customised workspace cannot fall back wholesale. Never leave a column NULL or `''` and expect
+a later read path to cope.
+
+**Time-series history** — `iteration_daily_snapshots`, `iteration_team_baselines`,
+`release_daily_snapshots`, `release_team_targets`. **Cannot be backfilled, ever.** They are measurements
+of a past day, and that data never existed. `SnapshotCronService` writes them hourly at :05, only for
+dates inside an iteration's or release's own window, and baseline capture is `onConflictDoNothing` so it
+cannot be re-taken. A fresh environment's Burndown and Burnup therefore start empty and fill forward,
+and Velocity needs a FINISHED iteration before it says anything. The reports state that explicitly
+(`noBaseline`, `historyState`) rather than drawing a flat zero line — do not "fix" that by synthesising
+history.
+
 ## Observability
 
 The implementation lives in `@qnsc-vn/observability` — shared with opshub, so fix it
