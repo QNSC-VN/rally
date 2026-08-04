@@ -1265,6 +1265,23 @@ export class CapacityPlansService {
        * explains itself rather than looking empty.
        */
       const archived = row.itemArchivedAt !== null;
+      /**
+       * Which of Rally's three candidates this row's number came from, for the `Estimate` tooltip.
+       *
+       * Rally's panel on the team tab lists Allocated / Refined / Preliminary with the one in force
+       * ticked and the other two struck through, so the client needs the winner named. Resolved here
+       * rather than in the browser for the usual reason: `resolveEstimate` is the rule, and a second
+       * copy of it in TypeScript would be free to disagree with the arithmetic beside it.
+       *
+       * `totalAllocated` is THIS row's committed value, not the Feature's sum: the tooltip is about
+       * this Team's row, and folding in the other teams' slices would tick `allocated` on a row that
+       * commits nothing.
+       */
+      const tier = resolveEstimate({
+        totalAllocated: committed,
+        refined: row.refined,
+        preliminary: inUnit(row.preliminarySize),
+      }).tier;
       return {
         id: row.id,
         planId: row.planId,
@@ -1273,6 +1290,7 @@ export class CapacityPlansService {
         isPrimary: row.isPrimary,
         value: row.value,
         source: row.source,
+        tier,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
         itemKey: row.itemKey,

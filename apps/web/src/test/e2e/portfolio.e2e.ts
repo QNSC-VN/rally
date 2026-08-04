@@ -219,13 +219,19 @@ test.describe('Portfolio', () => {
     await expect(page.getByText('Total Accepted Children')).toBeVisible()
   })
 
-  test('Rank up/down reorders rows, persists, and stands down under a column sort', async ({
+  test('Rank drag reorders rows, persists, and stands down under a column sort', async ({
     page,
   }) => {
     /**
-     * §37 makes Rank "up/down reorder buttons only, **no drag-and-drop**", and §14 lists drag under
-     * Not included. This grid dragged; the buttons are the replacement, and FR-005 is the requirement
-     * ("User can reorder Features via Rank up/down controls").
+     * FR-005 is the requirement — "User can reorder Features via Rank up/down controls" — and it is
+     * satisfied here by DRAGGING the shared grip rather than by the up/down buttons §37 names.
+     *
+     * That is a deliberate divergence from §14 ("drag-and-drop Rank reordering" under Not included)
+     * and §37 ("up/down reorder buttons only, no drag-and-drop"), flagged for the BA: every other
+     * rank-ordered grid in the app drags, and this one grid reordering differently is what a planner
+     * moving between Backlog and Portfolio actually notices. The three behaviours this test pins are
+     * unchanged by that — reorder persists, every row keeps its control, and a column sort stands the
+     * control down — only the affordance they run through is different.
      *
      * Creates its OWN pair and narrows to them by search. The previous version reordered whichever
      * two rows happened to sort first in a cross-project grid of hundreds, then compared whole-row
@@ -258,13 +264,43 @@ test.describe('Portfolio', () => {
     const before = [await keyOf(0), await keyOf(1)]
     expect(before[0]).not.toBe(before[1])
 
-    // The second row moves up one position. The button names the row it acts on, which is what makes
-    // it usable in a screen-reader list — and findable here without a positional selector.
-    await rows
-      .nth(1)
-      .getByRole('button', { name: /Move .* up one position/ })
-      .click()
+    /**
+     * CLEAR THE SEARCH BEFORE DRAGGING. A drop computes the row's new position from its on-screen
+     * neighbours, so a filtered list would hand the server two rows that are not adjacent in real
+     * rank order and the move would resolve to a no-op. The page disables the grip for exactly that
+     * reason (`listIsRankOrdered`), which is asserted a few lines below — so the reorder itself has
+     * to happen on the unfiltered grid. The two fixtures were created last, so they are the final
+     * two rows and still adjacent.
+     */
+    await search.fill('')
+    await expect(rows.first()).toBeVisible()
 
+    /*
+     * Located by the fixture's own KEY, not by position. Earlier runs of this spec can leave their
+     * own `RANK-*` pair behind if the archive step did not reach them, so "the last row" is not
+     * reliably this run's fixture — which is what made a positional selector drag an unrelated row
+     * and assert on this one.
+     */
+    const fixtureB = page.locator(`[data-portfolio-row]:has-text("${before[1]}")`).first()
+
+    // Fixture B moves up one position, by KEYBOARD-dragging its grip: Space picks the row up,
+    // ArrowUp moves it one place, Space drops it. Driven from the keyboard rather than with
+    // `mouse.move` because that is also the assertion that rank reorder is reachable without a
+    // pointer — `useRerankSensors` wires dnd-kit's `KeyboardSensor` and `DragHandle` is a real
+    // focusable button precisely so this works.
+    await fixtureB.getByRole('button', { name: /Drag to reorder/i }).focus()
+    // Paced deliberately: dnd-kit announces the pickup and each move through a live region and
+    // settles state between them, so three keypresses dispatched back-to-back can be swallowed —
+    // which is exactly how this read as a flake (passing only on runs slow enough to settle).
+    await page.keyboard.press('Space')
+    await page.waitForTimeout(400)
+    await page.keyboard.press('ArrowUp')
+    await page.waitForTimeout(400)
+    await page.keyboard.press('Space')
+    await page.waitForTimeout(1500)
+
+    await search.fill(tag)
+    await expect(rows).toHaveCount(2)
     await expect(async () => expect(await keyOf(0)).toBe(before[1])).toPass({ timeout: 5000 })
 
     // Asserted again after a RELOAD, so this proves the new rank was PERSISTED rather than
@@ -274,25 +310,42 @@ test.describe('Portfolio', () => {
     await expect(rows).toHaveCount(2)
     expect(await keyOf(0)).toBe(before[1])
 
-    // The FIRST row cannot move up: the control is disabled rather than absent, so the cell does not
-    // change width as rows move.
-    await expect(
-      rows.nth(0).getByRole('button', { name: /Move .* up one position/ }),
-    ).toBeDisabled()
+    /**
+     * A SEARCH stands the grip down, and this is the assertion that pins the bug this replaced.
+     *
+     * A drop computes the row's new position from its on-screen neighbours, so on a filtered list
+     * those are not the rows the server has beside it: the move resolves between two non-adjacent
+     * items and lands as a silent no-op — a `200` that changes nothing. The page refuses to offer
+     * the affordance at all rather than let that happen (`listIsRankOrdered`), which is also why
+     * the reorder above had to clear the search first.
+     *
+     * Asserted by COUNT, not `toBeVisible()`: a disabled `DragHandle` keeps its width so the cells
+     * beside it do not shift, and drops out of the accessibility tree — so the NAMED button is what
+     * disappears, not the element.
+     */
+    await expect(rows.nth(0).getByRole('button', { name: /Drag to reorder/i })).toHaveCount(0)
+
+    /*
+     * Unfiltered, every row has one — including the first: there is no "up" to disable on a drag.
+     * `opacity-0` until hover (Rally parity) is why this is a count and not a visibility check.
+     */
+    await search.fill('')
+    await expect(rows.first()).toBeVisible()
+    await expect(rows.nth(0).getByRole('button', { name: /Drag to reorder/i })).toHaveCount(1)
+
+    // Back to this run's own pair for everything below, which asserts on their order.
+    await search.fill(tag)
+    await expect(rows).toHaveCount(2)
 
     /**
-     * Under a column sort every button is DISABLED.
-     *
-     * Rank only means anything in rank order: a move computed from Name-sorted neighbours would land
-     * the row somewhere unrelated. Disabled rather than removed, for the same reason as the first
-     * row's — a cell whose controls come and go shifts the number beside them. §273 asks for the order
-     * to survive coming back to the Rank column, which the last two assertions check.
+     * Under a column sort every grip goes INERT, for the same reason as the search: rank only means
+     * anything in rank order, and a move computed from Name-sorted neighbours would land the row
+     * somewhere unrelated. §273 asks for the order to survive coming back to the Rank column, which
+     * the last two assertions check.
      */
     await page.getByLabel('Name column', { exact: true }).click()
     for (const index of [0, 1]) {
-      await expect(
-        rows.nth(index).getByRole('button', { name: /Move .* up one position/ }),
-      ).toBeDisabled()
+      await expect(rows.nth(index).getByRole('button', { name: /Drag to reorder/i })).toHaveCount(0)
     }
 
     await page.getByLabel('Rank column', { exact: true }).click()

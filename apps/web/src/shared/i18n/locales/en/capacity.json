@@ -323,11 +323,6 @@
   },
   "sources": {
     "feature_estimate": "Feature Estimate",
-    "manual": "Manual",
-    "rows": {
-      "committed": "Committed",
-      "refined": "Refined now",
-      "preliminary": "Preliminary now"
-    }
+    "manual": "Manual"
   }
 }

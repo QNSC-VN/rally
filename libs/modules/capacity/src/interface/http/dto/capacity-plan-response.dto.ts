@@ -65,6 +65,11 @@ const CapacityAllocationSchema = z.object({
     .describe(
       "Where `value` came from: copied from the Feature's top-down estimate (§185) or typed by a planner (§186)",
     ),
+  tier: z
+    .enum(['allocated', 'refined', 'preliminary', 'none'])
+    .describe(
+      "Which of Rally's three Estimate candidates this row's number corresponds to — the tooltip ticks it and strikes the other two",
+    ),
   rank: z.string().describe("The Feature's LexoRank — the nested table shows the plan's Rank too"),
   state: z.enum(PORTFOLIO_ITEM_STATES).describe("The Feature's own workflow state"),
   projectId: z.string().uuid(),
