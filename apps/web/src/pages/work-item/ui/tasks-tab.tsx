@@ -31,7 +31,10 @@ import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
+import { ProjectCell } from '@/shared/ui/project-cell'
+import { TeamCell } from '@/shared/ui/team-cell'
 import { DetailSectionHeading } from '@/shared/ui/detail/detail-field'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { InlineSelect } from '@/shared/ui/native-select'
@@ -87,7 +90,10 @@ export function TasksTab({
   const { data: teams = [] } = useProjectTeams(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
   const { project } = useAppContext()
-  const projectLabel = project?.projectKey ?? project?.projectName ?? '--'
+  // Kept as a pair, not flattened to one string: `ProjectCell` renders the key as a `KeyChip`
+  // beside the name, the way the Portfolio grid's Project column does.
+  const projectKey = project?.projectKey ?? null
+  const projectName = project?.projectName ?? null
   const [showAdd, setShowAdd] = useState(false)
   // Search + a State filter in the shared toolbar, as the Portfolio Children tab has them.
   const [search, setSearch] = useState('')
@@ -108,8 +114,8 @@ export function TasksTab({
   // `{ flex: 1, minWidth }` base this used to pass was discarded by `styleFor` in every case.
   const colStyles = table.colStyles
 
-  const teamName = (id?: string | null) =>
-    id ? (teams.find((team) => team.id === id)?.name ?? '--') : '--'
+  /** The team row itself, so `TeamCell` can render its square avatar as every other grid does. */
+  const teamOf = (id?: string | null) => (id ? teams.find((team) => team.id === id) : undefined)
 
   // Client-side column sort — mirrors the shared header UX used by every other
   // grid (Backlog / Team Status / Projects). `null` = the default rank order.
@@ -348,8 +354,9 @@ export function TasksTab({
             selected={selected}
             onToggleSelect={onToggleSelect}
             colStyles={colStyles}
-            projectLabel={projectLabel}
-            teamName={teamName}
+            projectKey={projectKey}
+            projectName={projectName}
+            teamOf={teamOf}
             members={members}
             onOpen={openTask}
           />
@@ -373,8 +380,9 @@ function TaskRow({
   canEdit,
   dragDisabled,
   colStyles,
-  projectLabel,
-  teamName,
+  projectKey,
+  projectName,
+  teamOf,
   members,
   onOpen,
   selected,
@@ -385,8 +393,9 @@ function TaskRow({
   canEdit: boolean
   dragDisabled: boolean
   colStyles: Record<TaskColKey, CSSProperties>
-  projectLabel: string
-  teamName: (id?: string | null) => string
+  projectKey: string | null
+  projectName: string | null
+  teamOf: (id?: string | null) => { id: string; name: string; key?: string | null } | undefined
   members: { userId: string; displayName?: string | null; email?: string | null }[]
   onOpen: (task: WorkItem) => void
   selected: boolean
@@ -488,16 +497,22 @@ function TaskRow({
           ariaLabel={`Task ${task.itemKey} owner`}
         />
       </div>
-      {/* Project */}
-      <div
-        className="shrink-0 px-2 break-words whitespace-normal text-muted-foreground"
-        style={colStyles.project}
-      >
-        {projectLabel}
+      {/* Project — the shared cell, so a Task's project carries the same `KeyChip` the Portfolio
+          and Backlog grids put on theirs. A Task inherits its project from its parent, so this is
+          display-only. */}
+      <div className="flex min-w-0 shrink-0 items-center px-2" style={colStyles.project}>
+        <ProjectCell projectKey={projectKey} projectName={projectName} />
       </div>
-      {/* Teams */}
-      <div className="shrink-0 truncate px-2 text-muted-foreground" style={colStyles.teams}>
-        {teamName(task.teamId)}
+      {/* Teams — the shared cell, with the square `TeamAvatar` every other team surface renders. */}
+      <div className="flex min-w-0 shrink-0 items-center px-2" style={colStyles.teams}>
+        {(() => {
+          const tm = teamOf(task.teamId)
+          return tm ? (
+            <TeamCell teamKey={tm.key} name={tm.name} />
+          ) : (
+            <span className="text-muted-foreground">{EMPTY_VALUE}</span>
+          )
+        })()}
       </div>
       {/* To Do — inline editable */}
       <div className="shrink-0 px-2 text-right" style={colStyles.todo}>

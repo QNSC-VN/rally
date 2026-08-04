@@ -4707,6 +4707,11 @@ export interface components {
          * @enum {string}
          */
         source: 'feature_estimate' | 'manual'
+        /**
+         * @description Which of Rally's three Estimate candidates this row's number corresponds to — the tooltip ticks it and strikes the other two
+         * @enum {string}
+         */
+        tier: 'allocated' | 'refined' | 'preliminary' | 'none'
         /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
         rank: string
         /**
@@ -4905,6 +4910,11 @@ export interface components {
            * @enum {string}
            */
           source: 'feature_estimate' | 'manual'
+          /**
+           * @description Which of Rally's three Estimate candidates this row's number corresponds to — the tooltip ticks it and strikes the other two
+           * @enum {string}
+           */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
           /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
           rank: string
           /**
@@ -5094,6 +5104,11 @@ export interface components {
            * @enum {string}
            */
           source: 'feature_estimate' | 'manual'
+          /**
+           * @description Which of Rally's three Estimate candidates this row's number corresponds to — the tooltip ticks it and strikes the other two
+           * @enum {string}
+           */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
           /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
           rank: string
           /**
@@ -5321,6 +5336,11 @@ export interface components {
            * @enum {string}
            */
           source: 'feature_estimate' | 'manual'
+          /**
+           * @description Which of Rally's three Estimate candidates this row's number corresponds to — the tooltip ticks it and strikes the other two
+           * @enum {string}
+           */
+          tier: 'allocated' | 'refined' | 'preliminary' | 'none'
           /** @description The Feature's LexoRank — the nested table shows the plan's Rank too */
           rank: string
           /**

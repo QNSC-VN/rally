@@ -34,11 +34,41 @@ overrides:
   # fixed in 3.1.3. Only reachable as a deep transitive dep (ajv-formats →
   # fast-json-stringify → fastify's ecosystem), so pinned via override rather
   # than a direct package.json dependency bump.
-  "fast-uri@<3.1.3": "^3.1.4"
+  #
+  # SUPERSEDED by GHSA-7p8r-x3mc-p8w7 (CVSS 7.5) — host confusion again, this time
+  # via a backslash authority introducer, fixed in 3.1.5. The old `^3.1.4` floor
+  # resolved to exactly 3.1.4 and was therefore vulnerable. Same class of bug in the
+  # same parser two advisories running, so pin the FLOOR rather than a version:
+  # `>=3.1.5` lets the next patch land without another edit here.
+  #
+  # This one reaches PRODUCTION (fastify → @fastify/ajv-compiler → fast-uri), unlike
+  # the undici pins below.
+  "fast-uri@<3.1.5": ">=3.1.5"
   # GHSA-r28c-9q8g-f849 — postcss (line-return parsing), fixed in 8.5.18.
   # Transitive via the web build toolchain (vite / tailwind ecosystem). A newly
   # published advisory that also affects main; pinned via override.
   "postcss@<8.5.18": ">=8.5.18"
+  # Five advisories against undici, the worst GHSA-4cwx-7wf7-3272 (CVSS 7.4,
+  # cross-user information disclosure + parse-time crash via degenerate private
+  # cache directives). Fixed in 7.29.0 and 8.9.0 respectively.
+  #
+  # DEV-ONLY, both trees: 7.x arrives via jsdom → vitest, 8.x via testcontainers,
+  # all devDependencies. Nothing here ships in the runtime image, so this is not a
+  # production exposure — but the scanner is `osv_blocking=true` and a lockfile the
+  # scanner rejects blocks every unrelated PR, which is its own kind of outage.
+  #
+  # TWO ranges, one per major, and they must stay that way. jsdom@29.1.1 declares
+  # `undici@^7.25.0` and reaches into the internal `undici/lib/handler/wrap-handler.js`,
+  # which 8.x DELETED — so a single `<8.9.0: >=8.9.0` floor dragged jsdom onto 8.9.0 and
+  # every jsdom-environment suite died at worker startup with MODULE_NOT_FOUND, before a
+  # single test ran. Backend suites are unaffected (node environment), which is exactly
+  # why this passed locally and failed in CI on the web tests.
+  #
+  # Keep each consumer inside the major it declares:
+  #   7.x — jsdom → vitest         (patched in 7.29.0)
+  #   8.x — testcontainers          (patched in 8.9.0)
+  "undici@>=7.0.0 <7.29.0": ">=7.29.0 <8.0.0"
+  "undici@>=8.0.0 <8.9.0": ">=8.9.0"
 allowBuilds:
   '@scarf/scarf': set this to true or false
   '@swc/core': set this to true or false

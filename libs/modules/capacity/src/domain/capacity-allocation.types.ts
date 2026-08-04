@@ -1,3 +1,4 @@
+import type { EstimateTier } from '@modules/portfolio';
 import type {
   CapacityAllocationSource,
   PortfolioItemState,
@@ -146,8 +147,17 @@ export interface CapacityAllocationView extends CapacityAllocation {
    */
   archived: boolean;
   /**
+   * Which of the three candidates this row's number came from — Rally's `Estimate` tooltip ticks it.
+   *
+   * `allocated` whenever the row commits a positive value, else the Feature's Refined forecast, else
+   * its Preliminary mapping, else `none`. Distinct from {@link CapacityAllocation.source}, which says
+   * how the stored value was PRODUCED (typed, or copied from the Feature); this says which candidate it
+   * corresponds to, which is the vocabulary Rally's panel uses.
+   */
+  tier: EstimateTier;
+  /**
    * The Feature's two TOP-DOWN candidates, for the Allocate dialog's read-only header (§175) and for
-   * the row's source tooltip.
+   * the row's Estimate tooltip.
    *
    * Still sent even though the row's own number is now stored: a planner deciding whether to leave
    * Estimate blank needs to see what blank would copy, and a `feature_estimate` row that no longer
