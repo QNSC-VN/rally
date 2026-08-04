@@ -468,8 +468,28 @@ export const DEFAULT_PRELIMINARY_ESTIMATE_MAP: PreliminaryEstimateMap = {
    * ignored.
    */
   no_entry: { points: 0, count: 0 },
-  // XS=1 / S=3 / M=5 / L=8 / XL=13 matches Rally's documented defaults exactly
-  // (Broadcom KB 94797, "How Plan Progression Capacity is calculated").
+  // XS=1 / S=3 / M=5 / L=8 / XL=13 is the BA's table
+  // (`04_Developement_tracking/Phase 5/01_Portfolio_Items/SRS.md:170-177`), which that doc
+  // itself calls temporary mockup data pending Settings > Workspace > Project Management.
+  //
+  // DELIBERATE DIVERGENCE FROM RALLY — do not "correct" these back.
+  // Rally ships XS=13 / S=20 / M=40 / L=100 / XL=250, unitless, one number per size:
+  // https://techdocs.broadcom.com/us/en/ca-enterprise-software/valueops/rally/rally-help/administration/managing-your-workspace/customizing-portfolio-item-types/customizing-fields-for-portfolio-item-types/customizing-the-portfolio-item-preliminary-estimate-field.html
+  // An earlier version of this comment cited Broadcom KB 94797 as proof that 1/3/5/8/13
+  // "matches Rally's documented defaults exactly". The KB does say that, but it is undated,
+  // describes the retired Plan Progression page, and uses the values in a worked example —
+  // the version-selectable product doc above supersedes it.
+  //
+  // We keep the BA scale anyway, on two grounds: Rally makes this a per-workspace admin
+  // setting with no cross-workspace guarantee, so any seed value is legal; and the approved
+  // mockups were designed against these numbers. Rally has no `count` dimension at all —
+  // that half is ours.
+  //
+  // Re-scaling is NOT a constant edit. `db/migrations/0101_capacity_allocation_fixed_value.sql:66`
+  // hard-codes this map as the freeze basis for existing allocation values, so changing the
+  // constant alone would leave pre-0101 allocations on the old scale and new ones on the new —
+  // two scales inside one plan total. Adopting Rally's scale needs its own re-basing migration.
+  // Decided 2026-08-04. See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#0-B
   xs: { points: 1, count: 1 },
   s: { points: 3, count: 2 },
   m: { points: 5, count: 3 },
