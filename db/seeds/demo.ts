@@ -1275,19 +1275,44 @@ async function seedReportHistory() {
     .onConflictDoNothing();
 
   /**
-   * Release burnup: four scattered days across July, on the ALL TEAMS row.
+   * Release burnup: one row per DAY across the release window (RE-1 runs 2026-07-01 → 07-31), with a
+   * deliberate gap.
    *
-   * `teamId: null` is the All Teams row and it is MEASURED, not summed from team rows — a work
-   * item two teams both touch must be counted once. Deliberately sparse: that is what a real young
-   * release looks like, and it is the case where a chart drawing only line SEGMENTS renders
-   * nothing at all.
+   * Daily because that is what the cron writes, and because the chart cannot draw a LINE otherwise: a
+   * segment needs two adjacent measured days, so four scattered days rendered as four isolated dots and
+   * a lone Ideal line. Which is honest — RT-BR-09 forbids bridging a gap — but it made a working chart
+   * look broken on the only data anyone sees locally.
+   *
+   * `accepted` ramps 0 → 13 in the steps a real release accepts work in (flat for days, then a jump when
+   * a Story is signed off), so the shaded Accepted band has a shape rather than a slope. It ends at 13
+   * against the Ideal's own 13, so the release reads as finished on time.
+   *
+   * 2026-07-17 is MISSING on purpose: the cron did not run, and the chart must show that day as a gap
+   * rather than interpolate through it. One gap is enough to prove the rule; the previous fixture was
+   * ALL gaps.
+   *
+   * `teamId: null` is the All Teams row and it is MEASURED, not summed from team rows — a work item two
+   * teams both touch must be counted once.
    */
-  const burnup = [
-    { date: '2026-07-06', accepted: '0', count: 0 },
-    { date: '2026-07-13', accepted: '3', count: 1 },
-    { date: '2026-07-22', accepted: '5', count: 2 },
-    { date: '2026-07-29', accepted: '8', count: 3 },
-  ];
+  const ACCEPTED_BY_DAY: Record<number, { accepted: string; count: number }> = {
+    1: { accepted: '0', count: 0 },
+    8: { accepted: '3', count: 1 },
+    14: { accepted: '5', count: 2 },
+    21: { accepted: '8', count: 3 },
+    27: { accepted: '13', count: 4 },
+  };
+  const burnup = (() => {
+    const rows: { date: string; accepted: string; count: number }[] = [];
+    let current = ACCEPTED_BY_DAY[1];
+    for (let day = 1; day <= 31; day += 1) {
+      // The cron skipped this one. Everything else carries the last accepted figure forward, which is
+      // what a daily snapshot of an unchanged release records.
+      if (day === 17) continue;
+      current = ACCEPTED_BY_DAY[day] ?? current;
+      rows.push({ date: `2026-07-${String(day).padStart(2, '0')}`, ...current });
+    }
+    return rows;
+  })();
 
   /**
    * Two series per day, as the burndown above does: All Teams (`teamId: null`, MEASURED) and Team

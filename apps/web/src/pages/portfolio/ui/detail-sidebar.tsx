@@ -53,8 +53,7 @@ import { ProgressBar } from '@/shared/ui/progress-bar'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { formatDateTime } from '@/shared/lib/utils'
 import { PORTFOLIO_STATES, PRELIMINARY_ESTIMATE_SIZES } from '../model/portfolio-states'
-import { StatusBadge } from '@/shared/ui/status-badge'
-import { portfolioStateStyle } from '@/features/portfolio/status-colors'
+import { portfolioStateColor } from '@/features/portfolio/status-colors'
 
 /** The workspace roster as `OwnerSelectField` wants it. */
 interface MemberOption {
@@ -175,12 +174,9 @@ export function PortfolioDetailSidebar({
             label: t(`states.${s}`, { defaultValue: s }),
           }))}
           triggerContent={
-            <StatusBadge
-              style={portfolioStateStyle(
-                item.state,
-                t(`states.${item.state}`, { defaultValue: item.state }),
-              )}
-            />
+            <span style={{ color: portfolioStateColor(item.state) }}>
+              {t(`states.${item.state}`, { defaultValue: item.state })}
+            </span>
           }
           onChange={(v) => onUpdate({ state: v as PortfolioItemDetail['state'] })}
         />

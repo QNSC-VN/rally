@@ -1,21 +1,13 @@
 import { useMemo, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Star } from 'lucide-react'
 
-import {
-  useSetPrimaryAllocation,
-  useUpdateAllocation,
-  type CapacityAllocation,
-} from '@/features/capacity-planning/api'
-import { BRAND } from '@/shared/config/brand'
+import { useUpdateAllocation, type CapacityAllocation } from '@/features/capacity-planning/api'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { CompositeBar } from '@/shared/ui/composite-bar'
 import { CapacityBarTooltip } from './capacity-bar-tooltip'
 import { MetricValue } from '@/shared/ui/metric-value'
-import { StatusBadge } from '@/shared/ui/status-badge'
-import { portfolioStateStyle } from '@/features/portfolio/status-colors'
+import { portfolioStateColor } from '@/features/portfolio/status-colors'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
-import { IconButton } from '@/shared/ui/icon-button'
 import { notify } from '@/shared/lib/toast'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { type AllocColKey } from '../model/columns'
@@ -39,7 +31,6 @@ export function AllocationRow({
   canManage,
   colStyleFor,
   onOpenFeature,
-  teamName,
   rankPosition,
   ownerTeamName,
   contributorTeamNames,
@@ -56,8 +47,6 @@ export function AllocationRow({
   canManage: boolean
   colStyleFor: (key: AllocColKey, base?: CSSProperties) => CSSProperties
   onOpenFeature: (portfolioItemId: string) => void
-  /** This row's team name, for the "make primary" label — ids make a useless accessible name. */
-  teamName: string | null
   /** The Feature's 1-based position in the plan's rank order, resolved by the table. */
   rankPosition: number | null
   /**
@@ -126,7 +115,6 @@ export function AllocationRow({
   const { t: tPortfolio } = useTranslation('portfolio')
   const warningText = useCapacityWarningText()
   const update = useUpdateAllocation()
-  const setPrimary = useSetPrimaryAllocation()
   const { metrics } = allocation
 
   function commit(raw: string) {
@@ -203,51 +191,18 @@ export function AllocationRow({
         />
       </div>
 
+      {/* Just the name. It carried a `Primary` chip and, on the other rows, a star that promoted a
+          contributor team — real Rally has neither in this column. Rally marks the primary on the
+          Features tab's `Planned Team Assignment` field and routes split edits through the Allocate
+          dialog (§180), which is where that radio now lives: the Features-tab cell is read-only for a
+          split Feature, so the dialog is the only place a split's primary can be chosen. */}
       <div
         style={colStyleFor('name', { flexShrink: 0 })}
-        className="flex min-w-0 items-center gap-2 px-2"
+        className="flex min-w-0 items-center px-2"
       >
         <span className="break-words whitespace-normal text-foreground" title={allocation.name}>
           {allocation.name}
         </span>
-        {/* Rally marks the primary assignment on the Features tab's `Planned Team Assignment`
-            field, not in this table — but that field is not editable here yet, so the badge and
-            the promote action stay in this cell as the only surface for them. The TIER moved out
-            to its own trailing column, where Rally keeps it. */}
-        {allocation.isPrimary ? (
-          <span
-            className="shrink-0 rounded-sm px-1 py-px text-ui-xs font-medium"
-            style={{
-              backgroundColor: BRAND.accentBg,
-              color: BRAND.primaryLight,
-              border: `1px solid ${BRAND.accentBorder}`,
-            }}
-          >
-            {t('row.primaryBadge')}
-          </span>
-        ) : (
-          canManage &&
-          allocation.teamId !== null && (
-            <IconButton
-              aria-label={t('row.makePrimary', {
-                team: teamName ?? '',
-                item: allocation.itemKey,
-              })}
-              onClick={() =>
-                setPrimary.mutate(
-                  { id: planId, allocationId: allocation.id },
-                  {
-                    onSuccess: () => notify.success(t('row.primaryUpdated')),
-                    onError: (err) => notify.error(err.message),
-                  },
-                )
-              }
-              disabled={setPrimary.isPending}
-            >
-              <Star size={12} />
-            </IconButton>
-          )
-        )}
       </div>
 
       {/* The FEATURE's own state — Rally's `State` column on this table. Read-only here: the state
@@ -256,11 +211,17 @@ export function AllocationRow({
         style={colStyleFor('state', { flexShrink: 0 })}
         className="flex min-w-0 items-center px-2"
       >
-        {/* The SAME badge the Portfolio surfaces draw, from the same colour map: a Feature's state
-            should not read as a pill there and as grey text here. */}
-        <StatusBadge
-          style={portfolioStateStyle(allocation.state, tPortfolio(`states.${allocation.state}`))}
-        />
+        {/* PLAIN TEXT, no chip: Rally's capacity plan prints the state as coloured text, and a pill
+            here read as a control the cell does not offer — the state belongs to the Feature and is
+            edited on Portfolio, not inside a plan.
+            The colour still comes from the shared portfolio map, so `Developing` is the same hue here
+            as on the Portfolio page; only the background and outline are gone. */}
+        <span
+          className="break-words whitespace-normal"
+          style={{ color: portfolioStateColor(allocation.state) }}
+        >
+          {tPortfolio(`states.${allocation.state}`)}
+        </span>
       </div>
 
       {/* The `Allocation` column: where this row's work came FROM. The allocated points live in the

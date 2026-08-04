@@ -13,8 +13,7 @@ import {
   RankCell,
 } from '@/shared/ui/table'
 import { TableTotalsRow } from '@/shared/ui/table-totals-row'
-import { StatusBadge } from '@/shared/ui/status-badge'
-import { portfolioStateStyle } from '@/features/portfolio/status-colors'
+import { portfolioStateColor } from '@/features/portfolio/status-colors'
 import { Plus } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
@@ -312,7 +311,12 @@ function EpicChildRow({
         <TeamCell name={feature.teamName ?? null} />
       </div>
       <div style={colStyles.state} className="min-w-0 px-2">
-        <StatusBadge style={portfolioStateStyle(feature.state, stateLabel)} />
+        <span
+          className="break-words whitespace-normal"
+          style={{ color: portfolioStateColor(feature.state) }}
+        >
+          {stateLabel}
+        </span>
       </div>
       <div
         style={colStyles.complete}

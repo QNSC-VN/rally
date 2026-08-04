@@ -49,8 +49,7 @@ import {
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
-import { StatusBadge } from '@/shared/ui/status-badge'
-import { portfolioStateStyle } from '@/features/portfolio/status-colors'
+import { portfolioStateColor } from '@/features/portfolio/status-colors'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
@@ -173,7 +172,9 @@ function ChildFeatureRow({
           ariaLabel={t('filters.state')}
           options={PORTFOLIO_STATES.map((s) => ({ value: s, label: t(`states.${s}`) }))}
           triggerContent={
-            <StatusBadge style={portfolioStateStyle(feature.state, t(`states.${feature.state}`))} />
+            <span style={{ color: portfolioStateColor(feature.state) }}>
+              {t(`states.${feature.state}`)}
+            </span>
           }
           onChange={(v) => {
             if (v && v !== feature.state)

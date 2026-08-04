@@ -17,9 +17,8 @@ import { GitBranch } from 'lucide-react'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useReleases } from '@/features/releases/api'
 import { useReleaseTracking, type ChartUnit, type ReleaseBucket } from '@/features/reporting/api'
-import { reportScopeLabel } from '@/features/reporting/scope'
 import { EmptyState } from '@/shared/ui/empty-state'
-import { NativeSelect } from '@/shared/ui/native-select'
+import { CompactSelect } from '@/shared/ui/native-select'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { PageHeader } from '@/shared/ui/page-header'
@@ -91,53 +90,53 @@ export function ReleaseTrackingPage() {
   }
 
   const summary = data?.summary
-  /**
-   * The read-only scope line.
-   *
-   * `All Teams` where there is no Team, not an empty string after a separator: All Teams is the
-   * DEFAULT scope (RT-BR-01 names it), so the page's first render printed "NextGen Platform · " and
-   * left the reader to guess whether the Team was still loading.
-   */
-  const scope = data
-    ? reportScopeLabel(data.context.projectName, data.context.teamName, t('common:allTeams'))
-    : ''
-
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-background">
       <PageHeader
         title={t('title')}
-        /* Project/Team is read-only CONTEXT (RT-AC-02 forbids a second filter here), and it sat in
-           `actions` between the Release picker and the Chart Unit selector — a plain text span in a
-           row of controls, which is where a reader looks for one. `PageHeader` has a subtitle slot for
-           exactly this. */
-        subtitle={scope}
+        /**
+         * The Release picker sits BESIDE the title, as Rally puts it — `Release Tracking  ‹ 2026Q3
+         * 2026-06-24 - 2026-09-29 ›` — rather than across the bar in `actions`. It is what the page is
+         * about, not one control among several: §239 lists it first in the header contract.
+         */
+        badge={
+          <TimeboxPicker
+            items={releases.map((release) => ({
+              id: release.id,
+              name: release.name,
+              startDate: release.startDate ?? null,
+              endDate: release.releaseDate ?? null,
+            }))}
+            selectedId={releaseId}
+            onSelect={setChosenReleaseId}
+            emptyLabel={t('picker.empty')}
+            noneLabel={t('picker.none')}
+            prevLabel={t('picker.prev')}
+            nextLabel={t('picker.next')}
+            minWidth={240}
+          />
+        }
+        /**
+         * No Project/Team line here. §239 wants the scope "displayed as read-only context", and it is —
+         * in the app shell's own context switcher, where Rally shows it too and where it applies to
+         * every page. Repeating it beside this one title said the same thing twice, and read as a
+         * filter belonging to the page (which RT-AC-02 forbids).
+         */
         actions={
           <div className="flex items-center gap-4">
-            <TimeboxPicker
-              items={releases.map((release) => ({
-                id: release.id,
-                name: release.name,
-                startDate: release.startDate ?? null,
-                endDate: release.releaseDate ?? null,
-              }))}
-              selectedId={releaseId}
-              onSelect={setChosenReleaseId}
-              emptyLabel={t('picker.empty')}
-              noneLabel={t('picker.none')}
-              prevLabel={t('picker.prev')}
-              nextLabel={t('picker.next')}
-              minWidth={240}
-            />
-            <label className="flex items-center gap-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
+            {/* One line: `CHART UNIT [Points]`. The label wrapped onto two rows at this width, which
+                pushed the bar taller than every other page's, and `CompactSelect` is the toolbar-scale
+                control that exists for exactly this — `NativeSelect`'s `px-3 py-2` is a form size. */}
+            <label className="flex items-center gap-2 text-ui-xs font-semibold tracking-wide whitespace-nowrap text-foreground-subtle uppercase">
               {t('chartUnit')}
-              <NativeSelect
+              <CompactSelect
                 value={unit}
                 onChange={(event) => setUnit(event.target.value as ChartUnit)}
                 aria-label={t('chartUnit')}
               >
                 <option value="points">{t('unit.points')}</option>
                 <option value="count">{t('unit.count')}</option>
-              </NativeSelect>
+              </CompactSelect>
             </label>
             <span
               className="flex items-center gap-1.5 text-ui-xs text-foreground-disabled"
@@ -176,6 +175,9 @@ export function ReleaseTrackingPage() {
                   }`}
                 >
                   <MetricCard
+                    // Rally's tile: the NUMBER first and centred, its label under it. These three are read
+                    // as one comparison and each is a button, so the figure leads.
+                    layout="value-first"
                     label={t(`summary.${key}`)}
                     /* `--`, not `0`. `data` is undefined while the request is in flight and after it
                        fails, and three large zeros beside the grid's error state read as "this release
@@ -188,23 +190,28 @@ export function ReleaseTrackingPage() {
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col rounded border border-border-strong bg-card p-4">
-            <NativeSelect
-              value={bucket}
-              onChange={(event) => setBucket(event.target.value as ReleaseBucket)}
-              aria-label={t('summary.title')}
-              className="mb-2 max-w-[280px]"
-            >
-              {BUCKETS.map((key) => (
-                <option key={key} value={key}>
-                  {`${t(`summary.${key}`)} (${summary ? summary[key] : EMPTY_VALUE})`}
-                </option>
-              ))}
-            </NativeSelect>
+          <div className="flex min-h-0 flex-1 flex-col rounded border border-border-strong bg-card">
             <TrackingGrid
               report={data}
               bucket={bucket}
               unit={unit}
+              /* Into the grid's TOOLBAR, opposite the search — one row, as Rally lays it out. It used to
+                 sit on its own row above the panel, reading as a filter for the card rather than the
+                 selector for the list beneath it. `CompactSelect` because a toolbar row is not a form. */
+              bucketPicker={
+                <CompactSelect
+                  value={bucket}
+                  onChange={(event) => setBucket(event.target.value as ReleaseBucket)}
+                  aria-label={t('summary.title')}
+                  className="max-w-[280px]"
+                >
+                  {BUCKETS.map((key) => (
+                    <option key={key} value={key}>
+                      {`${t(`summary.${key}`)} (${summary ? summary[key] : EMPTY_VALUE})`}
+                    </option>
+                  ))}
+                </CompactSelect>
+              }
               isLoading={isLoading}
               isError={isError}
               page={page}

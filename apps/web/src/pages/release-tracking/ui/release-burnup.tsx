@@ -12,7 +12,7 @@
  * redraw every past ideal whenever scope changed.
  */
 import { useTranslation } from 'react-i18next'
-import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts'
+import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { BRAND } from '@/shared/config/brand'
 import { useReleaseBurnup, type ChartUnit } from '@/features/reporting/api'
@@ -96,16 +96,23 @@ export function ReleaseBurnup({
        */
       underAxis={
         data && data.iterations.length > 0 ? (
+          /**
+           * NAMES only, one row, centred under the span each iteration covers — as Rally draws it
+           * (`2026Q3-1 … 2026Q3-IP`). Each name also carries its window as a `title`.
+           *
+           * The dates used to print on a second line under every name. On a quarter-long release that is
+           * six or seven date ranges repeating what the axis above already says, in a row whose job is
+           * to answer one question: which sprint was this day in.
+           */
           <div className="mt-1 flex items-start justify-between gap-2">
             {data.iterations.map((iteration) => (
-              <div key={iteration.id} className="min-w-0 flex-1 text-center">
-                <p className="truncate text-ui-xs font-semibold text-foreground">
-                  {iteration.name}
-                </p>
-                <p className="text-ui-xs text-foreground-subtle">
-                  {formatDate(iteration.startDate)} - {formatDate(iteration.endDate)}
-                </p>
-              </div>
+              <p
+                key={iteration.id}
+                className="min-w-0 flex-1 truncate text-center text-ui-xs text-muted-foreground"
+                title={`${formatDate(iteration.startDate)} - ${formatDate(iteration.endDate)}`}
+              >
+                {iteration.name}
+              </p>
             ))}
           </div>
         ) : undefined
@@ -132,9 +139,11 @@ export function ReleaseBurnup({
       emptyDescription={t('burnup.empty.description')}
       legend={
         <>
+          {/* A DOT for the shaded series and rules for the three trajectories — Rally's own convention,
+              and it tells the reader which line has an area under it. */}
           <ChartLegendItem
             color={BRAND.reportAccepted}
-            shape="line"
+            shape="dot"
             label={t('burnup.series.accepted', { unit: unitLabel })}
           />
           <ChartLegendItem
@@ -177,8 +186,9 @@ export function ReleaseBurnup({
               This was the last surface still using the third convention for missing data — the reports
               sweep settled on `--` everywhere, the tiles above it print `--`, and a row of cards that
               disappears makes the panel change height on every refetch while saying nothing about why. */}
-          <div className="mt-3 flex gap-8">
+          <div className="mt-3 flex justify-around gap-8">
             <MetricCard
+              layout="value-first"
               label={t('totals.accepted')}
               value={totals?.accepted ?? EMPTY_VALUE}
               caption={unitLabel}
@@ -186,6 +196,7 @@ export function ReleaseBurnup({
               minWidth={120}
             />
             <MetricCard
+              layout="value-first"
               label={t('totals.planned')}
               value={totals?.planned ?? EMPTY_VALUE}
               caption={unitLabel}
@@ -193,6 +204,7 @@ export function ReleaseBurnup({
               minWidth={120}
             />
             <MetricCard
+              layout="value-first"
               label={t('totals.preliminary')}
               value={totals?.preliminary ?? EMPTY_VALUE}
               caption={unitLabel}
@@ -203,7 +215,10 @@ export function ReleaseBurnup({
         </>
       }
     >
-      <LineChart data={points} margin={{ top: 8, right: 18, left: 8, bottom: 12 }}>
+      {/* `ComposedChart`, because Accepted is an AREA and the other three are lines — Rally shades the
+          band under Accepted and draws Planned, Preliminary and Ideal as plain trajectories, so the
+          measured progress reads as volume delivered rather than as a fourth similar line. */}
+      <ComposedChart data={points} margin={{ top: 8, right: 18, left: 8, bottom: 12 }}>
         <CartesianGrid {...CHART_GRID} />
         <XAxis dataKey="date" {...CHART_AXIS} />
         <YAxis
@@ -222,12 +237,16 @@ export function ReleaseBurnup({
             and that is the normal state of a young release, where the cron has written one or
             two scattered days. The chart showed an empty grid beside populated totals. The Ideal
             line needs no dot: it is computed for every axis day and is never sparse. */}
-        <Line
+        <Area
           type="monotone"
           dataKey="accepted"
           name={t('burnup.series.accepted', { unit: unitLabel })}
           stroke={BRAND.reportAccepted}
           strokeWidth={2}
+          // A pale wash, not a solid: three trajectories cross this band, and at any real opacity the
+          // fill hides the lines it is meant to be read against.
+          fill={BRAND.reportAccepted}
+          fillOpacity={0.18}
           dot={measuredDot(BRAND.reportAccepted)}
           connectNulls={false}
         />
@@ -255,13 +274,14 @@ export function ReleaseBurnup({
             dataKey="ideal"
             name={t('burnup.series.ideal')}
             stroke={BRAND.reportIdeal}
-            strokeDasharray="4 3"
+            // SOLID, as Rally draws it. The dashes said "projection", but the Ideal is computed from a
+            // persisted baseline (RT-BR-09) — it is as real as the measured series, just not measured.
             strokeWidth={1.5}
             dot={false}
             connectNulls={false}
           />
         )}
-      </LineChart>
+      </ComposedChart>
     </ChartFrame>
   )
 }

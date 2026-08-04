@@ -16,8 +16,7 @@ import { RowGutter } from '@/shared/ui/row-gutter'
 import { useDragRowStyle } from '@/shared/ui/table'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { RankCell } from '@/shared/ui/table'
-import { StatusBadge } from '@/shared/ui/status-badge'
-import { portfolioStateStyle } from '@/features/portfolio/status-colors'
+import { portfolioStateColor } from '@/features/portfolio/status-colors'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { BRAND } from '@/shared/config/brand'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
@@ -222,8 +221,13 @@ export function PortfolioRow({
             readOnly={!canEdit}
             ariaLabel={t('filters.state')}
             options={PORTFOLIO_STATES.map((s) => ({ value: s, label: t(`states.${s}`) }))}
+            // Plain COLOURED TEXT, no chip: Rally prints a portfolio state as text, and a pill inside a
+            // picker's trigger read as a second control. The colour comes from the one shared phase map,
+            // so the state means the same here, on the child rows, in the rail and inside a plan.
             triggerContent={
-              <StatusBadge style={portfolioStateStyle(item.state, t(`states.${item.state}`))} />
+              <span style={{ color: portfolioStateColor(item.state) }}>
+                {t(`states.${item.state}`)}
+              </span>
             }
             onChange={(v) => {
               if (v && v !== item.state)

@@ -207,7 +207,13 @@ export function ChartLegendBar({ children }: { children: ReactNode }) {
   )
 }
 
-/** One legend entry: a swatch (bar) or a rule (line) plus its series name. */
+/**
+ * One legend entry: a swatch (bar), a rule (line) or a marker (dot), plus its series name.
+ *
+ * `dot` matches how Rally marks a FILLED series — its burnup legends the shaded Accepted band with a
+ * dot and the three plain trajectories with rules, so the swatch says which series has an area under it
+ * before the reader looks at the chart.
+ */
 export function ChartLegendItem({
   color,
   label,
@@ -215,14 +221,17 @@ export function ChartLegendItem({
 }: {
   color: string
   label: ReactNode
-  shape?: 'bar' | 'line'
+  shape?: 'bar' | 'line' | 'dot'
 }) {
+  const swatch =
+    shape === 'bar'
+      ? 'h-2.5 w-2.5 rounded-sm'
+      : shape === 'dot'
+        ? 'h-2 w-2 rounded-full'
+        : 'h-0.5 w-4'
   return (
     <span className="flex items-center gap-1.5">
-      <span
-        className={shape === 'bar' ? 'h-2.5 w-2.5 rounded-sm' : 'h-0.5 w-4'}
-        style={{ backgroundColor: color }}
-      />
+      <span className={swatch} style={{ backgroundColor: color }} />
       {label}
     </span>
   )

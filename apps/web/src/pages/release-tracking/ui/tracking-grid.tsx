@@ -42,6 +42,7 @@ export function TrackingGrid({
   report,
   bucket,
   unit,
+  bucketPicker,
   isLoading,
   isError = false,
   page,
@@ -52,6 +53,13 @@ export function TrackingGrid({
   report: ReleaseTrackingReport | undefined
   bucket: ReleaseBucket
   unit: ChartUnit
+  /**
+   * The bucket selector, rendered as the first thing in this grid's toolbar.
+   *
+   * Owned by the page (it drives the query) but PLACED here, because it selects what this list shows —
+   * Rally puts it on the list's own row, opposite the search.
+   */
+  bucketPicker?: React.ReactNode
   isLoading: boolean
   isError?: boolean
   /** 1-based page, owned by the page component because it drives the query. */
@@ -242,12 +250,17 @@ export function TrackingGrid({
           and the bucket selector is part of the page header rather than the grid. No Show Fields
           either — §5 specifies only that "columns are horizontally resizable". */}
       <PageToolbar
+        /* The bucket picker LEADS the toolbar and the search sits at the far right — one row, as Rally
+           lays this list out. The picker used to sit on its own row above the grid, which read as a
+           filter for the panel rather than the selector for the list under it. */
+        titleAccessory={bucketPicker}
         search={{
           value: search,
           onChange: setSearch,
           placeholder: t('searchPlaceholder'),
           ariaLabel: t('searchPlaceholder'),
           width: 280,
+          align: 'right',
         }}
       />
       <DataTableFrame<ColKey>
@@ -291,9 +304,22 @@ export function TrackingGrid({
         }
       >
         {rows.map((row) => (
+          /**
+           * The same row chrome every other data grid in this app draws — Iteration Status, Backlog,
+           * Portfolio, the capacity tables: `group`, a `min-h-[34px]` floor, `border-border-inner`,
+           * `transition-colors` and `hover:bg-primary-lighter`.
+           *
+           * This one had been hand-written with `hover:bg-surface-hover` (the LIST-row hover, used by
+           * Projects and Home), no `group`, no transition and a `py-1.5` height instead of a floor — so
+           * the one grid on this page highlighted a different colour from the identical grid one menu
+           * item away.
+           *
+           * `px-3` matters as much: it matches `DataTableFrame`'s default `padClassName`, which insets
+           * the HEADER. Without it every cell sat 12px left of the label above it.
+           */
           <div
             key={row.id}
-            className="flex items-center border-b border-border-inner py-1.5 hover:bg-surface-hover"
+            className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
           >
             {table.renderCells(row, ctx)}
           </div>
