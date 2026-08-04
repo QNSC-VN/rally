@@ -23,5 +23,12 @@
     "total": "Total Items",
     "defects": "Defects",
     "blocked": "Blocked"
+  },
+  "rank": {
+    "highest": "Rank Highest",
+    "lowest": "Rank Lowest",
+    "moved": "Rank updated",
+    "alreadyThere": "Already at that position",
+    "oneOnly": "Select exactly one item to rank"
   }
 }
