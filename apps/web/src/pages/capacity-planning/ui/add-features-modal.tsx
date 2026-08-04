@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { SelectionModal } from '@/shared/ui/selection-modal'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { PortfolioItemType } from '@/entities/work-item/model/types'
@@ -60,6 +61,57 @@ export function AddFeaturesModal({
     [plan.allocations],
   )
 
+  /** Team name per id, for the ownership line below. `plan.teams` is the only source that has names. */
+  const teamNameById = useMemo(
+    () => new Map(plan.teams.map((pt) => [pt.teamId, pt.teamName ?? EMPTY_VALUE])),
+    [plan.teams],
+  )
+
+  /**
+   * RALLY PARITY (differs from BA design — the design here was OURS, and it was thin)
+   * Rally: the `Add Items` dialog carries Planned Project Assignment, Project and the numerics
+   * alongside ID and Name, and Capacity SRS §225-233 asks for the same — Team and Allocation — "so
+   * the planner can see which Team currently owns each Feature".
+   * This file's own docblock previously argued "the picker shows key + name only, so there is nothing
+   * for a `Show Fields` to reveal". That was true of the implementation, not of the requirement.
+   * Decided 2026-08-04. See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P5-CP-5
+   *
+   * Project is deliberately NOT shown: this picker already fetches only the plan's own project, so
+   * the column would repeat one value on every row.
+   *
+   * Reads the allocations on THIS plan rather than the Feature's own team, because that is the
+   * number the decision turns on — a Feature can sit on several teams here, and the planner is about
+   * to add one more.
+   */
+  const ownershipMeta = useCallback(
+    (portfolioItemId: string): string | undefined => {
+      const rows = plan.allocations.filter((a) => a.portfolioItemId === portfolioItemId)
+      // Unallocated is the common case in the plan-level picker and needs no annotation: an empty
+      // trailing slot reads as "not yet placed", where the word would read as a status.
+      if (rows.length === 0) return undefined
+
+      const parked = rows.filter((a) => a.teamId === null)
+      const assigned = rows.filter((a) => a.teamId !== null)
+      const total = rows.reduce((sum, a) => sum + Number(a.value), 0)
+
+      const who =
+        assigned.length > 0
+          ? assigned.map((a) => teamNameById.get(a.teamId as string) ?? EMPTY_VALUE).join(', ')
+          : t('addFeatures.unassigned')
+      // A parked row alongside assigned ones is a real state (AC-005 re-parks demand on team removal),
+      // so say both rather than picking one and understating the plan's committed total.
+      const suffix =
+        parked.length > 0 && assigned.length > 0 ? ` + ${t('addFeatures.unassigned')}` : ''
+
+      // Bare number, no unit suffix: the plan's unit renames the COLUMN HEADERS on this screen
+      // (Points/Count Rollup, …) and every value is rendered unitless, so appending one here would
+      // make this the only place that says "pts".
+      const amount = Number.isInteger(total) ? String(total) : total.toFixed(2)
+      return `${who}${suffix} · ${amount}`
+    },
+    [plan.allocations, t, teamNameById],
+  )
+
   const items = useMemo(
     () =>
       features
@@ -94,8 +146,9 @@ export function AddFeaturesModal({
           icon: <TypeBadge type="feature" size={16} />,
           disabled: teamId !== null && inThisTeam.has(f.id),
           disabledNote: t('addFeatures.added'),
+          meta: ownershipMeta(f.id),
         })),
-    [features, inThisTeam, onPlan, plan.releaseId, t, teamId],
+    [features, inThisTeam, onPlan, ownershipMeta, plan.releaseId, t, teamId],
   )
 
   /**
