@@ -18,6 +18,16 @@ const SCHEDULE_STATE_FILTER = [ALL, ...workItemScheduleStateEnum.enumValues] as 
 
 export const DefectQuerySchema = PageQuerySchema.extend({
   projectId: z.string().uuid(),
+  /**
+   * Rows to skip — this grid pages by OFFSET, not by the inherited `cursor`.
+   *
+   * The repository has always taken an offset; the controller simply never forwarded one, so
+   * every request returned the first `limit` rows (50 by default) with no way to reach the rest
+   * and nothing on screen saying so. Offset rather than the keyset cursor because the footer is a
+   * numbered pager over a sortable grid: a reader jumps to a page, and keyset can only step.
+   * `cursor` is inherited from `PageQuerySchema` and remains unused here.
+   */
+  offset: z.coerce.number().int().min(0).optional(),
   search: z.string().max(200).optional(),
   severity: z.enum(SEVERITY_FILTER).optional().default(ALL),
   environment: z.enum(ENVIRONMENT_FILTER).optional().default(ALL),

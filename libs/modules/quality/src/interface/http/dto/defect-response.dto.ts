@@ -48,6 +48,15 @@ export const DefectRowSchema = z.object({
 export const DefectListResponseSchema = z.object({
   metrics: DefectMetricsSchema,
   data: z.array(DefectRowSchema),
+  /**
+   * Defects matching the filters across ALL pages.
+   *
+   * The grid pages at a server-side window; without this the client cannot distinguish a full
+   * page from the last one, which is how the list silently showed the first 50 and read as
+   * complete. `metrics` is deliberately computed over every defect, not the page, so the two
+   * numbers answer different questions and must not be conflated.
+   */
+  total: z.number().int(),
 });
 
 export class DefectListResponseDto extends createZodDto(DefectListResponseSchema) {}

@@ -34,6 +34,7 @@ export class QualityController {
       sortBy: sort?.sortBy,
       sortDirection: sort?.sortDirection,
       limit: query.limit,
+      offset: query.offset,
     });
   }
 }
