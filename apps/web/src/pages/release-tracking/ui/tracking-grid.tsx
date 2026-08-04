@@ -147,6 +147,18 @@ export function TrackingGrid({
         grow: true,
         locked: true,
         /**
+         * RALLY PARITY (differs from BA design)
+         * Rally: the Features List sorts on Rank, ID and Name — "You can reorder columns (except for
+         * Rank, ID, and Name)", the three pinned columns, and Name is one of them.
+         * BA spec said: §246 lists the columns without naming Name as a sort key, and this grid
+         * shipped sorting on Rank, ID and Team only.
+         * Decided 2026-08-04. See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P6-RT-5
+         *
+         * Name is the column a reader scans when they know what they are looking for and not its ID,
+         * which is the whole reason Rally makes it sortable and pins it third.
+         */
+        sortCol: 'name',
+        /**
          * JUST the name — plain wrapped text, the treatment Iteration Status gives its Name and the one
          * Rally uses: the ID is the link, the name is read as content.
          *
@@ -249,6 +261,7 @@ export function TrackingGrid({
     const direction = sortDir === 'asc' ? 1 : -1
     const compare = (a: ReleaseTrackingRow, b: ReleaseTrackingRow) => {
       if (sortCol === 'id') return a.itemKey.localeCompare(b.itemKey) * direction
+      if (sortCol === 'name') return a.name.localeCompare(b.name) * direction
       if (sortCol === 'team') {
         const left = a.teams.map((team) => team.name).join(', ')
         const right = b.teams.map((team) => team.name).join(', ')
