@@ -824,7 +824,7 @@ function BacklogRow({
           // contract's right-alignment is not worth a visible shift on an unrelated page.
           className="block text-center font-mono text-muted-foreground tabular-nums"
           style={{ fontSize: 12 }}
-          inputClassName="w-full rounded border border-primary bg-transparent px-0.5 text-center font-mono text-ui-xs text-foreground focus:outline-none"
+          inputClassName="w-full rounded border border-primary bg-transparent px-0.5 text-center font-mono text-inherit text-foreground focus:outline-none"
         />
       </div>
 

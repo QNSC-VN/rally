@@ -72,6 +72,19 @@ describe('CapacityItemRow warnings', () => {
     expect(screen.getByRole('img', { name: 'Rollup exceeds Estimated' })).toBeTruthy()
   })
 
+  it("names the split as `N teams`, the BA's own words, not a bare digit", () => {
+    /**
+     * SRS §155: "If the Feature is split across multiple Teams, the parent row shows `N teams`; split
+     * edits are made through the Allocate dialog."
+     *
+     * Rally draws a boxed `2` there, which needs a tooltip to mean anything — and a tooltip is not
+     * reachable by a screen reader or a printout. The count itself is the point: no single team name is
+     * the answer for a split Feature, and the nested rows name them all.
+     */
+    renderRow({ teamIds: ['t1', 't2'], primaryTeamId: 't1' })
+    expect(screen.getByText('2 teams')).toBeTruthy()
+  })
+
   it('ignores warning codes that belong to a TEAM, not a Feature', () => {
     // A Feature has no capacity of its own, so the capacity rules cannot apply to it. If one ever
     // arrived on an item row it must not be drawn here — the row would be reporting a limit that

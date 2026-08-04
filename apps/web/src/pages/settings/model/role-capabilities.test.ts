@@ -72,12 +72,7 @@ describe('codesForState', () => {
 
 describe('states ↔ permissions round-trip', () => {
   it('rebuilds the same editable states from the permissions it produced', () => {
-    const original = role([
-      'work_item:view',
-      'work_item:create',
-      'iteration:view',
-      'audit:view',
-    ])
+    const original = role(['work_item:view', 'work_item:create', 'iteration:view', 'audit:view'])
     const states = statesFromRole(original)
     // Backlog full (view+create), Sprints view-only, Audit view.
     expect(states['Backlog & work items']).toBe('full')

@@ -39,7 +39,11 @@ export function CreateRoleDialog({ open, onClose, templates }: CreateRoleDialogP
     const tmpl = templates.find((r) => r.slug === templateSlug)
     const permissions = (tmpl ? permissionsFromStates(statesFromRole(tmpl)) : []) as Permission[]
     try {
-      await create.mutateAsync({ name: trimmed, description: description.trim() || null, permissions })
+      await create.mutateAsync({
+        name: trimmed,
+        description: description.trim() || null,
+        permissions,
+      })
       notify.success(t('roles.created', 'Role created'))
       onClose()
     } catch (err) {
@@ -48,7 +52,12 @@ export function CreateRoleDialog({ open, onClose, templates }: CreateRoleDialogP
   }
 
   return (
-    <AppModal open={open} onClose={onClose} title={t('roles.createTitle', 'Create role')} width={460}>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title={t('roles.createTitle', 'Create role')}
+      width={460}
+    >
       <div className="space-y-4 px-6 py-5">
         <FormField label={t('roles.nameLabel', 'Name')} htmlFor="role-name" required>
           <Input

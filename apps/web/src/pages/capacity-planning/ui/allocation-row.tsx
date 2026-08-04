@@ -1,3 +1,4 @@
+import { TableRow } from '@/shared/ui/table'
 import { useMemo, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -153,7 +154,7 @@ export function AllocationRow({
   }
 
   return (
-    <div className="group flex min-h-[30px] items-center border-b border-border-inner px-2 py-0.5 text-ui-md transition-colors hover:bg-primary-lighter">
+    <TableRow className="px-2 py-0.5" compact>
       {/* The gear LEADS here, which is the BA's placement for this table and the one table where it
           does: "the only place this row's allocation is changed" is the row's subject, not a trailing
           afterthought. Same component the Features tab renders, so the verbs cannot diverge. */}
@@ -300,7 +301,7 @@ export function AllocationRow({
             </span>
           }
           className="block w-full text-right"
-          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-right text-ui-sm text-foreground focus:outline-none"
+          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-right text-inherit text-foreground focus:outline-none"
         />
       </div>
 
@@ -320,6 +321,6 @@ export function AllocationRow({
           sourceNote={t(`sources.${allocation.source}`)}
         />
       </div>
-    </div>
+    </TableRow>
   )
 }

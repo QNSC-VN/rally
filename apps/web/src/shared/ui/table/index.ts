@@ -7,6 +7,7 @@ export {
   type UseRowRerankResult,
 } from './use-row-rerank'
 export { useDragRowStyle } from './use-drag-row-style'
+export { TableRow, type TableRowProps } from './table-row'
 export { rankColumn, RankCell, RANK_COLUMN_WIDTH, RANK_COLUMN_MIN_WIDTH } from './rank-column'
 export {
   DataTableFrame,

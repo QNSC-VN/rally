@@ -1,3 +1,4 @@
+import { TableRow } from '@/shared/ui/table'
 import { type CSSProperties, type ReactNode } from 'react'
 import { ProjectCell } from '@/shared/ui/project-cell'
 import { useTranslation } from 'react-i18next'
@@ -128,7 +129,7 @@ export function ReleaseRow({
   }
 
   return (
-    <div className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter">
+    <TableRow className="px-3">
       {gutter}
 
       {/* ID — type glyph + per-project key (RE-<n>), matching US/DE */}
@@ -156,7 +157,7 @@ export function ReleaseRow({
           title={release.name}
           className="block w-full break-words whitespace-normal text-foreground"
           style={{ fontSize: 12 }}
-          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
+          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-inherit text-foreground focus:outline-none"
         />
       </div>
 
@@ -177,7 +178,7 @@ export function ReleaseRow({
               {stripHtml(release.theme) || '--'}
             </span>
           }
-          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-foreground focus:outline-none"
+          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-inherit text-foreground focus:outline-none"
         />
       </div>
 
@@ -196,7 +197,7 @@ export function ReleaseRow({
           displayValue={
             <span className="block break-all text-muted-foreground">{release.version || '--'}</span>
           }
-          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-foreground focus:outline-none"
+          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-inherit text-foreground focus:outline-none"
         />
       </div>
 
@@ -256,7 +257,7 @@ export function ReleaseRow({
               {release.plannedVelocity ?? '--'}
             </span>
           }
-          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"
+          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-inherit text-foreground focus:outline-none"
         />
       </div>
 
@@ -286,6 +287,6 @@ export function ReleaseRow({
           onChange={(v) => saveState(v as ReleaseStatus)}
         />
       </div>
-    </div>
+    </TableRow>
   )
 }

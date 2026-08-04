@@ -324,7 +324,10 @@ function ProjectsBulkBar({
         pending={update.isPending}
         onConfirm={() => {
           setConfirm(null)
-          void run((id) => update.mutateAsync({ id, input: { status: 'archived' } }), 'toast.archivedN')
+          void run(
+            (id) => update.mutateAsync({ id, input: { status: 'archived' } }),
+            'toast.archivedN',
+          )
         }}
         onCancel={() => setConfirm(null)}
       />

@@ -1,5 +1,5 @@
 import { EMPTY_VALUE } from '@/shared/lib/utils'
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useCallback, useMemo, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSortable } from '@dnd-kit/sortable'
@@ -11,8 +11,10 @@ import {
   useDragRowStyle,
   SelectableTable,
   RankCell,
+  TableRow,
 } from '@/shared/ui/table'
 import { TableTotalsRow } from '@/shared/ui/table-totals-row'
+import { useProjectTeams } from '@/features/teams/api'
 import { portfolioStateColor } from '@/features/portfolio/status-colors'
 import { Plus } from 'lucide-react'
 
@@ -58,11 +60,20 @@ const text = (value: string | null): string => value ?? ''
  */
 export function EpicChildrenTable({
   features,
+  projectId,
   canEdit = false,
   isLoading = false,
   onAddFeature,
 }: {
   features: PortfolioItem[]
+  /**
+   * The Epic's project, for the team KEY behind each child's team chip.
+   *
+   * The child payload names the team and carries its id but no key, and `TeamAvatar` falls back to the
+   * name's initials — so one team drew `TG` here and `GA` (from key `GAMMA`) on the grid this tab was
+   * opened from.
+   */
+  projectId?: string
   canEdit?: boolean
   isLoading?: boolean
   /**
@@ -75,6 +86,12 @@ export function EpicChildrenTable({
 }) {
   const { t } = useTranslation('portfolio')
   const navigate = useNavigate()
+  const { data: projectTeams = [] } = useProjectTeams(projectId)
+  const teamKeyOf = useCallback(
+    (teamId: string | null | undefined) =>
+      teamId == null ? null : (projectTeams.find((tm) => tm.id === teamId)?.key ?? null),
+    [projectTeams],
+  )
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<string>('all')
   const { sortField, sortDir, toggle } = useTableSort<EpicSortField>()
@@ -233,6 +250,7 @@ export function EpicChildrenTable({
         }
         renderRow={(feature) => (
           <EpicChildRow
+            teamKeyOf={teamKeyOf}
             key={feature.id}
             feature={feature}
             rowNum={rerank.items.indexOf(feature) + 1}
@@ -262,6 +280,7 @@ function EpicChildRow({
   dragDisabled,
   onOpen,
   stateLabel,
+  teamKeyOf,
 }: {
   feature: PortfolioItem
   rowNum: number
@@ -269,6 +288,8 @@ function EpicChildRow({
   dragDisabled: boolean
   onOpen: () => void
   stateLabel: string
+  /** Team id → key, so this row's chip matches the same team's chip on every other surface. */
+  teamKeyOf: (teamId: string | null | undefined) => string | null
 }) {
   const {
     setNodeRef,
@@ -282,11 +303,12 @@ function EpicChildRow({
   const dragStyle = useDragRowStyle({ transform, transition, isDragging })
 
   return (
-    <div
+    <TableRow
       ref={setNodeRef}
       // `min-w-max` is a class; the drag style is genuinely dynamic and comes from the shared
       // `useDragRowStyle`, so this row cannot drift from the other six drag grids.
-      className="group flex min-h-[34px] min-w-max items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
+      className="px-3"
+      fitContent
       style={dragStyle}
     >
       <RowGutter
@@ -308,7 +330,7 @@ function EpicChildRow({
           render. Both were bare text — the one column pair still reading as plain strings while
           every neighbouring surface showed a glyph. */}
       <div style={colStyles.team} className="flex min-w-0 items-center px-2">
-        <TeamCell name={feature.teamName ?? null} />
+        <TeamCell teamKey={teamKeyOf(feature.teamId)} name={feature.teamName ?? null} />
       </div>
       <div style={colStyles.state} className="min-w-0 px-2">
         <span
@@ -341,7 +363,7 @@ function EpicChildRow({
       <div style={colStyles.owner} className="flex min-w-0 items-center px-2">
         <OwnerCell name={feature.ownerName ?? null} />
       </div>
-    </div>
+    </TableRow>
   )
 }
 

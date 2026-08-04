@@ -10,12 +10,13 @@
  * the approved slice at all, and Dependencies is future work (`FB-P6-001`), so it appears only as
  * a disabled marker that cannot be mistaken for a working tab.
  */
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { GitBranch } from 'lucide-react'
 
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useReleases } from '@/features/releases/api'
+import { useProjectTeams } from '@/features/teams/api'
 import { useReleaseTracking, type ChartUnit, type ReleaseBucket } from '@/features/reporting/api'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { CompactSelect } from '@/shared/ui/native-select'
@@ -36,6 +37,16 @@ export function ReleaseTrackingPage() {
   const teamId = team?.teamId
 
   const { data: releases = [] } = useReleases(projectId)
+  /**
+   * Team id → key, for the grid's team chips: the report names teams but carries no keys, and initials
+   * would draw a different glyph from the one the same team shows on every other page.
+   */
+  const { data: projectTeams = [] } = useProjectTeams(projectId)
+  const teamKeyOf = useCallback(
+    (teamId: string | null | undefined) =>
+      teamId == null ? null : (projectTeams.find((tm) => tm.id === teamId)?.key ?? null),
+    [projectTeams],
+  )
   const [chosenReleaseId, setChosenReleaseId] = useState<string | null>(null)
   const releaseId =
     chosenReleaseId && releases.some((release) => release.id === chosenReleaseId)
@@ -193,6 +204,7 @@ export function ReleaseTrackingPage() {
           <div className="flex min-h-0 flex-1 flex-col rounded border border-border-strong bg-card">
             <TrackingGrid
               report={data}
+              teamKeyOf={teamKeyOf}
               bucket={bucket}
               unit={unit}
               /* Into the grid's TOOLBAR, opposite the search — one row, as Rally lays it out. It used to

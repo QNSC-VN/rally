@@ -51,8 +51,15 @@ export function TeamAvatar({
 }
 
 /**
- * Read-only team cell: a {@link TeamAvatar} key-chip + truncated team name,
- * with an em-dash fallback when unassigned. Mirrors {@link OwnerCell}.
+ * Read-only team cell: a {@link TeamAvatar} key-chip + team name, with a `--` fallback when unassigned.
+ * Mirrors {@link OwnerCell}.
+ *
+ * `text-ui-sm` — the app's "most grid cells" size — and the name's line box is at least as tall as the
+ * chip, so a single-line name sits CENTRED against it. It was `text-ui-xs` (10px, the dense-cell size)
+ * with the text top-aligned, which showed up the moment Capacity Planning rendered this same component
+ * two ways in one row: as a plain cell and as a select's trigger content. The trigger's own 11px text
+ * made the read-only cell look shrunken beside it, and the top alignment made it sit high in the row.
+ * Both are fixed here rather than per-call-site, or the two renderings drift again.
  */
 export function TeamCell({
   teamKey,
@@ -64,13 +71,15 @@ export function TeamCell({
   className?: string
 }) {
   if (!name && !teamKey) {
-    return <span className="text-ui-xs text-foreground-disabled">--</span>
+    return <span className="text-ui-sm text-foreground-disabled">--</span>
   }
 
   return (
     <div className={cn('flex items-start gap-1', className)}>
       <TeamAvatar teamKey={teamKey} name={name} />
-      <span className="text-ui-xs break-words whitespace-normal text-muted-foreground">
+      {/* `min-h-5` is the chip's own 20px: a one-line name centres against it, a wrapped one still
+          starts level with its top. */}
+      <span className="flex min-h-5 min-w-0 items-center text-ui-sm break-words whitespace-normal text-muted-foreground">
         {name ?? teamKey}
       </span>
     </div>

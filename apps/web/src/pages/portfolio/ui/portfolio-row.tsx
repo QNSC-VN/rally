@@ -13,7 +13,7 @@ import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { useSortable } from '@dnd-kit/sortable'
 
 import { RowGutter } from '@/shared/ui/row-gutter'
-import { useDragRowStyle } from '@/shared/ui/table'
+import { useDragRowStyle, TableRow } from '@/shared/ui/table'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { RankCell } from '@/shared/ui/table'
 import { portfolioStateColor } from '@/features/portfolio/status-colors'
@@ -139,9 +139,9 @@ export function PortfolioRow({
 
   return (
     <>
-      <div
+      <TableRow
         ref={setNodeRef}
-        className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
+        className="px-3"
         // Named so a test can find the row the user was just sent to, and so a screen reader is
         // not told about a purely visual hint.
         data-revealed={revealed || undefined}
@@ -299,7 +299,11 @@ export function PortfolioRow({
               which read as "no team assigned" for a level that cannot have one. The count is already
               on the wire and already drives the disclosure chevron. */}
           {item.type === 'epic' ? (
-            <span className="truncate px-2 text-muted-foreground">
+            /* ITALIC, and at the same 11px the team cells beside it use: `1 Feature` is a COUNT standing
+               in for a value this level does not have, and in upright text the same size as a team name
+               it read as a team called "1 Feature". Italic is how the rest of the app marks a derived
+               stand-in (the `↳ Allocation` child rows do the same). */
+            <span className="truncate px-2 text-ui-sm text-muted-foreground italic">
               {item.childFeatureCount > 0
                 ? t('row.childFeatureCount', { count: item.childFeatureCount })
                 : EMPTY_VALUE}
@@ -337,7 +341,7 @@ export function PortfolioRow({
             }}
           />
         </div>
-      </div>
+      </TableRow>
 
       {/* Children — an Epic discloses its Features, a Feature its Stories/Defects. A
           SIBLING of the row, not a descendant: the row is the dnd-kit sortable node, so

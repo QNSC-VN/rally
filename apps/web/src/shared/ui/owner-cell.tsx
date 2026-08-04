@@ -68,7 +68,7 @@ export function OwnerAvatar({
 
 export function OwnerCell({ name, className }: OwnerCellProps) {
   if (!name) {
-    return <span className="text-ui-xs text-foreground-disabled">--</span>
+    return <span className="text-ui-sm text-foreground-disabled">--</span>
   }
 
   return (
@@ -78,7 +78,12 @@ export function OwnerCell({ name, className }: OwnerCellProps) {
     // pickers render `OwnerAvatar` plus a plain label, not this component.
     <div className={cn('flex items-start gap-1', className)}>
       <OwnerAvatar name={name} />
-      <span className="text-ui-xs break-words whitespace-normal text-muted-foreground">{name}</span>
+      {/* `text-ui-sm` and a line box at least as tall as the avatar — the same rule `TeamCell` follows.
+          At 10px, top-aligned, a read-only owner rendered visibly smaller and higher than the identical
+          value in an owner PICKER one row up. */}
+      <span className="flex min-h-5 min-w-0 items-center text-ui-sm break-words whitespace-normal text-muted-foreground">
+        {name}
+      </span>
     </div>
   )
 }

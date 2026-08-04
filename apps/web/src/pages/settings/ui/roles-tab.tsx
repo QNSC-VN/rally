@@ -139,7 +139,6 @@ export function RolesTab() {
       />
       <div className="flex-1 overflow-y-auto px-8 py-6">
         <div className="space-y-5">
-
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <Spinner size="lg" />

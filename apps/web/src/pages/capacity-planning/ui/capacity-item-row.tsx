@@ -4,6 +4,7 @@ import { AlertTriangle } from 'lucide-react'
 
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { MetricValue } from '@/shared/ui/metric-value'
+import { TeamCell } from '@/shared/ui/team-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { WarningIndicator } from '@/shared/ui/warning-indicator'
@@ -33,6 +34,8 @@ export function CapacityItemRow({
   belowCutline,
   expanded = false,
   onToggleExpanded,
+  anySplitFeature = false,
+  teamKeyOf = () => null,
   onRemove,
   onUnassign,
   onAllocate,
@@ -56,6 +59,14 @@ export function CapacityItemRow({
   expanded?: boolean
   /** Omitted where nothing can be nested — the toggle then renders as a spacer. */
   onToggleExpanded?: () => void
+  /**
+   * Whether ANY Feature on the plan is split across teams, i.e. whether this grid has a disclosure
+   * column at all. Resolved by the page, because a row cannot see its siblings — without it every ID on
+   * a plan with no splits carried 12px of blank space in front of it.
+   */
+  anySplitFeature?: boolean
+  /** Team id → key, resolved by the page from the project's teams: the chip's two letters. */
+  teamKeyOf?: (teamId: string | null | undefined) => string | null
   /** Removes the Feature from the plan. Omitted for a reader without `capacity:manage`. */
   onRemove?: () => void
   /** Clears every team assignment but keeps the Feature on the plan — Rally's second removal verb. */
@@ -120,7 +131,30 @@ export function CapacityItemRow({
         {position}
       </div>
 
-      <div style={colStyleFor('id', { flexShrink: 0 })} className="min-w-0 px-2">
+      {/* The disclosure chevron sits with the ID, which is where every other grid in the app puts it
+          (Iteration Status, Portfolio, the Teams tab's own team rows). It was in the NAME cell, whose
+          width-preserving spacer then indented every Name 16px off its own heading — a gap with nothing
+          in it on the rows that do not split.
+
+          Disclosed only when there IS something nested: a Feature on one team has no breakdown to show,
+          and an inert toggle on every row teaches the reader to ignore all of them. */}
+      <div
+        style={colStyleFor('id', { flexShrink: 0 })}
+        className="flex min-w-0 items-center gap-1 px-2"
+      >
+        <RowExpandToggle
+          expanded={expanded}
+          onToggle={onToggleExpanded ?? (() => {})}
+          label={
+            expanded
+              ? t('items.collapseTeams', { item: item.itemKey })
+              : t('items.expandTeams', { item: item.itemKey })
+          }
+          disclosable={onToggleExpanded !== undefined && item.teamIds.length > 1}
+          // Nothing to reserve when NO Feature on the plan is split: the column would be blank space in
+          // front of every ID, lining up with nothing.
+          reserveSpace={anySplitFeature}
+        />
         <IdCell
           itemKey={item.itemKey}
           type="feature"
@@ -128,25 +162,7 @@ export function CapacityItemRow({
         />
       </div>
 
-      <div
-        style={colStyleFor('name', { flexShrink: 0 })}
-        className="flex min-w-0 items-center gap-1 px-2"
-      >
-        {/* Disclosed only when there IS something nested: a Feature on one team has no breakdown to
-            show, and an inert toggle on every row teaches the reader to ignore all of them. */}
-        {onToggleExpanded !== undefined && item.teamIds.length > 1 ? (
-          <RowExpandToggle
-            expanded={expanded}
-            onToggle={onToggleExpanded}
-            label={
-              expanded
-                ? t('items.collapseTeams', { item: item.itemKey })
-                : t('items.expandTeams', { item: item.itemKey })
-            }
-          />
-        ) : (
-          <span className="w-4 shrink-0" />
-        )}
+      <div style={colStyleFor('name', { flexShrink: 0 })} className="min-w-0 px-2">
         <span className="break-words whitespace-normal text-foreground" title={item.name}>
           {item.name}
         </span>
@@ -178,7 +194,12 @@ export function CapacityItemRow({
                   <AlertTriangle size={12} />
                   <span className="text-ui-sm">{t('items.notAssigned')}</span>
                 </span>
-              ) : undefined
+              ) : (
+                /* The SAME `TeamCell` the Team column beside it renders. Left to the select's own
+                   option label, an assigned team came out at `text-ui-sm` in the trigger and
+                   `text-ui-xs` in the Team cell — one team, two sizes, in one row. */
+                <TeamCell teamKey={teamKeyOf(item.primaryTeamId)} name={primaryTeamName} />
+              )
             }
           />
         ) : item.primaryTeamId === null && item.teamIds.length === 0 ? (
@@ -187,44 +208,44 @@ export function CapacityItemRow({
             <span className="text-ui-sm">{t('items.notAssigned')}</span>
           </span>
         ) : item.teamIds.length > 1 ? (
-          /* Rally prints a boxed COUNT here and lists the teams in the nested rows beneath. A count
-             is the only honest answer for a split Feature — no single team name is it. */
-          <span
-            className="inline-flex min-w-6 justify-center rounded-sm border border-border-strong px-1 text-ui-sm text-foreground tabular-nums"
-            title={t('items.teamCount', { count: item.teamIds.length })}
-          >
-            {item.teamIds.length}
+          /* A COUNT, which is the only honest answer for a split Feature — no single team name is it,
+             and the nested rows beneath name them all.
+
+             `2 teams`, not Rally's bare boxed `2`: SRS §155 is explicit that "the parent row shows
+             `N teams`", and it says out loud what the box only implied. The bare digit needed its
+             tooltip to be legible at all, which a screen reader never reached and a printout lost. */
+          <span className="text-ui-sm text-foreground">
+            {t('items.teamCount', { count: item.teamIds.length })}
           </span>
         ) : (
-          <span
-            className="break-words whitespace-normal text-foreground"
-            title={primaryTeamName ?? undefined}
-          >
-            {primaryTeamName ?? '--'}
-          </span>
+          /* Read-only (a published plan, or no `capacity:manage`): the same `TeamCell` the Team column
+             beside it uses, so one team does not render two ways in one row. */
+          <TeamCell teamKey={teamKeyOf(item.primaryTeamId)} name={primaryTeamName} />
         )}
       </div>
 
       {/* The BA's `Team`: who OWNS this Feature outside the plan. Distinct from the planned assignment
           beside it, and the pair is the point — a Feature owned by one team and planned against another
-          is exactly the case a planner needs to see. */}
+          is exactly the case a planner needs to see.
+
+          The shared `TeamCell`, chip and all — the same rendering as the assignment cell beside it, the
+          rail, Portfolio, Release Tracking and Epic Children. A brief glyph-less variant here made the
+          derived column look different from the editable one, but the difference a reader needs is
+          carried by the headings and by the picker's own chevron, not by drawing one team two ways. */}
       <div style={colStyleFor('team', { flexShrink: 0 })} className="min-w-0 px-2">
-        <span
-          className="break-words whitespace-normal text-muted-foreground"
-          title={item.teamName ?? undefined}
-        >
-          {item.teamName ?? '--'}
-        </span>
+        <TeamCell teamKey={teamKeyOf(item.teamId)} name={item.teamName} />
       </div>
 
-      {/* Rally's `Dependencies` count. `0`, not a dash: the BA's catalog says "it shows `0` until
-          dependency modelling is added", and zero is the truthful count for a domain that models
-          none — a dash would read as "unknown". */}
-      <div
-        style={colStyleFor('dependencies', { flexShrink: 0 })}
-        className="px-2 text-right text-muted-foreground tabular-nums"
-      >
-        0
+      {/* Rally's `Dependencies` count, drawn as Rally draws it: a small bordered CHIP holding the
+          number, at the left of its column — not a bare right-aligned digit. The chip is what makes it
+          read as a count of linked things rather than as another of the three metric columns beside it.
+
+          `0`, not a dash: the BA's catalog says "it shows `0` until dependency modelling is added", and
+          zero is the truthful count for a domain that models none — a dash would read as "unknown". */}
+      <div style={colStyleFor('dependencies', { flexShrink: 0 })} className="px-2">
+        <span className="inline-flex min-w-6 justify-center rounded border border-border-strong px-1 text-ui-xs text-muted-foreground tabular-nums">
+          0
+        </span>
       </div>
 
       {/* Three numeric columns, no bar: Rally draws none on this tab, and it is right not to —

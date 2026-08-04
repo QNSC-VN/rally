@@ -2,15 +2,7 @@ import type { UpdateProjectInput } from '@/features/projects/api'
 import type { OwnerSelectMember } from '@/shared/ui/owner-cell'
 
 export type ProjectColKey =
-  | 'key'
-  | 'name'
-  | 'status'
-  | 'owner'
-  | 'teams'
-  | 'members'
-  | 'startDate'
-  | 'endDate'
-  | 'updated'
+  'key' | 'name' | 'status' | 'owner' | 'teams' | 'members' | 'startDate' | 'endDate' | 'updated'
 
 /**
  * Per-render context for the Projects grid cells. Only the Key column links to

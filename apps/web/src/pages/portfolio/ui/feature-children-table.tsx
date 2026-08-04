@@ -12,6 +12,7 @@ import {
   useDragRowStyle,
   RankCell,
   SelectableTable,
+  TableRow,
 } from '@/shared/ui/table'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
@@ -432,13 +433,15 @@ function ChildRow({
 
   return (
     <div ref={setNodeRef} style={dragStyle}>
-      <div
+      <TableRow
         // `min-w-max` (not an inline style) so the row is as wide as its columns and the
         // horizontal scroll region covers all of them.
         // `min-h-[34px]` with `items-center`, exactly as Iteration Status sizes its rows: a
         // MINIMUM, not a fixed height, so the row grows when a long Name or ID wraps, and the
         // cells stay vertically centred within whatever height that produces.
-        className="group flex min-h-[34px] min-w-max cursor-pointer items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
+        className="px-3"
+        fitContent
+        interactive
         onClick={onOpen}
       >
         {/* Grip + checkbox, the same gutter every drag grid renders — the grip was missing here
@@ -523,7 +526,7 @@ function ChildRow({
             // A dash, not 0: an unestimated Story is not a Story worth zero points.
             displayValue={child.storyPoints ?? EMPTY_VALUE}
             className="block text-right font-mono text-muted-foreground tabular-nums"
-            inputClassName="w-full rounded border border-primary bg-transparent px-0.5 text-right font-mono text-ui-xs text-foreground focus:outline-none"
+            inputClassName="w-full rounded border border-primary bg-transparent px-0.5 text-right font-mono text-inherit text-foreground focus:outline-none"
           />
         </div>
         <div
@@ -591,7 +594,7 @@ function ChildRow({
         <div style={colStyles.taskEstimate} className="px-2" />
         <div style={colStyles.toDo} className="px-2" />
         <div style={colStyles.actual} className="px-2" />
-      </div>
+      </TableRow>
 
       {expanded && (
         <ChildTaskRows
@@ -704,7 +707,7 @@ function ChildTaskRow({
 
   return (
     // Grows with a wrapped Name or ID, exactly as the parent row does.
-    <div className="flex min-h-[30px] min-w-max items-center border-b border-border-inner bg-surface-subtle px-3 text-ui-sm">
+    <TableRow className="px-3 text-ui-sm" compact fitContent nested>
       <RowGutter dragDisabled />
       {/* A Task has no rank of its own — it follows its parent. Empty, but present, or the sub-row
           falls out of step with the header. */}
@@ -735,7 +738,7 @@ function ChildTaskRow({
       {hourCell(task.estimateHours, colStyles.taskEstimate)}
       {hourCell(task.todoHours, colStyles.toDo)}
       {hourCell(task.actualHours, colStyles.actual)}
-    </div>
+    </TableRow>
   )
 }
 

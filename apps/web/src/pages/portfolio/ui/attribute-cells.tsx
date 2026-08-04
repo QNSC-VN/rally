@@ -67,9 +67,14 @@ export function ReleaseSelectCell({
   // same glyph + name rather than inventing an id for the select to bind to.
   if (!releaseId && releaseName) {
     return (
-      <span className="flex min-w-0 items-center gap-1.5 px-2" title={releaseName}>
+      <span className="flex min-w-0 items-start gap-1.5 px-2" title={releaseName}>
         <TypeBadge type="release" size={16} />
-        <span className="truncate">{releaseName}</span>
+        {/* WRAPS, at the same size the editable cell renders: `RE-1: v2.0 — NX Platform Upgrade` is a
+            name, and truncating it here while the picker one row up wrapped it made the child row look
+            like a different column. `min-h-5` centres a one-liner against the glyph. */}
+        <span className="flex min-h-5 min-w-0 items-center text-ui-sm break-words whitespace-normal">
+          {releaseName}
+        </span>
       </span>
     )
   }
@@ -137,10 +142,16 @@ export function TeamSelectCell({
   ariaLabel: string
   onChange: (teamId: string | null) => void
 }) {
+  // The team's KEY, so the chip reads the same two letters here as in the picker's own options below.
+  // Without it `TeamAvatar` falls back to the name's initials, and one team then draws two glyphs
+  // depending on which branch of this cell rendered it.
+  const teamKey = teams.find((tm) => tm.id === teamId)?.key ?? null
+
   // No id to bind a select's value to — a Story/Defect child. The read-only chip, which
   // already renders its own em-dash when there is nothing to show.
   if (!teamId) {
-    if (!canEdit || teams.length === 0) return <TeamCell name={teamName} className="px-2" />
+    if (!canEdit || teams.length === 0)
+      return <TeamCell teamKey={teamKey} name={teamName} className="px-2" />
   }
 
   const options: SelectOption[] = [
