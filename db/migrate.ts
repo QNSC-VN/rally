@@ -62,12 +62,33 @@ async function run() {
     console.log('Seeding tenant bootstrap (workspace + SSO connection)...');
     await seedTenantBootstrap(seedUrl);
 
-    // Demo fixtures (demo users, projects, work items, teams, releases) are for
-    // develop/staging/E2E only. Gate on SEED_ON_DEPLOY and NEVER set it in
-    // production — real prod runs only the two prod-safe steps above.
+    /**
+     * Demo fixtures (demo users, projects, work items, teams, releases) — LOCAL AND CI ONLY.
+     *
+     * Two gates, not one. `SEED_ON_DEPLOY` is the switch; `NODE_ENV` is the floor.
+     *
+     * The switch alone was a Terraform variable nobody must ever set wrong: develop had it `true`, so a
+     * deployed database people read as real was carrying a fixture project, a capacity plan and a frozen
+     * report history. Copying that stanza to another environment was all it would have taken to do the
+     * same to production. Deployed migrator tasks run with `NODE_ENV=production`
+     * (`infra/modules/stack/main.tf`), and nothing else does — CI's ephemeral Postgres and a developer's
+     * own database do not — so this refuses the demo seed on exactly the databases that must never have
+     * it, whatever the switch says.
+     *
+     * Refused LOUDLY rather than silently skipped: a deploy that expected fixtures should say why it has
+     * none, or the next person debugs an empty environment instead of reading a log line.
+     */
     if (process.env['SEED_ON_DEPLOY'] === 'true') {
-      console.log('SEED_ON_DEPLOY=true — running demo seed...');
-      await seed(seedUrl);
+      if (process.env['NODE_ENV'] === 'production') {
+        console.warn(
+          '⚠️  SEED_ON_DEPLOY=true but NODE_ENV=production — demo seed REFUSED. ' +
+            'Deployed environments run the role catalogue and tenant bootstrap only; ' +
+            'fixtures are for local development (pnpm db:seed:test) and CI.',
+        );
+      } else {
+        console.log('SEED_ON_DEPLOY=true — running demo seed...');
+        await seed(seedUrl);
+      }
     }
   } catch (err) {
     console.error('❌  Migration failed', err);
