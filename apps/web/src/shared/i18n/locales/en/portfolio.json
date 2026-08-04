@@ -54,7 +54,8 @@
     "projectMoved": "Moved to another project — Team and Release were reset",
     "morePreviewItems": "+{{count}} more - see Children tab",
     "childFeatureCount": "{{count}} Feature",
-    "childFeatureCount_plural": "{{count}} Features"
+    "childFeatureCount_plural": "{{count}} Features",
+    "moreLeafItems": "+{{count}} more - open the Feature"
   },
   "health": {
     "state": {
