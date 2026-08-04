@@ -15,6 +15,7 @@ import type { ReactElement, ReactNode } from 'react'
 import { ResponsiveContainer } from 'recharts'
 
 import { BRAND } from '@/shared/config/brand'
+import { cn } from '@/shared/lib/utils'
 import { EmptyState } from '@/shared/ui/empty-state'
 
 /** Axis/tick defaults, spread onto `<XAxis>` / `<YAxis>` so every chart matches. */
@@ -218,10 +219,31 @@ export function ChartLegendItem({
   color,
   label,
   shape = 'bar',
+  hidden = false,
+  dimmed = false,
+  onToggle,
+  onHover,
+  toggleLabel,
 }: {
   color: string
   label: ReactNode
   shape?: 'bar' | 'line' | 'dot'
+  /** The series is switched OFF: swatch and text go grey, as Rally greys a disabled legend entry. */
+  hidden?: boolean
+  /** Another entry is being hovered, so this one recedes. */
+  dimmed?: boolean
+  /**
+   * Makes the entry a real button that shows/hides its series — Rally's behaviour: click an entry and
+   * the series leaves the chart, click again and it returns.
+   *
+   * The `<button>` lives HERE rather than in the page because `shared/ui` is where a control belongs
+   * (the FE ratchet counts raw `<button>` in consumer layers, and for this reason).
+   */
+  onToggle?: () => void
+  /** Hover in/out, for the "highlight one series, recede the rest" pass Rally does. */
+  onHover?: (hovering: boolean) => void
+  /** Accessible name for the toggle, e.g. `Hide Accepted Points`. Required when `onToggle` is given. */
+  toggleLabel?: string
 }) {
   const swatch =
     shape === 'bar'
@@ -229,10 +251,38 @@ export function ChartLegendItem({
       : shape === 'dot'
         ? 'h-2 w-2 rounded-full'
         : 'h-0.5 w-4'
-  return (
-    <span className="flex items-center gap-1.5">
-      <span className={swatch} style={{ backgroundColor: color }} />
+  const body = (
+    <>
+      <span
+        className={swatch}
+        // A hidden series keeps its SHAPE and loses its colour: the entry still has to be findable to
+        // be clicked again, so it greys rather than disappearing.
+        style={{ backgroundColor: hidden ? BRAND.textDisabled : color }}
+      />
       {label}
-    </span>
+    </>
+  )
+  const tone = hidden ? 'text-foreground-disabled' : dimmed ? 'opacity-40' : ''
+
+  if (!onToggle) return <span className={cn('flex items-center gap-1.5', tone)}>{body}</span>
+
+  return (
+    <button
+      type="button"
+      aria-pressed={!hidden}
+      aria-label={toggleLabel}
+      onClick={onToggle}
+      onMouseEnter={() => onHover?.(true)}
+      onMouseLeave={() => onHover?.(false)}
+      onFocus={() => onHover?.(true)}
+      onBlur={() => onHover?.(false)}
+      className={cn(
+        'flex cursor-pointer items-center gap-1.5 rounded px-1 transition-opacity',
+        'hover:bg-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary',
+        tone,
+      )}
+    >
+      {body}
+    </button>
   )
 }

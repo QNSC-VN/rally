@@ -11,6 +11,7 @@
  * SRS forbids reconstructing it from today's mutable Planned value, because that would silently
  * redraw every past ideal whenever scope changed.
  */
+import { useState, type Key } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 
@@ -29,15 +30,47 @@ import {
 } from '@/shared/ui/chart'
 
 /**
- * Dots on the measured series, so a day with no measured neighbour is still visible.
+ * A dot ONLY where a measured day has no measured neighbour — otherwise none, as Rally draws it.
  *
- * Small deliberately: a release window is often 60–90 days, and a dot per day on three series
- * would read as noise. `fill` is explicit and `strokeWidth: 0` — recharts fills a dot WHITE by
- * default and draws the series colour as its ring, so `{ r: 2, strokeWidth: 0 }` alone rendered
- * twelve invisible white dots on a white card. Verified by counting `.recharts-dot` nodes in the
- * DOM while nothing showed on screen.
+ * Rally's burnup carries no resting dots at all: its cron writes every day, so the series are
+ * continuous and a marker per day would be noise on a 60–90 day window. Ours must not copy that
+ * blindly, because a line SEGMENT needs two adjacent points: with `connectNulls={false}` (which
+ * RT-BR-09 requires — a bridged gap is a fabrication) a day whose neighbours are both gaps drew
+ * zero pixels, and a young release rendered an empty grid beside populated totals.
+ *
+ * So the dot is conditional on being ISOLATED. Dense history looks like Rally's; sparse history
+ * still shows every day that was actually measured.
+ *
+ * `fill` is explicit and `strokeWidth: 0`: recharts fills a dot WHITE by default and draws the
+ * series colour as its ring, so `{ r: 2 }` alone renders invisible dots on a white card — verified
+ * by counting `.recharts-dot` nodes in the DOM while nothing showed on screen.
  */
-const measuredDot = (color: string) => ({ r: 2, strokeWidth: 0, fill: color })
+type SeriesKey = 'accepted' | 'planned' | 'preliminary' | 'ideal'
+
+type DotProps = { cx?: number; cy?: number; index?: number; key?: Key | null }
+
+function isolatedDot<K extends 'accepted' | 'planned' | 'preliminary'>(
+  points: readonly Record<K, number | null>[],
+  key: K,
+  color: string,
+) {
+  // `key` is recharts' own `Key | null`, so it is spread rather than re-typed; an empty `<g>` is how a
+  // dot renderer says "nothing here" (returning null makes recharts warn).
+  return function Dot({ cx, cy, index, key: dotKey }: DotProps) {
+    if (cx == null || cy == null || index == null) return <g key={dotKey} />
+    const measured = (at: number) => points[at]?.[key] != null
+    if (measured(index - 1) || measured(index + 1)) return <g key={dotKey} />
+    return <circle key={dotKey} cx={cx} cy={cy} r={2} fill={color} />
+  }
+}
+
+/**
+ * The hover marker — Rally's: a ring on the shaded series, a filled dot on the plain ones.
+ *
+ * This is the only marker Rally shows, and it appears on hover beside the tooltip, so the reader is
+ * told which point the numbers belong to without every point being decorated.
+ */
+const HOVER_DOT = (color: string) => ({ r: 4, strokeWidth: 2, stroke: color, fill: color })
 
 export function ReleaseBurnup({
   projectId,
@@ -63,6 +96,34 @@ export function ReleaseBurnup({
 
   const points = data?.points ?? []
   const unitLabel = unit === 'points' ? t('unit.points') : t('unit.count')
+  const acceptedLabel = t('burnup.series.accepted', { unit: unitLabel })
+  /**
+   * `Ideal (Accepted Points)`, as Rally names it — the trajectory is the ACCEPTED series' target.
+   *
+   * It read just `Ideal`, which leaves a reader to guess which of three lines it is the ideal FOR. The
+   * unit travels with it, so a Count chart says `Ideal (Accepted Count)`.
+   */
+  const idealLabel = t('burnup.series.ideal', { series: acceptedLabel })
+
+  /**
+   * Legend interaction, as Rally's: CLICK an entry to drop its series from the chart, HOVER one to
+   * recede the others so a single trajectory can be followed across a crowded plot.
+   *
+   * A hidden series is not rendered at all rather than drawn transparent — it must leave the tooltip
+   * too, or the numbers keep reporting a line nobody can see.
+   */
+  const [hidden, setHidden] = useState<ReadonlySet<SeriesKey>>(new Set())
+  const [hovered, setHovered] = useState<SeriesKey | null>(null)
+  const toggle = (key: SeriesKey) =>
+    setHidden((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  /** Receded, not removed: another entry is being hovered and this is not it. */
+  const dim = (key: SeriesKey) => hovered !== null && hovered !== key
+  const strokeOpacityOf = (key: SeriesKey) => (dim(key) ? 0.2 : 1)
   const historyState = data?.historyState
   // An axis of dates whose every value is null is not a chart — it is an empty grid that reads
   // as "everything was zero". The window exists; the measurements do not.
@@ -125,7 +186,7 @@ export function ReleaseBurnup({
           t('burnup.series.accepted', { unit: unitLabel }),
           t('burnup.series.planned', { unit: unitLabel }),
           t('burnup.series.preliminary'),
-          ...(hasIdealTarget ? [t('burnup.series.ideal')] : []),
+          ...(hasIdealTarget ? [idealLabel] : []),
         ],
         rows: points.map((point) => [
           point.date,
@@ -139,32 +200,40 @@ export function ReleaseBurnup({
       emptyDescription={t('burnup.empty.description')}
       legend={
         <>
-          {/* A DOT for the shaded series and rules for the three trajectories — Rally's own convention,
-              and it tells the reader which line has an area under it. */}
-          <ChartLegendItem
-            color={BRAND.reportAccepted}
-            shape="dot"
-            label={t('burnup.series.accepted', { unit: unitLabel })}
-          />
-          <ChartLegendItem
-            color={BRAND.reportPlanned}
-            shape="line"
-            label={t('burnup.series.planned', { unit: unitLabel })}
-          />
-          <ChartLegendItem
-            color={BRAND.reportPreliminary}
-            shape="line"
-            label={t('burnup.series.preliminary')}
-          />
-          {/* Advertised only when it can actually be drawn — four swatches over three lines is a
-              reader hunting for a series that does not exist. */}
-          {hasIdealTarget && (
+          {/* A DOT for the shaded series and rules for the trajectories — Rally's own convention, and it
+              tells the reader which line has an area under it.
+              Every entry is a TOGGLE: click to drop the series, hover to recede the others. */}
+          {(
+            [
+              ['accepted', BRAND.reportAccepted, acceptedLabel, 'dot'],
+              [
+                'planned',
+                BRAND.reportPlanned,
+                t('burnup.series.planned', { unit: unitLabel }),
+                'line',
+              ],
+              ['preliminary', BRAND.reportPreliminary, t('burnup.series.preliminary'), 'line'],
+              // Advertised only when it can actually be drawn — a swatch for a series that does not
+              // exist is a reader hunting for a line.
+              ...(hasIdealTarget
+                ? [['ideal', BRAND.reportIdeal, idealLabel, 'line'] as const]
+                : []),
+            ] as const
+          ).map(([key, color, label, shape]) => (
             <ChartLegendItem
-              color={BRAND.reportIdeal}
-              shape="line"
-              label={t('burnup.series.ideal')}
+              key={key}
+              color={color}
+              shape={shape}
+              label={label}
+              hidden={hidden.has(key)}
+              dimmed={dim(key)}
+              onToggle={() => toggle(key)}
+              onHover={(hovering) => setHovered(hovering ? key : null)}
+              toggleLabel={t(hidden.has(key) ? 'burnup.legend.restore' : 'burnup.legend.toggle', {
+                series: label,
+              })}
             />
-          )}
+          ))}
         </>
       }
       footer={
@@ -237,43 +306,58 @@ export function ReleaseBurnup({
             and that is the normal state of a young release, where the cron has written one or
             two scattered days. The chart showed an empty grid beside populated totals. The Ideal
             line needs no dot: it is computed for every axis day and is never sparse. */}
-        <Area
-          type="monotone"
-          dataKey="accepted"
-          name={t('burnup.series.accepted', { unit: unitLabel })}
-          stroke={BRAND.reportAccepted}
-          strokeWidth={2}
-          // A pale wash, not a solid: three trajectories cross this band, and at any real opacity the
-          // fill hides the lines it is meant to be read against.
-          fill={BRAND.reportAccepted}
-          fillOpacity={0.18}
-          dot={measuredDot(BRAND.reportAccepted)}
-          connectNulls={false}
-        />
-        <Line
-          type="stepAfter"
-          dataKey="planned"
-          name={t('burnup.series.planned', { unit: unitLabel })}
-          stroke={BRAND.reportPlanned}
-          strokeWidth={2}
-          dot={measuredDot(BRAND.reportPlanned)}
-          connectNulls={false}
-        />
-        <Line
-          type="stepAfter"
-          dataKey="preliminary"
-          name={t('burnup.series.preliminary')}
-          stroke={BRAND.reportPreliminary}
-          strokeWidth={2}
-          dot={measuredDot(BRAND.reportPreliminary)}
-          connectNulls={false}
-        />
-        {hasIdealTarget && (
+        {/* A hidden series is NOT rendered, so it leaves the tooltip with it — a transparent line would
+            keep reporting numbers for something the reader has switched off. */}
+        {!hidden.has('accepted') && (
+          <Area
+            type="monotone"
+            dataKey="accepted"
+            name={acceptedLabel}
+            stroke={BRAND.reportAccepted}
+            strokeOpacity={strokeOpacityOf('accepted')}
+            strokeWidth={2}
+            // A pale wash, not a solid: three trajectories cross this band, and at any real opacity the
+            // fill hides the lines it is meant to be read against.
+            fill={BRAND.reportAccepted}
+            fillOpacity={dim('accepted') ? 0.05 : 0.18}
+            dot={isolatedDot(points, 'accepted', BRAND.reportAccepted)}
+            activeDot={HOVER_DOT(BRAND.reportAccepted)}
+            connectNulls={false}
+          />
+        )}
+        {!hidden.has('planned') && (
+          <Line
+            type="stepAfter"
+            dataKey="planned"
+            name={t('burnup.series.planned', { unit: unitLabel })}
+            stroke={BRAND.reportPlanned}
+            strokeWidth={2}
+            strokeOpacity={strokeOpacityOf('planned')}
+            dot={isolatedDot(points, 'planned', BRAND.reportPlanned)}
+            activeDot={HOVER_DOT(BRAND.reportPlanned)}
+            connectNulls={false}
+          />
+        )}
+        {!hidden.has('preliminary') && (
+          <Line
+            type="stepAfter"
+            dataKey="preliminary"
+            name={t('burnup.series.preliminary')}
+            stroke={BRAND.reportPreliminary}
+            strokeWidth={2}
+            strokeOpacity={strokeOpacityOf('preliminary')}
+            dot={isolatedDot(points, 'preliminary', BRAND.reportPreliminary)}
+            activeDot={HOVER_DOT(BRAND.reportPreliminary)}
+            connectNulls={false}
+          />
+        )}
+        {hasIdealTarget && !hidden.has('ideal') && (
           <Line
             type="linear"
             dataKey="ideal"
-            name={t('burnup.series.ideal')}
+            name={idealLabel}
             stroke={BRAND.reportIdeal}
+            strokeOpacity={strokeOpacityOf('ideal')}
             // SOLID, as Rally draws it. The dashes said "projection", but the Ideal is computed from a
             // persisted baseline (RT-BR-09) — it is as real as the measured series, just not measured.
             strokeWidth={1.5}

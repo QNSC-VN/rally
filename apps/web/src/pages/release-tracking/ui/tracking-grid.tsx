@@ -20,12 +20,13 @@ import type {
   ReleaseTrackingReport,
   ReleaseTrackingRow,
 } from '@/features/reporting/api'
-import { CellLink } from '@/shared/ui/cell-link'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { RatioMeter } from '@/shared/ui/ratio-meter'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
-import { DataTableFrame, useDataTable, type ColumnSpec } from '@/shared/ui/table'
+import { DataTableFrame, RankCell, useDataTable, type ColumnSpec } from '@/shared/ui/table'
+import { IdCell } from '@/entities/work-item/ui/id-cell'
+import { TeamCell } from '@/shared/ui/team-cell'
 
 import { IssuesPanel } from './issues-panel'
 
@@ -40,6 +41,7 @@ interface Ctx {
 
 export function TrackingGrid({
   report,
+  teamKeyOf = () => null,
   bucket,
   unit,
   bucketPicker,
@@ -51,6 +53,14 @@ export function TrackingGrid({
   onPageSizeChange,
 }: {
   report: ReleaseTrackingReport | undefined
+  /**
+   * Team id → key, for the chip behind each row's team.
+   *
+   * The report names a row's teams but carries no keys, and `TeamAvatar` falls back to the name's
+   * initials — so one team drew two different glyphs depending on which page you read it from. Resolved
+   * by the PAGE, which owns the queries: this grid stays presentational, as the capacity grids are.
+   */
+  teamKeyOf?: (teamId: string | null | undefined) => string | null
   bucket: ReleaseBucket
   unit: ChartUnit
   /**
@@ -86,6 +96,16 @@ export function TrackingGrid({
     toggle: toggleSort,
   } = useTableSort<string>({ field: 'rank', dir: 'asc' })
 
+  /**
+   * Rank, ID, NAME, Team, Issue, Status.
+   *
+   * DECLARED DIVERGENCE from §246, which enumerates them as "`Rank`, `ID`, `Team`, `Issue`, `Name`, and
+   * `Status`". Rally puts Name immediately after ID — the name is what a reader scans for, and pushing
+   * it behind two narrow columns buries it — and the SRS sentence is a set as much as a sequence. The
+   * column SET is unchanged, which is the part §246 is really fixing; the order follows the product.
+   * Readers can reorder anyway (`useDataTable`'s column drag persists per user), so this is the default
+   * rather than a constraint.
+   */
   const columns: ColumnSpec<ReleaseTrackingRow, Ctx, ColKey>[] = useMemo(
     () => [
       {
@@ -98,7 +118,9 @@ export function TrackingGrid({
         align: 'right',
         sortCol: 'rank',
         locked: true,
-        cell: (row) => <span className="text-ui-md tabular-nums">{row.rank}</span>,
+        // `RankCell`, like every other rank column: right-aligned, mono, tabular. `row.rank` is already
+        // the 1-based position within the bucket (RT-AC-04), not the stored lexorank.
+        cell: (row) => <RankCell rowNum={row.rank} />,
       },
       {
         key: 'id',
@@ -106,24 +128,66 @@ export function TrackingGrid({
         defaultWidth: 90,
         sortCol: 'id',
         locked: true,
-        cell: (row, ctx) => <CellLink onClick={() => ctx.openItem(row)}>{row.itemKey}</CellLink>,
+        /**
+         * `IdCell` — the type glyph plus the key, as every other grid's ID column renders it.
+         *
+         * It was a bare `CellLink`, so this was the one ID column in the app with no `TypeBadge`: a
+         * Feature, a Story and an Unparented Defect all read as identical blue text, on a page whose
+         * three buckets are precisely about which KIND of thing is in the release. `issueType` was
+         * already on the wire.
+         */
+        cell: (row, ctx) => (
+          <IdCell type={row.issueType} itemKey={row.itemKey} onOpen={() => ctx.openItem(row)} />
+        ),
+      },
+      {
+        key: 'name',
+        label: t('columns.name'),
+        defaultWidth: 200,
+        grow: true,
+        locked: true,
+        /**
+         * JUST the name — plain wrapped text, the treatment Iteration Status gives its Name and the one
+         * Rally uses: the ID is the link, the name is read as content.
+         *
+         * Two things were removed. It was a `CellLink`, so every name was blue and looked like a second
+         * route to what the ID cell already opens. And a second line under it restated the bucket the
+         * reader had just selected plus a child count and a state — none of it in §246's column list,
+         * and all of it doubling the row's height in a panel that pages at 25.
+         */
+        cell: (row) => (
+          <span
+            className="block min-w-0 break-words whitespace-normal text-foreground"
+            title={row.name}
+          >
+            {row.name}
+          </span>
+        ),
       },
       {
         key: 'team',
         label: t('columns.team'),
         defaultWidth: 130,
         sortCol: 'team',
-        // Derived rows can list more than one Team: the scoped children that caused inclusion
-        // (§5), which is why this is a joined list rather than a single Team cell.
-        cell: (row) => (
-          <span className="truncate text-ui-md text-muted-foreground">
-            {/* An Unparented Story with no Team rendered as an empty cell, which reads as a value
-                that failed to load. Every other grid in the app names it. */}
-            {row.teams.length > 0
-              ? row.teams.map((team) => team.name).join(', ')
-              : t('common:unassigned')}
-          </span>
-        ),
+        /**
+         * `TeamCell` — the square team glyph plus its name — for the ONE-team case, which is every
+         * Direct and Unparented row.
+         *
+         * A Derived row can name several teams (§5: the scoped children that caused inclusion), and no
+         * single glyph is the answer for those, so they stay a joined list. That is the same reasoning
+         * the capacity Features tab uses for a split Feature.
+         *
+         * An Unparented Story with no Team named at all rendered as an EMPTY cell, which reads as a
+         * value that failed to load; `TeamCell` renders the shared `--`.
+         */
+        cell: (row) =>
+          row.teams.length > 1 ? (
+            <span className="truncate text-ui-xs text-muted-foreground">
+              {row.teams.map((team) => team.name).join(', ')}
+            </span>
+          ) : (
+            <TeamCell teamKey={teamKeyOf(row.teams[0]?.id)} name={row.teams[0]?.name ?? null} />
+          ),
       },
       {
         key: 'issue',
@@ -140,32 +204,15 @@ export function TrackingGrid({
         ),
       },
       {
-        key: 'name',
-        label: t('columns.name'),
-        defaultWidth: 200,
-        grow: true,
-        locked: true,
-        cell: (row, ctx) => (
-          <div className="min-w-0">
-            <CellLink wrap onClick={() => ctx.openItem(row)}>
-              {row.name}
-            </CellLink>
-            <p className="text-ui-xs text-foreground-subtle">
-              {ctx.bucket === 'unparented'
-                ? t('subtitle.unparented', { type: t(`type.${row.issueType}`), state: row.state })
-                : t(`subtitle.${ctx.bucket}`, { count: row.childCount, state: row.state })}
-            </p>
-          </div>
-        ),
-      },
-      {
         key: 'status',
         label: t('columns.status'),
         defaultWidth: 170,
         cell: (row, ctx) => <StatusCell row={row} unit={ctx.unit} />,
       },
     ],
-    [t],
+    // `teamKeyOf` too: the Team cell closes over it, so a column spec memoised without it would keep
+    // rendering initials after the project's teams resolved.
+    [t, teamKeyOf],
   )
 
   const table = useDataTable<ReleaseTrackingRow, Ctx, ColKey>(columns, {

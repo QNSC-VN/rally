@@ -54,7 +54,9 @@ export function WorkItemRefCell({
         type="button"
         onClick={open}
         title={label}
-        className="flex w-full cursor-pointer items-center gap-1.5 truncate rounded border border-input px-2.5 py-1.5 text-ui-md text-primary-light hover:bg-slate-50"
+        // `text-ui-sm`, matching the read-only rendering above and every other editable cell: this
+        // trigger was 12px, so opening the same value for edit made it grow.
+        className="flex w-full cursor-pointer items-center gap-1.5 truncate rounded border border-input px-2.5 py-1.5 text-ui-sm text-primary-light hover:bg-slate-50"
       >
         <TypeBadge type={type} size={16} />
         <span className="truncate">{label}</span>
@@ -80,7 +82,11 @@ export function WorkItemRefCell({
       }}
     >
       <TypeBadge type={type} size={16} />
-      <span className="text-ui-sm break-words whitespace-normal text-primary-light">{label}</span>
+      {/* `min-h-5` so a one-line reference centres against its type glyph instead of riding its top
+          edge — the same rule the team, owner and ID cells follow. */}
+      <span className="flex min-h-5 min-w-0 items-center text-ui-sm break-words whitespace-normal text-primary-light">
+        {label}
+      </span>
     </button>
   )
 }

@@ -6,8 +6,16 @@ interface IdCellProps {
   type: WorkItemType | string
   /** Human item key (US-5 / TA-3 / DE-12 …). */
   itemKey: string
-  /** Opens the item detail. Fired from anywhere in the cell (row click intact). */
-  onOpen: () => void
+  /**
+   * Opens the item detail. Fired from anywhere in the cell (row click intact).
+   *
+   * OMIT for a row that does not navigate — a preview/child row the spec says is read-only. The cell
+   * then renders the same glyph and key at the same size, as a plain span in muted ink rather than a
+   * link-blue button, so it neither looks nor focuses like something clickable. Callers used to
+   * hand-roll that pair instead, which is how the preview rows ended up with a 10px key beside their
+   * parents' 12px one.
+   */
+  onOpen?: () => void
 }
 
 /**
@@ -20,7 +28,20 @@ interface IdCellProps {
  * The wrapping page supplies the column width + horizontal padding via
  * `styleFor('id')`; this component only lays out badge + key.
  */
+/** Shared by both renderings, so the glyph/key pairing cannot drift between them. */
+const KEY_CLASS =
+  'flex min-h-5 min-w-0 items-center font-mono text-ui-md break-words whitespace-normal'
+
 export function IdCell({ type, itemKey, onOpen }: IdCellProps) {
+  if (onOpen === undefined) {
+    return (
+      <span className="inline-flex min-w-0 items-start gap-1" title={itemKey}>
+        <TypeBadge type={type} />
+        <span className={`${KEY_CLASS} text-muted-foreground`}>{itemKey}</span>
+      </span>
+    )
+  }
+
   return (
     <button
       type="button"
@@ -34,7 +55,10 @@ export function IdCell({ type, itemKey, onOpen }: IdCellProps) {
       className="group flex min-w-0 cursor-pointer items-start gap-1 border-none bg-transparent p-0 text-left"
     >
       <TypeBadge type={type} />
-      <span className="min-w-0 font-mono text-ui-md break-words whitespace-normal text-primary-light underline-offset-2 group-hover:underline">
+      {/* `min-h-5` (in `KEY_CLASS`) so a one-line key sits CENTRED against the type glyph rather than
+          riding its top edge, which is the same rule the team and owner cells follow. A wrapped key
+          still starts level with the glyph. */}
+      <span className={`${KEY_CLASS} text-primary-light underline-offset-2 group-hover:underline`}>
         {itemKey}
       </span>
     </button>

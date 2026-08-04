@@ -47,11 +47,12 @@ import {
   type PortfolioItemState,
 } from '@/features/portfolio/api'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { PercentDoneBar } from '@/features/portfolio/ui/percent-done-bar'
 import { portfolioStateColor } from '@/features/portfolio/status-colors'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
-import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
+import { OwnerCell, OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
+import { ProjectCell } from '@/shared/ui/project-cell'
+import { TeamCell } from '@/shared/ui/team-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { ProjectSelectCell, ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
 import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-options'
@@ -288,14 +289,44 @@ function ChildFeatureRow({
 function ChildWorkItemRow({
   child,
   colStyleFor,
+  options,
+  projects,
 }: {
   child: PortfolioChild
   colStyleFor: ColStyleFor
+  /**
+   * The child's own project's Teams, for the team KEY.
+   *
+   * The child payload names its team but does not carry the key, and `TeamAvatar` falls back to
+   * initials — so the same team drew `TG` on a preview row and `GA` (from key `GAMMA`) on its parent
+   * one line up. Same team, two glyphs. The key is resolved here rather than added to the DTO because
+   * the page has already fetched it for the parent row's picker.
+   */
+  options: PortfolioCellOptions
+  /** Workspace projects, for the project KEY — same reason as the team key. */
+  projects: ProjectOption[]
 }) {
-  /** One read-only cell shape for the seven of them, so they cannot drift apart. */
+  const teamKey = options.teams.find((tm) => tm.id === child.teamId)?.key ?? null
+  const projectKey = projects.find((pr) => pr.id === child.projectId)?.key ?? null
+  /** A plain text cell, for the columns that have no entity component of their own. */
   const cell = (col: ColKey, value: string | null) => (
     <div className="min-w-0 px-2 break-words whitespace-normal" style={colStyleFor(col)}>
       {value ?? EMPTY_VALUE}
+    </div>
+  )
+
+  /**
+   * The related-entity columns render through the SAME components the parent rows use, in their
+   * read-only form: `ProjectCell`, `TeamCell`, `OwnerCell`, and `ReleaseSelectCell`'s name-only branch.
+   *
+   * They were bare text, so a preview row lost every glyph its parent carried — no release badge, no
+   * team chip, no avatar — and read as a different kind of table. Subordination here is carried by the
+   * tint and the indent, which is the rule the row already follows; dropping the glyphs was carrying it
+   * twice.
+   */
+  const entityCell = (col: ColKey, content: React.ReactNode) => (
+    <div className="flex min-w-0 items-center px-2" style={colStyleFor(col)}>
+      {content}
     </div>
   )
 
@@ -306,25 +337,35 @@ function ChildWorkItemRow({
       <div className="px-2" style={colStyleFor('rank')} />
 
       <div className={`flex items-center pr-2 ${NESTED_ROW_INDENT}`} style={colStyleFor('id')}>
-        {/* Type glyph + key, NOT a link: §61 is explicit that these rows do not navigate. `IdCell` is
-            a button by design, so the preview renders the pair itself rather than passing a no-op
-            handler that would still look and focus like a link. */}
-        <span className="flex items-center gap-1.5">
-          <TypeBadge type={child.type} size={16} />
-          <span className="font-mono text-ui-xs text-muted-foreground">{child.itemKey}</span>
-        </span>
+        {/* `IdCell` with NO `onOpen`: §61 is explicit that these rows do not navigate, and the
+            handler-less form renders the same glyph and 12px key as a plain muted span. The pair was
+            hand-rolled here with a 16px badge and a 10px key, which is why a preview ID read smaller
+            than its parent's. */}
+        <IdCell type={child.type} itemKey={child.itemKey} />
       </div>
 
       {cell('name', child.title)}
       {/* State: deliberately blank. */}
       <div className="px-2" style={colStyleFor('state')} />
-      {cell('release', child.releaseName)}
+      {entityCell(
+        'release',
+        <ReleaseSelectCell
+          releaseName={child.releaseName}
+          releases={[]}
+          canEdit={false}
+          ariaLabel=""
+          onChange={() => {}}
+        />,
+      )}
       {/* Percent Done ×2: blank, for the same reason and by the same rule. */}
       <div className="px-2" style={colStyleFor('percentDonePoints')} />
       <div className="px-2" style={colStyleFor('percentDoneCount')} />
-      {cell('project', child.projectName)}
-      {cell('team', child.teamName)}
-      {cell('owner', child.ownerName)}
+      {entityCell(
+        'project',
+        <ProjectCell projectKey={projectKey} projectName={child.projectName} />,
+      )}
+      {entityCell('team', <TeamCell teamKey={teamKey} name={child.teamName} />)}
+      {entityCell('owner', <OwnerCell name={child.ownerName} />)}
     </ChildRow>
   )
 }
@@ -388,7 +429,15 @@ export function PortfolioChildRows({
       ))
     : (children.data ?? [])
         .slice(0, CHILD_PREVIEW_LIMIT)
-        .map((c) => <ChildWorkItemRow key={c.id} child={c} colStyleFor={colStyleFor} />)
+        .map((c) => (
+          <ChildWorkItemRow
+            key={c.id}
+            child={c}
+            colStyleFor={colStyleFor}
+            options={optionsFor(c.projectId)}
+            projects={projects}
+          />
+        ))
 
   /**
    * How many linked items the preview is NOT showing.

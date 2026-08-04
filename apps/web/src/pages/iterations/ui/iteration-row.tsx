@@ -1,3 +1,4 @@
+import { TableRow } from '@/shared/ui/table'
 import { type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -76,10 +77,7 @@ export function IterationRow({
   const stop = (e: React.MouseEvent) => e.stopPropagation()
 
   return (
-    <div
-      className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
-      style={{ minWidth: 'max-content' }}
-    >
+    <TableRow className="px-3" style={{ minWidth: 'max-content' }}>
       {gutter}
 
       {/* ID — type glyph + per-project key (IT-<n>) */}
@@ -102,7 +100,7 @@ export function IterationRow({
           title={it.name}
           className="block w-full break-words whitespace-normal text-foreground"
           style={{ fontSize: 12 }}
-          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
+          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-inherit text-foreground focus:outline-none"
         />
       </div>
 
@@ -120,7 +118,7 @@ export function IterationRow({
               {stripHtml(it.theme) || '--'}
             </span>
           }
-          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-ui-sm text-foreground focus:outline-none"
+          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-inherit text-foreground focus:outline-none"
         />
       </div>
 
@@ -161,7 +159,7 @@ export function IterationRow({
               {it.plannedVelocity ?? '--'}
             </span>
           }
-          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-ui-sm text-foreground focus:outline-none"
+          inputClassName="w-full rounded border-0 bg-transparent px-0.5 text-right font-mono text-inherit text-foreground focus:outline-none"
         />
       </div>
 
@@ -180,6 +178,6 @@ export function IterationRow({
           onChange={saveState}
         />
       </div>
-    </div>
+    </TableRow>
   )
 }

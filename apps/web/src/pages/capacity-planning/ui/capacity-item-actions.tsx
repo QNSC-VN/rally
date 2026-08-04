@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { ArrowDown, ArrowRightLeft, ArrowUp, Scale, Trash2, Undo2 } from 'lucide-react'
+import { ArrowDown, ArrowRightLeft, ArrowUp, Scale, Settings, Trash2, Undo2 } from 'lucide-react'
 
 import { ActionMenu, ActionMenuItem } from '@/shared/ui/action-menu'
 
@@ -63,7 +63,14 @@ export function CapacityItemActions({
   }
 
   return (
-    <ActionMenu ariaLabel={t('items.actionsLabel', { item: itemKey })}>
+    // A GEAR, not the app's `⋮`: the BA calls this control the row's "gear icon" on both tabs, and
+    // Rally draws a gear here too. The kebab is the app's menu for a PAGE-level object (the plan's own
+    // Edit / Delete / Publish); this one belongs to a row inside it, and the different glyph is what
+    // keeps the two from reading as the same menu at two sizes.
+    <ActionMenu
+      ariaLabel={t('items.actionsLabel', { item: itemKey })}
+      icon={<Settings size={13} />}
+    >
       {onMoveUp !== undefined && (
         <ActionMenuItem icon={<ArrowUp size={13} />} label={t('items.moveUp')} onClick={onMoveUp} />
       )}

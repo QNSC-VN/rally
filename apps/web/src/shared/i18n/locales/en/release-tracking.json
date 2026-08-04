@@ -14,7 +14,7 @@
     "next": "Next release"
   },
   "views": {
-    "dependencies": "Dependencies \u00b7 Future",
+    "dependencies": "Dependencies · Future",
     "dependenciesHint": "Release dependency analysis is future work and is not available yet."
   },
   "summary": {
@@ -30,16 +30,6 @@
     "issue": "Issue",
     "name": "Name",
     "status": "Status"
-  },
-  "type": {
-    "feature": "Feature",
-    "story": "Story",
-    "defect": "Defect"
-  },
-  "subtitle": {
-    "direct": "Direct - {{count}} total child item(s) - {{state}}",
-    "derived": "Derived - {{count}} matching child item(s) - {{state}}",
-    "unparented": "{{type}} - no parent Feature - {{state}}"
   },
   "status": {
     "points": "{{accepted}}/{{total}} points accepted",
@@ -62,14 +52,18 @@
       "accepted": "Accepted {{unit}}",
       "planned": "Planned {{unit}}",
       "preliminary": "Preliminary Estimate",
-      "ideal": "Ideal"
+      "ideal": "Ideal ({{series}})"
     },
     "empty": {
       "title": "No burnup history",
       "description": "The burnup is built from daily snapshots of this release. None have been recorded for this window yet, so no history can be shown."
     },
     "tableCaption": "Burnup for {{release}} as a table: Accepted, Planned, Preliminary Estimate and the Ideal trajectory, per day of the release window.",
-    "tableDate": "Date"
+    "tableDate": "Date",
+    "legend": {
+      "toggle": "Hide {{series}}",
+      "restore": "Show {{series}}"
+    }
   },
   "issues": {
     "badgeLabel": "Children assigned to a different release",

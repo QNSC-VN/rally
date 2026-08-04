@@ -127,6 +127,7 @@ export const CAPACITY_TEAM_COLUMNS: ColumnSpec<CapacityPlanTeam, unknown, TeamCo
 
 export type ItemColKey =
   | 'marker'
+  | 'actions'
   | 'rank'
   | 'id'
   | 'name'
@@ -136,12 +137,11 @@ export type ItemColKey =
   | 'rollup'
   | 'estimated'
   | 'complete'
-  | 'actions'
 
 /**
  * Rally's Features tab: one row per Feature, ranked, with its allocations nested underneath.
  *
- * `rank` leads because the cutline only means anything in rank order — Rally draws the line only
+ * `rank` leads the DATA columns because the cutline only means anything in rank order — Rally draws the line only
  * when items are sorted by rank ascending, so the column that establishes that order comes first.
  *
  * `team` is the Feature's OWN team ownership, which is not the same as `assignment` — the team this
@@ -174,6 +174,21 @@ export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemCo
   // until a plan carries a published snapshot to diff against — the BA calls it "neutral before
   // Publish", which is every plan today.
   { key: 'marker', label: '', defaultWidth: 24, minWidth: 24, align: 'center' },
+  /**
+   * Rally's per-item menu — `Allocate`, `Move To Another Plan`, `Remove From Plan` — in the LEADING
+   * gutter beside Rank, not off the right edge.
+   *
+   * It was the last column, which made this the only grid in Capacity Planning whose row actions were
+   * on the right: the nested allocation table on the Teams tab has always carried the same menu in its
+   * first column. The two tabs show the same verbs for the same Feature, so a planner should not have
+   * to look at opposite ends of the row depending on which tab they came in through. The right edge is
+   * also the worst place for it here — this tab scrolls horizontally with the Team Capacity rail open,
+   * so the menu was frequently off-screen.
+   *
+   * This remains the ONLY place a Feature leaves a plan: the team sub-table has no trash, because
+   * removing a Feature is a decision about the plan, not about one team's slice of it.
+   */
+  { key: 'actions', label: '', defaultWidth: 44, minWidth: 44, align: 'center' },
   { ...rankColumn(), locked: false },
   { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 84, locked: true, sortCol: 'itemKey' },
   // Sized for the ~1010px this tab has once the Team Capacity rail takes its 256: `grow` spends
@@ -199,12 +214,15 @@ export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemCo
   // put three near-identical values in a row and answered the reader's question with the wrong one.
   { key: 'team', label: 'Team', defaultWidth: 130, minWidth: 100, sortCol: 'team' },
   // Placeholder, per the BA: "It shows `0` until dependency modelling is added."
+  //
+  // LEFT-aligned, unlike the metric columns after it: the cell holds a chip, and Rally hangs that chip
+  // off the left edge of the column. Right-aligning it parked the chip against the Rollup numbers and
+  // made the two read as one group.
   {
     key: 'dependencies',
     label: 'Dependencies',
     defaultWidth: 118,
     minWidth: 100,
-    align: 'right',
     sortCol: 'dependencies',
   },
   {
@@ -231,10 +249,6 @@ export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemCo
     align: 'right',
     sortCol: 'complete',
   },
-  // Rally's per-item menu lives here — `Remove From Plan` takes a Feature off the plan. This is the
-  // ONLY place a Feature leaves a plan: the team sub-table has no trash, because removing a Feature
-  // is a decision about the plan, not about one team's slice of it.
-  { key: 'actions', label: '', defaultWidth: 44, minWidth: 44, align: 'center' },
 ]
 
 export type AllocColKey =

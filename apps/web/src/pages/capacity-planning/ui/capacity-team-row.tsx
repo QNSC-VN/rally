@@ -225,7 +225,7 @@ export function CapacityTeamRow({
             )
           }
           className="block w-full text-right"
-          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-right text-ui-sm text-foreground focus:outline-none"
+          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-right text-inherit text-foreground focus:outline-none"
         />
       </div>
 

@@ -38,7 +38,7 @@ export function ProjectCell({
   className?: string
 }) {
   if (!projectName && !projectKey) {
-    return <span className="text-muted-foreground">--</span>
+    return <span className="text-ui-sm text-muted-foreground">--</span>
   }
   return (
     <span className={`flex min-w-0 items-center gap-1.5 ${className ?? ''}`}>
@@ -47,7 +47,10 @@ export function ProjectCell({
           {projectKey}
         </KeyChip>
       )}
-      <span className="min-w-0 break-words whitespace-normal text-muted-foreground">
+      {/* `text-ui-sm`, the size its own editable variant (`SearchableSelect variant="cell"`) renders at.
+          It inherited the row's 12px, so a read-only project cell was a size larger than the identical
+          value in a picker — the same drift `TeamCell` and `OwnerCell` carried. */}
+      <span className="min-w-0 text-ui-sm break-words whitespace-normal text-muted-foreground">
         {projectName ?? projectKey}
       </span>
     </span>

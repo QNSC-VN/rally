@@ -348,6 +348,7 @@ export function PortfolioDetailPage() {
           {isEpic ? (
             <EpicChildrenTable
               features={childFeatures}
+              projectId={server?.projectId}
               canEdit={canEdit}
               isLoading={featuresLoading}
               onAddFeature={() => setShowAddFeature(true)}

@@ -1,8 +1,10 @@
+import { TableRow } from '@/shared/ui/table'
 import { type CSSProperties } from 'react'
 
 import { useTranslation } from 'react-i18next'
 
 import { MetricValue } from '@/shared/ui/metric-value'
+import { TeamCell } from '@/shared/ui/team-cell'
 import type { CapacityAllocation } from '@/features/capacity-planning/api'
 import type { ItemColKey } from '../model/columns'
 
@@ -21,18 +23,21 @@ import type { ItemColKey } from '../model/columns'
 export function ItemAllocationRow({
   allocation,
   teamName,
+  teamKey,
   colStyleFor,
 }: {
   allocation: CapacityAllocation
   /** Resolved by the page from the plan's teams — an id makes a useless row label. */
   teamName: string | null
+  /** The team's key, for the chip. Resolved by the page: the plan payload carries no key. */
+  teamKey: string | null
   colStyleFor: (key: ItemColKey, base?: CSSProperties) => CSSProperties
 }) {
   const { t } = useTranslation('capacity')
   const { metrics } = allocation
 
   return (
-    <div className="flex min-h-[30px] items-center border-b border-border-inner bg-surface-subtle px-3 text-ui-md">
+    <TableRow className="px-3" compact nested>
       {/* EVERY column the header declares gets a cell, even the empty ones. `name` is the `grow`
           column, so a missing cell is not a gap at the end — `name` absorbs the width and shifts every
           cell after it out from under its own heading. */}
@@ -51,12 +56,9 @@ export function ItemAllocationRow({
       </div>
 
       <div style={colStyleFor('assignment', { flexShrink: 0 })} className="min-w-0 px-2">
-        <span
-          className="break-words whitespace-normal text-foreground"
-          title={teamName ?? undefined}
-        >
-          {teamName ?? '--'}
-        </span>
+        {/* The shared `TeamCell`, as the parent row's own assignment cell renders — a child row naming
+            one team should not draw that team differently from the row above it. */}
+        <TeamCell teamKey={teamKey} name={teamName} />
       </div>
 
       <div style={colStyleFor('team', { flexShrink: 0 })} />
@@ -72,6 +74,6 @@ export function ItemAllocationRow({
         <MetricValue value={metrics.complete} pct={null} />
       </div>
       <div style={colStyleFor('actions', { flexShrink: 0 })} />
-    </div>
+    </TableRow>
   )
 }

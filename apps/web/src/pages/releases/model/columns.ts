@@ -15,7 +15,15 @@ export type ColKey =
 
 export const RELEASES_COLUMNS: ColumnSpec<Release, unknown, ColKey>[] = [
   { key: 'id', label: 'ID', defaultWidth: 84, minWidth: 60, locked: true, sortCol: 'releaseKey' },
-  { key: 'name', label: 'Name', defaultWidth: 200, minWidth: 120, locked: true, grow: true, sortCol: 'name' },
+  {
+    key: 'name',
+    label: 'Name',
+    defaultWidth: 200,
+    minWidth: 120,
+    locked: true,
+    grow: true,
+    sortCol: 'name',
+  },
   { key: 'theme', label: 'Theme', defaultWidth: 144, minWidth: 80, sortCol: 'theme' },
   { key: 'version', label: 'Version', defaultWidth: 80, minWidth: 50, sortCol: 'version' },
   { key: 'startDate', label: 'Start Date', defaultWidth: 96, minWidth: 80, sortCol: 'startDate' },

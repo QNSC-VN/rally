@@ -30,6 +30,15 @@ interface InlineEditableCellProps {
 /* Full-cell edit input: 1px border is the edit cue; the global focus ring is
  * suppressed via `outline-none` (now that the base :focus-visible rule is
  * layered, this utility wins normally — no inline-style override needed). */
+/**
+ * `text-inherit` is deliberate and load-bearing: the EDITOR must render at the size the cell was just
+ * displaying, or clicking a value makes it jump a pixel or two and the row reflows under the pointer.
+ *
+ * Twelve call sites had hardcoded a size in their own `inputClassName` (`text-ui-sm`, `text-ui-xs`)
+ * while the display span sat at 12px — so every one of those cells shrank on edit. They now pass
+ * `text-inherit` too. Keep it that way: a caller that needs a different editor size almost certainly
+ * needs a different DISPLAY size.
+ */
 const FULL_CELL_INPUT =
   'w-full rounded border border-input bg-white px-2 py-1.5 text-inherit outline-none'
 
@@ -87,7 +96,8 @@ export function InlineEditableCell({
     )
   }
 
-  const triggerProps = trigger === 'dblclick' ? { onDoubleClick: startEdit } : { onClick: startEdit }
+  const triggerProps =
+    trigger === 'dblclick' ? { onDoubleClick: startEdit } : { onClick: startEdit }
 
   // Editable cells get the shared hover affordance (outline box + text caret,
   // no layout shift); read-only cells render plain. `fullCell` adds the

@@ -27,6 +27,21 @@ describe('RowExpandToggle', () => {
     expect(onToggle).toHaveBeenCalledOnce()
   })
 
+  it('renders a spacer, not a chevron, for a row with no children', () => {
+    // A chevron that discloses "No tasks created under this item" promises children the row does not
+    // have. The spacer keeps the ID cell's icon on the same x as every other row's.
+    const { container } = render(
+      <RowExpandToggle
+        expanded={false}
+        onToggle={vi.fn()}
+        label="Expand tasks"
+        disclosable={false}
+      />,
+    )
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true')
+  })
+
   it('does NOT let the click reach the row underneath', () => {
     // Grid rows open a detail view when clicked. Disclosing children is not opening the row, so
     // the event must stop here — otherwise expanding a team navigates away from the plan.

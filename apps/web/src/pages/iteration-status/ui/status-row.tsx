@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { RankCell } from '@/shared/ui/table'
+import { RankCell, TableRow } from '@/shared/ui/table'
 
 import { BRAND } from '@/shared/config/brand'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
@@ -150,24 +150,16 @@ export function StatusRow({
 
   return (
     <>
-      <div
-        ref={setNodeRef}
-        className="group flex items-center border-b border-border-subtle bg-card transition-colors duration-100 hover:bg-primary-lighter"
-        style={{
-          minHeight: 34,
-          paddingLeft: 4,
-          paddingRight: 12,
-          fontSize: 12,
-          minWidth: 'max-content',
-          ...rowStyle,
-        }}
-        onMouseOver={(e) => {
-          e.currentTarget.style.backgroundColor = BRAND.primaryLighter
-        }}
-        onMouseOut={(e) => {
-          e.currentTarget.style.backgroundColor = BRAND.surface
-        }}
-      >
+      {/* The shared row: `pr-3 pl-1` matches this grid's own `padClassName`, and `fitContent` is what
+          the inline `minWidth: 'max-content'` was doing. The three inline values TableRow now owns are
+          gone — a 34px floor, 12px type and the hover — and with them this grid's two private
+          divergences: `border-border-subtle` where every other grid uses `border-border-inner`, and a
+          `duration-100` nobody else had.
+
+          The `onMouseOver`/`onMouseOut` pair went too. They set `backgroundColor` imperatively, which
+          BEAT the hover class and reset the row to `BRAND.surface` on exit — so a row that was selected
+          or drag-highlighted lost its fill the first time a pointer crossed it. */}
+      <TableRow ref={setNodeRef} className="bg-card pr-3 pl-1" fitContent style={rowStyle}>
         {/* Leading gutter (rank grip + selection checkbox) — shared component so
             the header, rows and nested child rows stay column-aligned. */}
         <RowGutter
@@ -189,10 +181,13 @@ export function StatusRow({
         {/* ID — expand/collapse toggle lives here (Rally parity), to the left of
             the item type icon + key. */}
         <div style={colStyles.id} className="flex items-center gap-1.5 px-2">
+          {/* `taskTotal` is already on the wire per row, so the chevron only appears where tasks exist
+              — no fetch needed to decide, and no row that discloses an empty list. */}
           <RowExpandToggle
             expanded={tasksExpanded}
             onToggle={() => setTasksExpanded(!tasksExpanded)}
             label={tasksExpanded ? 'Collapse tasks' : 'Expand tasks'}
+            disclosable={item.taskTotal > 0}
           />
           <IdCell type={item.type} itemKey={item.itemKey} onOpen={onOpen} />
         </div>
@@ -524,7 +519,7 @@ export function StatusRow({
 
         {/* selectedIterationId kept for future refetch semantics */}
         <span hidden>{selectedIterationId}</span>
-      </div>
+      </TableRow>
 
       {/* Child Tasks List — the 2px hierarchy rail is an inset shadow (not a
           border) so it never shifts the child columns out of alignment with

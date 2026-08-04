@@ -17,7 +17,6 @@ export interface PlanLookups {
   /** Who else holds a Feature — the input to Rally's `Allocation` cell. */
   sharingOf: (portfolioItemId: string) => { owner: string | null; contributors: string[] }
   /** A team's demand split into Rally's two kinds, for the `Project Capacity` rail. */
-  demandOf: (teamId: string) => { assigned: number; allocated: number }
   /** Allocations bucketed by FEATURE, for the Features tab's nested rows. */
   allocationsByItem: Map<string, CapacityAllocation[]>
   /** Allocations bucketed by TEAM, for each team's sub-table. */
@@ -74,25 +73,6 @@ export function usePlanLookups(plan: CapacityPlan | undefined): PlanLookups {
       }
     },
     [plan?.allocations, teamNameById],
-  )
-
-  /**
-   * `allocated` is what a planner typed into an allocation row; `assigned` is what the plan charges a
-   * team assigned a Feature WITHOUT a slice — the Feature's own estimate, resolved per row. The two
-   * sum to the team's `metrics.estimated`, so the rail and the grid are two readings of one number.
-   */
-  const demandOf = useCallback(
-    (teamId: string) => {
-      let assigned = 0
-      let allocated = 0
-      for (const row of plan?.allocations ?? []) {
-        if (row.teamId !== teamId) continue
-        if (row.value === null) assigned += row.metrics.estimated
-        else allocated += row.value
-      }
-      return { assigned, allocated }
-    },
-    [plan?.allocations],
   )
 
   /**
@@ -161,7 +141,6 @@ export function usePlanLookups(plan: CapacityPlan | undefined): PlanLookups {
     cutlineBeforeId,
     belowCutlineIds,
     sharingOf,
-    demandOf,
     allocationsByItem,
     allocationsByTeam,
     unallocated,

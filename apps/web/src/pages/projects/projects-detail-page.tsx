@@ -150,115 +150,115 @@ export function ProjectDetailPage() {
         </div>
       ) : (
         <>
-      <DetailTwoPane
-        sidebarTitle={t('detail.metadataDetails')}
-        main={
-          <RichTextEditor
-            title={t('common:description')}
-            value={p.description}
-            minHeight={120}
-            readOnly={!canManage}
-            // Legacy project descriptions are stored as plain text; the editor
-            // normalizes them to <p>…</p> on mount and fires onChange. Ignore
-            // that (and any no-op) so the form isn't spuriously dirty on load —
-            // only register a change when the text content actually differs.
-            onChange={(html) => {
-              if (stripTags(html) === stripTags(project.description)) return
-              setField({ description: html || null })
-            }}
-          />
-        }
-        sidebar={
-          <>
-            <OwnerSelectField
-              label={t('fields.lead')}
-              value={p.leadId ?? ''}
-              onChange={(v) => setField({ leadId: v || null })}
-              members={members}
-              disabled={!canManage}
-            />
-
-            <DetailField label={t('detail.startDate')}>
-              <DateField
-                variant="field"
-                value={p.startDate ?? null}
+          <DetailTwoPane
+            sidebarTitle={t('detail.metadataDetails')}
+            main={
+              <RichTextEditor
+                title={t('common:description')}
+                value={p.description}
+                minHeight={120}
                 readOnly={!canManage}
-                ariaLabel={t('detail.startDate')}
-                onChange={canManage ? (v) => setField({ startDate: v }) : undefined}
-              />
-            </DetailField>
-
-            <DetailField label={t('detail.endDate', 'End Date')}>
-              <DateField
-                variant="field"
-                value={p.endDate ?? null}
-                readOnly={!canManage}
-                ariaLabel={t('detail.endDate', 'End Date')}
-                onChange={canManage ? (v) => setField({ endDate: v }) : undefined}
-              />
-            </DetailField>
-
-            <DetailField label={t('common:status')}>
-              <SearchableSelect
-                variant="field"
-                value={p.status ?? 'active'}
-                readOnly={!canManage}
-                ariaLabel={t('common:status')}
-                options={[
-                  { value: 'active', label: t('status.active') },
-                  { value: 'archived', label: t('status.archived') },
-                ]}
-                onChange={(v) => setField({ status: v as 'active' | 'archived' })}
-              />
-            </DetailField>
-
-            {/* Teams — a Project links MANY teams (M2M). Edited via the dedicated
-                link/unlink endpoints (the project PATCH carries no teamIds), so
-                each add/remove commits immediately from the multi-select diff. */}
-            <DetailField label={t('fields.teams')}>
-              <SearchableSelect
-                variant="field"
-                multiple
-                value={teams.map((tm) => tm.id)}
-                readOnly={!canManage}
-                ariaLabel={t('fields.teams')}
-                placeholder="--"
-                searchPlaceholder="Search"
-                options={allTeams.map((tm) => ({
-                  value: tm.id,
-                  label: tm.name,
-                  searchText: tm.name,
-                  icon: <TeamAvatar teamKey={tm.key} name={tm.name} size={16} />,
-                }))}
-                onChange={(ids) => {
-                  const next = ids as string[]
-                  const cur = teams.map((tm) => tm.id)
-                  next.filter((id) => !cur.includes(id)).forEach((id) => linkTeam.mutate(id))
-                  cur.filter((id) => !next.includes(id)).forEach((id) => unlinkTeam.mutate(id))
+                // Legacy project descriptions are stored as plain text; the editor
+                // normalizes them to <p>…</p> on mount and fires onChange. Ignore
+                // that (and any no-op) so the form isn't spuriously dirty on load —
+                // only register a change when the text content actually differs.
+                onChange={(html) => {
+                  if (stripTags(html) === stripTags(project.description)) return
+                  setField({ description: html || null })
                 }}
               />
-            </DetailField>
+            }
+            sidebar={
+              <>
+                <OwnerSelectField
+                  label={t('fields.lead')}
+                  value={p.leadId ?? ''}
+                  onChange={(v) => setField({ leadId: v || null })}
+                  members={members}
+                  disabled={!canManage}
+                />
 
-            <DetailField label={t('detail.members')}>
-              <DetailReadonlyValue>
-                <Users size={13} className="mr-1.5 text-foreground-subtle" />
-                {project.memberCount}
-              </DetailReadonlyValue>
-            </DetailField>
+                <DetailField label={t('detail.startDate')}>
+                  <DateField
+                    variant="field"
+                    value={p.startDate ?? null}
+                    readOnly={!canManage}
+                    ariaLabel={t('detail.startDate')}
+                    onChange={canManage ? (v) => setField({ startDate: v }) : undefined}
+                  />
+                </DetailField>
 
-            <DetailField label={t('detail.created')}>
-              <DetailReadonlyValue>{formatDateIso(project.createdAt)}</DetailReadonlyValue>
-            </DetailField>
-          </>
-        }
-      />
-      <SaveCancelBar
-        visible={isDirty && !!canManage}
-        saving={saving}
-        errorMsg={null}
-        onSave={handleSave}
-        onCancel={cancel}
-      />
+                <DetailField label={t('detail.endDate', 'End Date')}>
+                  <DateField
+                    variant="field"
+                    value={p.endDate ?? null}
+                    readOnly={!canManage}
+                    ariaLabel={t('detail.endDate', 'End Date')}
+                    onChange={canManage ? (v) => setField({ endDate: v }) : undefined}
+                  />
+                </DetailField>
+
+                <DetailField label={t('common:status')}>
+                  <SearchableSelect
+                    variant="field"
+                    value={p.status ?? 'active'}
+                    readOnly={!canManage}
+                    ariaLabel={t('common:status')}
+                    options={[
+                      { value: 'active', label: t('status.active') },
+                      { value: 'archived', label: t('status.archived') },
+                    ]}
+                    onChange={(v) => setField({ status: v as 'active' | 'archived' })}
+                  />
+                </DetailField>
+
+                {/* Teams — a Project links MANY teams (M2M). Edited via the dedicated
+                link/unlink endpoints (the project PATCH carries no teamIds), so
+                each add/remove commits immediately from the multi-select diff. */}
+                <DetailField label={t('fields.teams')}>
+                  <SearchableSelect
+                    variant="field"
+                    multiple
+                    value={teams.map((tm) => tm.id)}
+                    readOnly={!canManage}
+                    ariaLabel={t('fields.teams')}
+                    placeholder="--"
+                    searchPlaceholder="Search"
+                    options={allTeams.map((tm) => ({
+                      value: tm.id,
+                      label: tm.name,
+                      searchText: tm.name,
+                      icon: <TeamAvatar teamKey={tm.key} name={tm.name} size={16} />,
+                    }))}
+                    onChange={(ids) => {
+                      const next = ids as string[]
+                      const cur = teams.map((tm) => tm.id)
+                      next.filter((id) => !cur.includes(id)).forEach((id) => linkTeam.mutate(id))
+                      cur.filter((id) => !next.includes(id)).forEach((id) => unlinkTeam.mutate(id))
+                    }}
+                  />
+                </DetailField>
+
+                <DetailField label={t('detail.members')}>
+                  <DetailReadonlyValue>
+                    <Users size={13} className="mr-1.5 text-foreground-subtle" />
+                    {project.memberCount}
+                  </DetailReadonlyValue>
+                </DetailField>
+
+                <DetailField label={t('detail.created')}>
+                  <DetailReadonlyValue>{formatDateIso(project.createdAt)}</DetailReadonlyValue>
+                </DetailField>
+              </>
+            }
+          />
+          <SaveCancelBar
+            visible={isDirty && !!canManage}
+            saving={saving}
+            errorMsg={null}
+            onSave={handleSave}
+            onCancel={cancel}
+          />
         </>
       )}
     </DetailLayout>

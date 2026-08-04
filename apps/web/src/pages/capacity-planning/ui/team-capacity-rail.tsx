@@ -1,96 +1,132 @@
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { WarningIndicator } from '@/shared/ui/warning-indicator'
+import { TeamCell } from '@/shared/ui/team-cell'
+import { SortHeaderCell } from '@/shared/ui/sort-header-cell'
+import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
+import { TABLE_HEADER_H, TOOLBAR_ROW_H } from '@/shared/config/layout'
 import type { CapacityPlanTeam } from '@/features/capacity-planning/api'
 
+type RailSortField = 'name' | 'demand'
+
 /**
- * Rally's `Project Capacity` rail, beside the Features tab: every team in the plan with its
- * committed demand over its capacity, and a warning glyph where a rule is exceeded.
+ * Rally's `Project Capacity` rail, beside the Features tab: every team in the plan, its committed
+ * demand over its capacity, and a red glyph on the ones that do not fit.
  *
- * Only on the FEATURES tab, which is where Rally shows it and the only place it is not a repeat.
- * The cutline that tab draws is PLAN-wide — "these Features do not fit" — and the immediate next
- * question is which team has no room left. The team grid answers that per row already, so a rail
- * there would restate the columns beside it.
+ * Only on the FEATURES tab, which is where Rally shows it and the only place it is not a repeat. The
+ * cutline that tab draws is PLAN-wide — "these Features do not fit" — and the immediate next question
+ * is which team has no room left. The team grid answers that per row already, so a rail there would
+ * restate the columns beside it.
  *
- * Three figures per team, because Rally's panel carries three: it "shows the current assigned and
- * allocated points/count and the total capacity for each team". Assigned and allocated are not the
- * same commitment — an assigned row charges the Feature's own estimate to the team, an allocated row
- * charges a number a planner typed — and a single total hides which kind of promise the team is
- * carrying. Capacity reads "Not entered" rather than 0: a team nobody has sized is not a team with
- * no room.
+ * TWO COLUMNS, matched to the real panel: `Name`, and one `{unit} / Capacity` cell reading `407 / 375`.
+ * It had four — Name, Assigned, Alloc., Capacity — from a reading of the Broadcom sentence "shows the
+ * current assigned and allocated points/count and the total capacity"; the product itself draws one
+ * ratio, and splitting it stole the width the team names need in a 320px rail. `Assigned` was also
+ * dead by then: it counted allocation rows with a NULL `value`, and `value` became NOT NULL when the
+ * allocation snapshot landed, so the column printed 0 for every team on every plan.
+ *
+ * The rail SORTS ITSELF, ascending by name to start, exactly as the panel does. It used to render
+ * whatever order the Teams tab's grid sort had left behind — a sort control on a different tab, which
+ * nothing on this tab explains.
  */
 export function TeamCapacityRail({
   teams,
   unitLabel,
-  demandOf,
+  teamKeyOf,
 }: {
   teams: CapacityPlanTeam[]
   unitLabel: string
-  /**
-   * The team's demand split into Rally's two kinds.
-   *
-   * Resolved by the page from the plan's allocation rows: the team summary carries only their sum, and
-   * the split is a property of the rows. `assigned + allocated` is `metrics.estimated`, so the rail
-   * cannot disagree with the grid beside it.
-   */
-  demandOf: (teamId: string) => { assigned: number; allocated: number }
+  /** Team id → key, so the chip shows the same two letters as everywhere else the team appears. */
+  teamKeyOf: (teamId: string | null | undefined) => string | null
 }) {
   const { t } = useTranslation('capacity')
   const warningText = useCapacityWarningText()
+  const { sortField, sortDir, toggle } = useTableSort<RailSortField>({ field: 'name', dir: 'asc' })
+
+  const rows = useMemo(() => {
+    const ordered = [...teams]
+    const dir = sortDir === 'desc' ? -1 : 1
+    ordered.sort((a, b) =>
+      sortField === 'demand'
+        ? dir * (a.metrics.estimated - b.metrics.estimated)
+        : dir * (a.teamName ?? '').localeCompare(b.teamName ?? ''),
+    )
+    return ordered
+  }, [teams, sortField, sortDir])
 
   return (
-    <aside className="w-80 shrink-0 overflow-y-auto border-l border-border-inner bg-card px-3 py-2">
-      {/* The unit is named ONCE, here: all three figures share it, and repeating it in a column
-          heading stole the width the team names need. */}
-      <p className="mb-2 text-ui-md font-semibold text-foreground capitalize">
-        {t('items.sidebarHeading', { unit: unitLabel })}
+    <aside className="ml-2 flex w-72 shrink-0 flex-col overflow-y-auto border-l border-border-inner bg-card pl-3">
+      {/* THREE bands, each level with the grid's: the heading sits on the toolbar's line, the column
+          headings on the grid header's line, and the rows follow. Both heights come from the shared
+          tokens, because two panels in separate flex columns can only line up if they agree on a
+          number — the rail used to start below the toolbar, so every band was a row out of step with
+          the table it is read against. */}
+      <p
+        className="flex shrink-0 items-center border-b border-border-subtle bg-card px-3 text-ui-md font-semibold text-foreground"
+        style={{ minHeight: TOOLBAR_ROW_H }}
+      >
+        {t('items.sidebarHeading')}
       </p>
 
-      {/* Rally's own three headings, so each number is read against its own label rather than as one
-          ratio. The unit is named once, on the heading row, because all three figures share it. */}
-      <div className="mb-1 flex items-end gap-1 border-b border-border-inner pb-1 text-ui-xs font-semibold text-muted-foreground">
-        <span className="min-w-0 flex-1">{t('items.railName')}</span>
-        <span className="w-12 shrink-0 text-right">{t('items.railAssigned')}</span>
-        <span className="w-12 shrink-0 text-right">{t('items.railAllocated')}</span>
-        {/* `capitalize` rather than a second key: the unit label is a noun the plan already owns. */}
-        <span className="w-20 shrink-0 text-right">{t('items.railCapacity')}</span>
-      </div>
+      <div className="flex flex-col">
+        {/* WHITE, like the heading above it — the grid's grey header band stops at the divider. The rail
+            is its own panel, and carrying that band across made the two read as one table whose
+            right-hand columns had different headings. The ruled bottom edge separates heading from rows
+            here. */}
+        <div
+          className="flex shrink-0 items-center gap-2 border-b border-border-inner bg-card px-3"
+          style={{ minHeight: TABLE_HEADER_H }}
+        >
+          <SortHeaderCell
+            label={t('items.railName')}
+            active={sortField === 'name'}
+            dir={sortDir}
+            onToggle={() => toggle('name')}
+            className="flex-1"
+          />
+          {/* ONE heading for the ratio, carrying the unit — `Points / Capacity`, or `Count / Capacity`
+              on a count plan. `capitalize` rather than a second key: the unit label is a noun the plan
+              already owns, and it is lower-case where the plan header prints it. */}
+          <SortHeaderCell
+            label={t('items.railDemand', { unit: unitLabel })}
+            active={sortField === 'demand'}
+            dir={sortDir}
+            onToggle={() => toggle('demand')}
+            align="right"
+            className="w-24 shrink-0 capitalize"
+          />
+        </div>
 
-      {teams.length === 0 && (
-        <p className="text-ui-sm text-foreground-subtle">{t('detail.noTeams')}</p>
-      )}
+        {rows.length === 0 && (
+          <p className="px-3 py-3 text-ui-sm text-foreground-subtle">{t('detail.noTeams')}</p>
+        )}
 
-      <div className="flex flex-col gap-1">
-        {teams.map((team) => {
+        {rows.map((team) => {
           const labels = warningText(team.metrics.warnings)
-          const demand = demandOf(team.teamId)
           return (
-            <div key={team.id} className="flex items-center gap-1 text-ui-sm">
-              {/* Wrapped, not truncated: a team name is the row's subject, and the rail is narrow
-                  enough that truncation hid the part that tells two teams apart. */}
-              <span
-                className="min-w-0 flex-1 break-words whitespace-normal text-foreground"
-                title={team.teamName ?? undefined}
-              >
-                {team.teamName ?? '--'}
-              </span>
-              <span className="w-10 shrink-0 text-right text-muted-foreground tabular-nums">
-                {demand.assigned}
-              </span>
-              <span className="w-10 shrink-0 text-right text-muted-foreground tabular-nums">
-                {demand.allocated}
-              </span>
-              {/* `w-24` + `whitespace-nowrap`: at 64px "Not entered" wrapped onto a second line and
-                  pushed the warning glyph past the column's right edge, flush to the window. */}
-              <span className="flex w-24 shrink-0 items-center justify-end gap-1 whitespace-nowrap text-muted-foreground tabular-nums">
-                {team.metrics.capacity === null ? (
-                  <span className="text-foreground-subtle">{t('row.notEntered')}</span>
-                ) : (
-                  team.metrics.capacity
-                )}
-                {/* Was an AMBER triangle for the very same team warnings the grid draws in red, so
-                    one rule looked like two severities depending on which panel it was read in. */}
+            <div
+              key={team.id}
+              className="flex items-center gap-2 border-b border-border-inner px-3 py-2.5 text-ui-sm last:border-b-0"
+            >
+              {/* The shared `TeamCell` — square glyph plus name — so a team in the rail looks like the
+                  same team in the grid's Team column. It wraps rather than truncates, which the rail
+                  needs: at 288px, truncation hid the part that tells two teams apart. */}
+              <TeamCell
+                teamKey={teamKeyOf(team.teamId)}
+                name={team.teamName}
+                className="min-w-0 flex-1"
+              />
+              <span className="flex w-24 shrink-0 items-center justify-end gap-1 text-right text-muted-foreground tabular-nums">
+                <span className="break-words whitespace-normal">
+                  {/* An UNSIZED team reads `21 / --`, not `21 / 0`: nobody having entered a capacity is
+                      not the same as a team with no room, and the warning glyph beside it says which. */}
+                  {team.metrics.estimated} / {team.metrics.capacity ?? EMPTY_VALUE}
+                </span>
+                {/* Red, the same severity the grid draws — this was AMBER for the very same team
+                    warnings, so one rule looked like two depending on which panel it was read in. */}
                 <WarningIndicator labels={labels} size={11} />
               </span>
             </div>

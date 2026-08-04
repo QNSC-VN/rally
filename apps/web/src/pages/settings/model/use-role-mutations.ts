@@ -13,7 +13,9 @@ import type { Permission } from '@/shared/config/permissions'
  * `apiClient`; the MutationCache reads `meta.invalidates`.
  */
 
-async function unwrap<T>(p: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
+async function unwrap<T>(
+  p: Promise<{ data?: T; error?: unknown; response: Response }>,
+): Promise<T> {
   const { data, error, response } = await p
   if (error || !response.ok) throw new Error(apiErrorMessage(error, response.status))
   return data as T

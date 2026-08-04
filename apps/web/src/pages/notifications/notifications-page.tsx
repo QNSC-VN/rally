@@ -35,14 +35,8 @@ const TAB_FILTER: Record<
 export function NotificationsPage() {
   const { t } = useTranslation('notifications')
   const [tab, setTab] = useState<NotificationTab>('all')
-  const {
-    data,
-    isLoading,
-    isError,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useNotificationsPaged(TAB_FILTER[tab])
+  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useNotificationsPaged(TAB_FILTER[tab])
   const markRead = useMarkNotificationRead()
   const markAll = useMarkAllNotificationsRead()
   const openNotification = useOpenNotification()

@@ -94,7 +94,7 @@ export function CapacityPlanRow({
           title={plan.name}
           className="block w-full font-medium break-words whitespace-normal text-foreground"
           style={{ fontSize: 12 }}
-          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-ui-sm text-foreground focus:outline-none"
+          inputClassName="w-full rounded border border-primary bg-transparent px-1 py-0.5 text-inherit text-foreground focus:outline-none"
         />
       </div>
 
