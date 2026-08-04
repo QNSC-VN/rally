@@ -611,3 +611,24 @@ variable "tunnel_enabled" {
   type        = bool
   default     = false
 }
+
+variable "monitor_ingress" {
+  description = <<-EOT
+    Create the Route 53 health check + us-east-1 alarm that probe the public api
+    hostname from outside AWS. Only meaningful when `tunnel_enabled` — with an ALB
+    that job belongs to `monitor_target_health`.
+
+    OFF ONLY WHILE AN ENVIRONMENT SERVES NOTHING. A health check against a hostname
+    with no tasks behind it sits in ALARM permanently: it pages for a condition that
+    is the intended state, which trains the reader to ignore the one alarm that
+    replaces every ALB target-group alarm. It also bills $2.70/mo per check
+    ($0.75 base + $2.00 for the string-match/latency option) for that non-signal.
+
+    TURN IT BACK ON IN THE SAME CHANGE THAT RAISES min_count. A tunnelled production
+    environment has NO other ingress alarm — ECS reports a task RUNNING whether or
+    not cloudflared holds edge connections — so shipping traffic with this false
+    means an ingress outage is visible only when a user reports it.
+  EOT
+  type        = bool
+  default     = true
+}
