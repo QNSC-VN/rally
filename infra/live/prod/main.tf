@@ -148,9 +148,13 @@ module "stack" {
   //
   // MONITORING MOVED, it did not disappear. `monitor_target_health` cannot exist
   // without a target group, so the Route 53 health check created by this module
-  // (aws_route53_health_check.api_ingress) is what now catches an outage producing no
+  // (aws_route53_health_check.api_ingress) is what catches an outage producing no
   // load. It probes rally-api.qnsc.vn/v1/healthz from outside AWS, so it exercises the
   // whole user path rather than any one component's opinion of itself.
+  //
+  // THAT CHECK IS CURRENTLY OFF — see `monitor_ingress` below. Production therefore has
+  // NO ingress alarm at all today, which is correct while it serves nothing and wrong
+  // the moment it does.
   //
   // ROLLBACK is not instant: set tunnel_enabled = false, apply, redeploy. That
   // recreates the ALB attachment, but the runtime layer's ALB must exist first
@@ -183,6 +187,20 @@ module "stack" {
   // TURN THIS BACK ON at go-live, in the same change that restores min_count. It is the
   // only alarm that catches an outage producing no load to move CPU, latency or 5xx.
   monitor_target_health = false
+
+  // OFF for the same reason, and it is the TUNNELLED half of the pair above. The Route 53
+  // health check probes rally-api.qnsc.vn from outside AWS; production runs zero tasks, so
+  // it reported DOWN continuously from creation — $2.70/mo ($0.75 base + $2.00 options) to
+  // be paged every minute about the state this environment is deliberately in. An alarm
+  // that is always red is worse than no alarm: it is the one signal that replaces every
+  // ALB target-group alarm, and a reader who has learned to ignore it will ignore the
+  // real outage too.
+  //
+  // TURN THIS BACK ON at go-live, in the same change as monitor_target_health and
+  // min_count. While tunnel_enabled = true this is production's ONLY ingress alarm —
+  // ECS reports a task RUNNING whether or not cloudflared holds edge connections, so
+  // without it an ingress outage is visible only when a user reports it.
+  monitor_ingress = false
 
   // Weekly re-stop, because AWS force-starts a stopped instance after 7 days. Sunday
   // 01:00 local sits well inside that window, so the instance is never up for more than
