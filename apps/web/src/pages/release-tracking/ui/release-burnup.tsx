@@ -1,7 +1,8 @@
 /**
  * The Release Tracking burnup (RT-BR-09, RT-AC-09).
  *
- * Four series — Accepted, Planned, Preliminary Estimate and Ideal — over the release window, in
+ * Four series — Accepted, Planned, Preliminary Estimate and the target baseline — over the release
+ * window, in
  * whichever unit `Chart Unit` selects. Below the axis sits the secondary iteration band: the
  * timeboxes the release crosses, which is how a reader maps a date on this chart onto the sprint
  * they were in.
@@ -98,10 +99,24 @@ export function ReleaseBurnup({
   const unitLabel = unit === 'points' ? t('unit.points') : t('unit.count')
   const acceptedLabel = t('burnup.series.accepted', { unit: unitLabel })
   /**
-   * `Ideal (Accepted Points)`, as Rally names it — the trajectory is the ACCEPTED series' target.
+   * `Target baseline (Accepted Points)` — which series it is the baseline FOR, then the unit, so a
+   * Count chart reads `Target baseline (Accepted Count)`.
    *
-   * It read just `Ideal`, which leaves a reader to guess which of three lines it is the ideal FOR. The
-   * unit travels with it, so a Count chart says `Ideal (Accepted Count)`.
+   * DELIBERATELY NOT `Ideal (Accepted Points)`, which is what this said and what Rally calls its own
+   * line. The two are different artefacts wearing one name, and the collision was the misleading part:
+   *
+   *   ours  — a FIXED baseline from the release target captured once on the first snapshot day
+   *           (`releases.ideal_target_*`, RT-BR-09). It does not move when scope changes, which is
+   *           what makes a past day auditable and "behind plan" falsifiable.
+   *   Rally — a trend-based PREDICTION extrapolated from recent acceptance activity, feeding a
+   *           predicted completion date. It moves as the team's rate changes.
+   *
+   * Keeping our behaviour and Rally's label meant a reader who knew Rally would read a prediction off
+   * a baseline. The BA's fixed-baseline rule is the better design (see
+   * 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#0-C), so the NAME is what changes.
+   *
+   * Rally's prediction is genuinely useful and is NOT implemented — adding it later as a second
+   * series is an enhancement, and this label leaves the word `Ideal` free for it.
    */
   const idealLabel = t('burnup.series.ideal', { series: acceptedLabel })
 
@@ -285,7 +300,7 @@ export function ReleaseBurnup({
       }
     >
       {/* `ComposedChart`, because Accepted is an AREA and the other three are lines — Rally shades the
-          band under Accepted and draws Planned, Preliminary and Ideal as plain trajectories, so the
+          band under Accepted and draws Planned, Preliminary and the target baseline as plain trajectories, so the
           measured progress reads as volume delivered rather than as a fourth similar line. */}
       <ComposedChart data={points} margin={{ top: 8, right: 18, left: 8, bottom: 12 }}>
         <CartesianGrid {...CHART_GRID} />
