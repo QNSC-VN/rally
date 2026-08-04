@@ -57,11 +57,18 @@ overrides:
   # production exposure — but the scanner is `osv_blocking=true` and a lockfile the
   # scanner rejects blocks every unrelated PR, which is its own kind of outage.
   #
-  # One range, not two per-major floors. jsdom declares `undici@^7 || ^8`, so pinning
-  # 7.x to >=7.29.0 moved it onto 8.6.0 — still vulnerable, just under the other
-  # major's floor, and the 7.x range then matched nothing. A single `<8.9.0` floor
-  # covers both consumers because 8.9.0 satisfies every declared range in the tree.
-  "undici@<8.9.0": ">=8.9.0"
+  # TWO ranges, one per major, and they must stay that way. jsdom@29.1.1 declares
+  # `undici@^7.25.0` and reaches into the internal `undici/lib/handler/wrap-handler.js`,
+  # which 8.x DELETED — so a single `<8.9.0: >=8.9.0` floor dragged jsdom onto 8.9.0 and
+  # every jsdom-environment suite died at worker startup with MODULE_NOT_FOUND, before a
+  # single test ran. Backend suites are unaffected (node environment), which is exactly
+  # why this passed locally and failed in CI on the web tests.
+  #
+  # Keep each consumer inside the major it declares:
+  #   7.x — jsdom → vitest         (patched in 7.29.0)
+  #   8.x — testcontainers          (patched in 8.9.0)
+  "undici@>=7.0.0 <7.29.0": ">=7.29.0 <8.0.0"
+  "undici@>=8.0.0 <8.9.0": ">=8.9.0"
 allowBuilds:
   '@scarf/scarf': set this to true or false
   '@swc/core': set this to true or false
