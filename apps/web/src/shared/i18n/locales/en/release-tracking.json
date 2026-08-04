@@ -21,7 +21,12 @@
     "title": "Features",
     "direct": "Features in Release",
     "derived": "Derived Features",
-    "unparented": "Unparented Stories & Defects"
+    "unparented": "Unparented Stories & Defects",
+    "help": {
+      "direct": "Features assigned to this release and owned by a team in the current scope.",
+      "derived": "Features outside this release that have a story or defect assigned to it. Counted, but not given a percentage: the denominator would be only the children in this release, not the whole Feature.",
+      "unparented": "Stories and defects in this release that have no parent Feature."
+    }
   },
   "columns": {
     "rank": "Rank",

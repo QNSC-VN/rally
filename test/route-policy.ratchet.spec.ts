@@ -39,7 +39,25 @@ import { describe, expect, it } from 'vitest';
  */
 
 // ── Baseline — LOWER as routes get decorated, NEVER raise ────────────────────
-const MAX_UNPOLICED_ROUTES = 44;
+//
+// 44 → 45 on 2026-08-04, and this is the ONE shape that justifies it: authorization
+// MOVED INTO THE SERVICE, it was not dropped.
+//
+// `GET /portfolio-items` carried `@RequirePermission('workspace:view')`. That code is
+// admin-reserved, so a correctly project-scoped Project Admin or Project Member 403'd at
+// the guard even though P5-PI-FR-017 grants Project Member read access — and the service's
+// own `listReadableProjectIds` narrowing never ran. `portfolio:view` is project-tier and
+// this route's `projectId` is optional, so no decorator can express the check; the tier-safe
+// overloads correctly refuse to pretend otherwise. `work-items/by-key` hit the same wall and
+// set the precedent. The check now lives in `PortfolioItemsService.list`, pinned by
+// `test/e2e/portfolio-isolation.e2e.spec.ts`, which asserts both directions.
+//
+// Raising this number is otherwise forbidden. If you are here because your change made the
+// count rise, the answer is almost always to decorate the route, not to edit this line — and
+// note that this counter reads SOURCE TEXT, so it cannot tell a correct decorator from a
+// misspelled code. It is a smoke detector, not an authorization test.
+// See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P5-PI-16
+const MAX_UNPOLICED_ROUTES = 45;
 
 /** Sanity floor: if the scanner stops finding routes, fail loudly, not silently. */
 const MIN_ROUTES_FOUND = 150;

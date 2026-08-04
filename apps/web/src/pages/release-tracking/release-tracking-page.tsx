@@ -24,6 +24,7 @@ import { MetricCard } from '@/shared/ui/metric-card'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { PageHeader } from '@/shared/ui/page-header'
 import { TimeboxPicker } from '@/shared/ui/timebox-picker'
+import { Tooltip } from '@/shared/ui/tooltip'
 
 import { ReleaseBurnup } from './ui/release-burnup'
 import { TrackingGrid } from './ui/tracking-grid'
@@ -174,29 +175,40 @@ export function ReleaseTrackingPage() {
                 Still BUTTONS: the tiles are the bucket selector (§5.1), so the pressed one is stated
                 with `aria-pressed` rather than by colour alone. `MetricStrip` is deliberately NOT used
                 — that is the 58px bar under a page header, and these sit inside a panel. */}
+            {/* Each tile carries its own definition on hover.
+                The three-way classification is the page's central idea and the least guessable
+                thing on it — "Derived" in particular is a Feature that is NOT in this release, and
+                its bare count with no percentage reads as a missing number rather than a
+                deliberate one (RT-BR-05). The approved mockup had an AlertCircle popover for this
+                and the build dropped it (audit §6.6).
+                On the tiles rather than a separate icon: the tiles already ARE the bucket selector,
+                so the definition belongs on the thing you are choosing between. The wording is
+                Rally's own, now that the taxonomy is confirmed to be Rally's near-verbatim.
+                See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P6-RT-10 */}
             <div className="flex items-stretch">
               {BUCKETS.map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setBucket(key)}
-                  aria-pressed={bucket === key}
-                  className={`flex-1 border-r border-border-inner px-3 py-1 last:border-r-0 ${
-                    bucket === key ? 'bg-accent-bg' : 'hover:bg-surface-hover'
-                  }`}
-                >
-                  <MetricCard
-                    // Rally's tile: the NUMBER first and centred, its label under it. These three are read
-                    // as one comparison and each is a button, so the figure leads.
-                    layout="value-first"
-                    label={t(`summary.${key}`)}
-                    /* `--`, not `0`. `data` is undefined while the request is in flight and after it
-                       fails, and three large zeros beside the grid's error state read as "this release
-                       has no Features" — a data conclusion drawn from a network fault. */
-                    value={summary ? summary[key] : EMPTY_VALUE}
-                    minWidth={0}
-                  />
-                </button>
+                <Tooltip key={key} content={t(`summary.help.${key}`)} side="bottom">
+                  <button
+                    type="button"
+                    onClick={() => setBucket(key)}
+                    aria-pressed={bucket === key}
+                    className={`flex-1 border-r border-border-inner px-3 py-1 last:border-r-0 ${
+                      bucket === key ? 'bg-accent-bg' : 'hover:bg-surface-hover'
+                    }`}
+                  >
+                    <MetricCard
+                      // Rally's tile: the NUMBER first and centred, its label under it. These three are
+                      // read as one comparison and each is a button, so the figure leads.
+                      layout="value-first"
+                      label={t(`summary.${key}`)}
+                      /* `--`, not `0`. `data` is undefined while the request is in flight and after it
+                         fails, and three large zeros beside the grid's error state read as "this release
+                         has no Features" — a data conclusion drawn from a network fault. */
+                      value={summary ? summary[key] : EMPTY_VALUE}
+                      minWidth={0}
+                    />
+                  </button>
+                </Tooltip>
               ))}
             </div>
           </div>

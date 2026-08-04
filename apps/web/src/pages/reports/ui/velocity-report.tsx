@@ -15,7 +15,7 @@ import { AlertTriangle } from 'lucide-react'
 import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { BRAND } from '@/shared/config/brand'
-import { useVelocity, type VelocityWindow } from '@/features/reporting/api'
+import { useVelocity, DEFAULT_VELOCITY_WINDOW, type VelocityWindow } from '@/features/reporting/api'
 import { teamScopeLabel } from '@/features/reporting/scope'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
@@ -43,7 +43,7 @@ export function VelocityReport({
   teamId: string | undefined
 }) {
   const { t } = useTranslation(['reports', 'common'])
-  const [window, setWindow] = useState<VelocityWindow>(5)
+  const [window, setWindow] = useState<VelocityWindow>(DEFAULT_VELOCITY_WINDOW)
   // `isError` was never read here, so a 500 or a dropped connection left `bars` empty and the chart
   // rendered §6's own sentence — "No completed iteration with scheduled work exists in this project and
   // team scope" — as a measured statement about delivery history. Team Capacity already fixed exactly

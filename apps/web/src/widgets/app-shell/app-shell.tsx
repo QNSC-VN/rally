@@ -118,9 +118,17 @@ const NAV_ITEMS: NavItem[] = [
     // MANAGEMENT still lives under Plan > Timeboxes > Releases — this dropdown is
     // portfolio items and capacity.
     //
-    // Rally names the capacity screen "Release Planning"; we label it "Capacity
-    // Planning" so the nav matches the page title and the spec's own wording, and
-    // record the synonym here rather than having two names for one screen.
+    // RALLY PARITY (corrects an earlier note in this file)
+    // Rally: has BOTH pages, and they are different products. "Capacity Planning"
+    // is its own page under Portfolio — "Select Portfolio, Capacity Planning" — with
+    // a plan object, a draft/published lifecycle and per-team allocations. "Release
+    // Planning" is a separate board under Planning (backlog column + release columns,
+    // drag a card to schedule); it has no plan object and no lifecycle.
+    // https://techdocs.broadcom.com/us/en/ca-enterprise-software/valueops/rally/rally-help/planning/capacity-planning-page/creating-a-capacity-plan/create-a-capacity-plan.html
+    // Our Capacity Planning maps to Rally's Capacity Planning, NOT to Release
+    // Planning. The previous note here claimed the opposite and was wrong; it sent a
+    // research pass down a false trail before being caught.
+    // Decided 2026-08-04. See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P5-CP-1
     children: [
       {
         // "Portfolio Items", not "Portfolio": a child repeating its parent's label reads as a

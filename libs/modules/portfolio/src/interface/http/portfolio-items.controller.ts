@@ -142,8 +142,7 @@ export class PortfolioItemsController {
   constructor(private readonly service: PortfolioItemsService) {}
 
   @Get()
-  // Gated at `workspace:view`, then narrowed in the service — the same shape
-  // work-items.controller.ts uses for its cross-project `by-key` lookup.
+  // DELIBERATELY UNDECORATED — authorization is resolve-then-check, in the service.
   //
   // `portfolio:view` is PROJECT-tier, and this route's `projectId` is optional because
   // a Workspace Admin lists across projects (BA spec §3.2) and the grid has a Project
@@ -151,9 +150,19 @@ export class PortfolioItemsController {
   // decorator correctly refuses to pretend otherwise.
   //
   // The real check is `AccessService.listReadableProjectIds`, which the service applies
-  // as a project filter. That mirrors Rally, where access to an artifact follows from
-  // permission on its PROJECT rather than any per-artifact grant.
-  @RequirePermission('workspace:view')
+  // as a project filter, distinguishing `null` (unrestricted) from `[]` (nothing) so it
+  // cannot fail open. That mirrors Rally, where access to an artifact follows from
+  // permission on its PROJECT rather than any per-artifact grant. Pinned by
+  // `test/e2e/portfolio-isolation.e2e.spec.ts`.
+  //
+  // This route USED to carry `@RequirePermission('workspace:view')`. That is the
+  // "gate chosen for where the id lives rather than for what the action is" bug this
+  // repo has now hit three times (`work-items/by-key`, `report:view`, here):
+  // `workspace:*` is admin-reserved, so a correctly project-scoped Project Admin or
+  // Project Member 403'd at the guard and the narrowing below never ran — while
+  // P5-PI-FR-017 grants Project Member read access. `by-key` set the precedent for
+  // dropping the decorator rather than swapping the code.
+  // See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P5-PI-16
   @ApiOperation({ summary: 'List Epics or Features' })
   @ApiPagedResponse(PortfolioItemResponseDto)
   @ApiCommonErrors(400, 401)
