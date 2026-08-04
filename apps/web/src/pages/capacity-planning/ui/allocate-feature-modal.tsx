@@ -8,11 +8,13 @@ import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { notify } from '@/shared/lib/toast'
+import { BRAND } from '@/shared/config/brand'
 import { IconButton } from '@/shared/ui/icon-button'
 import {
   useAllocate,
   useRemoveAllocation,
   useUpdateAllocation,
+  useSetPrimaryAllocation,
   type CapacityPlan,
 } from '@/features/capacity-planning/api'
 
@@ -50,6 +52,7 @@ export function AllocateFeatureModal({
   const { t } = useTranslation('capacity')
   const allocate = useAllocate()
   const updateAllocation = useUpdateAllocation()
+  const setPrimary = useSetPrimaryAllocation()
   const removeAllocation = useRemoveAllocation()
 
   /** This Feature's allocations, in plan order — the rows the dialog opens with. */
@@ -100,13 +103,21 @@ export function AllocateFeatureModal({
    * to name a team by the time Apply runs.
    */
   const [rows, setRows] = useState<
-    { key: string; allocationId: string | null; teamId: string; value: string }[]
+    {
+      key: string
+      allocationId: string | null
+      teamId: string
+      value: string
+      /** Rally's PRIMARY team assignment for this Feature — at most one row carries it. */
+      isPrimary: boolean
+    }[]
   >(() =>
     existing.length === 0
-      ? [{ key: 'new-0', allocationId: null, teamId: '', value: '' }]
+      ? [{ key: 'new-0', allocationId: null, teamId: '', value: '', isPrimary: false }]
       : existing.map((a) => ({
           key: a.id,
           allocationId: a.id,
+          isPrimary: a.isPrimary,
           teamId: a.teamId ?? '',
           // Always a number now: every row carries a fixed committed value. Emptying the field is what
           // asks for the Feature's estimate to be copied in again.
@@ -145,6 +156,23 @@ export function AllocateFeatureModal({
 
   function setRow(key: string, patch: { teamId?: string; value?: string }) {
     setRows((current) => current.map((r) => (r.key === key ? { ...r, ...patch } : r)))
+  }
+
+  /**
+   * Picks the PRIMARY team — Rally's "assign the portfolio item to one primary team and then allocate
+   * points to the additional teams that will contribute".
+   *
+   * Exclusive by construction: choosing one clears the rest, which is what the database enforces too
+   * (`uq_capacity_allocation_primary`, one primary per Feature per plan).
+   *
+   * This dialog is where the choice belongs. It used to be a `Primary` chip plus a star button in the
+   * allocation row's NAME cell, which real Rally has in neither place — Rally marks the primary on the
+   * Features tab's `Planned Team Assignment` field, and routes split edits here (§180). The Features-tab
+   * cell is read-only for a SPLIT Feature (no single team is the answer), so this dialog was the only
+   * remaining home for it.
+   */
+  function setPrimaryRow(key: string) {
+    setRows((current) => current.map((r) => ({ ...r, isPrimary: r.key === key })))
   }
 
   /**
@@ -239,6 +267,23 @@ export function AllocateFeatureModal({
       )
     }
 
+    /**
+     * The PRIMARY choice, last — after every row exists and every team has moved.
+     *
+     * Ordering matters: promoting a row the same Apply is about to create would have nothing to
+     * promote, and `setPrimary` is a separate endpoint because the flag is exclusive per Feature
+     * (`uq_capacity_allocation_primary`) and the server clears the previous holder in one transaction.
+     *
+     * Only when it actually MOVED. A brand-new row cannot be promoted here — it has no id until Apply
+     * runs — and it does not need to be: the service makes the first team to receive work the primary
+     * anyway, which is the same outcome.
+     */
+    const promoted = rows.find((r) => r.isPrimary && r.allocationId !== null)
+    if (promoted && before.get(promoted.allocationId!)?.isPrimary !== true) {
+      const allocationId = promoted.allocationId!
+      changes.push(() => setPrimary.mutateAsync({ id: plan.id, allocationId }))
+    }
+
     if (changes.length === 0) {
       onClose()
       return
@@ -292,6 +337,11 @@ export function AllocateFeatureModal({
             many", and a stack of labelled fields did not read as a split. */}
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 border-b border-border-inner pb-1">
+            {/* Narrow heading over the primary radios — `w-3.5` matches the control, so the Team column
+                still starts where the pickers do. */}
+            <span className="w-3.5 shrink-0 text-ui-2xs font-semibold text-muted-foreground">
+              {t('allocate.primaryHeading')}
+            </span>
             <span className="flex-1 text-ui-xs font-semibold text-muted-foreground">
               {t('allocate.teamLabel')}
             </span>
@@ -304,6 +354,18 @@ export function AllocateFeatureModal({
 
           {rows.map((row) => (
             <div key={row.key} className="flex items-center gap-2">
+              {/* Rally's primary assignment: one radio per row, exclusive. A row with no team yet cannot
+                  own the Feature, so it is disabled until one is chosen. */}
+              <input
+                type="radio"
+                name="allocate-primary"
+                checked={row.isPrimary}
+                disabled={row.teamId === ''}
+                onChange={() => setPrimaryRow(row.key)}
+                aria-label={t('allocate.primaryLabel')}
+                className="h-3.5 w-3.5 shrink-0 cursor-pointer disabled:cursor-default disabled:opacity-40"
+                style={{ accentColor: BRAND.primary }}
+              />
               <div className="min-w-0 flex-1">
                 <SearchableSelect
                   variant="field"
@@ -350,6 +412,7 @@ export function AllocateFeatureModal({
                     allocationId: null,
                     teamId: '',
                     value: '',
+                    isPrimary: false,
                   },
                 ])
               }

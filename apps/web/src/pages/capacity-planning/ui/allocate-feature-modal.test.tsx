@@ -40,6 +40,7 @@ const plan = {
       itemKey: 'FE-1',
       name: 'x',
       teamId: 'team-a',
+      isPrimary: true,
       value: 8,
       source: 'manual',
       estimateBreakdown: { refined: 5, preliminary: 5 },
@@ -50,6 +51,7 @@ const plan = {
       itemKey: 'FE-1',
       name: 'x',
       teamId: 'team-b',
+      isPrimary: false,
       value: 5,
       source: 'feature_estimate',
       estimateBreakdown: { refined: 5, preliminary: 5 },
@@ -168,6 +170,41 @@ describe('AllocateFeatureModal', () => {
 
     await waitFor(() => expect(mockPATCH).toHaveBeenCalledTimes(1))
     expect(mockPATCH.mock.calls[0][1].body).toEqual({ value: null })
+  })
+
+  it('promotes a contributor team to PRIMARY, through its own endpoint', async () => {
+    /**
+     * Rally: "assign the portfolio item to one primary team and then allocate points to the additional
+     * teams that will contribute". The choice lives here because the Features tab's assignment cell is
+     * read-only for a SPLIT Feature — no single team is the answer there — and Rally has no primary
+     * marker in the team table's Name column, which is where ours used to sit.
+     *
+     * `setPrimary` is a separate POST rather than a field on the row PATCH: the flag is exclusive per
+     * Feature (`uq_capacity_allocation_primary`) and the server clears the previous holder in the same
+     * transaction.
+     */
+    renderModal()
+    // Row 2 is Team Beta, the contributor. Row 1 (Alpha) already owns the Feature.
+    const radios = screen.getAllByRole('radio', { name: 'Primary team for this Feature' })
+    expect(radios[0]).toBeChecked()
+    fireEvent.click(radios[1])
+    fireEvent.click(apply())
+
+    await waitFor(() => expect(mockPOST).toHaveBeenCalledTimes(1))
+    expect(mockPOST.mock.calls[0][0]).toContain('primary')
+    expect(mockPOST.mock.calls[0][1].params.path.allocationId).toBe('alloc-b')
+    // Nothing else moved, so no row was patched.
+    expect(mockPATCH).not.toHaveBeenCalled()
+  })
+
+  it('does not re-promote the team that is already primary', async () => {
+    // Clicking the row that already owns the Feature is a no-op, not a redundant write.
+    renderModal()
+    fireEvent.click(screen.getAllByRole('radio', { name: 'Primary team for this Feature' })[0])
+    fireEvent.click(apply())
+
+    await waitFor(() => expect(mockPOST).not.toHaveBeenCalled())
+    expect(mockPATCH).not.toHaveBeenCalled()
   })
 
   it('writes nothing when Apply is pressed on an untouched dialog', async () => {

@@ -833,7 +833,6 @@ export function CapacityPlanDetailPage() {
                       <TeamAllocationsTable
                         planId={plan.id}
                         allocations={allocationsByTeam.get(team.teamId) ?? []}
-                        teamName={team.teamName}
                         canManage={canManage}
                         onOpenFeature={openFeature}
                         rankPositionOf={rankPositionOf}

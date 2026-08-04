@@ -11,6 +11,14 @@ export interface PageToolbarSearch {
   placeholder?: string
   ariaLabel?: string
   width?: number
+  /**
+   * `right` pushes the box to the far end of the bar, leaving whatever is on the left in its own group.
+   *
+   * Rally lays a list's scope picker and its search out that way — selector left, search right, one row
+   * — and Release Tracking is the surface that needs it: the bucket picker and the search box were on
+   * two stacked rows, which read as two separate controls for one list.
+   */
+  align?: 'left' | 'right'
 }
 
 /**
@@ -75,6 +83,7 @@ export function PageToolbar({
 
         {titleAccessory}
 
+        {search?.align === 'right' && <div className="flex-1" />}
         {search && (
           <SearchInput
             value={search.value}

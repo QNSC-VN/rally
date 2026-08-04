@@ -26,7 +26,6 @@ import { AllocationRow } from './allocation-row'
 export function TeamAllocationsTable({
   planId,
   allocations,
-  teamName,
   canManage,
   onOpenFeature,
   rankPositionOf,
@@ -36,8 +35,6 @@ export function TeamAllocationsTable({
 }: {
   planId: string
   allocations: CapacityAllocation[]
-  /** Owning team, or null for the Unallocated bucket. Used for the make-primary label. */
-  teamName: string | null
   canManage: boolean
   onOpenFeature: (portfolioItemId: string) => void
   /**
@@ -118,7 +115,6 @@ export function TeamAllocationsTable({
               canManage={canManage}
               colStyleFor={colStyleFor}
               onOpenFeature={onOpenFeature}
-              teamName={teamName}
               rankPosition={rankPositionOf(allocation.portfolioItemId)}
               ownerTeamName={sharingOf(allocation.portfolioItemId).owner}
               contributorTeamNames={sharingOf(allocation.portfolioItemId).contributors}

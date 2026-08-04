@@ -71,9 +71,6 @@
     "removeAllocation": "Remove the allocation for {{feature}}",
     "expandFeatures": "Expand the Features allocated to {{team}}",
     "collapseFeatures": "Collapse the Features allocated to {{team}}",
-    "makePrimary": "Make {{team}} the primary team for {{item}}",
-    "primaryBadge": "Primary",
-    "primaryUpdated": "Primary team updated",
     "noAllocations": "No Features allocated yet",
     "allocationRemoveFailed": "Could not remove the Feature from the plan",
     "from": "from",
@@ -115,7 +112,9 @@
     "prelimEstimate": "Prelim Estimate",
     "refinedEstimate": "Refined Estimate",
     "removeRow": "Remove this team from the allocation",
-    "totalAllocated": "Total allocated"
+    "totalAllocated": "Total allocated",
+    "primaryLabel": "Primary team for this Feature",
+    "primaryHeading": "Primary"
   },
   "warnings": {
     "feature_missing_estimate": "Point Estimated missing",

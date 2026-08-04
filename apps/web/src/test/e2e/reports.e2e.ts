@@ -64,8 +64,18 @@ test.describe('Release Tracking', () => {
     await page.goto('/release-tracking', { waitUntil: 'domcontentloaded' })
     await settle(page)
 
-    // The scope sits in the page header's subtitle, not among the controls, and names the aggregate.
-    await expect(page.getByText(/NX Platform - All Teams/)).toBeVisible({ timeout: 20_000 })
+    /**
+     * The scope is read-only CONTEXT (§239, RT-AC-02) and it lives in the app shell's context switcher —
+     * `NXP · All Teams` — which is where Rally shows it and where it applies to every page.
+     *
+     * It used to be repeated as this page's subtitle. Two copies of one fact, and the page-level one read
+     * as a filter belonging to Release Tracking, which RT-AC-02 forbids. Asserted here as the SHELL's
+     * copy, so the requirement is still covered and the duplicate cannot come back unnoticed.
+     */
+    await expect(page.getByText(/NXP · All Teams/)).toBeVisible({ timeout: 20_000 })
+
+    // The Release picker sits BESIDE the title, as Rally lays it out, rather than across the bar.
+    await expect(page.getByRole('button', { name: /Previous release/i })).toBeVisible()
 
     /**
      * RT-AC-05 — "Rank, ID and Team sort both directions" — from the keyboard.
