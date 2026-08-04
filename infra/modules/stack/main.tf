@@ -1138,8 +1138,20 @@ resource "aws_cloudwatch_metric_alarm" "security_fail_open" {
 # Deliberately checks /v1/healthz, not /v1/readyz: readyz touches postgres and valkey,
 # so a database blip would page as an ingress outage. Dependency health is already
 # covered by the RDS and fail-open alarms.
+#
+# `monitor_ingress` is the second gate, and it is what lets a PRE-LAUNCH environment stay
+# tunnelled without paying for a check that can only ever be red. Production runs zero
+# tasks, so this probe sat in ALARM continuously from the day it was created — $2.70/mo
+# to be told, every minute, about the state the environment is deliberately in.
+#
+# Both gates are required: `tunnel_enabled` says the ALB alarm cannot do this job,
+# `monitor_ingress` says there is something running worth watching.
+locals {
+  monitor_ingress = var.tunnel_enabled && var.monitor_ingress
+}
+
 resource "aws_route53_health_check" "api_ingress" {
-  count = var.tunnel_enabled ? 1 : 0
+  count = local.monitor_ingress ? 1 : 0
 
   fqdn              = var.api_domain
   type              = "HTTPS"
@@ -1159,7 +1171,7 @@ resource "aws_route53_health_check" "api_ingress" {
 # CloudWatch alarm on the health check. In us-east-1 because that is the only region
 # where AWS/Route53 HealthCheckStatus exists.
 resource "aws_cloudwatch_metric_alarm" "api_ingress_down" {
-  count    = var.tunnel_enabled ? 1 : 0
+  count    = local.monitor_ingress ? 1 : 0
   provider = aws.us_east_1
 
   alarm_name        = "${local.name}-api-ingress-down"
@@ -1189,7 +1201,7 @@ resource "aws_cloudwatch_metric_alarm" "api_ingress_down" {
 # The alarm lives in us-east-1, and an SNS action must be in the alarm's own region —
 # so the ap-southeast-1 alarm topic cannot be used and this one mirrors it.
 resource "aws_sns_topic" "ingress_alarms_us_east_1" {
-  count    = var.tunnel_enabled ? 1 : 0
+  count    = local.monitor_ingress ? 1 : 0
   provider = aws.us_east_1
 
   name = "${local.name}-ingress-alarms"
@@ -1197,7 +1209,7 @@ resource "aws_sns_topic" "ingress_alarms_us_east_1" {
 }
 
 resource "aws_sns_topic_subscription" "ingress_alarms_email" {
-  for_each = var.tunnel_enabled ? toset(var.alarm_emails) : toset([])
+  for_each = local.monitor_ingress ? toset(var.alarm_emails) : toset([])
   provider = aws.us_east_1
 
   topic_arn = aws_sns_topic.ingress_alarms_us_east_1[0].arn

@@ -179,13 +179,27 @@ monitor_target_health = true    # currently false
 **no ALB** — ingress is the tunnel — so with `tunnel_enabled = true` the stack passes an
 empty `target_group_arns` and *this alarm is not created at all*.
 
-What actually covers ingress now is `aws_route53_health_check.api_ingress`, already
-created by the stack: it probes `rally-api.qnsc.vn/v1/healthz` from outside AWS and
-pages `nghiavt@qnsc.vn` via an SNS topic in **us-east-1** (Route 53 publishes
-`HealthCheckStatus` only there).
+What covers ingress instead is `aws_route53_health_check.api_ingress` — but it **does not
+exist right now**. It was deleted on 2026-08-04 (`monitor_ingress = false`): with zero
+tasks it reported DOWN continuously, billing $2.70/mo to page every minute about the
+state production is deliberately in.
 
-**It will be in ALARM until step 4 completes** — correct, because production genuinely
-has no ingress before then. Confirm it returns to OK:
+**So production currently has NO ingress alarm of any kind.** Restore it here:
+
+```hcl
+monitor_ingress = true    # currently false
+```
+
+Apply. That recreates the health check, the us-east-1 alarm and its SNS topic, which
+probes `rally-api.qnsc.vn/v1/healthz` from outside AWS and pages `nghiavt@qnsc.vn`
+(Route 53 publishes `HealthCheckStatus` only in us-east-1).
+
+Set it in the **same change** as `min_count` and before announcing. While tunnelled this
+is production's only ingress alarm — ECS reports a task RUNNING whether or not
+`cloudflared` holds edge connections, so without it an outage is visible only when a user
+reports it.
+
+**It starts in ALARM and takes ~3 minutes to go OK** (3 × 60s datapoints). Confirm:
 
 ```bash
 aws cloudwatch describe-alarms --region us-east-1 \
@@ -234,6 +248,15 @@ reader:
 
 ## Cost after go-live
 
-~$63/mo with production live and develop still running — see
-`docs/go-live-cost-delta.md` for the line-by-line. Restoring NAT, cache, RDS compute and
-two Fargate tasks is the bulk of the increase from today's ~$35.
+**Today's measured baseline is ~$1.80/day → ~$55/mo**, from two clean billing days
+(2026-08-02 and 08-03) after the cuts landed. Earlier drafts said ~$35; that was an
+estimate, and it was low — prod's 30 GB of RDS storage bills while the instance is
+stopped, and dev's RDS runs ~14h/day rather than the 12 assumed.
+
+Read a partial-month bill carefully: it is cumulative month-to-date, so lines for the
+ALB, AWS Config and the public IPv4 addresses deleted on 08-01 stay printed all month
+and look like ongoing charges. They are not. Check daily granularity in Cost Explorer,
+and expect the newest day to read $0.00 — AWS lags roughly 24h.
+
+Going live adds NAT, the cache, RDS compute, two Fargate tasks and this ingress check —
+see `docs/go-live-cost-delta.md` for the line-by-line.
