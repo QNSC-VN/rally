@@ -29,6 +29,21 @@ export type VelocityReport = Json<'ReportingController_getVelocity'>
 export type VelocityBar = VelocityReport['bars'][number]
 export type VelocityWindow = VelocityReport['window']
 
+/**
+ * Which window the Velocity report OPENS on.
+ *
+ * RALLY PARITY (differs from BA design) — Rally plots "the last 10 completed iterations" and
+ * averages its trend over the same 10; the BA spec (Velocity SRS §6) said default 5. Both
+ * options stay selectable; only the initial one changed.
+ * Decided 2026-08-04. See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P6-R-4
+ *
+ * Duplicated from the server's `DEFAULT_VELOCITY_WINDOW` rather than imported: the SPA does not
+ * build against `libs/`, and the query key needs a concrete value up front. The server applies
+ * its own default when the param is absent, so a drift here changes only which option the select
+ * shows first — never what an explicit request returns.
+ */
+export const DEFAULT_VELOCITY_WINDOW: VelocityWindow = 10
+
 export type TeamCapacityReport = Json<'ReportingController_getTeamCapacity'>
 export type TeamCapacityTeam = TeamCapacityReport['teams'][number]
 export type TeamCapacityHours = TeamCapacityTeam['totals']
@@ -118,7 +133,7 @@ export function useIterationBurndown({
 export function useVelocity({
   projectId,
   teamId,
-  window = 5,
+  window = DEFAULT_VELOCITY_WINDOW,
 }: Scope & { window?: VelocityWindow }) {
   return useQuery({
     queryKey: reportingKeys.velocity(projectId ?? '', teamId, window),
