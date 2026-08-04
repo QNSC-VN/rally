@@ -7,7 +7,9 @@
   "emptyFiltered": "No projects found",
   "emptyFilteredDesc": "Try adjusting your search or filter.",
   "detail": {
-    "tabs": { "details": "Details" },
+    "tabs": {
+      "details": "Details"
+    },
     "metadataDetails": "Details",
     "startDate": "Start Date",
     "members": "Members",
@@ -49,7 +51,8 @@
   },
   "bulk": {
     "delete": "Delete",
-    "confirmDelete": "Delete {{count}} project(s)? This cannot be undone."
+    "confirmDelete": "Delete {{count}} project(s)? This cannot be undone.",
+    "confirmWord": "DELETE"
   },
   "toast": {
     "archivedN": "{{count}} project(s) archived",
