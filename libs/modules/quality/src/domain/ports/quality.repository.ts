@@ -7,7 +7,7 @@ export interface IQualityRepository {
     workspaceId: string,
     projectId: string,
     opts: ListDefectsOptions,
-  ): Promise<{ rows: DefectRow[] }>;
+  ): Promise<{ rows: DefectRow[]; total: number }>;
 
   computeMetrics(workspaceId: string, projectId: string): Promise<DefectMetrics>;
 }

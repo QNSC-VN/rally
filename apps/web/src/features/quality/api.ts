@@ -55,6 +55,13 @@ export interface DefectRow {
 export interface DefectListResult {
   metrics: DefectMetrics
   data: DefectRow[]
+  /**
+   * Defects matching the filters across ALL pages — the footer's "of N".
+   *
+   * Distinct from `metrics`, which is computed over every defect in the project regardless of
+   * filters. Conflating them would make the footer disagree with the rows above it.
+   */
+  total: number
 }
 
 export const qualityKeys = {
@@ -81,12 +88,16 @@ export function useDefects(
     defectState?: string
     /** Server-side sort as `"<field>[:asc|:desc]"`; omit for the default rank order. */
     sort?: string
+    /** Page size. The server defaults to 50 and caps at 100. */
+    limit?: number
+    /** Rows to skip. Offset, not cursor — the grid has a numbered pager. */
+    offset?: number
   },
 ) {
   return useQuery({
     queryKey: qualityKeys.defects(projectId ?? '', filters as Record<string, string>),
     queryFn: async () => {
-      if (!projectId) return { metrics: emptyMetrics(), data: [] } as DefectListResult
+      if (!projectId) return { metrics: emptyMetrics(), data: [], total: 0 } as DefectListResult
       const { data, error, response } = await client.GET('/v1/quality/defects', {
         params: {
           query: {
@@ -102,6 +113,8 @@ export function useDefects(
             resolution: filters?.resolution,
             defectState: filters?.defectState,
             sort: filters?.sort,
+            limit: filters?.limit,
+            offset: filters?.offset,
           } as never,
         },
       })

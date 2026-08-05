@@ -53,6 +53,13 @@ export interface DefectRow {
 export interface DefectListResult {
   metrics: DefectMetrics;
   data: DefectRow[];
+  /**
+   * Rows matching the filters BEFORE the window, so the grid footer can say "of N".
+   *
+   * Without it the page cannot tell a full page from the last page, which is how this list
+   * silently showed the first 50 defects and looked complete.
+   */
+  total: number;
 }
 
 /**

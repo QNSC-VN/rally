@@ -33,7 +33,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
     workspaceId: string,
     projectId: string,
     opts: ListDefectsOptions = {},
-  ): Promise<{ rows: DefectRow[] }> {
+  ): Promise<{ rows: DefectRow[]; total: number }> {
     const conditions = [
       eq(workItems.workspaceId, workspaceId),
       eq(workItems.projectId, projectId),
@@ -186,7 +186,20 @@ export class QualityDrizzleRepository implements IQualityRepository {
       updatedAt: r.updatedAt.toISOString(),
     }));
 
-    return { rows: data };
+    /**
+     * Rows matching the filters, ignoring the window — the footer's "of N".
+     *
+     * Counted with the SAME `conditions` and the SAME parent join, because `userStory` is a
+     * sortable/filterable column resolved through `parent_wi`: counting without the join would
+     * disagree with the page whenever a condition touches it.
+     */
+    const [countRow] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(workItems)
+      .leftJoin(sql`work.work_items parent_wi`, sql`parent_wi.id = work_items.parent_id`)
+      .where(and(...conditions));
+
+    return { rows: data, total: Number(countRow?.total ?? 0) };
   }
 
   async computeMetrics(workspaceId: string, projectId: string): Promise<DefectMetrics> {

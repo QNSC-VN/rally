@@ -48,7 +48,7 @@
   "burnup": {
     "title": "Burnup {{release}} - {{from}} - {{to}}",
     "partialHistory": "Some days have no recorded snapshot and are shown as gaps rather than as zero.",
-    "noBaseline": "No approved release target is recorded, so no Ideal trajectory is drawn.",
+    "noBaseline": "No approved release target is recorded, so no target baseline is drawn.",
     "axis": {
       "points": "Work Items Total Points",
       "count": "Work Items Total Count"
@@ -57,13 +57,13 @@
       "accepted": "Accepted {{unit}}",
       "planned": "Planned {{unit}}",
       "preliminary": "Preliminary Estimate",
-      "ideal": "Ideal ({{series}})"
+      "ideal": "Target baseline ({{series}})"
     },
     "empty": {
       "title": "No burnup history",
       "description": "The burnup is built from daily snapshots of this release. None have been recorded for this window yet, so no history can be shown."
     },
-    "tableCaption": "Burnup for {{release}} as a table: Accepted, Planned, Preliminary Estimate and the Ideal trajectory, per day of the release window.",
+    "tableCaption": "Burnup for {{release}} as a table: Accepted, Planned, Preliminary Estimate and the target baseline, per day of the release window.",
     "tableDate": "Date",
     "legend": {
       "toggle": "Hide {{series}}",

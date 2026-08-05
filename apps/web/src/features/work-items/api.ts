@@ -69,47 +69,58 @@ export interface BacklogFilters {
   cursor?: string
 }
 
+/**
+ * One page of the backlog, as the API returns it.
+ *
+ * Extracted from `useBacklog` so `useRankToBacklogEdge` can ask the same question with a different
+ * sort without restating the eleven-parameter mapping — two copies would drift the moment a filter
+ * is added, and the whole point of that hook is that it queries the SAME list the grid shows.
+ */
+export async function fetchBacklogPage(projectId: string, filters: BacklogFilters = {}) {
+  const { data, error, response } = await apiClient.GET('/v1/work-items/backlog', {
+    params: {
+      query: {
+        projectId,
+        type: filters.type as 'story' | 'defect' | undefined,
+        scheduleState: filters.scheduleState as
+          'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release' | undefined,
+        priority: filters.priority as 'none' | 'low' | 'normal' | 'high' | 'urgent' | undefined,
+        assigneeId: filters.assigneeId,
+        iterationId: filters.iterationId,
+        releaseId: filters.releaseId,
+        teamId: filters.teamId,
+        q: filters.q,
+        sort: filters.sort,
+        limit: filters.limit ?? 50,
+        cursor: filters.cursor,
+      },
+    },
+  })
+  if (error) throw new Error(apiErrorMessage(error, response.status))
+  const res = data as
+    | {
+        data?: WorkItem[]
+        pageInfo?: {
+          hasNextPage: boolean
+          nextCursor: string | null
+          limit: number
+          total?: number
+        }
+      }
+    | undefined
+  return {
+    data: res?.data ?? [],
+    pageInfo: res?.pageInfo ?? { hasNextPage: false, nextCursor: null, limit: 50, total: 0 },
+  }
+}
+
 export function useBacklog(projectId: string | undefined, filters: BacklogFilters = {}) {
   return useQuery({
     queryKey: workItemKeys.backlog(projectId ?? '', filters as Record<string, unknown>),
     queryFn: async () => {
       if (!projectId)
         return { data: [], pageInfo: { hasNextPage: false, nextCursor: null, limit: 25, total: 0 } }
-      const { data, error, response } = await apiClient.GET('/v1/work-items/backlog', {
-        params: {
-          query: {
-            projectId,
-            type: filters.type as 'story' | 'defect' | undefined,
-            scheduleState: filters.scheduleState as
-              'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release' | undefined,
-            priority: filters.priority as 'none' | 'low' | 'normal' | 'high' | 'urgent' | undefined,
-            assigneeId: filters.assigneeId,
-            iterationId: filters.iterationId,
-            releaseId: filters.releaseId,
-            teamId: filters.teamId,
-            q: filters.q,
-            sort: filters.sort,
-            limit: filters.limit ?? 50,
-            cursor: filters.cursor,
-          },
-        },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      const res = data as
-        | {
-            data?: WorkItem[]
-            pageInfo?: {
-              hasNextPage: boolean
-              nextCursor: string | null
-              limit: number
-              total?: number
-            }
-          }
-        | undefined
-      return {
-        data: res?.data ?? [],
-        pageInfo: res?.pageInfo ?? { hasNextPage: false, nextCursor: null, limit: 50, total: 0 },
-      }
+      return fetchBacklogPage(projectId, filters)
     },
     enabled: !!projectId,
     staleTime: 15_000,
@@ -590,6 +601,70 @@ export function useRankWorkItem(id: string) {
       return data as WorkItem
     },
     onSuccess: (item) => qc.setQueryData(workItemKeys.detail(item.id), item),
+    meta: { invalidates: ['work-item'] },
+  })
+}
+
+/**
+ * Send one item to the TOP or BOTTOM of the backlog — Rally's `Rank Highest` / `Rank Lowest`.
+ *
+ * Rally states the trap this exists to avoid: "the work item moves to the end of **the list**, not
+ * the end of **the page**." Our backlog is server-paginated at 25, and the rank endpoint takes only
+ * neighbours (`beforeId`/`afterId`, at least one required) — so the client cannot name the true edge
+ * from the page it happens to be holding. Dragging can only ever reorder within the loaded page,
+ * which is exactly why these two actions are needed and cannot be built from the visible rows.
+ *
+ * So the edge is RESOLVED first: one extra request sorted by `rank` under the SAME filters, limit 1.
+ * That answers "what is currently first/last" for the list the user is actually looking at, which is
+ * also what Rally means — its list has filters too. An unfiltered reading would send the item past
+ * rows the user cannot see.
+ *
+ * `Move to Position` (Rally's third action) is deliberately NOT here: reaching position N needs the
+ * rows at N-1 and N, and `PageQuerySchema` caps `limit` at 100, so any position beyond that is
+ * unreachable without a new offset-capable contract.
+ *
+ * A no-op is silent by design. If the item already IS the edge, the resolved neighbour is the item
+ * itself, and asking the server to rank something relative to itself is meaningless.
+ */
+export function useRankToBacklogEdge(projectId: string | undefined) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      edge,
+      filters = {},
+    }: {
+      id: string
+      edge: 'top' | 'bottom'
+      /** The grid's live filters, so "the list" means the one on screen. */
+      filters?: Omit<BacklogFilters, 'sort' | 'limit' | 'cursor'>
+    }) => {
+      if (!projectId) throw new Error('A project is required to rank a backlog item')
+
+      const page = await fetchBacklogPage(projectId, {
+        ...filters,
+        sort: edge === 'top' ? 'rank:asc' : 'rank:desc',
+        limit: 1,
+      })
+      const edgeItem = page.data[0]
+      // Nothing to rank against, or the item is already there.
+      if (!edgeItem || edgeItem.id === id) return null
+
+      const body: RankWorkItemInput =
+        edge === 'top'
+          ? { projectId, beforeId: null, afterId: edgeItem.id }
+          : { projectId, beforeId: edgeItem.id, afterId: null }
+
+      const { data, error, response } = await apiClient.PATCH('/v1/work-items/{id}/rank', {
+        params: { path: { id } },
+        body,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as WorkItem
+    },
+    onSuccess: (item) => {
+      if (item) qc.setQueryData(workItemKeys.detail(item.id), item)
+    },
     meta: { invalidates: ['work-item'] },
   })
 }
