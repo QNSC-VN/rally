@@ -28,6 +28,7 @@ import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
+import { RankEdgeActions } from '@/features/work-items/ui/rank-edge-actions'
 import { BulkScheduleActions } from '@/features/work-items/ui/bulk-schedule-bar'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
@@ -343,6 +344,24 @@ export function BacklogPage() {
           bulkActions={(sel) =>
             canEdit ? (
               <>
+                {/* Rank Highest / Rank Lowest reach the true edges of the LIST, which drag cannot:
+                    reorder is page-local and the backlog pages at 25. Hidden while sorted, for the
+                    same reason drag is. */}
+                <RankEdgeActions
+                  selection={sel}
+                  projectId={projectId}
+                  sorted={!!sortCol}
+                  filters={{
+                    type: filterType || undefined,
+                    scheduleState: filterState || undefined,
+                    priority: filterPriority || undefined,
+                    assigneeId: filterOwner || undefined,
+                    releaseId: filterRelease || undefined,
+                    iterationId: filterIteration || undefined,
+                    teamId: team?.teamId || undefined,
+                    q: search || undefined,
+                  }}
+                />
                 <BulkScheduleActions
                   projectId={projectId}
                   selectedIds={sel.selectedIds}

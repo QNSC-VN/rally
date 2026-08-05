@@ -1,5 +1,5 @@
 import { EMPTY_VALUE } from '@/shared/lib/utils'
-import { useCallback, useMemo, useState, type CSSProperties } from 'react'
+import { Fragment, useCallback, useMemo, useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { useSortable } from '@dnd-kit/sortable'
@@ -24,11 +24,16 @@ import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { RowGutter } from '@/shared/ui/row-gutter'
+import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { TeamCell } from '@/shared/ui/team-cell'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { useTableSort, type SortDir } from '@/shared/lib/hooks/use-table-sort'
-import { useRankPortfolioItem, type PortfolioItem } from '@/features/portfolio/api'
+import {
+  useRankPortfolioItem,
+  usePortfolioChildren,
+  type PortfolioItem,
+} from '@/features/portfolio/api'
 import { EPIC_CHILD_COLUMNS, type EpicChildColKey } from '../model/children-columns'
 
 type EpicSortField = 'itemKey' | 'name' | 'team' | 'state' | 'owner'
@@ -94,6 +99,21 @@ export function EpicChildrenTable({
   )
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<string>('all')
+  /**
+   * Which Feature rows are showing their leaf preview.
+   *
+   * §404: "Feature rows can expand to preview up to five leaf Story/Defect rows." Children are
+   * fetched per Feature on first expand rather than up front — an Epic with twenty Features would
+   * otherwise fire twenty queries to render a tab where most rows are never opened.
+   */
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleExpanded = useCallback((id: string) => {
+    setExpanded((current) => {
+      const next = new Set(current)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+  }, [])
   const { sortField, sortDir, toggle } = useTableSort<EpicSortField>()
 
   const table = useDataTable<PortfolioItem, unknown, EpicChildColKey>(EPIC_CHILD_COLUMNS, {
@@ -249,18 +269,23 @@ export function EpicChildrenTable({
           ) : undefined
         }
         renderRow={(feature) => (
-          <EpicChildRow
-            teamKeyOf={teamKeyOf}
-            key={feature.id}
-            feature={feature}
-            rowNum={rerank.items.indexOf(feature) + 1}
-            colStyles={colStyles}
-            dragDisabled={dragDisabled}
-            onOpen={() =>
-              void navigate({ to: '/portfolio/$itemId', params: { itemId: feature.id } })
-            }
-            stateLabel={t(`states.${feature.state}`, { defaultValue: feature.state })}
-          />
+          <Fragment key={feature.id}>
+            <EpicChildRow
+              teamKeyOf={teamKeyOf}
+              feature={feature}
+              rowNum={rerank.items.indexOf(feature) + 1}
+              colStyles={colStyles}
+              dragDisabled={dragDisabled}
+              onOpen={() =>
+                void navigate({ to: '/portfolio/$itemId', params: { itemId: feature.id } })
+              }
+              stateLabel={t(`states.${feature.state}`, { defaultValue: feature.state })}
+              expanded={expanded.has(feature.id)}
+              onToggleExpanded={() => toggleExpanded(feature.id)}
+              expandLabel={expanded.has(feature.id) ? t('row.collapseItems') : t('row.expandItems')}
+            />
+            {expanded.has(feature.id) && <FeatureLeafPreview featureId={feature.id} />}
+          </Fragment>
         )}
       />
     </div>
@@ -273,6 +298,69 @@ export function EpicChildrenTable({
  * Owns its `useSortable` + `<RowGutter>` the way every other `SelectableTable` row does, so the grip
  * and checkbox line up with the header's select-all across all of them.
  */
+/** §404's cap. Five leaf rows, then a line pointing at the Feature that owns the rest. */
+const LEAF_PREVIEW_LIMIT = 5
+
+/**
+ * The ≤5 leaf Story/Defect preview under one Feature row (§404).
+ *
+ * DELIBERATE DIVERGENCE FROM RALLY on the cap. Rally's expandable rows have no documented limit;
+ * §404 caps at five and we keep the cap, because the alternative here is an unbounded list nested
+ * inside a grid. The list page's equivalent preview solves that by pointing overflow at the Children
+ * tab ("+N more - see Children tab", SRS:61/FR-006/AC-5) — but this IS the Children tab, so that
+ * escape hatch would be circular. Overflow points at the Feature's own detail page instead, which is
+ * where the full paged list lives.
+ *
+ * A deliberately NARROW preview: ID, Name, State. The Epic tab's own columns are Feature roll-ups
+ * (Complete / Rollup / Estimated) and a Story has no roll-up, so reusing that geometry would print a
+ * row of `--` under every Feature and read as missing data rather than as a different kind of row.
+ *
+ * See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P5-PI-8
+ */
+function FeatureLeafPreview({ featureId }: { featureId: string }) {
+  const { t } = useTranslation('portfolio')
+  const { data, isLoading } = usePortfolioChildren(featureId)
+
+  const children = data ?? []
+  const shown = children.slice(0, LEAF_PREVIEW_LIMIT)
+  const hidden = Math.max(0, children.length - LEAF_PREVIEW_LIMIT)
+
+  return (
+    <div className="bg-surface-hover px-3 shadow-[inset_2px_0_0_var(--primary-lighter)]">
+      {isLoading ? (
+        <div className="py-1.5 pl-11 text-ui-xs text-foreground-subtle">
+          {t('row.loadingChildren')}
+        </div>
+      ) : shown.length === 0 ? (
+        <div className="py-1.5 pl-11 text-ui-xs text-foreground-subtle">
+          {t('row.noChildItems')}
+        </div>
+      ) : (
+        <>
+          {shown.map((child) => (
+            <div key={child.id} className="flex items-center gap-2 py-1 pl-11 text-ui-xs">
+              {/* `IdCell` with no `onOpen`, and NO State column — the same treatment the list page's
+                  leaf preview gets, where State and both Percent Done cells are deliberately blank
+                  (§61/AC-5). A preview answers "what is under here"; the columns are the Children
+                  tab's job. Copying that rule rather than inventing one for this surface also keeps
+                  the two previews of the same entity looking like the same thing. */}
+              <IdCell type={child.type} itemKey={child.itemKey} />
+              <span className="min-w-0 flex-1 truncate text-foreground" title={child.title}>
+                {child.title}
+              </span>
+            </div>
+          ))}
+          {hidden > 0 && (
+            <div className="py-1.5 pl-11 text-ui-xs text-foreground-subtle">
+              {t('row.moreLeafItems', { count: hidden })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function EpicChildRow({
   feature,
   rowNum,
@@ -281,6 +369,9 @@ function EpicChildRow({
   onOpen,
   stateLabel,
   teamKeyOf,
+  expanded,
+  onToggleExpanded,
+  expandLabel,
 }: {
   feature: PortfolioItem
   rowNum: number
@@ -290,6 +381,10 @@ function EpicChildRow({
   stateLabel: string
   /** Team id → key, so this row's chip matches the same team's chip on every other surface. */
   teamKeyOf: (teamId: string | null | undefined) => string | null
+  expanded: boolean
+  onToggleExpanded: () => void
+  /** Accessible name for the disclosure — the caller owns the vocabulary, as `RowExpandToggle` asks. */
+  expandLabel: string
 }) {
   const {
     setNodeRef,
@@ -319,7 +414,10 @@ function EpicChildRow({
         stopPropagation
       />
       <RankCell rowNum={rowNum} style={colStyles.rank} />
-      <div style={colStyles.id} className="flex items-center px-2">
+      {/* Disclosure in the ID cell, which is where every other grid in this app puts it — it lived
+          in the Name cell once and its spacer indented every name 16px off its own heading. */}
+      <div style={colStyles.id} className="flex items-center gap-1 px-2">
+        <RowExpandToggle expanded={expanded} onToggle={onToggleExpanded} label={expandLabel} />
         <IdCell type={feature.type} itemKey={feature.itemKey} onOpen={onOpen} />
       </div>
       <div style={colStyles.name} className="min-w-0 px-2" title={feature.name}>

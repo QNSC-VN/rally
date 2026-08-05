@@ -31,6 +31,19 @@ export interface SelectionItem {
   disabled?: boolean
   /** Short note beside a disabled row, e.g. `Added`. Ignored unless `disabled`. */
   disabledNote?: string
+  /**
+   * Trailing context shown on EVERY row, ticked or not — unlike `disabledNote`.
+   *
+   * Capacity SRS §225-233 asks the team-level `Add Features` picker to show which Team currently
+   * owns each Feature and what it is allocated, "so the planner can see which Team currently owns
+   * each Feature" before pulling it into another. A key-and-name-only list cannot answer that, so
+   * the planner has to close the dialog to find out.
+   *
+   * A single line rather than real columns on purpose: this component is the shared searchable
+   * checkbox list (milestones' projects, a plan's teams, this), and turning it into a data grid to
+   * serve one caller is how a shared primitive becomes three primitives.
+   */
+  meta?: string
 }
 
 interface SelectionModalProps {
@@ -169,13 +182,20 @@ export function SelectionModal({
                 <span className="truncate" style={{ color: BRAND.textPrimary }}>
                   {item.name}
                 </span>
-                {/* The note is what turns a greyed row from "broken" into "already there" (§247). */}
-                {item.disabled && item.disabledNote != null && (
+                {/*
+                 * One right-aligned trailing group, so `meta` and the note cannot both claim
+                 * `ml-auto` and fight over the row's free space.
+                 * The note is what turns a greyed row from "broken" into "already there" (§247).
+                 */}
+                {(item.meta != null || (item.disabled && item.disabledNote != null)) && (
                   <span
-                    className="ml-auto shrink-0 text-ui-xs font-semibold"
+                    className="ml-auto flex shrink-0 items-center gap-2 text-ui-xs"
                     style={{ color: BRAND.textMuted }}
                   >
-                    {item.disabledNote}
+                    {item.meta != null && <span>{item.meta}</span>}
+                    {item.disabled && item.disabledNote != null && (
+                      <span className="font-semibold">{item.disabledNote}</span>
+                    )}
                   </span>
                 )}
               </label>

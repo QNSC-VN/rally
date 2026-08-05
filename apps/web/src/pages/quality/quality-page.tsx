@@ -26,6 +26,7 @@ import { useReleases } from '@/features/releases/api'
 import { useRankAnyWorkItem, useCreateWorkItem } from '@/features/work-items/api'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { useDataTable, useRowRerank, SelectableTable } from '@/shared/ui/table'
+import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { QUALITY_COLUMNS, FilterSelect, LogDefectModal, DefectTableRow } from './ui/quality-parts'
 import {
@@ -77,8 +78,49 @@ export function QualityPage() {
   const [resolutionFilter, setResolutionFilter] = useState('all')
   const [defectStateFilter, setDefectStateFilter] = useState('all')
   const [showLogDefect, setShowLogDefect] = useState(false)
+  /**
+   * Server-side paging. The grid had NONE: the API defaults `limit` to 50 and the client never sent
+   * an offset, so a project with 60 defects showed 50 and read as complete — no footer, no page
+   * control, nothing saying rows were withheld. Silent truncation, which is worse than a long list.
+   */
+  const [pageSize, setPageSize] = useState(25)
   const { data: members } = useProjectMembers(project?.projectId)
   const { data: releases } = useReleases(project?.projectId)
+
+  /**
+   * The page is DERIVED against the query it was chosen for, not synced back to 1.
+   *
+   * Narrowing a filter while on page 3 would otherwise leave the offset past the new total and the
+   * grid would render empty — which reads as "no defects match" rather than "you are past the end".
+   * Sort is part of the signature because the window is an offset: re-ordering makes page 3 a
+   * different set of rows.
+   *
+   * Stored as one value with its signature so the reset needs no effect, no ref and no setState
+   * during render: if the signature moved, the remembered page belongs to a query nobody is looking
+   * at any more, so 1 is the answer. An effect would render page 3 against the new filters once
+   * before correcting itself, making the empty grid briefly real.
+   */
+  const querySignature = [
+    search,
+    severityFilter,
+    envFilter,
+    priorityFilter,
+    stateFilter,
+    ownerFilter,
+    releaseFilter,
+    rootCauseFilter,
+    resolutionFilter,
+    defectStateFilter,
+    sortCol ?? '',
+    sortDir,
+    project?.projectId ?? '',
+  ].join('|')
+  const [pageFor, setPageFor] = useState({ signature: querySignature, page: 1 })
+  const page = pageFor.signature === querySignature ? pageFor.page : 1
+  const goToPage = useCallback(
+    (next: number) => setPageFor({ signature: querySignature, page: next }),
+    [querySignature],
+  )
 
   const { data, isLoading, error } = useDefects(project?.projectId, {
     search: search || undefined,
@@ -92,11 +134,15 @@ export function QualityPage() {
     resolution: resolutionFilter,
     defectState: defectStateFilter,
     sort: sortCol ? `${sortCol}:${sortDir}` : undefined,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
   })
 
   // Server-side sorted (the `sort` param drives the ORDER BY), so the rows are
   // already in display order — no client re-sort.
   const defects = useMemo(() => data?.data ?? [], [data])
+  const total = data?.total ?? 0
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
   // Row drag-to-rerank (shared engine capability). Disabled while a column
   // sort is active — rank only has meaning in natural rank order.
   const rankMutation = useRankAnyWorkItem()
@@ -389,6 +435,26 @@ export function QualityPage() {
           )}
         />
       </div>
+
+      {/* Numbered pager: this grid sorts server-side and a reader jumps to a page, which keyset
+          cursors cannot express. `total` comes from a count over the same filters, so "of N" and
+          the rows can never disagree. */}
+      <PaginationFooter
+        pageSize={pageSize}
+        setPageSize={(n) => {
+          setPageSize(n)
+          goToPage(1)
+        }}
+        currentPage={page}
+        rangeStart={total === 0 ? 0 : (page - 1) * pageSize + 1}
+        rangeEnd={(page - 1) * pageSize + defects.length}
+        total={total}
+        pageCount={pageCount}
+        hasPrevPage={page > 1}
+        hasNextPage={page < pageCount}
+        onPrevPage={() => goToPage(Math.max(1, page - 1))}
+        onNextPage={() => goToPage(Math.min(pageCount, page + 1))}
+      />
 
       {/* Log Defect Modal */}
       {showLogDefect && (

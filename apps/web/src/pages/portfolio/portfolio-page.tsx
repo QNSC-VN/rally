@@ -17,7 +17,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, Archive, PackageOpen, Pencil, Plus } from 'lucide-react'
+import { AlertTriangle, PackageOpen, Pencil, Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -411,10 +411,23 @@ export function PortfolioPage() {
                 if (only) openDetail(only)
               }}
             />
+            {/* Labelled `Delete`, not `Archive` — P5-PI-FR-037: "Root rows support checkbox
+                selection and BACKLOG-STYLE bulk Edit/Delete; Delete archives and preserves the
+                Epic active-child guard", restated at §54: "Selecting rows exposes Backlog-style
+                bulk `Edit` and `Delete` actions … `Delete` archives the selected Portfolio Items
+                rather than hard-deleting them."
+
+                So the control is the Backlog's control — same `Trash2`, same word — and ARCHIVE is
+                the effect, not the label. It read `Archive` here, which made this the only grid in
+                the app whose destructive bulk action was named differently from Backlog, Iteration
+                Status and Quality, all of which render the shared `BulkDeleteCopy`.
+
+                The dialog is where the effect is disclosed: it says the items are archived and stay
+                recoverable, so the softer truth is one click away rather than lost. */}
             <BulkActionButton
               destructive
-              label={t('archive.action')}
-              icon={<Archive size={12} />}
+              label={t('bulk.delete')}
+              icon={<Trash2 size={12} />}
               disabled={setArchived.isPending}
               onClick={() => setConfirmArchive(true)}
             />

@@ -14687,6 +14687,7 @@ export interface operations {
         cursor?: string
         sort?: string
         projectId: string
+        offset?: number
         search?: string
         severity?: 'all' | 'critical' | 'major' | 'minor' | 'trivial' | 'none'
         environment?: 'all' | 'development' | 'staging' | 'production' | 'testing'

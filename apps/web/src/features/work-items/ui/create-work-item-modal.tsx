@@ -99,12 +99,23 @@ export function CreateWorkItemModal({
       setError(t('create.titleRequired'))
       return
     }
-    // SoT: Team is required for a Backlog Work Item and must be one linked to
-    // the selected Project (the list is already project-filtered).
-    if (!validTeamId) {
-      setTeamError(t('create.teamRequired'))
-      return
-    }
+    // Team is OPTIONAL. Blank means the item belongs to the PROJECT backlog, which is the
+    // documented default state — three sources, no dissent:
+    //   WIC-FR-005: "Team optional; default blank/Project backlog unless current Team context is
+    //     explicitly selected and valid for the Project."
+    //   GAP-P1-CREATE-003 (P0): "Team is optional: blank = Project backlog, selected Team = Team
+    //     backlog."
+    //   GAP-P1-WID-008: "Apply LATEST Team optional rule: blank Team = Project backlog."
+    //
+    // This used to refuse a blank Team, citing "SoT: Team is required for a Backlog Work Item" —
+    // a rule that appears in neither RECONCILED_SOURCE_OF_TRUTH.md nor BUSINESS_BASELINE.md, and
+    // which GAP-P1-WID-008's "latest" wording says was superseded. The API has always accepted a
+    // null `teamId`, so the refusal lived only here and made the spec's own DEFAULT state
+    // unreachable through the UI.
+    //
+    // What still holds is the SECOND half of the rule: a chosen Team must belong to the selected
+    // Project. `validTeamId` enforces it by construction — the list is project-filtered, so a
+    // stale selection resolves to '' rather than being sent.
     setError(null)
     setTeamError(null)
     setFormError(null)
@@ -263,7 +274,9 @@ export function CreateWorkItemModal({
               setTeamError(null)
             }}
             teams={teams}
-            allowUnassigned={false}
+            /* Blank is a legal, and the DEFAULT, choice — WIC-FR-005 / GAP-P1-CREATE-003. Without
+               the unassigned option the field could not express "Project backlog" at all. */
+            allowUnassigned
             error={teamError ?? undefined}
           />
           <OwnerSelectField

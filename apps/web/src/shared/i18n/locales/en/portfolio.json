@@ -54,7 +54,8 @@
     "projectMoved": "Moved to another project — Team and Release were reset",
     "morePreviewItems": "+{{count}} more - see Children tab",
     "childFeatureCount": "{{count}} Feature",
-    "childFeatureCount_plural": "{{count}} Features"
+    "childFeatureCount_plural": "{{count}} Features",
+    "moreLeafItems": "+{{count}} more - open the Feature"
   },
   "health": {
     "state": {
@@ -186,9 +187,9 @@
   },
   "archive": {
     "action": "Archive",
-    "title": "Archive portfolio items",
-    "message": "Archive {{count}} selected item(s)? They stay recoverable.",
-    "confirm": "Archive",
+    "title": "Delete portfolio items",
+    "message": "Delete {{count}} selected item(s)? They are archived and stay recoverable.",
+    "confirm": "Delete",
     "archived": "{{count}} item(s) archived",
     "failed": "Failed to archive",
     "skipped": "Skipped {{count}} item(s): {{items}}{{more}} — an Epic with active Features cannot be archived, and rows you cannot edit are left alone"
@@ -202,6 +203,7 @@
   },
   "bulk": {
     "edit": "Edit",
-    "editOneOnly": "Select exactly one item to edit"
+    "editOneOnly": "Select exactly one item to edit",
+    "delete": "Delete"
   }
 }

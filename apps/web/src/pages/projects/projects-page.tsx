@@ -275,6 +275,24 @@ function ProjectsBulkBar({
   const anyActive = selected.some((p) => p.status === 'active')
   const anyArchived = selected.some((p) => p.status === 'archived')
 
+  /**
+   * What the operator must type to delete. `ConfirmDialog` switches to typed mode on this prop.
+   *
+   * `Phase 4/03_Settings_Audit` P4-SET-07 §9 (P4-SET-008, P4-SET-013, tracker `GAP-P4-SET-004`)
+   * requires a typed confirmation on the IRREVERSIBLE actions. Delete had a plain confirm, so the
+   * whole gate was one misplaced click — `del.mutateAsync` runs over every selected id at once.
+   *
+   * One project: its KEY, which is the shortest unambiguous handle and what the (never-wired)
+   * `ArchiveConfirmModal` in `ui/project-parts.tsx` also asks for. Several: a fixed word, because
+   * there is no single name to quote and listing N of them turns the gate into a transcription
+   * exercise the operator will paste around.
+   *
+   * ARCHIVE deliberately keeps its plain confirm: its own message says "You can restore them
+   * later", and a gate on a reversible action trains people to type through gates.
+   */
+  const deleteConfirmText =
+    selected.length === 1 ? (selected[0]?.key ?? t('bulk.confirmWord')) : t('bulk.confirmWord')
+
   async function run(fn: (id: string) => Promise<unknown>, okKey: string) {
     try {
       await Promise.all(ids.map(fn))
@@ -336,6 +354,7 @@ function ProjectsBulkBar({
         title={t('bulk.delete')}
         message={t('bulk.confirmDelete', { count: ids.length })}
         confirmLabel={t('bulk.delete')}
+        confirmText={deleteConfirmText}
         destructive
         pending={del.isPending}
         onConfirm={() => {

@@ -20,11 +20,11 @@ export class QualityService {
   ): Promise<DefectListResult> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
 
-    const { rows } = await this.qualityRepo.listDefects(actor.workspaceId, projectId, opts);
+    const { rows, total } = await this.qualityRepo.listDefects(actor.workspaceId, projectId, opts);
 
     // Metrics — compute from ALL defects (not just the page)
     const metrics = await this.qualityRepo.computeMetrics(actor.workspaceId, projectId);
 
-    return { metrics, data: rows };
+    return { metrics, data: rows, total };
   }
 }

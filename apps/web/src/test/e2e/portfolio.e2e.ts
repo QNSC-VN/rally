@@ -152,10 +152,12 @@ test.describe('Portfolio', () => {
     // the innermost text node's parent, which has no selection gutter.
     const row = page.locator('div.group').filter({ hasText: renamed }).first()
     await row.getByRole('checkbox').check()
-    // The bulk bar's Archive opens a confirm dialog whose button carries the same label,
-    // so the confirmation is scoped to the dialog rather than picked by position.
-    await page.getByRole('button', { name: 'Archive', exact: true }).first().click()
-    await page.getByRole('dialog').getByRole('button', { name: 'Archive', exact: true }).click()
+    // The control is `Delete` and the EFFECT is archive (P5-PI-FR-037: "Backlog-style bulk
+    // Edit/Delete; Delete archives"), so the label matches Backlog, Iteration Status and Quality.
+    // The confirm dialog's button carries the same word, so it is scoped to the dialog rather
+    // than picked by position.
+    await page.getByRole('button', { name: 'Delete', exact: true }).first().click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
 
     // Archived items drop out of the default list — a soft delete, not a hard one.
     await expect(page.getByText(renamed, { exact: true })).toHaveCount(0)
@@ -356,8 +358,8 @@ test.describe('Portfolio', () => {
     for (const index of [0, 1]) {
       await rows.nth(index).getByRole('checkbox').check()
     }
-    await page.getByRole('button', { name: 'Archive', exact: true }).first().click()
-    await page.getByRole('dialog').getByRole('button', { name: 'Archive', exact: true }).click()
+    await page.getByRole('button', { name: 'Delete', exact: true }).first().click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
 
     // Counted as ROWS, not as text: the success toast repeats the name, so a text count would
     // wait for a toast to fade rather than for the archive to land.
@@ -507,8 +509,8 @@ test.describe('Portfolio', () => {
     const epicRow = page.locator('div.group').filter({ hasText: 'EP-1' }).first()
     await epicRow.getByRole('checkbox').check()
 
-    await page.getByRole('button', { name: 'Archive', exact: true }).first().click()
-    await page.getByRole('dialog').getByRole('button', { name: 'Archive', exact: true }).click()
+    await page.getByRole('button', { name: 'Delete', exact: true }).first().click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
 
     // Reported: the Epic is NAMED, so "skipped" is actionable rather than a count.
     await expect(page.getByText(/Skipped 1 item/)).toBeVisible()

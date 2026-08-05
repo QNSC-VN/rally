@@ -165,10 +165,26 @@ export function computeAverages(barsOldestFirst: readonly VelocityBar[]): Veloci
   };
 }
 
-/** The two windows the report offers. Default is Last 5 (§6). */
+/** The two windows the report offers. */
 export const VELOCITY_WINDOWS = [5, 10] as const;
 export type VelocityWindow = (typeof VELOCITY_WINDOWS)[number];
-export const DEFAULT_VELOCITY_WINDOW: VelocityWindow = 5;
+
+/**
+ * RALLY PARITY (differs from BA design)
+ * Rally: the velocity chart plots "all accepted plan estimate units for each of the last 10
+ * completed iterations", and its trend line is "the average accepted points in the last 10
+ * iterations" — 10 is Rally's window, and Rally does not offer a choice.
+ * https://techdocs.broadcom.com/us/en/ca-enterprise-software/valueops/rally/rally-help/reporting/rally-reports-and-charts.html
+ * BA spec said: default Last 5 (Velocity SRS §6).
+ * Decided 2026-08-04: Rally wins on the DEFAULT. See
+ * 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P6-R-4
+ *
+ * The 5-iteration option stays selectable: §6 asks for both windows and a shorter one is
+ * genuinely useful for a team that has recently re-formed. Only which one opens changed —
+ * a new team with 6 finished iterations now sees all of them rather than dropping the oldest,
+ * and Trend / Last 3 / Best 3 / Worst 3 are averaged over Rally's population by default.
+ */
+export const DEFAULT_VELOCITY_WINDOW: VelocityWindow = 10;
 
 /**
  * The most recent N eligible timeboxes, oldest first.

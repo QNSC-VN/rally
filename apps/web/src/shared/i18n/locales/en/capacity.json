@@ -301,7 +301,8 @@
     "actionForTeam": "Add Features to this team",
     "confirm": "Add to Plan",
     "searchPlaceholder": "Search Features…",
-    "added": "Added"
+    "added": "Added",
+    "unassigned": "Unassigned"
   },
   "move": {
     "action": "Move to another plan",

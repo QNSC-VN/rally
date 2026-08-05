@@ -35,9 +35,13 @@ export class IterationBurndownQueryDto extends createZodDto(IterationBurndownQue
 
 export const VelocityQuerySchema = z.object({
   ...scope,
-  // `Last 5 sprints` / `Last 10 sprints`, defaulting to 5 (§6). A closed enum rather than a
-  // clamped number: the report offers exactly two windows, and the averages' sample-size
-  // reporting is only meaningful against one of them.
+  // `Last 5 sprints` / `Last 10 sprints`. A closed enum rather than a clamped number: the
+  // report offers exactly two windows, and the averages' sample-size reporting is only
+  // meaningful against one of them.
+  //
+  // No default HERE, deliberately — it lives in `DEFAULT_VELOCITY_WINDOW`, which carries the
+  // reasoning for why it is 10 (Rally's window) rather than §6's 5. Declaring one in the schema
+  // too would put the same decision in two places and change the OpenAPI contract.
   window: z.coerce
     .number()
     .int()

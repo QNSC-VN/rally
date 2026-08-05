@@ -276,13 +276,16 @@ export function DetailSidebar({
           </div>
         </FormField>
 
-        {/* Team */}
+        {/* Team — blank is legal and means the PROJECT backlog.
+            GAP-P1-WID-008: "Apply latest Team optional rule: blank Team = Project backlog; selected
+            Team must belong to selected Project." Without the unassigned option an item could be
+            given a Team but never returned to the Project backlog, so the move was one-way. */}
         <TeamSelectField
           value={item.teamId}
           onChange={(v) => onUpdate({ teamId: v })}
           teams={teams}
           disabled={disabled}
-          allowUnassigned={false}
+          allowUnassigned
         />
 
         {/* Priority — Defect only */}

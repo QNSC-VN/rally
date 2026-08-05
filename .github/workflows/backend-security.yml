@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   security:
-    uses: QNSC-VN/qnsc-ci/.github/workflows/security.yml@v1.6.5
+    uses: QNSC-VN/qnsc-ci/.github/workflows/security.yml@v1.6.6
     with:
       product: rally
       image_target: api
