@@ -244,8 +244,26 @@ module "stack" {
     max_allocated_storage_gb = 100
     multi_az                 = false
     deletion_protection      = false # easy teardown in develop
-    backup_retention_days    = 3
-    monitoring_interval      = 0 # Enhanced Monitoring off — saves CloudWatch cost
+    // ZERO, which DISABLES automated backups and PITR in this environment.
+    //
+    // Develop holds nothing worth recovering. It carries no demo fixtures (see
+    // seed_on_deploy above) and no user data anyone is asked to trust — the migrator
+    // rebuilds it from migrations plus the two prod-safe seeds on any deploy, which is
+    // exactly how it was rebuilt from an empty database on 2026-08-04. A backup of a
+    // database that is cheaper to recreate than to restore is storage nobody reads.
+    //
+    // Cost is small and honest rather than large: automated snapshots are free up to the
+    // allocated 20 GB, so this mainly stops paying for the overflow and stops carrying
+    // five 20 GB snapshots of a database that was deliberately wiped.
+    //
+    // APPLYING THIS DELETES EVERY EXISTING AUTOMATED SNAPSHOT for this instance, and it
+    // is not reversible — retention 0 → 3 starts a fresh series, it does not restore the
+    // old one. Take a manual snapshot first if develop ever holds something real.
+    //
+    // PRODUCTION IS UNAFFECTED and must stay at 30: it is single-AZ, so PITR is what
+    // makes an AZ failure a recoverable outage rather than data loss. See ../prod.
+    backup_retention_days = 0
+    monitoring_interval   = 0 # Enhanced Monitoring off — saves CloudWatch cost
   }
 
   // Fargate Spot: ~70% cheaper, and an interruption in develop is harmless.
