@@ -868,7 +868,6 @@ export function AppShell() {
       {/* ── Breadcrumb bar ───────────────────────────────────────────────────── */}
       {crumbs.length > 0 && (
         <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-border-subtle bg-card px-4 text-ui-sm">
-          <span className="text-muted-foreground">{workspace?.workspaceName ?? 'Workspace'}</span>
           {crumbs.map((crumb, i) => (
             <span key={i} className="flex items-center gap-1.5">
               <ChevronRight size={11} className="text-foreground-faint" />

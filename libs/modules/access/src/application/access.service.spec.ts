@@ -771,14 +771,14 @@ describe('AccessService — cached-permission invalidation', () => {
     expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
   });
 
-  it('does NOT invalidate when a project-scoped role is revoked', async () => {
+  it('invalidates the permission cache when a project-scoped role is revoked', async () => {
     assignmentRepo.findById.mockResolvedValue(
       assignment('role-project_admin', 'project', 'proj-9'),
     );
 
     await service.revokeProjectRole(actor, 'proj-9', 'a-1');
 
-    expect(cache.del).not.toHaveBeenCalled();
+    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
   });
 
   it("invalidates every holder when a custom role's permissions change", async () => {

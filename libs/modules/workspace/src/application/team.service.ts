@@ -298,7 +298,8 @@ export class TeamService {
           AND t.deleted_at IS NULL
           AND COALESCE(
                 t.team_id,
-                (SELECT wi.team_id FROM work.work_items wi WHERE wi.id = t.parent_id)
+                (SELECT wi.team_id FROM work.work_items wi WHERE wi.id = t.parent_id),
+                (SELECT it.team_id FROM work.iterations it WHERE it.id = t.iteration_id)
               ) = ${teamId}
       `);
       const unassignedTaskCount = Number(result?.rowCount ?? 0);

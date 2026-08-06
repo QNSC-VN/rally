@@ -126,7 +126,7 @@ export function CreateWorkItemModal({
         type,
         title: title.trim(),
         priority: 'none',
-        teamId: validTeamId,
+        teamId: validTeamId || undefined,
         assigneeId: assigneeId || undefined,
         storyPoints: storyPoints ? Number(storyPoints) : undefined,
         parentId: type === 'defect' ? parentStoryId || undefined : undefined,

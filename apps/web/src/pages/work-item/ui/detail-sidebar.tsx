@@ -282,7 +282,7 @@ export function DetailSidebar({
             given a Team but never returned to the Project backlog, so the move was one-way. */}
         <TeamSelectField
           value={item.teamId}
-          onChange={(v) => onUpdate({ teamId: v })}
+          onChange={(v) => onUpdate({ teamId: v || null })}
           teams={teams}
           disabled={disabled}
           allowUnassigned

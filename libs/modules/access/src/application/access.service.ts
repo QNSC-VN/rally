@@ -509,6 +509,10 @@ export class AccessService {
         tx,
       );
     });
+    // Invalidate the permission cache so the revocation takes effect on the
+    // user's next request (mirrors revokeRole). Without this a revoked project
+    // role stays effective up to the cache TTL on every replica.
+    await this.invalidateUser(assignment.workspaceId, assignment.userId);
     this.logger.log({ assignmentId, projectId, revokedBy: actor.sub }, 'Project role revoked');
   }
 

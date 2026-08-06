@@ -67,6 +67,8 @@ function toIterationDto(i: Iteration): IterationResponseDto {
     notes: i.notes,
     state: i.state,
     plannedVelocity: i.plannedVelocity,
+    // IT-001: task-estimate rollup (enriched by listIterations; optional elsewhere).
+    ...(i.taskEstimate !== undefined && { taskEstimate: i.taskEstimate }),
     startDate: i.startDate,
     endDate: i.endDate,
     completedAt: i.completedAt ? i.completedAt.toISOString() : null,
