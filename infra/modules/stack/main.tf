@@ -1483,3 +1483,167 @@ resource "aws_scheduler_schedule" "ecs_scale_down" {
     }
   }
 }
+
+# ── Waking (the reverse of idling) ────────────────────────────────────────────
+# Starts the database and restores both services, on a cron. See var.wake_schedule
+# for why this exists at all — the short version is that "the deploy pipeline is the
+# wake signal" covers the days the environment is CHANGED but not the days it is
+# merely USED, and RDS takes ~4-5 minutes to come up, so a person who finds it
+# stopped cannot simply wait it out.
+#
+# A SEPARATE ROLE from the idler, which is the whole point. The idler's policy says
+# in its own comment that it is stop-only because "a role that can also start an
+# instance turns a scheduling mistake into a cost increase". That is still true, so
+# the start grants live here instead of being added there: a fault in the wake cron
+# can cost money, and a fault in the idle cron can cost availability, but neither
+# can now cause the other.
+resource "aws_iam_role" "waker" {
+  count = var.wake_schedule == null ? 0 : 1
+  name  = "${local.name}-waker"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "scheduler.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      # Same confused-deputy guard as the idler.
+      Condition = { StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id } }
+    }]
+  })
+
+  tags = local.tags
+}
+
+resource "aws_iam_role_policy" "waker" {
+  count = var.wake_schedule == null ? 0 : 1
+  name  = "wake-environment"
+  role  = aws_iam_role.waker[0].id
+
+  # Start only, mirroring the idler's stop-only. No rds:StopDBInstance here, and no
+  # rds:DeleteDBInstance / RebootDBInstance — this role's entire job is to add
+  # capacity back.
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "StartDatabase"
+        Effect   = "Allow"
+        Action   = "rds:StartDBInstance"
+        Resource = module.rds.instance_arn
+      },
+      {
+        Sid    = "RestoreServices"
+        Effect = "Allow"
+        Action = "ecs:UpdateService"
+        Resource = [
+          module.api.service_arn,
+          module.worker.service_arn,
+        ]
+      },
+    ]
+  })
+}
+
+resource "aws_scheduler_schedule" "rds_start" {
+  count       = var.wake_schedule == null ? 0 : 1
+  name        = "${local.name}-rds-start"
+  description = "Starts ${module.rds.identifier}; see var.wake_schedule for why this exists"
+
+  schedule_expression          = var.wake_schedule
+  schedule_expression_timezone = "Asia/Ho_Chi_Minh"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = "arn:aws:scheduler:::aws-sdk:rds:startDBInstance"
+    role_arn = aws_iam_role.waker[0].arn
+    input    = jsonencode({ DbInstanceIdentifier = module.rds.identifier })
+
+    # Mirror of the stop schedule: starting an already-started instance fails with
+    # InvalidDBInstanceState, which is the DESIRED state and not an error. No retries
+    # and no DLQ, for the same reason.
+    retry_policy {
+      maximum_retry_attempts = 0
+    }
+  }
+}
+
+# Restore both services on the same cadence as the database start.
+#
+# DesiredCount is a literal 1, NOT var.api.min_count — see var.wake_schedule. The
+# floors are 0 in an idled environment and have to stay 0, or Application Auto Scaling
+# undoes the idle within minutes. 1 is the count the deploy pipeline sets, so a wake
+# and a deploy agree.
+#
+# The tasks will come up before RDS finishes starting and will fail their readiness
+# check for a few minutes. That is accepted: ECS keeps replacing them and they settle
+# once postgres answers, which is the same behaviour a deploy-triggered wake already
+# produces today. Sequencing the two would need a state machine, for a few minutes of
+# 503 on a develop environment nobody is paged for.
+resource "aws_scheduler_schedule" "ecs_scale_up" {
+  for_each = var.wake_schedule == null ? {} : {
+    api    = module.api.service_name
+    worker = module.worker.service_name
+  }
+
+  name        = "${local.name}-${each.key}-scale-up"
+  description = "Restores ${each.value} to 1 task; see var.wake_schedule"
+
+  schedule_expression          = var.wake_schedule
+  schedule_expression_timezone = "Asia/Ho_Chi_Minh"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = "arn:aws:scheduler:::aws-sdk:ecs:updateService"
+    role_arn = aws_iam_role.waker[0].arn
+    input = jsonencode({
+      Cluster      = module.ecs_cluster.cluster_name
+      Service      = each.value
+      DesiredCount = 1
+    })
+
+    retry_policy {
+      maximum_retry_attempts = 0
+    }
+  }
+}
+
+# ── Guard: waking an environment that never idles is a cost increase ──────────
+# `wake_schedule` with no `idle_schedule` produces an environment that is started on a
+# cron and never stopped by anything — strictly worse than not scheduling it at all,
+# because it also looks deliberate. The reverse IS legitimate (production idles before
+# go-live and is woken only by a release), so this is asserted in one direction only.
+check "wake_requires_idle" {
+  assert {
+    condition = var.wake_schedule == null || var.idle_schedule != null
+    error_message = join(" ", [
+      "wake_schedule is set but idle_schedule is null, so this environment would be",
+      "started on a schedule and never stopped by one. Set idle_schedule as well, or",
+      "remove wake_schedule. (idle without wake is fine — that is production today.)",
+    ])
+  }
+}
+
+# ── Guard: a cache-less environment must not be woken ─────────────────────────
+# The mirror of `idled_environment_runs_no_tasks` above. That check stops an idled
+# environment from RUNNING tasks without a cache; this one stops a schedule being
+# created that would START them. Without it the two settings are individually valid
+# and jointly produce the exact state the other check exists to prevent — tasks up,
+# no cache, REDIS_URL falling back to localhost, denylist and rate limiter failing
+# open — except on a timer, at 08:00, with nobody watching.
+check "wake_requires_cache" {
+  assert {
+    condition = var.wake_schedule == null || var.cache.enabled
+    error_message = join(" ", [
+      "wake_schedule is set but cache.enabled is false. Waking would start tasks with no",
+      "cache to reach: REDIS_URL falls back to localhost and both the token denylist and",
+      "the rate limiter fail open. Enable the cache, or remove wake_schedule.",
+    ])
+  }
+}

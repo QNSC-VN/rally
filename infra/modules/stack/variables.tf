@@ -577,6 +577,55 @@ variable "idle_schedule" {
     Stopping an already-stopped instance fails with InvalidDBInstanceState, which is the
     DESIRED state rather than an error, so the target is configured with no retries and
     no dead-letter queue.
+
+    See `wake_schedule` for the reverse. The two are independent on purpose: an
+    environment may idle with no wake (production before go-live) but must never wake
+    with no idle, which `check "wake_requires_idle"` enforces.
+  EOT
+}
+
+variable "wake_schedule" {
+  type        = string
+  default     = null
+  description = <<-EOT
+    Cron/rate expression for the REVERSE of `idle_schedule`: starts the RDS instance and
+    scales both services back to their configured counts. Null (the default) creates no
+    wake schedules, no role and no policy — which is the correct setting for production,
+    where the only intended wake is a release.
+
+    This exists because "the deploy pipeline is the wake signal" is not sufficient on its
+    own. It is correct that develop should be up on the days it is being CHANGED, but it
+    also has to be up on the days it is being USED — a QA session on a morning nobody
+    merged found the environment stopped, which reads as an outage rather than as a
+    saving. RDS takes ~4-5 minutes to become available, so this cannot be fixed by
+    waiting.
+
+    WEEKDAYS ONLY is the intended shape. A 7-day wake pays for two days a week that
+    nobody works, which is most of what idling this environment was worth:
+
+        cron(0 8 ? * MON-FRI *)
+
+    Expression is evaluated in Asia/Ho_Chi_Minh, like `idle_schedule`.
+
+    A SEPARATE IAM role from the idler, deliberately. The idler's policy is documented
+    stop-only on the grounds that "a role that can also start an instance turns a
+    scheduling mistake into a cost increase" — that reasoning survives here by keeping
+    the grants split, so a fault in one schedule cannot undo the other. The waker holds
+    rds:StartDBInstance and ecs:UpdateService; the idler still holds no start permission
+    of any kind.
+
+    THE WAKE COUNT IS 1, NOT min_count. This is the subtle part. `min_count = 0` is
+    exactly what lets an idled service STAY at zero — with a floor of 1, Application Auto
+    Scaling restores the service within minutes and the idle never holds (see
+    api.min_count). So the floors cannot be raised to describe the woken state, and this
+    schedule cannot read them. It writes a literal DesiredCount = 1, which is the same
+    count the deploy pipeline sets, so a wake and a deploy converge on one answer.
+
+    Consequence worth stating: this env has THREE writers of desired_count now — the
+    deploy, `idle_schedule`, and this. All three set it out of band, which is sanctioned
+    because `desired_count` is under `ignore_changes` in the ecs-service module. A fourth
+    writer (a scheduled autoscaling action) would NOT be, and is why this is built as
+    ecs:UpdateService.
   EOT
 }
 
