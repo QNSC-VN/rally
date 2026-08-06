@@ -1067,7 +1067,7 @@ module "observability" {
   // Derived from the idle posture rather than being its own switch: an environment
   // whose services have a floor of 0 is exactly one that cannot support a load alarm.
   // Tying them together means restoring capacity re-arms the alarms in the same change.
-  environment_idle = var.api.min_count == 0 && var.worker.min_count == 0
+  environment_idle = local.environment_idle
   alarm_emails     = var.alarm_emails
   tags             = local.tags
 }
@@ -1141,13 +1141,26 @@ resource "aws_cloudwatch_metric_alarm" "security_fail_open" {
 #
 # `monitor_ingress` is the second gate, and it is what lets a PRE-LAUNCH environment stay
 # tunnelled without paying for a check that can only ever be red. Production runs zero
-# tasks, so this probe sat in ALARM continuously from the day it was created — $2.70/mo
-# to be told, every minute, about the state the environment is deliberately in.
+# tasks, so this probe sat in ALARM continuously from the day it was created — paying, every
+# minute, to be told about the state the environment is deliberately in.
 #
 # Both gates are required: `tunnel_enabled` says the ALB alarm cannot do this job,
 # `monitor_ingress` says there is something running worth watching.
 locals {
-  monitor_ingress = var.tunnel_enabled && var.monitor_ingress
+  # An environment whose service floors are 0 spends most of its time at zero tasks, and a
+  # health check against a hostname with nothing behind it sits in ALARM for every one of
+  # those hours. That is the same argument this stack already makes for the LOAD alarms
+  # (`environment_idle` on the observability module): a floor of 0 is exactly what makes an
+  # alarm about serving traffic meaningless.
+  #
+  # So it is DERIVED rather than left to a third switch. `monitor_ingress`'s own text used to
+  # instruct "TURN IT BACK ON IN THE SAME CHANGE THAT RAISES min_count" — this makes that
+  # automatic instead of a thing to remember, which is the difference between a rule and a
+  # hope. Raising the floors re-arms the probe in the same change that gives it something to
+  # probe.
+  environment_idle = var.api.min_count == 0 && var.worker.min_count == 0
+
+  monitor_ingress = var.tunnel_enabled && var.monitor_ingress && !local.environment_idle
 }
 
 resource "aws_route53_health_check" "api_ingress" {

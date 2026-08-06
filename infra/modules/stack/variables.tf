@@ -702,16 +702,31 @@ variable "monitor_ingress" {
     hostname from outside AWS. Only meaningful when `tunnel_enabled` — with an ALB
     that job belongs to `monitor_target_health`.
 
-    OFF ONLY WHILE AN ENVIRONMENT SERVES NOTHING. A health check against a hostname
-    with no tasks behind it sits in ALARM permanently: it pages for a condition that
-    is the intended state, which trains the reader to ignore the one alarm that
-    replaces every ALB target-group alarm. It also bills $2.70/mo per check
-    ($0.75 base + $2.00 for the string-match/latency option) for that non-signal.
+    THE ZERO-TASK CASE IS NOW HANDLED FOR YOU, so this variable is only for an
+    environment that IS serving and still does not want the probe. `local.monitor_ingress`
+    also requires `!local.environment_idle`, so an environment whose service floors are 0
+    creates no check at all — the same rule this stack already applies to the load alarms.
+    Raising the floors re-arms it in the same change, rather than leaving a note asking
+    someone to remember.
 
-    TURN IT BACK ON IN THE SAME CHANGE THAT RAISES min_count. A tunnelled production
-    environment has NO other ingress alarm — ECS reports a task RUNNING whether or
-    not cloudflared holds edge connections — so shipping traffic with this false
-    means an ingress outage is visible only when a user reports it.
+    That matters because a health check against a hostname with no tasks behind it sits in
+    ALARM permanently: it pages for a condition that IS the intended state, which trains the
+    reader to ignore the one alarm that replaces every ALB target-group alarm — and it bills
+    every month for that non-signal. develop was in exactly that position: floors of 0, an
+    idle schedule taking it to zero tasks nightly and all weekend, and this variable unset so
+    it took the `true` default.
+
+    ON COST, stated correctly. This creates ONE health check on a non-AWS endpoint, one
+    CloudWatch alarm, and an SNS topic that bills nothing until it publishes. The check runs
+    with `measure_latency = false` and no string match, so NO optional-feature charge applies
+    — only the base rate. An earlier version of this text quoted "$2.70/mo per check ($0.75
+    base + $2.00 for the string-match/latency option)", which charged for two options the
+    resource disables and inflated the figure by roughly 3.5x. Deciding against monitoring on
+    a wrong number is worse than the number.
+
+    A tunnelled environment has NO other ingress alarm — ECS reports a task RUNNING whether
+    or not cloudflared holds edge connections — so setting this false on an environment that
+    IS serving means an ingress outage is visible only when a user reports it.
   EOT
   type        = bool
   default     = true
