@@ -101,7 +101,6 @@ module "stack" {
   // recoverable.
   log_retention_days           = 90
   secrets_recovery_window_days = 30
-  dlq_max_receive_count        = 3 # move to the DLQ sooner in production
 
   // ── Secret bundling · COMPLETE ──────────────────────────────────────────────
   // Every app secret lives in ONE container, rally/production/app, read per key by ECS

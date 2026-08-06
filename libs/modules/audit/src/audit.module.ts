@@ -13,6 +13,10 @@ import { AUDIT_REPOSITORY } from './domain/ports/audit.repository';
   imports: [AccessModule],
   controllers: [AuditController],
   providers: [AuditService, { provide: AUDIT_REPOSITORY, useClass: AuditDrizzleRepository }],
-  exports: [AuditService],
+  // AUDIT_REPOSITORY is exported, not just provided: @Global() only globalises what a
+  // module EXPORTS. The worker's AuditProjectionRelay injects the port directly because
+  // AuditService swallows write errors, which a relay must see — see that class's
+  // constructor comment.
+  exports: [AuditService, AUDIT_REPOSITORY],
 })
 export class AuditModule {}

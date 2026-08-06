@@ -49,7 +49,7 @@ services:
       # Mirrors how db/init/ bootstraps Postgres on first start.
       - ./scripts/localstack:/etc/localstack/init/ready.d:ro
     healthcheck:
-      test: ['CMD', 'awslocal', 'sqs', 'list-queues']
+      test: ['CMD', 'awslocal', 's3api', 'list-buckets']
       interval: 10s
       timeout: 5s
       retries: 10

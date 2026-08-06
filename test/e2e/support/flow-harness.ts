@@ -49,6 +49,8 @@ import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
 import { PlatformModule } from '@platform';
 import { NotificationsModule } from '@modules/notifications';
+import { AuditModule } from '@modules/audit';
+import { AuditProjectionRelay } from '../../../apps/worker/src/audit/audit-projection.relay';
 
 import { AppModule } from '../../../apps/api/src/app.module';
 import { NotificationRelayService } from '../../../apps/worker/src/notifications/notification-relay.service';
@@ -76,7 +78,7 @@ export async function bootRallyApp(): Promise<NestFastifyApplication> {
  * Boot just enough of the real Worker to exercise the notification + email
  * relay's actual fetchBatch/processRow/markSent/markFailed against the seeded
  * DB — the same code the deployed Worker runs. Deliberately does NOT import
- * ScheduleModule.forRoot() or the full WorkerModule (AuditConsumer/SQS,
+ * ScheduleModule.forRoot() or the full WorkerModule (AuditProjectionRelay,
  * ReportingModule, etc.): the @Cron decorators on relay() then have no
  * scheduler to register against, so the 5s cron never fires on its own —
  * tests call `.relay()` directly instead of waiting on/racing it.
@@ -113,6 +115,28 @@ export async function bootRallyWorkerRelays(): Promise<{
     notificationRelay: module.get(NotificationRelayService),
     emailRelay: module.get(EmailRelayService),
   };
+}
+
+/**
+ * Boot the audit projection relay against the real DB, with nothing else running.
+ *
+ * Deliberately a separate module from `bootRallyWorkerRelays`: two relays polling
+ * `outbox_events` and `notification_outbox` in one process are competing consumers,
+ * and a test that has to reason about which relay claimed its row is a test that will
+ * eventually be flaky for a reason nobody can reproduce.
+ */
+export async function bootAuditProjectionRelay(): Promise<{
+  module: TestingModule;
+  relay: AuditProjectionRelay;
+}> {
+  const module = await Test.createTestingModule({
+    imports: [PlatformModule, AuditModule],
+    providers: [AuditProjectionRelay],
+  }).compile();
+
+  await module.init();
+
+  return { module, relay: module.get(AuditProjectionRelay) };
 }
 
 /**

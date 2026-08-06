@@ -343,31 +343,6 @@ module "otel_agent_worker" {
   memory_limit_mib = floor(local.otel_worker_memory * 0.625)
 }
 
-# ── Messaging (SQS + SNS) ─────────────────────────────────────────────────────
-module "messaging" {
-  source                = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/messaging?ref=messaging-v1.0.0"
-  prefix                = local.name
-  dlq_max_receive_count = var.dlq_max_receive_count
-
-  queues = {
-    notifications = {}
-    audit         = { visibility_timeout = 60 }
-    reporting     = { visibility_timeout = 300 }
-    search        = {}
-  }
-
-  topics = ["domain-events"]
-
-  subscriptions = [
-    {
-      topic         = "domain-events"
-      queue         = "notifications"
-      filter_policy = jsonencode({ eventType = ["notification.created", "notification.updated"] })
-    }
-  ]
-
-  tags = local.tags
-}
 
 # ── ALB ───────────────────────────────────────────────────────────────────────
 # The ALB is shared and lives in runtime-dev. module.api attaches a host-header
@@ -633,11 +608,6 @@ module "api" {
     # Comma-separated emails auto-granted workspace_admin on every SSO login
     { name = "PLATFORM_ADMIN_EMAILS", value = join(",", var.platform_admin_emails) },
     # Messaging — SQS queue URLs injected at deploy time from module outputs
-    { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
-    { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
-    { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
-    { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
-    { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
     # Attachments object storage — Cloudflare R2 (S3-compatible) from the platform
     # storage-dev stack. Bucket name still travels as S3_ATTACHMENTS_BUCKET; the
     # presence of STORAGE_ENDPOINT flips StorageService to the R2 endpoint + keys.
@@ -682,8 +652,6 @@ module "api" {
     module.tunnel_api.container_definitions,
   )
 
-  sqs_queue_arns = values(module.messaging.queue_arns)
-  sns_topic_arns = values(module.messaging.topic_arns)
 
   # Multi-IdP broker: the TASK role reads per-connection OIDC client secrets at
   # RUNTIME (resolved from the sso_connections row on demand). The home
@@ -815,11 +783,6 @@ module "worker" {
     # private-key ref is the SM ARN, resolved at runtime via the task role above.
     { name = "GITHUB_APP_ID", value = var.github_app_id },
     { name = "GITHUB_APP_PRIVATE_KEY_SECRET_REF", value = module.secrets.secret_arns["github-app-private-key"] },
-    { name = "SQS_NOTIFICATIONS_URL", value = module.messaging.queue_urls["notifications"] },
-    { name = "SQS_AUDIT_URL", value = module.messaging.queue_urls["audit"] },
-    { name = "SQS_REPORTING_URL", value = module.messaging.queue_urls["reporting"] },
-    { name = "SQS_SEARCH_URL", value = module.messaging.queue_urls["search"] },
-    { name = "SNS_TOPIC_ARN", value = module.messaging.topic_arns["domain-events"] },
     # Attachments object storage — Cloudflare R2 (see api service for rationale).
     { name = "S3_ATTACHMENTS_BUCKET", value = data.terraform_remote_state.storage.outputs["${var.product}_attachments_name"] },
     # Separate PUBLIC bucket for avatars/logos. StorageService refuses to store a
@@ -854,8 +817,6 @@ module "worker" {
   # shared task network namespace. Empty list until a backend is configured.
   additional_containers = module.otel_agent_worker.container_definitions
 
-  sqs_queue_arns = values(module.messaging.queue_arns)
-  sns_topic_arns = values(module.messaging.topic_arns)
 
   tags = merge(local.tags, { Service = "worker" })
 }

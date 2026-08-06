@@ -19,8 +19,6 @@ output "private_subnet_ids" { value = data.terraform_remote_state.runtime.output
 output "sg_app_id" { value = data.terraform_remote_state.runtime.outputs.sg_app_id }
 
 # Messaging — useful for verifying queue setup
-output "sqs_queue_urls" { value = module.messaging.queue_urls }
-output "sns_topic_arns" { value = module.messaging.topic_arns }
 
 # Web (Cloudflare Pages) outputs — PAGES_PROJECT is published to GitHub env vars
 # for the rally-web CI (wrangler --project-name).

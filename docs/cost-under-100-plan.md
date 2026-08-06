@@ -189,9 +189,9 @@ storage but nothing autoscales the instance class.
 
 ## What is NOT in this plan, and why
 
-- **Changing cloud provider.** 17 SQS/SNS references in the stack, five AWS SDK clients
-  in the app, plus ECR, Secrets Manager and SES. Rewriting the messaging layer costs
-  weeks; Hetzner with managed Postgres lands ~$30–40/mo, barely better than $81 for
+- **Changing cloud provider.** Three AWS SDK clients in the app (S3, SES, Secrets
+  Manager — SNS and SQS are gone, see `docs/DIVERGENCE.md`), plus ECR. Rewriting that
+  layer costs weeks; Hetzner with managed Postgres lands ~$30–40/mo, barely better than $81 for
   vastly more work. A single Hetzner VM running everything would be under €10/mo, but
   that is a different operational model with no managed backups and self-owned uptime.
 - **Prod api on Fargate Spot.** Saves $29/mo and drops in-flight requests plus SSE

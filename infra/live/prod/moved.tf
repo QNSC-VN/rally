@@ -19,11 +19,6 @@ moved {
 }
 
 moved {
-  from = module.messaging
-  to   = module.stack.module.messaging
-}
-
-moved {
   from = module.ecs_cluster
   to   = module.stack.module.ecs_cluster
 }
