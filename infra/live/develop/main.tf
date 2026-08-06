@@ -174,8 +174,8 @@ module "stack" {
   monitor_target_health = false
 
   // Nightly, not weekly like production. Develop wakes on every merge to main, so a
-  // weekly stop would leave it running most of the week; 21:00 local puts it down after
-  // the working day and the next deploy brings it back.
+  // weekly stop would leave it running most of the week; midnight local puts it down
+  // after the working day and the next deploy brings it back.
   //
   // THERE IS NOW A MATCHING START SCHEDULE — see `wake_schedule` below. This comment
   // used to say there was none "on purpose", on the grounds that the deploy pipeline is
@@ -186,24 +186,37 @@ module "stack" {
   // environment stopped, which reads as an outage, and RDS takes ~4-5 minutes to start,
   // so it cannot be waited out.
   //
-  // TWO PASSES, 21:00 AND 03:00 — because ONE was not holding. Measured 2026-08-02:
+  // TWO PASSES, 00:00 AND 03:00 — because ONE was not holding. Measured 2026-08-02:
   // develop's RDS published CPU datapoints for every hour of every night across seven
   // days, i.e. it was never actually down. CloudTrail shows why:
   //
   //   21:00:36  StopDBInstance   (this schedule — fires correctly, every night)
   //   21:33:07  StartDBInstance  (GitHubActions — `ensure_rds` in the deploy reusable)
   //
-  // A deploy landing after 21:00 wakes RDS and scales the services back up, and nothing
-  // stopped them again until 21:00 the FOLLOWING day. 6 of 40 sampled deploys ran at
+  // A deploy landing after the stop wakes RDS and scales the services back up, and
+  // nothing stopped them again until the FOLLOWING night. 6 of 40 sampled deploys ran at
   // 21:00-02:00 local, so develop was billing ~24h/day for maybe 10h of use. This is a
   // control-loop problem, not a sizing one: a once-daily stop cannot hold against a wake
   // signal that fires at any hour.
   //
+  // FIRST PASS MOVED 21:00 -> 00:00 (2026-08-06), because 21:00 was cutting into use.
+  // The 03:00 backstop is what makes this affordable: the measurement above shows the
+  // damage comes from a deploy landing AFTER the stop and leaving the environment up all
+  // night, not from the hour of the stop itself — and 03:00 still catches that. The cost
+  // of the move is bounded at 3 extra hours on nights nobody deploys late, ~$0.15/night.
+  //
+  // Note this narrows the late-evening deploy window from 6h to 3h: a deploy at 01:00
+  // now leaves develop up for only two hours instead of five. That is a saving, not a
+  // problem, but it means the two passes are closer together than they look — if a third
+  // pass is ever wanted it belongs BEFORE 00:00 (e.g. a 20:00 pass for a team that stops
+  // earlier), not between these two.
+  //
   // 03:00 is chosen to sit after the late-evening deploy window and before the working
-  // day. A deploy at 02:00 still gets its environment; one at 22:00 no longer leaves it
-  // running all night. If deploys routinely land between 03:00 and 09:00, add a third
-  // pass rather than moving this one.
-  idle_schedule = "cron(0 21,3 * * ? *)"
+  // day. A deploy at 02:00 still gets its environment; one at 01:00 no longer leaves it
+  // running all night. If deploys routinely land between 03:00 and 08:00, add a pass
+  // rather than moving this one — 08:00 is now the wake, so a stop after it would fight
+  // `wake_schedule` below.
+  idle_schedule = "cron(0 0,3 * * ? *)"
 
   // 08:00 local, MON-FRI. The weekday restriction is the entire cost control here: a
   // 7-day wake would pay for two days a week nobody works, which is a large share of
@@ -215,12 +228,12 @@ module "stack" {
   //
   // This does NOT conflict with the 03:00 stop above. 03:00 fires while develop is
   // already down (a no-op, InvalidDBInstanceState, deliberately not retried) and 08:00
-  // brings it up five hours later. The 21:00 stop then ends the day. A deploy landing at
+  // brings it up five hours later. The 00:00 stop then ends the day. A deploy landing at
   // any hour still wakes it independently — that path is unchanged.
   //
-  // Expected effect: develop moves from "up on merge days only" to ~13h/day on
+  // Expected effect: develop moves from "up on merge days only" to ~16h/day on
   // weekdays and 0h at weekends, so this BUYS availability rather than saving money.
-  // Weekends and the 21:00-08:00 window are where the saving now comes from.
+  // Weekends and the 00:00-08:00 window are where the saving now comes from.
   wake_schedule = "cron(0 8 ? * MON-FRI *)"
 
   // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
@@ -305,7 +318,7 @@ module "stack" {
   //
   // Deploys and `idle_schedule` between them own the desired count, so the floor has to
   // be 0 — with a floor of 1 Application Auto Scaling restores the service within minutes
-  // and the 21:00 scale-to-zero undoes itself.
+  // and the midnight scale-to-zero undoes itself.
   //
   // But a scalable target with a floor of 0 cannot act at all, in either direction. Target
   // tracking scales proportionally, so from one task at ~1% CPU it computes
