@@ -14,6 +14,7 @@ import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { GitBranch } from 'lucide-react'
 
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useReleases } from '@/features/releases/api'
 import { useProjectTeams } from '@/features/teams/api'
@@ -48,14 +49,39 @@ export function ReleaseTrackingPage() {
       teamId == null ? null : (projectTeams.find((tm) => tm.id === teamId)?.key ?? null),
     [projectTeams],
   )
-  const [chosenReleaseId, setChosenReleaseId] = useState<string | null>(null)
+  // Persist Release Tracking view selections across reload (P6-COM-006).
+  const [chosenReleaseId, setChosenReleaseId] = useState<string | null>(
+    () => localStorage.getItem(STORAGE_KEYS.RELEASE_TRACKING_RELEASE),
+  )
+  function chooseRelease(id: string | null) {
+    setChosenReleaseId(id)
+    if (id) localStorage.setItem(STORAGE_KEYS.RELEASE_TRACKING_RELEASE, id)
+    else localStorage.removeItem(STORAGE_KEYS.RELEASE_TRACKING_RELEASE)
+  }
   const releaseId =
     chosenReleaseId && releases.some((release) => release.id === chosenReleaseId)
       ? chosenReleaseId
       : (releases[0]?.id ?? null)
 
-  const [unit, setUnit] = useState<ChartUnit>('points')
-  const [bucket, setBucket] = useState<ReleaseBucket>('direct')
+  const [unit, setUnit] = useState<ChartUnit>(() => {
+    const s = localStorage.getItem(STORAGE_KEYS.RELEASE_TRACKING_UNIT)
+    return s === 'points' || s === 'count' ? (s as ChartUnit) : 'points'
+  })
+  function changeUnit(next: ChartUnit) {
+    setUnit(next)
+    localStorage.setItem(STORAGE_KEYS.RELEASE_TRACKING_UNIT, next)
+  }
+
+  const [bucket, setBucket] = useState<ReleaseBucket>(() => {
+    const s = localStorage.getItem(STORAGE_KEYS.RELEASE_TRACKING_BUCKET)
+    return s === 'direct' || s === 'derived' || s === 'unparented'
+      ? (s as ReleaseBucket)
+      : 'direct'
+  })
+  function changeBucket(next: ReleaseBucket) {
+    setBucket(next)
+    localStorage.setItem(STORAGE_KEYS.RELEASE_TRACKING_BUCKET, next)
+  }
 
   // Paging lives here because this component owns the query. The rows are now a SERVER page:
   // the endpoint classifies and totals over the whole population, then returns one slice, so
@@ -120,7 +146,7 @@ export function ReleaseTrackingPage() {
               endDate: release.releaseDate ?? null,
             }))}
             selectedId={releaseId}
-            onSelect={setChosenReleaseId}
+            onSelect={chooseRelease}
             emptyLabel={t('picker.empty')}
             noneLabel={t('picker.none')}
             prevLabel={t('picker.prev')}
@@ -143,7 +169,7 @@ export function ReleaseTrackingPage() {
               {t('chartUnit')}
               <CompactSelect
                 value={unit}
-                onChange={(event) => setUnit(event.target.value as ChartUnit)}
+                onChange={(event) => changeUnit(event.target.value as ChartUnit)}
                 aria-label={t('chartUnit')}
               >
                 <option value="points">{t('unit.points')}</option>
@@ -190,7 +216,7 @@ export function ReleaseTrackingPage() {
                 <Tooltip key={key} content={t(`summary.help.${key}`)} side="bottom">
                   <button
                     type="button"
-                    onClick={() => setBucket(key)}
+                    onClick={() => changeBucket(key)}
                     aria-pressed={bucket === key}
                     className={`flex-1 border-r border-border-inner px-3 py-1 last:border-r-0 ${
                       bucket === key ? 'bg-accent-bg' : 'hover:bg-surface-hover'
@@ -225,7 +251,7 @@ export function ReleaseTrackingPage() {
               bucketPicker={
                 <CompactSelect
                   value={bucket}
-                  onChange={(event) => setBucket(event.target.value as ReleaseBucket)}
+                  onChange={(event) => changeBucket(event.target.value as ReleaseBucket)}
                   aria-label={t('summary.title')}
                   className="max-w-[280px]"
                 >

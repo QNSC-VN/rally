@@ -17,6 +17,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { CompactSelect } from '@/shared/ui/native-select'
 import { PageHeader } from '@/shared/ui/page-header'
@@ -32,7 +33,17 @@ type ReportType = (typeof REPORT_TYPES)[number]
 export function ReportsPage() {
   const { t } = useTranslation('reports')
   const { project, team } = useAppContext()
-  const [type, setType] = useState<ReportType>('burndown')
+  // Persist the selected report type across reload (P6-COM-006).
+  const [type, setType] = useState<ReportType>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.REPORTS_TYPE)
+    return (REPORT_TYPES as readonly string[]).includes(saved ?? '')
+      ? (saved as ReportType)
+      : 'burndown'
+  })
+  function changeType(next: ReportType) {
+    setType(next)
+    localStorage.setItem(STORAGE_KEYS.REPORTS_TYPE, next)
+  }
 
   const projectId = project?.projectId
   // `undefined` is All Teams — the aggregate, not "no filter".
@@ -59,7 +70,7 @@ export function ReportsPage() {
             {t('type')}
             <CompactSelect
               value={type}
-              onChange={(event) => setType(event.target.value as ReportType)}
+              onChange={(event) => changeType(event.target.value as ReportType)}
               aria-label={t('type')}
             >
               {REPORT_TYPES.map((value) => (

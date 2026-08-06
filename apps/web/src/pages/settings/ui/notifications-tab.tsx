@@ -1,3 +1,8 @@
+// ⚠ Future Backlog — not wired into Settings (BA decision 2026-08-06, C6).
+// Phase 4 ships fixed in-app notifications (Work Item assignment, Note mentions)
+// only; user-configurable Notification Preferences are out of scope. This
+// component is retained unchanged for when the feature is re-scheduled. It is
+// deliberately not imported by settings-page.tsx.
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingsTabHeader } from './settings-tab-header'

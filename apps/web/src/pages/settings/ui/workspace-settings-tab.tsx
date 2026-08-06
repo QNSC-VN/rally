@@ -189,6 +189,21 @@ export function WorkspaceSettingsTab() {
                   {current?.slug ?? workspace?.workspaceSlug ?? '--'}
                 </span>
               </div>
+              {/* Scope — Mini Rally is single-company per workspace (P4-SET-01):
+                  read-only, mirrors the Slug row so the baseline is visible. */}
+              <div className="flex items-start justify-between gap-4 py-4">
+                <div className="min-w-0">
+                  <p className="text-ui-md font-medium text-foreground">
+                    {t('workspace.scopeLabel', 'Scope')}
+                  </p>
+                  <p className="mt-0.5 text-ui-sm text-foreground-subtle">
+                    {t('workspace.scopeHint', 'One company per workspace.')}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-md border border-input bg-surface-subtle px-2 py-0.5 text-ui-sm text-foreground">
+                  {t('workspace.scopeValue', 'Single company')}
+                </span>
+              </div>
               {/* Admins — avatar chips. */}
               <div className="flex items-start justify-between gap-4 pt-4">
                 <p className="text-ui-md font-medium text-foreground">

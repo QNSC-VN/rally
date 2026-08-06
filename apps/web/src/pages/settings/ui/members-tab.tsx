@@ -19,7 +19,6 @@ import {
   useUpdateMember,
   type WorkspaceMember,
 } from '@/features/workspaces/api'
-import { useWorkspaceTeams } from '@/features/teams/api'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
@@ -30,7 +29,6 @@ import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import type { StatusStyle } from '@/shared/config/status-colors'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
-import { TeamAvatar } from '@/shared/ui/team-cell'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { MetricCard } from '@/shared/ui/metric-card'
 import {
@@ -74,20 +72,16 @@ interface MemberCtx {
   neverLabel: string
   roleOptions: SelectOption[]
   statusOptions: SelectOption[]
-  teamOptions: SelectOption[]
   labels: {
     role: string
     rolePlaceholder: string
     status: string
-    teams: string
-    searchTeams: string
   }
   commitRole: (member: WorkspaceMember, roleId: string) => void
   commitStatus: (member: WorkspaceMember, status: MemberStatus) => void
-  commitTeams: (memberId: string, teamIds: string[]) => void
 }
 
-type MemberColKey = 'user' | 'email' | 'role' | 'status' | 'teams' | 'lastLogin'
+type MemberColKey = 'user' | 'email' | 'role' | 'status' | 'lastLogin'
 
 const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
   {
@@ -175,32 +169,6 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
           options={ctx.statusOptions}
           ariaLabel={ctx.labels.status}
           onChange={(v) => ctx.commitStatus(m, v as MemberStatus)}
-        />
-      </div>
-    ),
-  },
-  {
-    key: 'teams',
-    label: 'Teams',
-    defaultWidth: 220,
-    minWidth: 140,
-    cellClassName: 'flex min-w-0 items-center',
-    // Inline multi-select (shared SearchableSelect cell variant) — matches the
-    // Projects ProjectTeamsCell exactly (team name + TeamAvatar icon). Commits
-    // the full team set via the member PATCH (Users uses the member endpoint,
-    // not per-team link/unlink).
-    cell: (m, ctx) => (
-      <div className="min-w-0 flex-1">
-        <SearchableSelect
-          multiple
-          variant="cell"
-          value={(m.teams ?? []).map((tm) => tm.id)}
-          readOnly={m.roleSlug === 'workspace_admin'}
-          options={ctx.teamOptions}
-          ariaLabel={ctx.labels.teams}
-          placeholder="--"
-          searchPlaceholder={ctx.labels.searchTeams}
-          onChange={(ids) => ctx.commitTeams(m.id, ids as string[])}
         />
       </div>
     ),
@@ -424,28 +392,6 @@ export function MembersTab() {
     [t],
   )
 
-  const { data: allTeams = [] } = useWorkspaceTeams(workspaceId)
-  // Match Projects' ProjectTeamsCell exactly: team NAME only + TeamAvatar icon.
-  const teamOptions = useMemo<SelectOption[]>(
-    () =>
-      allTeams.map((tm) => ({
-        value: tm.id,
-        label: tm.name,
-        searchText: tm.name,
-        icon: <TeamAvatar teamKey={tm.key} name={tm.name} size={16} />,
-      })),
-    [allTeams],
-  )
-  const commitTeams = useCallback(
-    (memberId: string, teamIds: string[]) => {
-      bulkUpdate
-        .mutateAsync({ memberId, teamIds })
-        .then(() => notify.success(t('members.teamsUpdated')))
-        .catch((err: unknown) => notify.fromError(err, t('members.teamsUpdateError')))
-    },
-    [bulkUpdate, t],
-  )
-
   const cellCtx = useMemo<MemberCtx>(
     () => ({
       currentUserId: user?.id,
@@ -453,19 +399,15 @@ export function MembersTab() {
       neverLabel: t('members.never'),
       roleOptions,
       statusOptions,
-      teamOptions,
       labels: {
         role: t('members.editRole'),
         rolePlaceholder: t('members.selectRoleOption'),
         status: t('members.editStatus'),
-        teams: t('members.editTeams'),
-        searchTeams: t('members.searchTeams'),
       },
       commitRole,
       commitStatus,
-      commitTeams,
     }),
-    [user?.id, t, roleOptions, statusOptions, teamOptions, commitRole, commitStatus, commitTeams],
+    [user?.id, t, roleOptions, statusOptions, commitRole, commitStatus],
   )
 
   const activeFilterCount = (roleFilter ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0)

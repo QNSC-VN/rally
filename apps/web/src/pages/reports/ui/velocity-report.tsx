@@ -15,6 +15,7 @@ import { AlertTriangle } from 'lucide-react'
 import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { BRAND } from '@/shared/config/brand'
+import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useVelocity, DEFAULT_VELOCITY_WINDOW, type VelocityWindow } from '@/features/reporting/api'
 import { teamScopeLabel } from '@/features/reporting/scope'
 import { MetricCard } from '@/shared/ui/metric-card'
@@ -43,7 +44,17 @@ export function VelocityReport({
   teamId: string | undefined
 }) {
   const { t } = useTranslation(['reports', 'common'])
-  const [window, setWindow] = useState<VelocityWindow>(DEFAULT_VELOCITY_WINDOW)
+  // Persist the chosen window across reload (BA C7). Default is Last 10 (Rally parity).
+  const [window, setWindow] = useState<VelocityWindow>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.VELOCITY_WINDOW)
+    return saved === '5' || saved === '10'
+      ? (Number(saved) as VelocityWindow)
+      : DEFAULT_VELOCITY_WINDOW
+  })
+  function changeWindow(next: VelocityWindow) {
+    setWindow(next)
+    localStorage.setItem(STORAGE_KEYS.VELOCITY_WINDOW, String(next))
+  }
   // `isError` was never read here, so a 500 or a dropped connection left `bars` empty and the chart
   // rendered §6's own sentence — "No completed iteration with scheduled work exists in this project and
   // team scope" — as a measured statement about delivery history. Team Capacity already fixed exactly
@@ -67,7 +78,7 @@ export function VelocityReport({
           {t('velocity.window')}
           <CompactSelect
             value={String(window)}
-            onChange={(event) => setWindow(Number(event.target.value) as VelocityWindow)}
+            onChange={(event) => changeWindow(Number(event.target.value) as VelocityWindow)}
             aria-label={t('velocity.window')}
           >
             <option value="5">{t('velocity.windowLast', { count: 5 })}</option>
