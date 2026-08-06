@@ -229,7 +229,7 @@ export function TeamStatusPage() {
     ? allGroups
         .map((g) => ({
           ...g,
-          tasks: g.tasks.filter((t) => stateFilter === 'all' || t.state === stateFilter),
+          tasks: g.tasks.filter((t) => t.state === stateFilter),
         }))
         .filter((g) => g.tasks.length > 0)
     : allGroups
