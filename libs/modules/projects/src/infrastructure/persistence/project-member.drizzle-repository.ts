@@ -93,9 +93,15 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       .leftJoin(users, eq(teamMembers.userId, users.id))
       .where(eq(teamMembers.status, 'active'));
 
-    const explicitUserIds = new Set(explicit.map((m) => m.userId));
+    // Dedupe by userId: a user on >1 team linked to this project would otherwise
+    // appear once per team. Explicit members win; among team-derived, first wins.
+    const seenUserIds = new Set(explicit.map((m) => m.userId));
     const teamOnly = teamDerived
-      .filter((m) => !explicitUserIds.has(m.userId))
+      .filter((m) => {
+        if (seenUserIds.has(m.userId)) return false
+        seenUserIds.add(m.userId)
+        return true
+      })
       .map((m) => ({ ...m, roleId: null as string | null })) as unknown as ProjectMember[];
     return [...explicit, ...teamOnly];
   }
