@@ -890,6 +890,19 @@ export class CapacityPlansService {
       recopied = await this.featureEstimate(actor, plan, item);
     }
 
+    // A PARKED row gaining a team becomes the primary when the Feature has no primary yet — the
+    // mirror of the park path below. Without it the quick Planned Team Assignment selector moves the
+    // parked row to the team but leaves primaryTeamId null, so the selector reads "Not assigned"
+    // (CP-032). Scoped to the park→team transition only: a team-to-team MOVE must not change primary
+    // status (the Feature keeps its owner). Promote only when nobody else is primary.
+    const gainsTeam =
+      input.teamId !== undefined &&
+      input.teamId !== null &&
+      allocation.teamId === null &&
+      !allocation.isPrimary;
+    const promoteToPrimary =
+      gainsTeam && !(await this.repo.hasPrimaryAllocation(planId, allocation.portfolioItemId));
+
     await this.uow.run(async (tx) => {
       // Parking a row in the Unallocated bucket strips its primary flag: the check constraint
       // forbids a primary with no team, so this is the difference between a clear rule and a
@@ -906,6 +919,7 @@ export class CapacityPlansService {
               : { value: String(input.value), source: 'manual' as const }),
           ...(input.teamId === undefined ? {} : { teamId: input.teamId }),
           ...(losesTeam ? { isPrimary: false } : {}),
+          ...(promoteToPrimary ? { isPrimary: true } : {}),
         },
         tx,
       );

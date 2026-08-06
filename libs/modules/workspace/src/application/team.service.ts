@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import {
   NotFoundException,
@@ -281,6 +282,27 @@ export class TeamService {
     }
 
     await this.uow.run(async (tx) => {
+      // Unassign this member's tasks IN THIS TEAM before dropping the roster row.
+      // Team Status groups rows by task owner and folds in any user who still owns
+      // a task, so an owned task would keep a removed member visible. Nulling the
+      // assignee drops those tasks to the Unassigned group (SRS P3-TS §8.3:
+      // "unassigned can appear as Unassigned") and the member disappears from every
+      // Team Status / Iteration Status view. Scoped to this team via
+      // coalesce(task team, parent team) so a user on several teams keeps their
+      // tasks elsewhere. Not in the BA SRS (which is silent on removal) — this is
+      // the ruled fix for the fold-in dev gap.
+      const result = await tx.execute(sql`
+        UPDATE work.tasks t
+        SET assignee_id = NULL, updated_by = ${actorId}, updated_at = NOW()
+        WHERE t.assignee_id = ${userId}
+          AND t.deleted_at IS NULL
+          AND COALESCE(
+                t.team_id,
+                (SELECT wi.team_id FROM work.work_items wi WHERE wi.id = t.parent_id)
+              ) = ${teamId}
+      `);
+      const unassignedTaskCount = Number(result?.rowCount ?? 0);
+
       await this.teamMemberRepo.removeMember(teamId, userId, tx);
       await this.audit.emit(
         {
@@ -289,7 +311,7 @@ export class TeamService {
           resourceId: existing.id,
           workspaceId,
           actor: { id: actorId },
-          changes: { before: { teamId, userId } },
+          changes: { before: { teamId, userId }, after: { unassignedTaskCount } },
         },
         tx,
       );

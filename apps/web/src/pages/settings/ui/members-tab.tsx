@@ -51,6 +51,11 @@ import { useSystemRoles } from '../model/use-system-roles'
 type InviteForm = { email: string; roleId: string }
 type MemberStatus = 'active' | 'suspended' | 'removed'
 
+/** Best-available display label for a member (typed-confirmation copy). */
+function memberName(m: WorkspaceMember): string {
+  return m.displayName ?? m.email ?? m.userId
+}
+
 interface SelectOption {
   value: string
   label: string
@@ -360,9 +365,20 @@ export function MembersTab() {
     },
     [changeRole],
   )
+  // Holds the member + status pending a destructive confirmation (null = closed).
+  const [confirmStatusTarget, setConfirmStatusTarget] = useState<{
+    member: WorkspaceMember
+    status: MemberStatus
+  } | null>(null)
   const commitStatus = useCallback(
     (member: WorkspaceMember, status: MemberStatus) => {
       if (status === member.status) return
+      // Deactivate (suspend) and Remove Access are destructive (P4-SET-07): gate
+      // them behind a confirmation. Reactivation (-> active) commits directly.
+      if (status === 'suspended' || status === 'removed') {
+        setConfirmStatusTarget({ member, status })
+        return
+      }
       bulkUpdate
         .mutateAsync({ memberId: member.id, status })
         .then(() => notify.success(t('members.statusUpdated')))
@@ -400,6 +416,10 @@ export function MembersTab() {
     () => [
       { value: 'active', label: t('members.statusActive') },
       { value: 'suspended', label: t('members.statusDeactive') },
+      // "Remove Access" is the permanent status='removed' transition. It is an
+      // inline status value (not a row action button, per SRS §6.3) and is gated
+      // by a typed confirmation (P4-SET-07) — see commitStatus / the dialog below.
+      { value: 'removed', label: t('members.statusRemoved', 'Remove Access') },
     ],
     [t],
   )
@@ -707,6 +727,53 @@ export function MembersTab() {
           if (sel) void deactivateSelected(sel)
         }}
         onCancel={() => setConfirmDeactivate(null)}
+      />
+
+      {/* Per-row destructive confirmation. Remove Access is high-risk, so it uses
+          typed confirmation (type the user's name, per P4-SET-07); Deactivate
+          uses a plain modal. Reactivation never reaches this dialog. */}
+      <ConfirmDialog
+        open={!!confirmStatusTarget}
+        title={
+          confirmStatusTarget?.status === 'removed'
+            ? t('members.removeAccessTitle', 'Remove user access')
+            : t('members.deactivateOneTitle', 'Deactivate user')
+        }
+        message={
+          confirmStatusTarget
+            ? confirmStatusTarget.status === 'removed'
+              ? t('members.removeAccessConfirm', {
+                  name: memberName(confirmStatusTarget.member),
+                  defaultValue: 'Permanently remove access for "{{name}}". They lose all workspace access.',
+                })
+              : t('members.deactivateOneConfirm', {
+                  name: memberName(confirmStatusTarget.member),
+                  defaultValue: 'Deactivate "{{name}}"? They lose access until reactivated.',
+                })
+            : undefined
+        }
+        confirmText={
+          confirmStatusTarget && confirmStatusTarget.status === 'removed'
+            ? memberName(confirmStatusTarget.member)
+            : undefined
+        }
+        confirmLabel={
+          confirmStatusTarget?.status === 'removed'
+            ? t('members.statusRemoved', 'Remove Access')
+            : t('members.statusDeactive')
+        }
+        destructive
+        pending={bulkUpdate.isPending}
+        onConfirm={() => {
+          const target = confirmStatusTarget
+          setConfirmStatusTarget(null)
+          if (!target) return
+          bulkUpdate
+            .mutateAsync({ memberId: target.member.id, status: target.status })
+            .then(() => notify.success(t('members.statusUpdated')))
+            .catch((err: unknown) => notify.fromError(err, t('members.statusUpdateError')))
+        }}
+        onCancel={() => setConfirmStatusTarget(null)}
       />
     </div>
   )

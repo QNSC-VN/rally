@@ -21,8 +21,6 @@ export type ColKey =
   | 'tasksPct'
   | 'actual'
   | 'owner'
-  | 'defects'
-  | 'defectStatus'
   | 'milestones'
   | 'devOwner'
 
@@ -42,8 +40,6 @@ export const ITERATION_STATUS_COLUMNS: ColumnSpec<unknown, unknown, ColKey>[] = 
   { key: 'tasksPct', label: 'Tasks', defaultWidth: 110, minWidth: 80 },
   { key: 'actual', label: 'Actual', defaultWidth: 70 },
   { key: 'owner', label: 'Owner', defaultWidth: 130 },
-  { key: 'defects', label: 'Defects', defaultWidth: 60 },
-  { key: 'defectStatus', label: 'Defect Status', defaultWidth: 100, minWidth: 80 },
   { key: 'milestones', label: 'Milestones', defaultWidth: 140, minWidth: 90 },
   { key: 'devOwner', label: 'Dev Owner', defaultWidth: 130 },
 ]
@@ -72,8 +68,6 @@ export const HEADER_META: DataTableHeaderColumn<ColKey>[] = [
   { key: 'tasksPct', label: 'Tasks' },
   { key: 'actual', label: 'Actual', align: 'right' },
   { key: 'owner', label: 'Owner', sortCol: 'owner' },
-  { key: 'defects', label: 'Defects', align: 'center' },
-  { key: 'defectStatus', label: 'Defect Status' },
   { key: 'milestones', label: 'Milestones' },
   { key: 'devOwner', label: 'Dev Owner' },
 ]
