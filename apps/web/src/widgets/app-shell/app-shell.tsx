@@ -302,15 +302,28 @@ export function AppShell() {
     })
   })
 
-  // Breadcrumb: collect matches that declare a breadcrumb label
-  const crumbs = matches
+  // Breadcrumb route segments: matches that declare a breadcrumb label.
+  const routeCrumbs = matches
     .filter((m) => (m.staticData as { breadcrumb?: string })?.breadcrumb)
     .map((m) => (m.staticData as { breadcrumb: string }).breadcrumb)
+  // Optional top-nav section (e.g. 'Track') declared by the leaf route.
+  const leafSection = (matches[matches.length - 1]?.staticData as { section?: string } | undefined)
+    ?.section
 
   // Bootstrap workspace context from API — always sync name/slug in case they changed
   const { data: workspaces } = useWorkspaces()
   const { data: activeProjects = [] } = useProjects(workspace?.workspaceId)
   const navProjects = activeProjects.filter((p) => p.status === 'active')
+
+  // Prefix the route breadcrumb with the active scope so a project page reads
+  // "Workspace › Project › [Section] › Page" (SHELL-FR-007, P3-TS-FR-002).
+  // Workspace-level pages have no project context and keep just their route crumbs.
+  const activeProjectName = activeProjects.find((p) => p.id === project?.projectId)?.name
+  const scopeCrumbs: string[] = []
+  if (workspace?.workspaceName) scopeCrumbs.push(workspace.workspaceName)
+  if (activeProjectName) scopeCrumbs.push(activeProjectName)
+  if (leafSection) scopeCrumbs.push(leafSection)
+  const crumbs = [...scopeCrumbs, ...routeCrumbs]
   // Filter the workspace-switcher project list so the dropdown stays usable even
   // when a workspace has hundreds of projects.
   const projectQuery = projectSearch.trim().toLowerCase()

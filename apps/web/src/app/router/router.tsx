@@ -15,6 +15,8 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 declare module '@tanstack/react-router' {
   interface StaticDataRouteOption {
     breadcrumb?: string
+    /** Top-nav section this route belongs to (e.g. 'Track'), rendered in the breadcrumb. */
+    section?: string
   }
 }
 
@@ -153,7 +155,7 @@ const timeboxesRoute = createRoute({
 const iterationStatusRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/iteration-status',
-  staticData: { breadcrumb: 'Iteration Status' },
+  staticData: { breadcrumb: 'Iteration Status', section: 'Track' },
   component: lazyPage(
     () => import('@/pages/iteration-status/iteration-status-page'),
     'IterationStatusPage',
@@ -212,7 +214,7 @@ const qualityDefectsRoute = createRoute({
 const teamStatusRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/team-status',
-  staticData: { breadcrumb: 'Team Status' },
+  staticData: { breadcrumb: 'Team Status', section: 'Track' },
   component: lazyPage(() => import('@/pages/team-status/team-status-page'), 'TeamStatusPage'),
 })
 
