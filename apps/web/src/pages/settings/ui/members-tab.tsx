@@ -313,14 +313,30 @@ export function MembersTab() {
   // user's effective permissions.
   const changeRole = useMutation({
     mutationFn: async ({ member, roleId }: { member: WorkspaceMember; roleId: string }) => {
+      // DELETE the old assignment, then POST the new one. If the POST fails
+      // after a successful DELETE, restore the original assignment so the user
+      // is never left with zero workspace roles (lockout). HTTP errors are
+      // checked + thrown so they surface (the old code ignored them silently).
+      const previousRoleId = member.roleId
+      const hadAssignment = !!member.roleAssignmentId
       if (member.roleAssignmentId) {
-        await apiClient.DELETE('/v1/role-assignments/{id}', {
+        const { error, response } = await apiClient.DELETE('/v1/role-assignments/{id}', {
           params: { path: { id: member.roleAssignmentId } },
         })
+        if (error) throw new Error(apiErrorMessage(error, response.status))
       }
-      await apiClient.POST('/v1/role-assignments', {
+      const { error, response } = await apiClient.POST('/v1/role-assignments', {
         body: { userId: member.userId, roleId, scopeType: 'workspace' },
       })
+      if (error) {
+        if (hadAssignment && previousRoleId) {
+          // Compensate: re-create the original assignment to avoid lockout.
+          await apiClient.POST('/v1/role-assignments', {
+            body: { userId: member.userId, roleId: previousRoleId, scopeType: 'workspace' },
+          })
+        }
+        throw new Error(apiErrorMessage(error, response.status))
+      }
     },
     onSuccess: () => notify.success(t('members.roleUpdated')),
     onError: (err) => notify.fromError(err, t('members.roleUpdateError')),

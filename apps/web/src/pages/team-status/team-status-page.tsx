@@ -131,7 +131,12 @@ export function TeamStatusPage() {
   // column `grow: true` in TEAM_STATUS_COLUMNS if that behaviour is actually wanted.
   const colStyles = table.colStyles
 
-  const { data: iterations = [] } = useIterations(projectId)
+  // Team Status measures ONE team: offer its own team-scoped iterations plus the
+  // shared (team_id IS NULL) ones — not every team's iterations in the project.
+  const { data: allIterations = [] } = useIterations(projectId)
+  const iterations = teamId
+    ? allIterations.filter((i) => i.teamId === teamId || i.teamId == null)
+    : allIterations
   const { data: members = [] } = useProjectMembers(projectId)
   const [chosenId, setChosenId] = useState<string | null>(null)
   const [stateFilter, setStateFilter] = useState<TeamTaskState | 'all'>('all')
@@ -227,10 +232,26 @@ export function TeamStatusPage() {
   const hasFilter = stateFilter !== 'all'
   const groups = hasFilter
     ? allGroups
-        .map((g) => ({
-          ...g,
-          tasks: g.tasks.filter((t) => t.state === stateFilter),
-        }))
+        .map((g) => {
+          // Recompute the group aggregates from the FILTERED tasks so the header
+          // ("N Tasks"), hours and progress match the visible rows, not the
+          // full-group server values.
+          const tasks = g.tasks.filter((t) => t.state === stateFilter)
+          const sumH = (key: 'estimateHours' | 'todoHours' | 'actualsHours') =>
+            tasks.reduce((s, t) => s + (Number(t[key]) || 0), 0)
+          const completed = tasks.filter((t) => t.state === 'Completed').length
+          return {
+            ...g,
+            tasks,
+            taskCount: tasks.length,
+            estimateHours: sumH('estimateHours'),
+            todoHours: sumH('todoHours'),
+            actualsHours: sumH('actualsHours'),
+            progressPercent: tasks.length
+              ? Math.round((completed / tasks.length) * 100)
+              : g.progressPercent,
+          }
+        })
         .filter((g) => g.tasks.length > 0)
     : allGroups
 

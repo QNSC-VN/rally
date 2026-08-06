@@ -125,8 +125,6 @@ export function StatusRow({
     // Plan Estimate is story points — an independent planning value; it does not
     // touch task To Do hours (the displayed To Do is a rollup of child tasks).
     saveNumber(raw, (n) => ({ storyPoints: n }), t('row.planEstimateUpdated'), 'Estimate')
-  const commitTodo = (raw: string) =>
-    saveNumber(raw, (n) => ({ todoHours: n }), t('row.todoHoursUpdated'), 'Todo hours')
   const commitTitle = (raw: string) => {
     const next = raw.trim()
     if (!next || next === item.title) return
@@ -415,27 +413,14 @@ export function StatusRow({
           {item.taskEstimate ?? '--'}
         </div>
 
-        {/* To Do */}
+        {/* To Do — read-only rollup of child task To Do on a Story/Defect row.
+            Editing it wrote todoHours on the parent while the cell shows the
+            rollup, so the edit was silently overwritten on refetch. Edit To Do
+            per-task on the expanded ChildTaskRow instead. */}
         <div style={{ ...colStyles.toDo, textAlign: 'right' }} className="px-0">
-          <InlineEditableCell
-            value={String(item.toDo ?? '')}
-            canEdit={canEdit}
-            fullCell
-            onCommit={commitTodo}
-            displayValue={item.toDo ?? '--'}
-            className={`text-muted-foreground ${NUMERIC_CELL_CLASS}`}
-            style={{ fontSize: 12 }}
-            inputClassName="border border-primary"
-            inputStyle={{
-              width: '100%',
-              textAlign: 'right',
-              fontSize: 11,
-              fontFamily: MONO_FONT,
-              borderRadius: 2,
-              outline: 'none',
-            }}
-            ariaLabel="Todo hours"
-          />
+          <span className={`text-muted-foreground ${NUMERIC_CELL_CLASS}`} style={{ fontSize: 12 }}>
+            {item.toDo ?? '--'}
+          </span>
         </div>
 
         {/* Tasks % complete (rollup) */}

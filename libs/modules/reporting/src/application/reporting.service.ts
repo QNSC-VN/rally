@@ -422,7 +422,7 @@ export class ReportingService {
       id: feature.id,
       itemKey: feature.itemKey,
       name: feature.name,
-      teams: [{ id: feature.teamId, name: feature.teamName ?? '—' }],
+      teams: [{ id: feature.teamId, name: feature.teamName ?? '--' }],
       issueType: 'feature',
       state: feature.state,
       childCount: allChildren.length,
@@ -446,7 +446,7 @@ export class ReportingService {
     unit: ChartUnit,
   ): ReleaseTrackingRow {
     const teams = new Map<string | null, string>();
-    for (const child of cause) teams.set(child.teamId, child.teamName ?? '—');
+    for (const child of cause) teams.set(child.teamId, child.teamName ?? '--');
     return {
       rank: index + 1,
       id: feature.id,
@@ -473,7 +473,7 @@ export class ReportingService {
       id: child.id,
       itemKey: child.itemKey,
       name: child.title,
-      teams: [{ id: child.teamId, name: child.teamName ?? '—' }],
+      teams: [{ id: child.teamId, name: child.teamName ?? '--' }],
       issueType: child.type,
       state: child.scheduleState,
       childCount: 0,
