@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   UserCheck,
-  Bell,
   Globe,
   Users,
   UsersRound,
@@ -23,7 +22,10 @@ import { TeamsTab } from './ui/teams-tab'
 import { AuditLogTab } from './ui/audit-log-tab'
 import { RolesTab } from './ui/roles-tab'
 import { IntegrationsTab } from './ui/integrations-tab'
-import { NotificationsTab } from './ui/notifications-tab'
+// NotificationsTab is intentionally NOT wired into the sidebar: Notification
+// Preferences is Future Backlog (BA decision 2026-08-06, C6). Phase 4 ships fixed
+// in-app notifications only; user-configurable preferences stay out of scope. The
+// component file is retained for when the feature returns from backlog.
 
 // ── Tab config (mirrors mockup SettingsPage.tsx) ──────────────────────────────
 
@@ -44,7 +46,7 @@ const SIDEBAR: SettingsGroup[] = [
     group: 'groups.personal',
     items: [
       { key: 'profile', label: 'nav.profile', icon: UserCheck, requires: null },
-      { key: 'notifications', label: 'nav.notifications', icon: Bell, requires: null },
+      // Notification Preferences tab removed per BA C6 (Future Backlog).
     ],
   },
   // Project-scoped settings intentionally NOT in the gear sidebar — the single
@@ -116,8 +118,6 @@ export function SettingsPage() {
   const tabEl =
     activeTab === 'profile' ? (
       <ProfileTab />
-    ) : activeTab === 'notifications' ? (
-      <NotificationsTab />
     ) : activeTab === 'members' ? (
       <MembersTab />
     ) : activeTab === 'teams' ? (
