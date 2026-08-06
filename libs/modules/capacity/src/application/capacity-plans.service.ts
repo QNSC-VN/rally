@@ -890,14 +890,15 @@ export class CapacityPlansService {
       recopied = await this.featureEstimate(actor, plan, item);
     }
 
-    // A parked/non-primary row GAINING a team becomes the primary when the Feature has no primary
-    // yet — the mirror of the park path below. Without it the quick Planned Team Assignment selector
-    // moves the row to the team but leaves primaryTeamId null, so the selector reads "Not assigned"
-    // (CP-032). Promote only when nobody else is primary, so a shared Feature keeps its owner.
+    // A PARKED row gaining a team becomes the primary when the Feature has no primary yet — the
+    // mirror of the park path below. Without it the quick Planned Team Assignment selector moves the
+    // parked row to the team but leaves primaryTeamId null, so the selector reads "Not assigned"
+    // (CP-032). Scoped to the park→team transition only: a team-to-team MOVE must not change primary
+    // status (the Feature keeps its owner). Promote only when nobody else is primary.
     const gainsTeam =
       input.teamId !== undefined &&
       input.teamId !== null &&
-      input.teamId !== allocation.teamId &&
+      allocation.teamId === null &&
       !allocation.isPrimary;
     const promoteToPrimary =
       gainsTeam && !(await this.repo.hasPrimaryAllocation(planId, allocation.portfolioItemId));
