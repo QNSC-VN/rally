@@ -33,7 +33,10 @@ permissions:
   packages: read       # pull @qnsc-vn/* from GitHub Packages (via shared libs)
 
 env:
-  NODE_VERSION: '22'
+  # 24, matching .nvmrc and the Dockerfile — see backend-ci.yml for why this was 22.
+  # Measured here too before bumping: statements 84.50 / branches 77.48 / functions 83.22 /
+  # lines 88.32 against floors of 60, so the web suite has ample headroom on 24.
+  NODE_VERSION: '24'
   PNPM_VERSION: '10.33.2'
 
 jobs:
