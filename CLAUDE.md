@@ -717,6 +717,17 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
 - **Don't roll the service from `infra-apply` instead.** Terraform's newest task
   definition carries a new _image_, so rolling onto it there would ship app code
   ahead of `Run database migrations`.
+- **REMOVING infra the running code still uses needs the deploy FIRST.** The normal
+  order is apply-then-deploy (`wait-for-infra` gates it), and for an addition that is
+  right — the code arrives after the resource exists. For a REMOVAL it is backwards,
+  and the window is not theoretical: deleting the SNS topic in #394 left the old
+  worker publishing to an ARN that no longer existed, the resilience breaker for
+  `sns.publishOutboxEvent` opened, and six `outbox_events` rows burned all five
+  attempts to `status = 'failed'` in the seconds before the new worker rolled. `failed`
+  is excluded from every relay's fetch, so those rows were stranded SILENTLY — the
+  projection looked healthy precisely because nothing was left pending. Migration 0103
+  is the cleanup; the rule is the fix. Expand/contract: ship the code that no longer
+  needs the resource, let it roll, then remove the resource in a second change.
 - **ElastiCache cluster ids and replication-group ids share one namespace.**
   `CreateReplicationGroup` fails with `InvalidParameterValue: Cannot have a
 cluster and replication group with same identifier` while a same-named cluster

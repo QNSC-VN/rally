@@ -729,6 +729,13 @@
       "when": 1787815103005,
       "tag": "0102_reproject_unaudited_outbox_events",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1787901503005,
+      "tag": "0103_recover_sns_era_failed_outbox_events",
+      "breakpoints": true
     }
   ]
 }
