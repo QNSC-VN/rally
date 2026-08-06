@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, asc, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
-import { projectMembers } from '../../../../../../db/schema/work';
+import { projectMembers, teamMembers, projectTeams } from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
 import type {
   ProjectMember,
@@ -40,7 +40,8 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
   }
 
   async listByProject(projectId: string): Promise<ProjectMember[]> {
-    const rows = await this.db
+    // Explicit project members.
+    const explicit = await this.db
       .select({
         id: projectMembers.id,
         workspaceId: projectMembers.workspaceId,
@@ -58,7 +59,45 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       .leftJoin(users, eq(projectMembers.userId, users.id))
       .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.status, 'active')))
       .orderBy(projectMembers.joinedAt, asc(projectMembers.id));
-    return rows;
+
+    // Team-derived members: a user on a team LINKED to this project is a legitimate
+    // Owner candidate on its work items even without an explicit project_members row
+    // (TS-008 / P1-DC-012 — root cause of "added a team member, then they are not in
+    // the Owner dropdown"). project_members and team_members stay separate tables
+    // (this app deliberately does not collapse project and team the way Rally does);
+    // this is read-only derivation for ownership eligibility, not a write-side sync,
+    // so it can never drift the way a hook on addTeamMember would. Explicit members
+    // win on conflict because they carry a real project role.
+    const teamDerived = await this.db
+      .select({
+        id: teamMembers.id,
+        workspaceId: teamMembers.workspaceId,
+        projectId: projectTeams.projectId,
+        userId: teamMembers.userId,
+        status: teamMembers.status,
+        joinedAt: teamMembers.joinedAt,
+        updatedAt: teamMembers.createdAt,
+        displayName: users.displayName,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+      })
+      .from(teamMembers)
+      .innerJoin(
+        projectTeams,
+        and(
+          eq(projectTeams.teamId, teamMembers.teamId),
+          eq(projectTeams.projectId, projectId),
+          eq(projectTeams.status, 'active'),
+        ),
+      )
+      .leftJoin(users, eq(teamMembers.userId, users.id))
+      .where(eq(teamMembers.status, 'active'));
+
+    const explicitUserIds = new Set(explicit.map((m) => m.userId));
+    const teamOnly = teamDerived
+      .filter((m) => !explicitUserIds.has(m.userId))
+      .map((m) => ({ ...m, roleId: null as string | null })) as unknown as ProjectMember[];
+    return [...explicit, ...teamOnly];
   }
 
   async addMember(input: AddProjectMemberInput, tx?: DbExecutor): Promise<ProjectMember> {

@@ -347,7 +347,13 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     if (filters.type) conditions.push(eq(workItems.type, filters.type));
     if (filters.statusId) conditions.push(eq(workItems.statusId, filters.statusId));
     if (filters.scheduleState) conditions.push(eq(workItems.scheduleState, filters.scheduleState));
-    if (filters.priority) conditions.push(eq(workItems.priority, filters.priority));
+    if (filters.priority) {
+      // Priority is a Defect-only attribute (Stories/Tasks carry no priority), so
+      // the Priority filter must never surface a Story even when one stores a legacy
+      // literal value. Constrain to Defects (BL-002 / SoT priority contract).
+      conditions.push(eq(workItems.priority, filters.priority));
+      conditions.push(eq(workItems.type, 'defect'));
+    }
     if (filters.assigneeId) {
       conditions.push(
         filters.assigneeId === UNASSIGNED_FILTER

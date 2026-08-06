@@ -261,26 +261,55 @@ function TeamProjectsCell({ team, options }: { team: Team; options: SelectOption
 function TeamStatusCell({ team }: { team: Team }) {
   const { t } = useTranslation('settings')
   const update = useUpdateTeam(team.id)
+  // Archive is a destructive transition (P4-SET-07): confirm before committing.
+  // Restoring an archived team (archived -> active) is not destructive, so it
+  // goes through directly — same reversible framing as the bulk-archive dialog.
+  const [pendingArchive, setPendingArchive] = useState(false)
+  function commitStatus(next: TeamStatus) {
+    void update
+      .mutateAsync({ status: next })
+      .then(() => notify.success(t('teams.statusUpdated')))
+      .catch((err: unknown) => notify.fromError(err, t('teams.statusUpdateError')))
+  }
   return (
-    <div className="min-w-0 flex-1">
-      <SearchableSelect
-        variant="cell"
-        value={team.status}
-        options={[
-          { value: 'active', label: t('teams.statusActive') },
-          { value: 'archived', label: t('teams.statusArchived') },
-        ]}
-        ariaLabel={t('teams.editStatus')}
-        onChange={(v) => {
-          const next = v as TeamStatus
-          if (next === team.status) return
-          void update
-            .mutateAsync({ status: next })
-            .then(() => notify.success(t('teams.statusUpdated')))
-            .catch((err: unknown) => notify.fromError(err, t('teams.statusUpdateError')))
+    <>
+      <div className="min-w-0 flex-1">
+        <SearchableSelect
+          variant="cell"
+          value={team.status}
+          options={[
+            { value: 'active', label: t('teams.statusActive') },
+            { value: 'archived', label: t('teams.statusArchived') },
+          ]}
+          ariaLabel={t('teams.editStatus')}
+          onChange={(v) => {
+            const next = v as TeamStatus
+            if (next === team.status) return
+            if (next === 'archived') {
+              setPendingArchive(true)
+              return
+            }
+            commitStatus(next)
+          }}
+        />
+      </div>
+      <ConfirmDialog
+        open={pendingArchive}
+        title={t('teams.archiveOneTitle', 'Archive team')}
+        message={t('teams.archiveOneConfirm', {
+          name: team.name,
+          defaultValue: 'Archive "{{name}}"? You can restore it later.',
+        })}
+        confirmLabel={t('teams.statusArchived')}
+        destructive
+        pending={update.isPending}
+        onConfirm={() => {
+          setPendingArchive(false)
+          commitStatus('archived')
         }}
+        onCancel={() => setPendingArchive(false)}
       />
-    </div>
+    </>
   )
 }
 

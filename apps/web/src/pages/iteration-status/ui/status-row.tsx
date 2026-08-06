@@ -33,7 +33,7 @@ import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
-import { MilestoneSelectCell, DefectStatusPill, TasksProgress } from './status-cells'
+import { MilestoneSelectCell, TasksProgress } from './status-cells'
 import { useWorkItemFieldCommit } from '../model/use-work-item-field-commit'
 import { NUMERIC_CELL_CLASS } from '@/shared/lib/utils'
 
@@ -467,24 +467,10 @@ export function StatusRow({
           />
         </div>
 
-        {/* Defects — child-defect count */}
-        <div
-          style={{ ...colStyles.defects, textAlign: 'center', fontSize: 12 }}
-          className="px-2 text-center"
-        >
-          {item.defectCount > 0 ? (
-            <span className="text-muted-foreground" style={{ fontWeight: 600 }}>
-              {item.defectCount}
-            </span>
-          ) : (
-            <span className="text-foreground-subtle">--</span>
-          )}
-        </div>
-
-        {/* Defect Status — open/closed summary */}
-        <div style={colStyles.defectStatus} className="flex items-center px-2">
-          <DefectStatusPill total={item.defectCount} open={item.openDefectCount} />
-        </div>
+        {/* Per-row Defects / Defect Status columns are intentionally absent: the
+            SRS anti-requirement P2-IS-FR-019 forbids a per-row Defects column, and
+            real Rally surfaces only the iteration-level defect count. That count
+            still lives in the MetricsStrip above the grid (item.defectCount). */}
 
         {/* Milestones — inline multi-select (add/remove) */}
         <div
@@ -772,8 +758,6 @@ function ChildTaskRow({
           onChange={handleOwnerChange}
         />
       </div>
-      <div style={colStyles.defects} className="px-2" />
-      <div style={colStyles.defectStatus} className="px-2" />
       <div style={colStyles.milestones} className="px-2" />
       <div
         style={colStyles.devOwner}

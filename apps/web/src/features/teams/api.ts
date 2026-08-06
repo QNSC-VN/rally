@@ -243,7 +243,10 @@ export function useRemoveTeamMember(teamId: string) {
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
-    meta: { invalidates: ['team'] },
+    // 'work-item' is invalidated because removal now nulls the member's task
+    // assignments in this team — Iteration Status, Work Item detail and Backlog
+    // all render task assignees, so they must refetch or they show a stale owner.
+    meta: { invalidates: ['team', 'work-item'] },
   })
 }
 

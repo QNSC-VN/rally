@@ -57,40 +57,6 @@ export function MilestoneSelectCell({
   )
 }
 
-/** Rally "Defect Status" summary pill derived from child-defect counts. */
-export function DefectStatusPill({ total, open }: { total: number; open: number }) {
-  const { t } = useTranslation('iteration-status')
-  if (total === 0) {
-    return (
-      <span className="text-foreground-subtle" style={{ fontSize: 12 }}>
-        {t('cells.defectNone')}
-      </span>
-    )
-  }
-  const closed = open === 0
-  const bg = closed ? BRAND.successBg : BRAND.warningBg
-  const fg = closed ? BRAND.success : BRAND.warning
-  const bd = closed ? BRAND.successBorder : BRAND.warningBorder
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        height: 18,
-        padding: '0 8px',
-        borderRadius: 9,
-        fontSize: 11,
-        fontWeight: 600,
-        backgroundColor: bg,
-        color: fg,
-        border: `1px solid ${bd}`,
-      }}
-    >
-      {closed ? t('cells.defectClosed') : t('cells.defectOpen', { value: open })}
-    </span>
-  )
-}
-
 /** Thin task-completion bar computed from Task State: completed / total tasks.
  * State-based (not To-Do hours) so it agrees with the Team Status screen. */
 export function TasksProgress({ total, done }: { total: number; done: number }) {
