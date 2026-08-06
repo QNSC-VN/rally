@@ -27,4 +27,6 @@ export const STORAGE_KEYS = {
   // Which unit the portfolio detail's "Total Accepted Children" panel opens in, set from
   // that panel's gear — Rally keeps the same choice per user.
   ACCEPTED_CHILDREN_UNIT: 'rally-accepted-children-unit',
+  // Velocity chart Last 5 / Last 10 selection, preserved across reload (BA C7).
+  VELOCITY_WINDOW: 'rally-velocity-window',
 } as const

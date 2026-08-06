@@ -26,7 +26,6 @@ import {
   type TeamTaskState,
 } from '@/features/team-status/api'
 import { Avatar } from '@/shared/ui/avatar'
-import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { ListPageHeader } from '@/shared/ui/list-page/list-page-header'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
@@ -36,13 +35,7 @@ import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useProjectMembers, type ProjectMember } from '@/features/teams/api'
-import {
-  SIMPLIFIED_STATE_CONFIG,
-  WorkItemType,
-  type SimplifiedState,
-} from '@/entities/work-item/model/types'
-import { StateStepper } from '@/entities/work-item/ui/state-stepper'
-import { type StateStep } from '@/entities/work-item/ui/state-steps'
+import { WorkItemType } from '@/entities/work-item/model/types'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { TableTotalsRow } from '@/shared/ui/table-totals-row'
@@ -141,7 +134,6 @@ export function TeamStatusPage() {
   const { data: iterations = [] } = useIterations(projectId)
   const { data: members = [] } = useProjectMembers(projectId)
   const [chosenId, setChosenId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<TeamTaskState | 'all'>('all')
   // Column sort — orders the member groups by an aggregate (Capacity / Estimate
   // / To Do / Actuals). Same click-to-sort header wiring as Iteration Status.
@@ -197,7 +189,7 @@ export function TeamStatusPage() {
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   // Snap back to the first page whenever the view identity changes.
-  const pageResetKey = `${selectedId ?? ''}|${search}|${pageSize}`
+  const pageResetKey = `${selectedId ?? ''}|${pageSize}`
   const [syncedPageKey, setSyncedPageKey] = useState(pageResetKey)
   if (syncedPageKey !== pageResetKey) {
     setSyncedPageKey(pageResetKey)
@@ -232,21 +224,12 @@ export function TeamStatusPage() {
 
   const totals = status?.totals
   const allGroups = status?.groups ?? []
-  const q = search.trim().toLowerCase()
-  const hasFilter = q !== '' || stateFilter !== 'all'
+  const hasFilter = stateFilter !== 'all'
   const groups = hasFilter
     ? allGroups
         .map((g) => ({
           ...g,
-          tasks: g.tasks.filter(
-            (t) =>
-              (stateFilter === 'all' || t.state === stateFilter) &&
-              (!q ||
-                t.title.toLowerCase().includes(q) ||
-                t.taskKey.toLowerCase().includes(q) ||
-                t.workProduct.title.toLowerCase().includes(q) ||
-                t.workProduct.key.toLowerCase().includes(q)),
-          ),
+          tasks: g.tasks.filter((t) => stateFilter === 'all' || t.state === stateFilter),
         }))
         .filter((g) => g.tasks.length > 0)
     : allGroups
@@ -288,15 +271,10 @@ export function TeamStatusPage() {
           />
         }
       />
-      {/* Shared toolbar — search + Show Fields (same PageToolbar as Iteration Status). */}
+      {/* Shared toolbar — State filter only. No local search box (BA C4: real
+          Rally Team Status uses Show Filters, not a dedicated search) and no
+          Show Fields chooser (also BA C4). Pagination + the sortable header stay. */}
       <PageToolbar
-        search={{
-          value: search,
-          onChange: setSearch,
-          placeholder: 'Search Tasks',
-          ariaLabel: 'Search tasks',
-          width: 220,
-        }}
         activeFilterCount={stateFilter !== 'all' ? 1 : 0}
         defaultFiltersOpen={stateFilter !== 'all'}
         filters={
@@ -317,7 +295,6 @@ export function TeamStatusPage() {
             </InlineSelect>
           </label>
         }
-        fields={<ColumnFieldsMenu {...table.fieldsMenuProps} />}
       />
 
       {/* Table — shared DataTableFrame owns the scroll region, header, totals,
@@ -741,15 +718,24 @@ function TaskRow({
           <span className="text-ui-xs text-foreground-faint">--</span>
         )}
       </div>
-      {/* State (P3-TS-FR-021 — inline editable) */}
+      {/* State (P3-TS-FR-021 — inline editable). A dropdown (InlineSelect) keyed on
+          exactly Defined / In-Progress / Completed, not the segmented Schedule-State
+          stepper: this is a Task State control, and the dropdown renders the full
+          labels instead of the stepper's single letters (fixes TS-005/TS-007). */}
       <div className="shrink-0 px-2" style={colStyles.state} onClick={(e) => e.stopPropagation()}>
-        <StateStepper
-          steps={TEAM_TASK_STATE_STEPS}
+        <InlineSelect
           value={task.state}
-          canEdit={canEdit}
-          onChange={handleStateChange}
-          ariaLabel="Task state"
-        />
+          aria-label="Task state"
+          disabled={!canEdit}
+          onChange={(e) => handleStateChange(e.target.value as TeamTaskState)}
+          className="w-auto"
+        >
+          {TEAM_TASK_STATES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </InlineSelect>
       </div>
       {/* Capacity (empty on task row — P3-TS-FR-024) */}
       <div className="shrink-0 px-2" style={colStyles.capacity} />
@@ -819,22 +805,3 @@ function TaskRow({
     </div>
   )
 }
-
-// ── State stepper steps ─────────────────────────────────────────────────────
-// Colors sourced from the shared SIMPLIFIED_STATE_CONFIG (same 3-bucket model
-// Iteration Status uses for its task rows), keyed off our own TeamTaskState.
-// The segmented control itself is the shared StateStepper so every grid in the
-// app renders the state column identically.
-
-const TEAM_TASK_STATE_TO_SIMPLIFIED: Record<TeamTaskState, SimplifiedState> = {
-  Defined: 'define',
-  'In-Progress': 'in_progress',
-  Completed: 'complete',
-}
-
-const TEAM_TASK_STATE_STEPS: StateStep<TeamTaskState>[] = TEAM_TASK_STATES.map((s) => ({
-  value: s,
-  label: s,
-  letter: s.charAt(0),
-  activeBg: SIMPLIFIED_STATE_CONFIG[TEAM_TASK_STATE_TO_SIMPLIFIED[s]].activeBg,
-}))
