@@ -257,12 +257,6 @@ variable "secrets_create_standalone" {
   default     = null
 }
 
-variable "dlq_max_receive_count" {
-  description = "Deliveries before a message moves to the DLQ."
-  type        = number
-  default     = 5
-}
-
 variable "rds" {
   description = "Database sizing and durability. No defaults for storage or protection — both callers state them explicitly, so neither is production-critical by accident."
   type = object({

@@ -8,8 +8,10 @@ import { AuditEvent, type AuditEventInput } from './audit-event';
  * record an administrative action.
  *
  * It writes an {@link AuditEvent} to the transactional outbox within the
- * caller's transaction; the worker relay then publishes it (SNS → SQS) to the
- * `AuditConsumer`, which persists an `audit.audit_logs` row. Because the write
+ * caller's transaction; the worker's `AuditProjectionRelay` then persists an
+ * `audit.audit_logs` row from it. (This used to travel SNS → SQS to an
+ * `AuditConsumer`; that pipeline dropped 100% of events in every deployed
+ * environment while local dev worked — see the relay's docblock.) Because the write
  * shares the mutation's transaction, the audit trail is atomic with the change.
  *
  * Usage (inside a UnitOfWork transaction):

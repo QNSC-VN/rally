@@ -75,7 +75,7 @@ export interface AuditEventInput {
 }
 
 /**
- * Domain event whose payload matches exactly what the worker `AuditConsumer`
+ * Domain event whose payload matches exactly what the worker `AuditProjectionRelay`
  * maps onto an audit log row. Written to the transactional outbox in the SAME
  * transaction as the state change, so an audit entry can never diverge from the
  * mutation it records (no dual-write, no lost events).

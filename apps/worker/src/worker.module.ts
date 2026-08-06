@@ -8,8 +8,7 @@ import { AuditModule } from '@modules/audit';
 import { NotificationsModule } from '@modules/notifications';
 import { ReportingModule } from '@modules/reporting';
 import { ScmModule } from '@modules/scm';
-import { OutboxRelayService } from './outbox/outbox-relay.service';
-import { AuditConsumer } from './consumers/audit.consumer';
+import { AuditProjectionRelay } from './audit/audit-projection.relay';
 import { SnapshotCronService } from './cron/snapshot.cron';
 import { CleanupCronService } from './cron/cleanup.cron';
 import { EmailRelayService } from './email/email-relay.service';
@@ -19,7 +18,7 @@ import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
 
 /**
  * Worker process module.
- * Imports only the bounded contexts that have queue consumers or cron jobs.
+ * Imports only the bounded contexts that have relays or cron jobs.
  * Shares all platform infrastructure (DB, cache, outbox relay) with the API process.
  */
 @Module({
@@ -41,15 +40,15 @@ import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
     ScheduleModule.forRoot(),
     PlatformModule,
 
-    // Contexts with SQS consumers / cron jobs
+    // Contexts with relays / cron jobs
     AuditModule,
     NotificationsModule,
     ReportingModule,
     ScmModule,
   ],
   providers: [
-    // Transactional outbox → SNS relay
-    OutboxRelayService,
+    // Transactional outbox → audit_logs projection
+    AuditProjectionRelay,
     // Email outbox relay → IEmailProvider
     EmailRelayService,
     // Notification outbox relay → in_app_notifications
@@ -58,8 +57,6 @@ import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
     ScmWebhookRelayService,
     // SCM backfill jobs relay → GitHub App REST → connections/changesets
     ScmBackfillRelayService,
-    // SQS long-poll consumers
-    AuditConsumer,
     // Scheduled cron jobs
     SnapshotCronService,
     CleanupCronService,

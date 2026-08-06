@@ -134,10 +134,6 @@ export const EnvSchema = z
      */
     AWS_ACCESS_KEY_ID: z.string().optional(),
     AWS_SECRET_ACCESS_KEY: z.string().optional(),
-    SNS_TOPIC_ARN: z.string().optional(),
-    SQS_AUDIT_URL: z.string().optional(),
-    SQS_REPORTING_URL: z.string().optional(),
-    SQS_SEARCH_URL: z.string().optional(),
     /** PRIVATE bucket — every permission-gated upload. Served only via presigned GET. */
     S3_ATTACHMENTS_BUCKET: z.string().default('rally-attachments'),
 

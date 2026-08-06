@@ -44,6 +44,30 @@ needs to *subtract* a permission at project scope — the additive-only limitati
 `RALLY_HARDENING_PLAN.md` R3 — the answer is to adopt opshub's shape, not to invent
 a third.
 
+## Allowed: how domain events reach their read model
+
+| | rally | opshub |
+| --- | --- | --- |
+| transport | DB-to-DB. `AuditProjectionRelay` polls `messaging.outbox_events` and writes `audit.audit_logs` | outbox row → `SendMessage` to the `outbox` SQS queue |
+| consumers | one, in-process | none yet |
+| audit writes | asynchronous, through the projection | synchronous, `AuditService` in the request path |
+
+Rally deleted its SNS topic and four SQS queues to get here, and the reason is worth
+carrying over before opshub grows a consumer: the queue leg was broken in every
+deployed environment for as long as it existed, in three independent ways at once
+(the audit queue had no subscription, the one subscription that existed filtered on
+event types the code never emits, and the module set no `raw_message_delivery`).
+Nothing alarmed, because SNS reports a publish with no matching subscription as a
+success — develop measured 12 published, 12 FilteredOut, 0 delivered, **0 failed**.
+Local dev worked throughout, because the LocalStack bootstrap subscribed all four
+queues unfiltered with raw delivery on: it was more permissive than the Terraform, so
+dev could not reproduce prod.
+
+opshub's leg is not broken in the same way — it publishes straight to a queue, no
+topic, no filter policy — but it is a **dead end**: nothing consumes `opshub-outbox`,
+so those events expire at the queue's 4-day retention. That is tracked below rather
+than here, because it is not a decision anyone made.
+
 ## Temporary: rally is ahead, opshub should catch up
 
 Tracked as work, not as divergence. Ordered plan in the convergence spec.
@@ -61,6 +85,7 @@ Tracked as work, not as divergence. Ordered plan in the convergence spec.
 | migration-upgrade CI job, expand-contract advisory, deploy gating | absent |
 | e2e depth | no Playwright, no service-level flow suite |
 | R2 storage | S3 app-buckets, while `opshub_attachments_*` R2 buckets already exist unused |
+| domain-event consumer | publishes to `opshub-outbox` and nothing reads it; messages expire unread at 4-day retention. Either add the first consumer or stop publishing — see the divergence note above for how expensive an unexercised queue leg was here |
 
 ## Temporary: opshub is ahead, rally should catch up
 
