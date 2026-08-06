@@ -102,6 +102,20 @@ variable "cache" {
     node_type = optional(string, "cache.t4g.micro")
   })
   default = {}
+
+  # `validation`, not a `check` block. A violated check emits
+  # `Warning: Check block assertion failed` and the plan exits 0 — measured on OpenTofu
+  # 1.12.3 — so a guard written that way lets exactly the state it forbids apply cleanly.
+  # A cross-variable validation exits 1.
+  validation {
+    # `cache.enabled = false` deletes the node, which is the only way to stop an idled
+    # environment paying for ElastiCache. But a task that cannot reach its cache does NOT
+    # fail loudly: REDIS_URL falls back to localhost and both the token denylist and the rate
+    # limiter fail OPEN. So the dangerous state is not "no cache" — it is "no cache, tasks
+    # running", which degrades two security controls while health checks still answer 200.
+    condition     = var.cache.enabled || (var.api.min_count == 0 && var.worker.min_count == 0)
+    error_message = "cache.enabled = false requires min_count = 0 on BOTH services. Without a cache, tasks do not fail loudly — REDIS_URL falls back to localhost and the token denylist and rate limiter fail open. Set both floors to 0, or re-enable the cache."
+  }
 }
 
 variable "platform_admin_emails" {
@@ -627,6 +641,27 @@ variable "wake_schedule" {
     writer (a scheduled autoscaling action) would NOT be, and is why this is built as
     ecs:UpdateService.
   EOT
+
+  # `validation`, not a `check` block. A violated check emits
+  # `Warning: Check block assertion failed` and the plan exits 0 — measured on OpenTofu
+  # 1.12.3 — so a guard written that way lets exactly the state it forbids apply cleanly.
+  # A cross-variable validation exits 1.
+  validation {
+    # Waking an environment that nothing stops is strictly worse than not scheduling it: it
+    # is started on a cron, never idled, and it LOOKS deliberate. The reverse is legitimate —
+    # production idles and is woken only by a release — so this is one-directional.
+    condition     = var.wake_schedule == null || var.idle_schedule != null
+    error_message = "wake_schedule is set but idle_schedule is null, so this environment would be started on a schedule and never stopped by one. Set idle_schedule as well, or remove wake_schedule. (idle without wake is fine — that is production today.)"
+  }
+
+  validation {
+    # Mirror of the cache/floors rule. That one stops an idled environment from RUNNING tasks
+    # with no cache; this stops a schedule being created that would START them — otherwise
+    # the two settings are individually valid and jointly produce the fail-open state on a
+    # timer, at 08:00, unattended.
+    condition     = var.wake_schedule == null || var.cache.enabled
+    error_message = "wake_schedule is set but cache.enabled is false. Waking would start tasks with no cache to reach: REDIS_URL falls back to localhost and both the token denylist and the rate limiter fail open. Enable the cache, or remove wake_schedule."
+  }
 }
 
 # ── Ingress (cost) ────────────────────────────────────────────────────────────

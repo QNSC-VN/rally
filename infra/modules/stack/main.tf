@@ -1279,16 +1279,37 @@ resource "aws_cloudwatch_metric_alarm" "outbox_dead_letter" {
 # `/ecs/<cluster>-<service>`. A `check` block is evaluated AFTER the resources it
 # references, so it can assert the coupling without recreating the cycle. If a
 # future ecs-service release renames the group, the collector would silently log
-# into a group nobody reads — this turns that into a loud failure instead.
-check "otel_agent_log_groups_match_services" {
-  assert {
-    condition     = local.api_log_group == module.api.log_group_name
-    error_message = "api sidecar log group '${local.api_log_group}' != '${module.api.log_group_name}'. ecs-service changed its log-group naming; update local.api_log_group."
+# into a group nobody reads. See the mechanism note below for why this is a resource
+# precondition rather than the `check` block it used to be.
+# ENFORCED as a resource precondition, not a `check` block. A violated check emits
+# `Warning: Check block assertion failed` and the plan EXITS 0 — measured on OpenTofu 1.12.3
+# — so the comment above, which promised "a loud failure instead", described something that
+# did not happen. A silent collector logging into a group nobody reads was exactly the
+# outcome it was meant to prevent.
+#
+# `terraform_data` rather than a validation because the condition reads `local.*` and module
+# outputs, which a variable validation cannot. It does not recreate the cycle the comment
+# above describes: nothing references this resource, so it sits downstream of the services
+# rather than inside the agent/service/log-group chain.
+#
+# `input` is bound to the guarded values so the precondition is re-evaluated whenever they
+# change, rather than only on first create.
+resource "terraform_data" "otel_agent_log_groups_match_services" {
+  input = {
+    api    = local.api_log_group
+    worker = local.worker_log_group
   }
 
-  assert {
-    condition     = local.worker_log_group == module.worker.log_group_name
-    error_message = "worker sidecar log group '${local.worker_log_group}' != '${module.worker.log_group_name}'. ecs-service changed its log-group naming; update local.worker_log_group."
+  lifecycle {
+    precondition {
+      condition     = local.api_log_group == module.api.log_group_name
+      error_message = "api sidecar log group '${local.api_log_group}' != '${module.api.log_group_name}'. ecs-service changed its log-group naming; update local.api_log_group."
+    }
+
+    precondition {
+      condition     = local.worker_log_group == module.worker.log_group_name
+      error_message = "worker sidecar log group '${local.worker_log_group}' != '${module.worker.log_group_name}'. ecs-service changed its log-group naming; update local.worker_log_group."
+    }
   }
 }
 
@@ -1303,17 +1324,28 @@ check "otel_agent_log_groups_match_services" {
 # Worth an assertion rather than a comment because the failure is invisible in a
 # plan and indirect at runtime — requests stall for `connectionTimeoutMillis`
 # rather than anything reporting "out of connections".
-check "db_pool_fits_instance_class" {
-  assert {
-    condition = (var.api.max_count * local.api_pool_max
-    + var.worker.max_count * local.worker_pool_max) <= local.db_pool_budget
-    error_message = join(" ", [
-      "DB pool ceiling exceeds the budget for ${var.rds.instance_class}:",
-      "api ${var.api.max_count}x${local.api_pool_max}",
-      "+ worker ${var.worker.max_count}x${local.worker_pool_max}",
-      "> ${local.db_pool_budget} usable of ${local.db_max_connections}.",
-      "Lower a max_count or move to a larger instance class.",
-    ])
+# ENFORCED as a resource precondition for the same reason as the log-group guard above: a
+# `check` block only warns. The condition reads `local.*`, so a variable validation cannot
+# express it.
+resource "terraform_data" "db_pool_fits_instance_class" {
+  input = {
+    api    = var.api.max_count * local.api_pool_max
+    worker = var.worker.max_count * local.worker_pool_max
+    budget = local.db_pool_budget
+  }
+
+  lifecycle {
+    precondition {
+      condition = (var.api.max_count * local.api_pool_max
+      + var.worker.max_count * local.worker_pool_max) <= local.db_pool_budget
+      error_message = join(" ", [
+        "DB pool ceiling exceeds the budget for ${var.rds.instance_class}:",
+        "api ${var.api.max_count}x${local.api_pool_max}",
+        "+ worker ${var.worker.max_count}x${local.worker_pool_max}",
+        "> ${local.db_pool_budget} usable of ${local.db_max_connections}.",
+        "Lower a max_count or move to a larger instance class.",
+      ])
+    }
   }
 }
 
@@ -1423,21 +1455,12 @@ resource "aws_scheduler_schedule" "rds_stop" {
 # unreachable. So the dangerous state is not "no cache" — it is "no cache, tasks
 # running", which degrades two security controls silently.
 #
-# Asserting it here makes that combination impossible to reach through Terraform: the
-# plan fails instead of producing an environment that looks healthy. Waking an idled
-# environment is therefore one coherent change — cache back on, floors back to 1 —
-# rather than two that can be applied in the wrong order.
-check "idled_environment_runs_no_tasks" {
-  assert {
-    condition = var.cache.enabled || (var.api.min_count == 0 && var.worker.min_count == 0)
-    error_message = join(" ", [
-      "cache.enabled = false requires min_count = 0 on BOTH services (api is",
-      "${var.api.min_count}, worker is ${var.worker.min_count}).",
-      "Without a cache, tasks do not fail — REDIS_URL falls back to localhost and the",
-      "token denylist and rate limiter fail open. Set the floors to 0, or re-enable the cache.",
-    ])
-  }
-}
+# Enforced by a `validation` block on `var.cache` in variables.tf. It WAS a `check` here,
+# and the comment claimed it made the combination "impossible to reach through Terraform:
+# the plan fails". That was false — a violated check warns and the plan exits 0 — so the
+# state that silently degrades two security controls would have applied cleanly. Waking an
+# idled environment is one coherent change: cache back on, floors back to 1.
+
 
 # Scale the services to zero on the same cadence as the database stop.
 #
@@ -1619,16 +1642,7 @@ resource "aws_scheduler_schedule" "ecs_scale_up" {
 # cron and never stopped by anything — strictly worse than not scheduling it at all,
 # because it also looks deliberate. The reverse IS legitimate (production idles before
 # go-live and is woken only by a release), so this is asserted in one direction only.
-check "wake_requires_idle" {
-  assert {
-    condition = var.wake_schedule == null || var.idle_schedule != null
-    error_message = join(" ", [
-      "wake_schedule is set but idle_schedule is null, so this environment would be",
-      "started on a schedule and never stopped by one. Set idle_schedule as well, or",
-      "remove wake_schedule. (idle without wake is fine — that is production today.)",
-    ])
-  }
-}
+
 
 # ── Guard: a cache-less environment must not be woken ─────────────────────────
 # The mirror of `idled_environment_runs_no_tasks` above. That check stops an idled
@@ -1637,13 +1651,4 @@ check "wake_requires_idle" {
 # and jointly produce the exact state the other check exists to prevent — tasks up,
 # no cache, REDIS_URL falling back to localhost, denylist and rate limiter failing
 # open — except on a timer, at 08:00, with nobody watching.
-check "wake_requires_cache" {
-  assert {
-    condition = var.wake_schedule == null || var.cache.enabled
-    error_message = join(" ", [
-      "wake_schedule is set but cache.enabled is false. Waking would start tasks with no",
-      "cache to reach: REDIS_URL falls back to localhost and both the token denylist and",
-      "the rate limiter fail open. Enable the cache, or remove wake_schedule.",
-    ])
-  }
-}
+
