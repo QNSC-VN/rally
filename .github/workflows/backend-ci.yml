@@ -33,7 +33,20 @@ permissions:
   packages: read       # pull @qnsc-vn/* from GitHub Packages
 
 env:
-  NODE_VERSION: '22'
+  # 24, matching .nvmrc and the Dockerfile's `ARG NODE_VERSION=24`. Nothing overrides that
+  # ARG, so the shipped image runs 24 — while CI ran 22, meaning no suite ever executed on
+  # the version production uses. A Node-24-only failure would have had no failing test to
+  # point at.
+  #
+  # Node 24's V8 coverage instrumentation counts functions differently, so the bump was
+  # MEASURED against the thresholds below before being made rather than assumed safe. On 24:
+  # statements 82.30 / branches 77.09 / functions 81.49 / lines 82.88, against floors of
+  # 81 / 76 / 80 / 82 — all four clear, but by only 0.88 to 1.49 points.
+  #
+  # That thin margin is the ratchet working as intended (floors just under actual), not a
+  # warning — but it does mean a change that drops real coverage by a point turns Tests red
+  # rather than drifting. Raise the floors with coverage, never the reverse.
+  NODE_VERSION: '24'
   PNPM_VERSION: '10.33.2'
 
 jobs:
