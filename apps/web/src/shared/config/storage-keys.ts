@@ -29,4 +29,10 @@ export const STORAGE_KEYS = {
   ACCEPTED_CHILDREN_UNIT: 'rally-accepted-children-unit',
   // Velocity chart Last 5 / Last 10 selection, preserved across reload (BA C7).
   VELOCITY_WINDOW: 'rally-velocity-window',
+  // Release Tracking view selections, preserved across reload (P6-COM-006).
+  RELEASE_TRACKING_UNIT: 'rally-rt-unit',
+  RELEASE_TRACKING_BUCKET: 'rally-rt-bucket',
+  RELEASE_TRACKING_RELEASE: 'rally-rt-release',
+  // Active report type on the Reports page, preserved across reload (P6-COM-006).
+  REPORTS_TYPE: 'rally-reports-type',
 } as const
