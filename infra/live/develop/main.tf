@@ -177,9 +177,14 @@ module "stack" {
   // weekly stop would leave it running most of the week; 21:00 local puts it down after
   // the working day and the next deploy brings it back.
   //
-  // There is no matching START schedule on purpose. The deploy pipeline is the wake
-  // signal, so develop is up exactly on the days it is being changed. Adding a morning
-  // start would pay for the days nobody touches it — which is most of them.
+  // THERE IS NOW A MATCHING START SCHEDULE — see `wake_schedule` below. This comment
+  // used to say there was none "on purpose", on the grounds that the deploy pipeline is
+  // the wake signal and a morning start would pay for the days nobody touches develop.
+  // The first half is still true and is why the wake is WEEKDAYS ONLY. The second half
+  // was wrong about which days matter: it counted the days develop is CHANGED and
+  // ignored the days it is USED. A QA session on a morning nobody merged found the
+  // environment stopped, which reads as an outage, and RDS takes ~4-5 minutes to start,
+  // so it cannot be waited out.
   //
   // TWO PASSES, 21:00 AND 03:00 — because ONE was not holding. Measured 2026-08-02:
   // develop's RDS published CPU datapoints for every hour of every night across seven
@@ -199,6 +204,24 @@ module "stack" {
   // running all night. If deploys routinely land between 03:00 and 09:00, add a third
   // pass rather than moving this one.
   idle_schedule = "cron(0 21,3 * * ? *)"
+
+  // 08:00 local, MON-FRI. The weekday restriction is the entire cost control here: a
+  // 7-day wake would pay for two days a week nobody works, which is a large share of
+  // what idling develop was worth in the first place.
+  //
+  // 08:00 rather than 09:00 because RDS takes ~4-5 minutes to reach `available` and the
+  // API tasks then need to pass a readiness check, so the environment is serving by
+  // roughly 08:10 — before the working day rather than during its first minutes.
+  //
+  // This does NOT conflict with the 03:00 stop above. 03:00 fires while develop is
+  // already down (a no-op, InvalidDBInstanceState, deliberately not retried) and 08:00
+  // brings it up five hours later. The 21:00 stop then ends the day. A deploy landing at
+  // any hour still wakes it independently — that path is unchanged.
+  //
+  // Expected effect: develop moves from "up on merge days only" to ~13h/day on
+  // weekdays and 0h at weekends, so this BUYS availability rather than saving money.
+  // Weekends and the 21:00-08:00 window are where the saving now comes from.
+  wake_schedule = "cron(0 8 ? * MON-FRI *)"
 
   // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
   // credential can be injected. This is a FIX, not hardening: the primary token
