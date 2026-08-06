@@ -163,6 +163,17 @@ export function IterationRow({
         />
       </div>
 
+      {/* Task Estimate — read-only rollup of child task estimate hours (IT-001). */}
+      <div
+        style={colStyleFor('taskEstimate', { flexShrink: 0 })}
+        className="px-0 text-right"
+        onClick={stop}
+      >
+        <span className="block font-mono text-muted-foreground tabular-nums">
+          {it.taskEstimate ?? '--'}
+        </span>
+      </div>
+
       {/* State — same SearchableSelect enum-dropdown as Iteration Status / Backlog
           Flow State. Editable: the backend routes the change through the gated
           Commit / Accept lifecycle actions and rejects invalid transitions. */}

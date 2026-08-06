@@ -17,6 +17,11 @@ export interface IIterationRepository {
     filters: IterationFilters,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Iteration>>;
+  /** Sum of child task estimate_hours per iteration (IT-001 rollup). */
+  taskEstimatesByIteration(
+    workspaceId: string,
+    iterationIds: string[],
+  ): Promise<Map<string, number>>;
   /**
    * Compact list for the assignment-options picker. Returns only
    * `planning` and `committed` iterations; never paginated.

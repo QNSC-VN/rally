@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
-import { iterations } from '../../../../../../db/schema/work';
+import { iterations, tasks } from '../../../../../../db/schema/work';
 import type {
   Iteration,
   IterationOption,
@@ -52,6 +52,33 @@ export class IterationDrizzleRepository implements IIterationRepository {
       .limit(limit + 1);
 
     return buildPageResult(rows as Iteration[], limit, (i) => [i.createdAt.toISOString()]);
+  }
+
+  /**
+   * Sum of child task estimate_hours per iteration (IT-001). One grouped query
+   * over the iteration ids on the current page — avoids a per-row rollup.
+   * Tasks carry their parent's iteration (mirror), so iteration_id is the scope.
+   */
+  async taskEstimatesByIteration(
+    workspaceId: string,
+    iterationIds: string[],
+  ): Promise<Map<string, number>> {
+    if (iterationIds.length === 0) return new Map();
+    const rows = await this.db
+      .select({
+        iterationId: tasks.iterationId,
+        total: sql<string>`coalesce(sum(${tasks.estimateHours}), 0)`,
+      })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.workspaceId, workspaceId),
+          inArray(tasks.iterationId, iterationIds),
+          isNull(tasks.deletedAt),
+        ),
+      )
+      .groupBy(tasks.iterationId);
+    return new Map(rows.map((r) => [r.iterationId as string, Number(r.total)]));
   }
 
   async nextKeyNumber(projectId: string, workspaceId: string): Promise<number> {

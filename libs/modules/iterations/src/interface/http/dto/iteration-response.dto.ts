@@ -14,6 +14,9 @@ export const IterationResponseSchema = z.object({
   notes: z.string().nullable(),
   state: z.enum(iterationStateEnum.enumValues),
   plannedVelocity: z.number().int().nullable(),
+  // Sum of child task estimate_hours for the iteration (IT-001). Optional: only
+  // the list endpoint enriches it, so other iteration responses may omit it.
+  taskEstimate: z.number().optional(),
   startDate: z.string().nullable().describe('YYYY-MM-DD'),
   endDate: z.string().nullable().describe('YYYY-MM-DD'),
   completedAt: z.string().datetime().nullable(),

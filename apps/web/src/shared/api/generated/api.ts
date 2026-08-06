@@ -3611,6 +3611,7 @@ export interface components {
       /** @enum {string} */
       state: 'planning' | 'committed' | 'accepted'
       plannedVelocity: number | null
+      taskEstimate?: number
       /** @description YYYY-MM-DD */
       startDate: string | null
       /** @description YYYY-MM-DD */

@@ -13,6 +13,8 @@ export interface Iteration {
   notes: string | null;
   state: IterationState;
   plannedVelocity: number | null;
+  // Sum of child task estimate_hours (IT-001). Optional: only enriched on list.
+  taskEstimate?: number;
   startDate: string | null; // YYYY-MM-DD
   endDate: string | null; // YYYY-MM-DD
   completedAt: Date | null;

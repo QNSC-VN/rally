@@ -43,6 +43,7 @@ describe('IterationsService', () => {
   let repo: {
     findById: ReturnType<typeof vi.fn>;
     listByProject: ReturnType<typeof vi.fn>;
+    taskEstimatesByIteration: ReturnType<typeof vi.fn>;
     listAssignmentOptions: ReturnType<typeof vi.fn>;
     nextKeyNumber: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
@@ -79,6 +80,7 @@ describe('IterationsService', () => {
     repo = {
       findById: vi.fn(),
       listByProject: vi.fn(),
+      taskEstimatesByIteration: vi.fn().mockResolvedValue(new Map()),
       listAssignmentOptions: vi.fn().mockResolvedValue([]),
       nextKeyNumber: vi.fn().mockResolvedValue(1),
       create: vi.fn().mockImplementation((i) => Promise.resolve(mockIteration(i))),
