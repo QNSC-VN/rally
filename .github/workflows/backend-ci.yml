@@ -10,7 +10,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, edited]
+    # NOT `edited`. That action exists only for the PR-title check, which now lives in
+    # pr-title.yml — and listening for it here was actively harmful: combined with
+    # `cancel-in-progress: true` below and the `if: action != 'edited'` guards this workflow
+    # used to carry, editing a PR title or body CANCELLED the in-flight real run and replaced
+    # it with one where every heavy job skipped. GitHub counts a skipped required check as
+    # passing, so the PR went green having executed nothing. Every run of this workflow is now
+    # a real one.
+    types: [opened, synchronize, reopened]
 
 concurrency:
   group: ci-backend-${{ github.ref }}
@@ -18,7 +25,11 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: read  # required by amannn/action-semantic-pull-request
+  # No longer for the semantic-PR action — that moved to pr-title.yml, which declares its
+  # own. Kept because it is read-only and removing a permission is a bigger claim than
+  # this change is making: nothing here needs it today (the openapi job reads
+  # `github.event.pull_request.base.sha` straight off the payload, which needs no grant).
+  pull-requests: read
   packages: read       # pull @qnsc-vn/* from GitHub Packages
 
 env:
@@ -31,9 +42,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   quality:
     name: Lint & typecheck
-    # A PR title/body edit fires pull_request:edited — only pr-title needs that.
-    # Skip the heavy gates on edited; build/openapi cascade-skip via `needs`.
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -67,7 +75,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   test:
     name: Tests
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -235,7 +242,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   migrations:
     name: Migration upgrade path
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -502,39 +508,5 @@ jobs:
           current-spec-path: openapi.json
           base-spec-path: base-spec/openapi.json
           fail-on-breaking: "true"
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # 5. PR title lint — enforce Conventional Commits format on the PR title.
-  #    Release Please reads PR titles to generate changelogs, so this gate
-  #    ensures the title is machine-readable before the PR can merge.
-  # ─────────────────────────────────────────────────────────────────────────
-  pr-title:
-    name: PR title (conventional commits)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50  # v6
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          types: |
-            feat
-            fix
-            chore
-            docs
-            style
-            refactor
-            perf
-            security
-            test
-            build
-            ci
-            deps
-            revert
-          # Require scope for security and feat changes — e.g. feat(auth): ...
-          requireScope: false
-          subjectPattern: ^(?![A-Z]).+$
-          subjectPatternError: |
-            The subject "{subject}" must start with a lowercase letter.
 
   # Security scans (Trivy, CodeQL) → security.yml

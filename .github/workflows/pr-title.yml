@@ -1,0 +1,72 @@
+# =============================================================================
+# PR title — Conventional Commits, checked on its own.
+#
+# This job used to live inside BOTH Backend · CI and Web · CI, which caused two
+# problems it is extracted to fix.
+#
+# 1. A FALSE GREEN, and the serious one. Those workflows listened for the `edited`
+#    pull_request action purely so this check would re-run when a title changed. But
+#    they also set `cancel-in-progress: true` and guarded every heavy job with
+#    `if: github.event.action != 'edited'`. So editing a PR title or body CANCELLED the
+#    real run and replaced it with a run in which Tests, Lint, Migration, Docker and
+#    OpenAPI all skipped — and GitHub counts a skipped required check as PASSING. The
+#    PR showed all-green having executed nothing. Observed three times on opshub #110.
+#
+# 2. The check ran TWICE per PR, once from each workflow, with byte-identical config.
+#
+# Both go away by giving the check its own workflow: it is the only thing that needs
+# `edited`, and it needs no repo checkout, so it costs seconds. The two CI workflows now
+# listen only for opened/synchronize/reopened, which means every run they produce is a
+# real one.
+#
+# The check NAME is unchanged — "PR title (conventional commits)" — so any branch
+# protection rule requiring it keeps matching, since GitHub matches required checks by
+# name rather than by workflow.
+#
+# Release Please derives the CHANGELOG from PR titles, so a malformed title is a release
+# defect, not a style nit.
+# =============================================================================
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  # Deliberately NOT the ci-backend/ci-web group. Sharing one is what let a title edit
+  # cancel a test run.
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read # required by amannn/action-semantic-pull-request
+
+jobs:
+  pr-title:
+    name: PR title (conventional commits)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50  # v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            chore
+            docs
+            style
+            refactor
+            perf
+            security
+            test
+            build
+            ci
+            deps
+            revert
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject "{subject}" must start with a lowercase letter.
