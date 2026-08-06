@@ -8,7 +8,15 @@ import { type Iteration } from '@/features/iterations/api'
  * carry (FRONTEND_COMPONENT_AUDIT §5.2). `id` is the leading identifier column
  * (a click-to-open key link), matching Iteration Status / real Rally.
  */
-export type ColKey = 'id' | 'name' | 'theme' | 'startDate' | 'endDate' | 'plannedVelocity' | 'state'
+export type ColKey =
+  | 'id'
+  | 'name'
+  | 'theme'
+  | 'startDate'
+  | 'endDate'
+  | 'plannedVelocity'
+  | 'taskEstimate'
+  | 'state'
 
 export const ITERATIONS_COLUMNS: ColumnSpec<Iteration, unknown, ColKey>[] = [
   { key: 'id', label: 'ID', defaultWidth: 84, minWidth: 60, locked: true },
@@ -31,6 +39,14 @@ export const ITERATIONS_COLUMNS: ColumnSpec<Iteration, unknown, ColKey>[] = [
     minWidth: 80,
     align: 'right',
     sortCol: 'plannedVelocity',
+  },
+  {
+    key: 'taskEstimate',
+    label: 'Task Estimate',
+    defaultWidth: 120,
+    minWidth: 80,
+    align: 'right',
+    sortCol: 'taskEstimate',
   },
   { key: 'state', label: 'State', defaultWidth: 120, minWidth: 80, sortCol: 'state' },
 ]

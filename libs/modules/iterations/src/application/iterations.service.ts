@@ -86,7 +86,21 @@ export class IterationsService {
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Iteration>> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
-    return this.iterationRepo.listByProject(projectId, actor.workspaceId, filters, args);
+    const page = await this.iterationRepo.listByProject(
+      projectId,
+      actor.workspaceId,
+      filters,
+      args,
+    );
+    // Enrich each iteration with its task-estimate rollup (IT-001).
+    const estimates = await this.iterationRepo.taskEstimatesByIteration(
+      actor.workspaceId,
+      page.data.map((i) => i.id),
+    );
+    return {
+      ...page,
+      data: page.data.map((i) => ({ ...i, taskEstimate: estimates.get(i.id) ?? 0 })),
+    };
   }
 
   // ── Create ────────────────────────────────────────────────────────────────
