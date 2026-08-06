@@ -48,8 +48,8 @@ a third.
 
 | | rally | opshub |
 | --- | --- | --- |
-| transport | DB-to-DB. `AuditProjectionRelay` polls `messaging.outbox_events` and writes `audit.audit_logs` | outbox row → `SendMessage` to the `outbox` SQS queue |
-| consumers | one, in-process | none yet |
+| transport | DB-to-DB. `AuditProjectionRelay` polls `messaging.outbox_events` and writes `audit.audit_logs` | none — the generic domain-event outbox was removed (opshub migration 0013) |
+| consumers | one, in-process | n/a |
 | audit writes | asynchronous, through the projection | synchronous, `AuditService` in the request path |
 
 Rally deleted its SNS topic and four SQS queues to get here, and the reason is worth
@@ -63,10 +63,21 @@ Local dev worked throughout, because the LocalStack bootstrap subscribed all fou
 queues unfiltered with raw delivery on: it was more permissive than the Terraform, so
 dev could not reproduce prod.
 
-opshub's leg is not broken in the same way — it publishes straight to a queue, no
-topic, no filter policy — but it is a **dead end**: nothing consumes `opshub-outbox`,
-so those events expire at the queue's 4-day retention. That is tracked below rather
-than here, because it is not a decision anyone made.
+**opshub reached the same conclusion from the other end and deleted its leg outright**
+(opshub #123, migration 0013). Its `outbox_events` published to an SQS queue nothing
+consumed, and nothing read the table either — every `enqueue` call sat immediately
+beside a `webhookEnqueue.fanout` for the same event and payload, so the outbox copy was
+a second write of something already delivered. Notifications, email, webhooks and audit
+each had their own path with a real reader, which is why nobody missed it.
+
+So neither product now has a generic domain-event bus. rally has a DB-to-DB projection
+with one reader; opshub has three purpose-built outboxes, each with a consumer. Both
+kept the shared `AbstractOutboxRelay`, its backoff and metrics, and the
+`outboxDeadLetter` alarm.
+
+**If either product grows a real cross-product or external consumer, build the leg WITH
+the consumer and an end-to-end test in the same change.** The failure above did not come
+from a missing feature; it came from a pipeline whose middle nothing exercised.
 
 ## Temporary: rally is ahead, opshub should catch up
 
@@ -85,7 +96,6 @@ Tracked as work, not as divergence. Ordered plan in the convergence spec.
 | migration-upgrade CI job, expand-contract advisory, deploy gating | absent |
 | e2e depth | no Playwright, no service-level flow suite |
 | R2 storage | S3 app-buckets, while `opshub_attachments_*` R2 buckets already exist unused |
-| domain-event consumer | publishes to `opshub-outbox` and nothing reads it; messages expire unread at 4-day retention. Either add the first consumer or stop publishing — see the divergence note above for how expensive an unexercised queue leg was here |
 
 ## Temporary: opshub is ahead, rally should catch up
 
