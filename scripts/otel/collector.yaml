@@ -1,0 +1,46 @@
+# OpenTelemetry Collector — LOCAL DEVELOPMENT ONLY.
+#
+# Exists so the instrumentation in this repo is actually exercised. `OTEL_ENABLED` was
+# false everywhere and no collector existed, so every `@Span` and every QueueMetrics
+# recording compiled, ran, and emitted into nothing — correct code that could rot without
+# a single test or reader noticing.
+#
+# Deployed environments do NOT use this file. There, `OTEL_ENABLED` is derived from the
+# otel-agent module in infra/ and stays off until that is turned on deliberately.
+receivers:
+  otlp:
+    protocols:
+      # http only: @qnsc-vn/observability posts to ${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces
+      # and /v1/metrics over OTLP-HTTP, so a gRPC listener would be an unused port.
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+
+exporters:
+  # Spans and metrics land in this container's log, so `docker logs rally-otel` is the
+  # whole debugging story — no UI to run, no volume to mount.
+  debug:
+    verbosity: detailed
+  # Metrics also served in Prometheus text format, which makes them assertable:
+  # `curl -s localhost:8889/metrics | grep queue_` answers "is this instrument real?"
+  # without reading any code.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  # NO `telemetry.logs.level` override. The `debug` exporter writes through the collector's
+  # own logger at INFO, so setting this to `warn` silences the exported spans and metrics
+  # as well — the container log goes completely empty, including the startup banner, and
+  # the collector looks broken while it is in fact working. Verified the hard way.
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, prometheus]
