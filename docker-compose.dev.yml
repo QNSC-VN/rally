@@ -55,6 +55,23 @@ services:
       retries: 10
       start_period: 15s
 
+  otel:
+    image: otel/opentelemetry-collector-contrib:0.140.1
+    container_name: rally-otel
+    command: ['--config=/etc/otel/collector.yaml']
+    volumes:
+      - ./scripts/otel/collector.yaml:/etc/otel/collector.yaml:ro
+    ports:
+      # DEFAULT ports here; opshub offsets to 4319/8890 so both stacks can run at once.
+      - '4318:4318'
+      - '8889:8889'
+    healthcheck:
+      # The image has no shell and no curl, so run the binary's own subcommand instead.
+      test: ['CMD', '/otelcol-contrib', 'components']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
   localstack_data:
