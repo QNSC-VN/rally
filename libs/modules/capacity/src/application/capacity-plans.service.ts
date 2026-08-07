@@ -466,6 +466,8 @@ export class CapacityPlansService {
 
     const skipped: PublishSkip[] = [];
     let featuresUpdated = 0;
+    // A split Feature has one allocation row per team; count each Feature once.
+    const writtenFeatures = new Set<string>();
 
     if (options.updateFields) {
       // Read once, outside the loop: every Feature takes the same release decision.
@@ -518,7 +520,10 @@ export class CapacityPlansService {
             });
             continue;
           }
-          featuresUpdated += 1;
+          if (!writtenFeatures.has(row.portfolioItemId)) {
+            writtenFeatures.add(row.portfolioItemId);
+            featuresUpdated += 1;
+          }
 
           if (ownsOtherRelease) {
             // Reported ahead of the window mismatch: this Feature's Release was left alone because it
