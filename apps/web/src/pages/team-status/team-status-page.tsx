@@ -237,7 +237,7 @@ export function TeamStatusPage() {
           // ("N Tasks"), hours and progress match the visible rows, not the
           // full-group server values.
           const tasks = g.tasks.filter((t) => t.state === stateFilter)
-          const sumH = (key: 'estimateHours' | 'todoHours' | 'actualsHours') =>
+          const sumH = (key: 'estimateHours' | 'todoHours' | 'actualHours') =>
             tasks.reduce((s, t) => s + (Number(t[key]) || 0), 0)
           const completed = tasks.filter((t) => t.state === 'Completed').length
           return {
@@ -246,7 +246,7 @@ export function TeamStatusPage() {
             taskCount: tasks.length,
             estimateHours: sumH('estimateHours'),
             todoHours: sumH('todoHours'),
-            actualsHours: sumH('actualsHours'),
+            actualHours: sumH('actualHours'),
             progressPercent: tasks.length
               ? Math.round((completed / tasks.length) * 100)
               : g.progressPercent,
