@@ -235,14 +235,26 @@ export function AllocateFeatureModal({
           continue
         }
         const teamId = row.teamId
-        changes.push(() =>
-          allocate.mutateAsync({
+        changes.push(async () => {
+          const planAfter = await allocate.mutateAsync({
             id: plan.id,
             portfolioItemId,
             teamId,
             ...(value === null ? {} : { value }),
-          }),
-        )
+          })
+          // If the planner marked this NEW row primary, promote it now. The
+          // service only auto-promotes when no primary exists, so a Feature that
+          // already had a primary would keep the old one and silently drop this
+          // pick. setPrimary demotes the previous holder server-side in one tx.
+          if (row.isPrimary) {
+            const created = planAfter.allocations?.find(
+              (a) => a.portfolioItemId === portfolioItemId && a.teamId === teamId,
+            )
+            if (created) {
+              await setPrimary.mutateAsync({ id: plan.id, allocationId: created.id })
+            }
+          }
+        })
         continue
       }
 
