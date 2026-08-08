@@ -28,6 +28,7 @@ import {
   PermissionCatalogResponseDto,
 } from './dto/access-response.dto';
 import type { SystemRole, UserRoleAssignment } from '../../domain/access.types';
+import { SelfScoped, SharedRead } from './policy.guard';
 
 function toRoleDto(r: SystemRole): RoleResponseDto {
   return {
@@ -64,6 +65,7 @@ export class AccessController {
   // ── Roles ──────────────────────────────────────────────────────────────────
 
   @Get('roles')
+  @SharedRead('the role catalogue is workspace reference data every member sees in pickers')
   @ApiOperation({ summary: 'List all roles available to the workspace' })
   @ApiResponse({ status: 200, type: [RoleResponseDto] })
   @ApiCommonErrors(401)
@@ -181,6 +183,7 @@ export class AccessController {
   // ── Project-scoped membership ────────────────────────────────────────────────
 
   @Get('projects/:projectId/my-permissions')
+  @SelfScoped("resolves the caller's own effective permissions")
   @ApiOperation({
     summary: "The current user's effective permissions for a project",
     description:

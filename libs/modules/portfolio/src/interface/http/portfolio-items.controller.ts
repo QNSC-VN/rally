@@ -3,7 +3,7 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
-import { AuthPolicy, RequirePermission } from '@modules/access';
+import { AuthPolicy, RequirePermission, AuthorizedInService } from '@modules/access';
 import {
   PortfolioItemsService,
   type PortfolioItemDetail,
@@ -142,6 +142,10 @@ export class PortfolioItemsController {
   constructor(private readonly service: PortfolioItemsService) {}
 
   @Get()
+  @AuthorizedInService(
+    'cross-project list scoped by listReadableProjectIds',
+    'project-authz.e2e.spec.ts',
+  )
   // DELIBERATELY UNDECORATED — authorization is resolve-then-check, in the service.
   //
   // `portfolio:view` is PROJECT-tier, and this route's `projectId` is optional because

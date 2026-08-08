@@ -49,6 +49,7 @@ export class ScmWebhookController {
 
   @Public()
   @Post('webhook/:provider')
+  @Public()
   @HttpCode(202)
   async receive(
     @Param('provider') providerParam: string,

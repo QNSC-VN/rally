@@ -25,6 +25,41 @@ import {
 } from '../../application/project-scope.resolver';
 
 export const POLICY_KEY = 'policy';
+export const AUTHZ_MODE_KEY = 'authzMode';
+
+/**
+ * THE MODE DECORATORS DECLARE, THEY DO NOT MOUNT GUARDS — unlike `@RequirePermission` and
+ * `@AuthPolicy`. Mounting `PolicyGuard` from them broke DI: it needs `AccessService`, and a
+ * controller like `NotificationsController` lives in a module that does not import
+ * `AccessModule` (`Nest can't resolve dependencies of the PolicyGuard ... in the
+ * NotificationsModule`). opshub does not hit this because its PlatformModule is `@Global`.
+ *
+ * That is the correct shape anyway: these say HOW a route is authorized, and the enforcement is
+ * `assertEveryRouteDeclaresAuthz` refusing to boot plus whatever guard the controller already
+ * mounts. Every one of these routes sits under a class-level `@Auth()` or `@AuthPolicy()`, so
+ * authentication is unaffected.
+ */
+
+/**
+ * How a route is authorized when it carries no permission code.
+ *
+ * These exist so "no `@RequirePermission`" stops being indistinguishable from "nobody decided".
+ * All three are real and unavoidable — see the decorators below — but each used to be expressed
+ * by the ABSENCE of a decorator, which is also what a forgotten one looks like. 45 route
+ * handlers were in that state, and `assertEveryRouteDeclaresAuthz` now refuses to boot until
+ * every one of them says which it is.
+ *
+ * Ported from opshub (QNSC-VN/opshub#132), where the same fail-open existed.
+ */
+export type AuthzMode =
+  /** The subject IS the caller; there is no cross-user access to authorize. */
+  | { mode: 'self-scoped'; reason: string }
+  /** Non-user-specific workspace reference data any member may read. */
+  | { mode: 'shared-read'; reason: string }
+  /** Decided at run time inside the service, because no static descriptor can express it. */
+  | { mode: 'in-service'; reason: string; pinnedBy: string }
+  /** A KNOWN missing check, declared so it is visible and counted. */
+  | { mode: 'gap'; reason: string };
 
 type IdSource = 'param' | 'query' | 'body';
 
@@ -84,7 +119,25 @@ export class PolicyGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!meta) return true;
+
+    if (!meta) {
+      // An explicitly declared mode needs no permission code: the declaration IS the decision,
+      // and the narrowing that makes it true lives in the service.
+      const declared = this.reflector.getAllAndOverride<AuthzMode>(AUTHZ_MODE_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+      if (declared) return true;
+
+      // Nothing declared. This used to `return true`, so a handler nobody decorated was allowed
+      // to every authenticated caller — JwtAuthGuard proved WHO, and nothing checked WHETHER.
+      this.logger.error(
+        { controller: context.getClass().name, handler: context.getHandler().name },
+        'Route declares no authorization (@RequirePermission / @SelfScoped / ' +
+          '@AuthorizedInService / @AuthzGap / @Public) — denying',
+      );
+      throw this.deny();
+    }
 
     const request = context.switchToHttp().getRequest<{
       user?: JwtPayload;
@@ -169,3 +222,64 @@ export class PolicyGuard implements CanActivate {
  */
 export const AuthPolicy = () =>
   applyDecorators(UseGuards(JwtAuthGuard, PolicyGuard), ApiBearerAuth('access-token'));
+
+/**
+ * Authenticated, and the subject IS the caller — so there is nothing to authorize beyond
+ * identity: `me/*`, the notification list, a user's own permissions.
+ *
+ * NOT a way to skip authorization. It is a claim that the handler cannot reach another user's
+ * data, and it holds only while the service keys its reads and writes off `actor.sub`. A route
+ * that gained a user id parameter would silently stop qualifying, which is why the count of
+ * these is ratcheted — widening the set is a decision someone makes out loud.
+ */
+export const SelfScoped = (reason: string) =>
+  applyDecorators(
+    SetMetadata(AUTHZ_MODE_KEY, { mode: 'self-scoped', reason } satisfies AuthzMode),
+    ApiBearerAuth('access-token'),
+  );
+
+/**
+ * Authorization is resolved at RUN TIME inside the service, because no static descriptor can
+ * express it. The real shapes in this codebase:
+ *
+ *   - A cross-project LIST scoped by `AccessService.listReadableProjectIds`, whose `null`
+ *     sentinel means UNRESTRICTED and `[]` means nothing — a distinction a decorator cannot
+ *     carry.
+ *   - `work-items/by-key` and `PATCH work-items/reorder`, where the item key is workspace-unique
+ *     so the owning project is unknown until the row loads (resolve-then-check).
+ *   - Author-only writes, e.g. editing your own comment.
+ *
+ * `pinnedBy` names the test asserting BOTH directions. Required, because this mode moves the
+ * decision somewhere a reviewer cannot see from the route.
+ */
+export const AuthorizedInService = (reason: string, pinnedBy: string) =>
+  applyDecorators(
+    SetMetadata(AUTHZ_MODE_KEY, { mode: 'in-service', reason, pinnedBy } satisfies AuthzMode),
+    ApiBearerAuth('access-token'),
+  );
+
+/**
+ * Workspace reference data with no owner that any member may read — the role catalogue a picker
+ * renders.
+ *
+ * Distinct from `@SelfScoped`, which claims the row belongs to the caller. Only for data where
+ * there is no owner at all; if a row belongs to someone, it needs a permission or self-scoping.
+ */
+export const SharedRead = (reason: string) =>
+  applyDecorators(
+    SetMetadata(AUTHZ_MODE_KEY, { mode: 'shared-read', reason } satisfies AuthzMode),
+    ApiBearerAuth('access-token'),
+  );
+
+/**
+ * A route with a KNOWN missing authorization check, declared so it is counted rather than
+ * hidden among the undecorated.
+ *
+ * A debt marker, not a mode. `route-policy.ratchet.spec.ts` counts these and the number may only
+ * FALL; adding one is a decision to ship a known hole and must be argued in review.
+ */
+export const AuthzGap = (reason: string) =>
+  applyDecorators(
+    SetMetadata(AUTHZ_MODE_KEY, { mode: 'gap', reason } satisfies AuthzMode),
+    ApiBearerAuth('access-token'),
+  );

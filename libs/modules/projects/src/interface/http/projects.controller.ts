@@ -14,7 +14,7 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
-import { RequirePermission, AuthPolicy } from '@modules/access';
+import { RequirePermission, AuthPolicy, AuthorizedInService } from '@modules/access';
 import { ProjectsService } from '../../application/projects.service';
 import {
   CreateProjectDto,
@@ -125,6 +125,10 @@ export class ProjectsController {
   // ── List projects ──────────────────────────────────────────────────────────
 
   @Get()
+  @AuthorizedInService(
+    'cross-project list scoped by AccessService.listReadableProjectIds, whose null sentinel means UNRESTRICTED and [] means nothing — a distinction a scope descriptor cannot carry',
+    'project-authz.e2e.spec.ts',
+  )
   @ApiOperation({ summary: 'List projects in a workspace' })
   @ApiPagedResponse(ProjectResponseDto)
   @ApiCommonErrors(400, 401)
@@ -141,6 +145,10 @@ export class ProjectsController {
   // Declared before @Get(':id') so the static path is not captured as an :id.
 
   @Get('health')
+  @AuthorizedInService(
+    'scoped by listReadableProjectIds, like the list above',
+    'project-authz.e2e.spec.ts',
+  )
   @ApiOperation({ summary: 'Bounded, attention-sorted per-project health rollup (Home widget)' })
   @ApiResponse({ status: 200, type: ProjectHealthResponseDto, isArray: true })
   @ApiCommonErrors(400, 401)
@@ -178,6 +186,10 @@ export class ProjectsController {
   // ── Get project ────────────────────────────────────────────────────────────
 
   @Get(':id')
+  @AuthorizedInService(
+    'assertWorkspaceMember, then the project must be readable by this actor',
+    'project-authz.e2e.spec.ts',
+  )
   @ApiOperation({ summary: 'Get project details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ProjectResponseDto })
@@ -191,6 +203,7 @@ export class ProjectsController {
   }
 
   @Get(':id/activity')
+  @AuthorizedInService('assertWorkspaceMember on the owning project', 'project-authz.e2e.spec.ts')
   @ApiOperation({ summary: 'List the revision history of a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ActivityPageDto })
@@ -278,6 +291,10 @@ export class ProjectsController {
   // ── Workflow statuses ──────────────────────────────────────────────────────
 
   @Get(':id/statuses')
+  @AuthorizedInService(
+    'workspace reference data for a project the actor can read',
+    'project-authz.e2e.spec.ts',
+  )
   @ApiOperation({ summary: 'List workflow statuses for a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: [WorkflowStatusResponseDto] })
@@ -293,6 +310,10 @@ export class ProjectsController {
   // ── Workflow transitions ───────────────────────────────────────────────────
 
   @Get(':id/transitions')
+  @AuthorizedInService(
+    'workspace reference data for a project the actor can read',
+    'project-authz.e2e.spec.ts',
+  )
   @ApiOperation({ summary: 'List workflow transitions for a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: [WorkflowTransitionResponseDto] })
@@ -307,6 +328,10 @@ export class ProjectsController {
   // ── Labels ──────────────────────────────────────────────────────────────
 
   @Get(':id/labels')
+  @AuthorizedInService(
+    'workspace reference data for a project the actor can read',
+    'project-authz.e2e.spec.ts',
+  )
   @ApiOperation({ summary: 'List labels for a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: [LabelResponseDto] })
@@ -370,6 +395,7 @@ export class ProjectsController {
   // ── Project Teams ─────────────────────────────────────────────────────────
 
   @Get(':id/teams')
+  @AuthorizedInService('assertWorkspaceMember on the owning project', 'project-authz.e2e.spec.ts')
   @ApiOperation({ summary: 'List teams linked to a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(401, 404)

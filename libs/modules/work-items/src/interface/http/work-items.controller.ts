@@ -22,7 +22,7 @@ import {
   RateLimit,
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
-import { RequirePermission, AuthPolicy } from '@modules/access';
+import { RequirePermission, AuthPolicy, SelfScoped, AuthorizedInService } from '@modules/access';
 import { CurrentUser } from '@modules/identity';
 import { WorkItemsService } from '../../application/work-items.service';
 import {
@@ -244,6 +244,7 @@ export class WorkItemsController {
   // ── Home dashboard aggregates (workspace-scoped; declared before @Get(':id')) ──
 
   @Get('my')
+  @SelfScoped('lists work items assigned to the caller')
   @ApiOperation({ summary: 'Top-N work items assigned to the current user (Home widget)' })
   @ApiResponse({ status: 200, type: MyWorkItemResponseDto, isArray: true })
   @ApiCommonErrors(400, 401)
@@ -256,6 +257,7 @@ export class WorkItemsController {
   }
 
   @Get('summary')
+  @AuthorizedInService('scoped by listReadableProjectIds', 'project-authz.e2e.spec.ts')
   @ApiOperation({ summary: 'Workspace-wide summary counts for the Home strip' })
   @ApiResponse({ status: 200, type: WorkspaceSummaryResponseDto })
   @ApiCommonErrors(401)
@@ -314,6 +316,10 @@ export class WorkItemsController {
   // Declared before @Get(':id') so the static path is not captured as an :id
   // (which is ParseUUIDPipe-validated and would 400 on the literal "by-key").
   @Get('by-key')
+  @AuthorizedInService(
+    'item keys are workspace-unique, so the owning project is unknown until the row loads — resolve-then-check, with assertProjectPermission(work_item:view) in the service',
+    'task-routes.e2e.spec.ts',
+  )
   @ApiOperation({ summary: 'Get a work item by its workspace-unique item key' })
   /**
    * No `@RequirePermission`: the check cannot be expressed as one, and the service does it properly.
@@ -453,6 +459,10 @@ export class WorkItemsController {
   // ── Reorder (backlog drag-and-drop) ───────────────────────────────────────
 
   @Patch('reorder')
+  @AuthorizedInService(
+    'same resolve-then-check shape as by-key: the project comes from the loaded rows',
+    'task-routes.e2e.spec.ts',
+  )
   @HttpCode(204)
   @ApiOperation({ summary: 'Bulk update work item ranks for backlog reordering' })
   @ApiResponse({ status: 204, description: 'Work items reordered' })

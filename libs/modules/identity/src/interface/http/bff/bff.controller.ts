@@ -28,7 +28,7 @@ import {
   SSO_CONNECTION_REPOSITORY,
   type ISsoConnectionRepository,
 } from '@qnsc-vn/identity';
-import { AccessService } from '@modules/access';
+import { AccessService, SelfScoped } from '@modules/access';
 import { WorkspaceService } from '@modules/workspace';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { UserProfileResponseDto } from '../dto/auth-response.dto';
@@ -115,6 +115,7 @@ export class BffController {
   // Public: Entra redirects here with ?code&state. Verifies state, exchanges the
   // code, mints a session, sets the `__Host-` session cookie, and 302s to returnTo.
   @Get('callback')
+  @Public()
   async callback(
     @Query('code') code: string | undefined,
     @Query('state') state: string | undefined,
@@ -175,6 +176,7 @@ export class BffController {
   // Authenticated via the shared guard's session-cookie path (@Auth). `bffSid`
   // is populated by JwtAuthGuard when it resolves the session.
   @Post('logout')
+  @SelfScoped("destroys the caller's own server-side session")
   @HttpCode(204)
   @Auth()
   async logout(
@@ -195,6 +197,7 @@ export class BffController {
   // session, so the browser keeps its existing session cookie and simply starts
   // resolving to the new workspace. No token is returned to the client.
   @Post('switch-workspace')
+  @SelfScoped("switches the caller's own session to another of THEIR workspaces")
   @HttpCode(204)
   @Auth()
   async switchWorkspace(
@@ -214,6 +217,7 @@ export class BffController {
   // ── GET /bff/me ──────────────────────────────────────────────────────────
   // Session-cookie authenticated mirror of GET /v1/auth/me.
   @Get('me')
+  @SelfScoped("returns the caller's own principal")
   @Auth()
   async me(
     @CurrentUser() user: JwtPayload,

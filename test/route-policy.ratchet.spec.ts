@@ -57,10 +57,23 @@ import { describe, expect, it } from 'vitest';
 // note that this counter reads SOURCE TEXT, so it cannot tell a correct decorator from a
 // misspelled code. It is a smoke detector, not an authorization test.
 // See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P5-PI-16
-const MAX_UNPOLICED_ROUTES = 45;
+const MAX_UNPOLICED_ROUTES = 0;
 
 /** Sanity floor: if the scanner stops finding routes, fail loudly, not silently. */
 const MIN_ROUTES_FOUND = 150;
+
+/**
+ * Routes carrying `@AuthzGap` — a DECLARED missing check. MAY ONLY FALL.
+ *
+ * One: `GET workspaces/:id/members-with-profile`, which CLAUDE.md already recorded as an open
+ * decision. It carries `phone`, `lastLoginAt` and role ids, is documented "for the User
+ * Management UI", and yet feeds the Portfolio and Projects owner pickers — so gating it needs
+ * the feed split first, and whether a staff directory is member-visible is a product call.
+ *
+ * Declaring it is the point: it was previously indistinguishable from the 44 routes nobody had
+ * decorated, and a note in a markdown file is not something CI can hold.
+ */
+const MAX_AUTHZ_GAPS = 1;
 
 const ROOT = join(__dirname, '..');
 const HTTP_METHOD = /^\s*@(Get|Post|Patch|Put|Delete)\(/;
@@ -73,7 +86,8 @@ const HANDLER = /^\s*(?:async\s+)?[\w[\]'"]+\s*\(/;
  * name, which silently excluded that entire controller — nine unpoliced routes,
  * including `GET /projects/:id` and `GET /projects/:id/activity`, reported clean.
  */
-const POLICY = /^\s*@(RequirePermission|Public)\b/;
+const POLICY =
+  /^\s*@(RequirePermission|Public|SelfScoped|SharedRead|AuthorizedInService|AuthzGap)\b/;
 const COMMENT = /^\s*(\/\/|\/?\*)/;
 
 interface Route {
@@ -162,5 +176,36 @@ describe('route-policy ratchet (only ever decreases)', () => {
     }
 
     expect(unpoliced.length).toBeLessThanOrEqual(MAX_UNPOLICED_ROUTES);
+  });
+
+  it(`declared authorization gaps <= ${MAX_AUTHZ_GAPS}`, () => {
+    const gaps: string[] = [];
+    const files = execFileSync(
+      'git',
+      ['ls-files', 'libs/**/*.controller.ts', 'apps/**/*.controller.ts'],
+      { cwd: ROOT, encoding: 'utf8' },
+    )
+      .split('\n')
+      .filter(Boolean);
+
+    for (const file of files) {
+      readFileSync(join(ROOT, file), 'utf8')
+        .split('\n')
+        .forEach((l, i) => {
+          if (/^\s*@AuthzGap\(/.test(l)) gaps.push(`${file}:${i + 1}`);
+        });
+    }
+
+    expect(
+      gaps.length,
+      `Declared authorization gaps rose to ${gaps.length} (max ${MAX_AUTHZ_GAPS}):\n  ` +
+        `${gaps.join('\n  ')}\n\n@AuthzGap ships a KNOWN hole — argue it in review rather ` +
+        `than using it to satisfy the boot audit.`,
+    ).toBeLessThanOrEqual(MAX_AUTHZ_GAPS);
+
+    expect(
+      gaps.length,
+      `MAX_AUTHZ_GAPS is ${MAX_AUTHZ_GAPS} but only ${gaps.length} remain — lower it.`,
+    ).toBe(MAX_AUTHZ_GAPS);
   });
 });
