@@ -218,11 +218,19 @@ module "stack" {
   // `wake_schedule` below.
   idle_schedule = "cron(0 0,3 * * ? *)"
 
-  // 08:00 local, MON-FRI. The weekday restriction is the entire cost control here: a
-  // 7-day wake would pay for two days a week nobody works, which is a large share of
-  // what idling develop was worth in the first place.
+  // 08:00 local, EVERY DAY. This was MON-FRI first, on the argument that a 7-day wake
+  // "would pay for two days a week nobody works". Two weekends in, that argument had
+  // been falsified twice: somebody wanted develop on a Saturday both times, found it
+  // stopped, and it had to be started by hand — which takes SEVEN MINUTES of waiting
+  // (measured 2026-08-08, not the ~4-5 estimated here before), during which the person
+  // cannot do the thing they sat down to do.
   //
-  // 08:00 rather than 09:00 because RDS takes ~4-5 minutes to reach `available` and the
+  // The weekday restriction was optimising the wrong quantity. Two extra wake-days cost
+  // about $2.50/mo against a ~$50/mo environment — 5% — to remove a recurring
+  // interruption and the standing question "is develop up today?". The nightly stop is
+  // where the real saving always was, and that is untouched.
+  //
+  // 08:00 rather than 09:00 because RDS takes ~7 minutes to reach `available` and the
   // API tasks then need to pass a readiness check, so the environment is serving by
   // roughly 08:10 — before the working day rather than during its first minutes.
   //
@@ -231,10 +239,17 @@ module "stack" {
   // brings it up five hours later. The 00:00 stop then ends the day. A deploy landing at
   // any hour still wakes it independently — that path is unchanged.
   //
-  // Expected effect: develop moves from "up on merge days only" to ~16h/day on
-  // weekdays and 0h at weekends, so this BUYS availability rather than saving money.
-  // Weekends and the 00:00-08:00 window are where the saving now comes from.
-  wake_schedule = "cron(0 8 ? * MON-FRI *)"
+  // Expected effect: develop is up ~16h/day, every day, so this BUYS availability rather
+  // than saving money. The 00:00-08:00 window is now the entire saving; weekends no
+  // longer contribute one.
+  //
+  // VERIFIED FIRING, so a future failure is a regression and not "it never worked":
+  // CloudTrail 2026-08-07 (the first weekday after it was created) shows all three
+  // targets from the waker role, no errors —
+  //   01:00:09Z  ecs:UpdateService  api    desiredCount=1
+  //   01:00:29Z  rds:StartDBInstance
+  //   01:00:47Z  ecs:UpdateService  worker desiredCount=1
+  wake_schedule = "cron(0 8 * * ? *)"
 
   // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
   // credential can be injected. This is a FIX, not hardening: the primary token
