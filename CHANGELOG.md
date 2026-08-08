@@ -1,5 +1,115 @@
 # Changelog
 
+## [0.6.2](https://github.com/QNSC-VN/rally/compare/v0.6.1...v0.6.2) (2026-08-08)
+
+
+### ✨ Features
+
+* **backlog:** rank-to-edge actions; fix: name our burnup line a target baseline ([#385](https://github.com/QNSC-VN/rally/issues/385)) ([3ba3add](https://github.com/QNSC-VN/rally/commit/3ba3add85eade8d6078d33b3c5fe3ce4dd2dec3a))
+* **capacity:** a reader sees only its own team inside a published plan (AC-010) ([#324](https://github.com/QNSC-VN/rally/issues/324)) ([a519e32](https://github.com/QNSC-VN/rally/commit/a519e3232501da7820e3ddba4be7c54eea7000af))
+* **capacity:** add Rally's plan Actions menu, and let a published plan be deleted ([#302](https://github.com/QNSC-VN/rally/issues/302)) ([3ddc486](https://github.com/QNSC-VN/rally/commit/3ddc48656cd978063646e8a2e99b364f60a1b0e1))
+* **capacity:** an allocation's value is a fixed snapshot with a source ([#366](https://github.com/QNSC-VN/rally/issues/366)) ([c08b76f](https://github.com/QNSC-VN/rally/commit/c08b76f80dbcc82fce9d21f5fe5a54f52948c2f9))
+* **capacity:** apply the BA rulings on team column, move targets and forecast ([#327](https://github.com/QNSC-VN/rally/issues/327)) ([45964ab](https://github.com/QNSC-VN/rally/commit/45964abeb42443e5be8aad6f6753b8609262af35))
+* **capacity:** editable Planned Team Assignment and rank drag ([#305](https://github.com/QNSC-VN/rally/issues/305)) ([cc4bc37](https://github.com/QNSC-VN/rally/commit/cc4bc375c56ab800af8aa78bca0126b530cbc27c))
+* **capacity:** hide Draft plans from readers (AC-013) ([#323](https://github.com/QNSC-VN/rally/issues/323)) ([7349eb1](https://github.com/QNSC-VN/rally/commit/7349eb1c939b633ef33ed3d28ad2b5f6eb14652a))
+* **capacity:** match Rally's allocate dialog, Actions menu and gear ([#306](https://github.com/QNSC-VN/rally/issues/306)) ([e0e688c](https://github.com/QNSC-VN/rally/commit/e0e688c7304e62dd2d1c31b2301dcff5628f2283))
+* **capacity:** match Rally's plan detail — full width, sub-tables, Project column ([#300](https://github.com/QNSC-VN/rally/issues/300)) ([0630956](https://github.com/QNSC-VN/rally/commit/0630956baa2a31f3ac5bf8fd3b6a0d1a08563c4e))
+* **capacity:** move a Feature to another plan ([#308](https://github.com/QNSC-VN/rally/issues/308)) ([bcc0000](https://github.com/QNSC-VN/rally/commit/bcc00003c6f9f69971be064bc2409f7db2e8a2a8))
+* **capacity:** Rally's column order, sorting and rail on both plan tabs ([#311](https://github.com/QNSC-VN/rally/issues/311)) ([a2167da](https://github.com/QNSC-VN/rally/commit/a2167da58d6e9956f66d9f03717dca59cb87a0b5))
+* **capacity:** remove a Feature from a plan in one call ([#322](https://github.com/QNSC-VN/rally/issues/322)) ([70fade6](https://github.com/QNSC-VN/rally/commit/70fade6379a46a1f65a8792acba1245e895942c4))
+* **capacity:** removing a team re-parks its demand instead of refusing ([#321](https://github.com/QNSC-VN/rally/issues/321)) ([d2153d0](https://github.com/QNSC-VN/rally/commit/d2153d009e90aa0117f8bb728134c9480db7bec3))
+* **capacity:** the BA's Feature-level warnings on the Features tab ([#319](https://github.com/QNSC-VN/rally/issues/319)) ([e212cdb](https://github.com/QNSC-VN/rally/commit/e212cdbc28c7b5f3700601669a833a4b4b1f47ae))
+* **capacity:** trim the plan list, and give its header the app's own lead ([#304](https://github.com/QNSC-VN/rally/issues/304)) ([72a4d21](https://github.com/QNSC-VN/rally/commit/72a4d21de6da9a49a9ae5b1cbadfccbb019772b2))
+* **infra:** serve rally through Cloudflare Tunnel instead of ALBs ([#326](https://github.com/QNSC-VN/rally/issues/326)) ([9395849](https://github.com/QNSC-VN/rally/commit/939584921042ae13070a13240c82b456bc490615))
+* **infra:** wake develop on a weekday morning schedule ([#390](https://github.com/QNSC-VN/rally/issues/390)) ([082171f](https://github.com/QNSC-VN/rally/commit/082171f14ff0dc06cfd828e83fbb233da7859221))
+* **iterations:** add Task Estimate column (IT-001) ([#400](https://github.com/QNSC-VN/rally/issues/400)) ([7c4a00f](https://github.com/QNSC-VN/rally/commit/7c4a00fe5a74789d6fa5a8a59d389e1e5ff5efc2))
+* **observability:** local OTLP collector, and make OTEL_ENABLED actually work ([#406](https://github.com/QNSC-VN/rally/issues/406)) ([6b4cba6](https://github.com/QNSC-VN/rally/commit/6b4cba69bd82e59e5e9b44d3cee54d4458da0644))
+* **portfolio:** create the level you are looking at, with the SRS's full field list ([#367](https://github.com/QNSC-VN/rally/issues/367)) ([313bccc](https://github.com/QNSC-VN/rally/commit/313bccce7e84437af69775f6859e86d0799463bd))
+* **portfolio:** detail page parity — polymorphic comments and attachments, Total Accepted Children ([#307](https://github.com/QNSC-VN/rally/issues/307)) ([dc5be0a](https://github.com/QNSC-VN/rally/commit/dc5be0aaec2db933ac162c2cce96c4c185242afb))
+* **portfolio:** give the Children tab the Iteration Status chrome, and a drag grip ([#353](https://github.com/QNSC-VN/rally/issues/353)) ([1b8aa15](https://github.com/QNSC-VN/rally/commit/1b8aa15b1ee76e598a876df5bec11dbb0e2b2150))
+* **portfolio:** inline-edit and expand-to-Tasks on the Children tab ([#347](https://github.com/QNSC-VN/rally/issues/347)) ([1e36342](https://github.com/QNSC-VN/rally/commit/1e3634286f519325df083da8d538dfa07e0cc0e3))
+* **portfolio:** Milestone, Archive, and an editable Preliminary Estimate scale ([#310](https://github.com/QNSC-VN/rally/issues/310)) ([e616e75](https://github.com/QNSC-VN/rally/commit/e616e75dc14c32227690688f0c06fb9f6cfd2844))
+* **portfolio:** rank by up/down buttons, and finish the grid the SRS asks for ([#369](https://github.com/QNSC-VN/rally/issues/369)) ([8dfc107](https://github.com/QNSC-VN/rally/commit/8dfc1072396733a67b825e51aff2a78d0f179104))
+* **portfolio:** real Children tables on Feature and Epic detail ([#325](https://github.com/QNSC-VN/rally/issues/325)) ([c500187](https://github.com/QNSC-VN/rally/commit/c500187ca3e0dae1044768c859a563d7561c91aa))
+* **portfolio:** shared attribute cells + Epic/Feature row disclosure ([#303](https://github.com/QNSC-VN/rally/issues/303)) ([aa0e814](https://github.com/QNSC-VN/rally/commit/aa0e814c6760d32e50f0a477b7ab5c1a42888720))
+* **portfolio:** the BA behaviours that were missing outright ([#337](https://github.com/QNSC-VN/rally/issues/337)) ([7193e7c](https://github.com/QNSC-VN/rally/commit/7193e7c6f7fe243d43c40aa8ee48a4e89617ee12))
+* **portfolio:** What Success Looks Like, a create menu, and no metrics strip ([#328](https://github.com/QNSC-VN/rally/issues/328)) ([fc05c71](https://github.com/QNSC-VN/rally/commit/fc05c710aa1dd7d00d91b6f4a1ecdbfbd9d73dba))
+* **reports:** the Phase 6 reports and Portfolio &gt; Release Tracking ([#329](https://github.com/QNSC-VN/rally/issues/329)) ([43ab33d](https://github.com/QNSC-VN/rally/commit/43ab33d514ec8262175cdc3a818774f2a4aa2af4))
+
+
+### 🐛 Bug Fixes
+
+* **access:** a task's own id resolves, so tasks can be edited again ([#348](https://github.com/QNSC-VN/rally/issues/348)) ([bfaee2b](https://github.com/QNSC-VN/rally/commit/bfaee2bac7edd445d3ac57d2a9d6a6c7b0453da4))
+* **audit:** project outbox events to audit_logs directly instead of via SNS ([#394](https://github.com/QNSC-VN/rally/issues/394)) ([7a432ae](https://github.com/QNSC-VN/rally/commit/7a432aedd10a59009a97f98b686663c8f4fdcece))
+* **audit:** re-audit P1s + finish self-defeated fixes (IT-001 dead col, Team 400, cache, TS-008 dup, breadcrumb, cascade) ([#401](https://github.com/QNSC-VN/rally/issues/401)) ([058ec98](https://github.com/QNSC-VN/rally/commit/058ec98a7bbb7eed963242006da2516558976e46))
+* **audit:** re-audit P2/P3 batch (role lockout, IS To Do, RT em-dash, TS aggregates+picker, publish count) ([#402](https://github.com/QNSC-VN/rally/issues/402)) ([cc4d508](https://github.com/QNSC-VN/rally/commit/cc4d508e0d3c9c10342c952149ddc2d48942f016))
+* **audit:** recover lost C6/P2/C7 from [#396](https://github.com/QNSC-VN/rally/issues/396) + SET-001 + P6-COM-006 ([#398](https://github.com/QNSC-VN/rally/issues/398)) ([296ce5a](https://github.com/QNSC-VN/rally/commit/296ce5a9e2aa3fd8d833ae041b15ea2db491b39f))
+* **audit:** resolve P0/P1 bugs from Phase 0-6 audit ([#396](https://github.com/QNSC-VN/rally/issues/396)) ([9e21854](https://github.com/QNSC-VN/rally/commit/9e2185437e8ed03e0b77fc70586592c82eb0e050))
+* **capacity:** five open defects from the Phase 5 audit ([#317](https://github.com/QNSC-VN/rally/issues/317)) ([b60edad](https://github.com/QNSC-VN/rally/commit/b60edadbcb2538b066d045dabc3f5e44ca745b34))
+* **capacity:** honor primary pick on a newly-added Allocate team row ([#403](https://github.com/QNSC-VN/rally/issues/403)) ([851a13f](https://github.com/QNSC-VN/rally/commit/851a13f419f7d73b0b10929e4b862178d4037527))
+* **capacity:** layout regressions from the column reorder ([#312](https://github.com/QNSC-VN/rally/issues/312)) ([52c6aa3](https://github.com/QNSC-VN/rally/commit/52c6aa310ebc176ff1f22307954e23aa7da08aff))
+* **capacity:** match the Estimate tooltip to Rally, row for row ([#376](https://github.com/QNSC-VN/rally/issues/376)) ([35be675](https://github.com/QNSC-VN/rally/commit/35be67590c70a2c34365351f062001ff4463abc2))
+* **capacity:** referential integrity and the plan's own unit ([#315](https://github.com/QNSC-VN/rally/issues/315)) ([bfe10d7](https://github.com/QNSC-VN/rally/commit/bfe10d7af7352c5fb39f5ff5d4707005a992b158))
+* **capacity:** refuse the references that used to orphan a plan, add view_draft ([#335](https://github.com/QNSC-VN/rally/issues/335)) ([3e7e65b](https://github.com/QNSC-VN/rally/commit/3e7e65b4b2e3b8aa64d68473a97a1db0aea955c6))
+* **capacity:** stop the move destroying allocation values, and follow AC-019 ([#334](https://github.com/QNSC-VN/rally/issues/334)) ([be5dbdc](https://github.com/QNSC-VN/rally/commit/be5dbdc903b0dda549f74e85c6d0c244ab0c47df))
+* **capacity:** the BA's cutline boundary, and a Team picker that ignores Release ([#372](https://github.com/QNSC-VN/rally/issues/372)) ([6a25467](https://github.com/QNSC-VN/rally/commit/6a25467deb7813e1c260d20b3f1a3b327d9c790d))
+* **capacity:** warn only on real breaches, and warn about the plan itself ([#363](https://github.com/QNSC-VN/rally/issues/363)) ([751ba16](https://github.com/QNSC-VN/rally/commit/751ba161a60e7d679c61f2497c2485562a1fc1c7))
+* **db:** recover outbox events dead-lettered against the deleted SNS topic ([#395](https://github.com/QNSC-VN/rally/issues/395)) ([53bc9be](https://github.com/QNSC-VN/rally/commit/53bc9beecf7cf21e94aa481140b8ed452b6b70ab))
+* destructive-action gate, Team optional, and Portfolio bulk-label consistency ([#384](https://github.com/QNSC-VN/rally/issues/384)) ([945092a](https://github.com/QNSC-VN/rally/commit/945092a14e6f8572dea724045235d5a5fe758ff0))
+* **identity:** resolve bundled secret refs, unbreaking SSO login ([#358](https://github.com/QNSC-VN/rally/issues/358)) ([c8200e3](https://github.com/QNSC-VN/rally/commit/c8200e3d9b4b9f2fd36677f2f7c1d98026b8c648))
+* **infra:** make the five guards actually fail, instead of warning ([#392](https://github.com/QNSC-VN/rally/issues/392)) ([c96fd12](https://github.com/QNSC-VN/rally/commit/c96fd129056efbf58b19f47692599fd548c409d8))
+* **infra:** stop paying for an ingress check against zero tasks ([#393](https://github.com/QNSC-VN/rally/issues/393)) ([6948ac9](https://github.com/QNSC-VN/rally/commit/6948ac9a32bbfe8b65305c53776145147ca990df))
+* **platform:** no deployed environment could send email ([#336](https://github.com/QNSC-VN/rally/issues/336)) ([3db1231](https://github.com/QNSC-VN/rally/commit/3db12314ac89d6668ed2d3fdce4f00543bf206c1))
+* **portfolio:** archived items are read-only, and the estimate ships resolved ([#368](https://github.com/QNSC-VN/rally/issues/368)) ([f47f3a3](https://github.com/QNSC-VN/rally/commit/f47f3a328d69de55f01094c1e021d26f1067b362))
+* **portfolio:** match the BA-specified detail layout and Rally's accepted-children panel ([#309](https://github.com/QNSC-VN/rally/issues/309)) ([f8c917f](https://github.com/QNSC-VN/rally/commit/f8c917f505b781bd40aa084989567afb183e9f86))
+* **portfolio:** put the Children tabs on the shared grid shell ([#346](https://github.com/QNSC-VN/rally/issues/346)) ([c3afee8](https://github.com/QNSC-VN/rally/commit/c3afee8f8361d8652d52c2cc191a1902cb6fc3d3))
+* **rally-parity:** first Phase 5/6 corrections against real Rally ([#383](https://github.com/QNSC-VN/rally/issues/383)) ([f5b764e](https://github.com/QNSC-VN/rally/commit/f5b764e51aef12f5741d9bbd5c16b2abc2b9eb27))
+* **reporting:** give the Ideal baseline the team grain its snapshot rows already had ([#357](https://github.com/QNSC-VN/rally/issues/357)) ([0676c7b](https://github.com/QNSC-VN/rally/commit/0676c7ba520e9de69e4c0d146fc43a1cf1dd28c3))
+* **reporting:** give the release Ideal target a team scope ([#362](https://github.com/QNSC-VN/rally/issues/362)) ([c72a9f0](https://github.com/QNSC-VN/rally/commit/c72a9f0dbdbbf3bb0a7e2f185d5570a649d8d694))
+* **reporting:** page the Release Tracking list, and give the reports one composition ([#344](https://github.com/QNSC-VN/rally/issues/344)) ([833abf6](https://github.com/QNSC-VN/rally/commit/833abf6fbddba681ced546b5e9434d2f34bdf366))
+* **reporting:** stop the snapshot job skipping workspaces, and mark partial captures ([#341](https://github.com/QNSC-VN/rally/issues/341)) ([53958f6](https://github.com/QNSC-VN/rally/commit/53958f65724abb81e980849c6f39859dfd47ccbb))
+* **reports:** absent data renders as absent, not as a measured zero ([#360](https://github.com/QNSC-VN/rally/issues/360)) ([8fc332a](https://github.com/QNSC-VN/rally/commit/8fc332ac488031630ca0057d2ffe2033156c0bca))
+* **reports:** give burndown history a team, and the snapshot tables their keys ([#332](https://github.com/QNSC-VN/rally/issues/332)) ([aac64c6](https://github.com/QNSC-VN/rally/commit/aac64c6266774780dfdf84e8822973e55f5e7e48))
+* **reports:** make Phase 6 reachable, and make it render ([#330](https://github.com/QNSC-VN/rally/issues/330)) ([fee423d](https://github.com/QNSC-VN/rally/commit/fee423dc6d6012e4919b6aedaf601891ff4b8610))
+* **reports:** scope reports by the work's team, not by the timebox ([#331](https://github.com/QNSC-VN/rally/issues/331)) ([c9334fb](https://github.com/QNSC-VN/rally/commit/c9334fb5b3bb4250b1348dc0bb8308b5ea055b2e))
+* **team-status:** make Team Status and Team Capacity report the same hours ([#350](https://github.com/QNSC-VN/rally/issues/350)) ([a0fbb1d](https://github.com/QNSC-VN/rally/commit/a0fbb1df08519d4c666eba4f7d95c60dfa3f3ca5))
+* unblock main — team-status actualHours typo + js-yaml 4.3.1 floor ([#405](https://github.com/QNSC-VN/rally/issues/405)) ([aba979e](https://github.com/QNSC-VN/rally/commit/aba979e905a2c29d8cf0541f29ccf6cdae6b0de8))
+* **web:** join the detail tabs to their header, and share the project cell ([#359](https://github.com/QNSC-VN/rally/issues/359)) ([004ee83](https://github.com/QNSC-VN/rally/commit/004ee83649dfd679ced57b41b36b454037537092))
+* **web:** make rank reorder keyboard-operable, and stop two placeholders meaning one thing ([#355](https://github.com/QNSC-VN/rally/issues/355)) ([a10ce5b](https://github.com/QNSC-VN/rally/commit/a10ce5b02549a7b872a1575d1fa6ba588cb86e85))
+* **web:** match Rally on the capacity team tab and Release Tracking ([#377](https://github.com/QNSC-VN/rally/issues/377)) ([cc437e5](https://github.com/QNSC-VN/rally/commit/cc437e5fd81c114b394258751b8ed2ca700e9f67))
+* **web:** move dnd attributes to the grip on the last four grids ([#356](https://github.com/QNSC-VN/rally/issues/356)) ([4bbf154](https://github.com/QNSC-VN/rally/commit/4bbf1547cdc16b3a19b7037d6aa38ca5aa57672e))
+* **web:** name the default report scope, and make the shared grids sortable by keyboard ([#343](https://github.com/QNSC-VN/rally/issues/343)) ([2ac12cb](https://github.com/QNSC-VN/rally/commit/2ac12cb4c563f26dad7ad5452858231225cdf1b8))
+* **web:** one drag grip everywhere, hover-revealed, with shared entity cells ([#374](https://github.com/QNSC-VN/rally/issues/374)) ([c004436](https://github.com/QNSC-VN/rally/commit/c0044366fdebb583d2cdcbd53a60a054d34539a8))
+* **web:** put Release Tracking on the shared toolbar and fix an em-dash placeholder ([#365](https://github.com/QNSC-VN/rally/issues/365)) ([4dc7c10](https://github.com/QNSC-VN/rally/commit/4dc7c10c8fe0835fd807c6da08dda6f29880fbdc))
+* **work-items:** a task's iteration is derived from its parent, not owned ([#345](https://github.com/QNSC-VN/rally/issues/345)) ([f0b20fe](https://github.com/QNSC-VN/rally/commit/f0b20feb94faa5df1dd2ce6b9621d85f0b726cb7))
+* **work-items:** hold two derived rules as invariants, not as one write's hook ([#351](https://github.com/QNSC-VN/rally/issues/351)) ([741201d](https://github.com/QNSC-VN/rally/commit/741201d957067756e016924591527eccf7c02687))
+* **work-items:** the first Estimate copies to To Do, and archive order cuts both ways ([#339](https://github.com/QNSC-VN/rally/issues/339)) ([c3b86d0](https://github.com/QNSC-VN/rally/commit/c3b86d0cb05ed5727a90d3c2ba92834cd3023521))
+
+
+### ⚡ Performance
+
+* **infra:** bundle develop's app secrets into one Secrets Manager container ([#313](https://github.com/QNSC-VN/rally/issues/313)) ([17df48e](https://github.com/QNSC-VN/rally/commit/17df48e610e4308bc815adeef3089d3178210391))
+* **infra:** bundle production's app secrets, and price the go-live delta ([#316](https://github.com/QNSC-VN/rally/issues/316)) ([e28c046](https://github.com/QNSC-VN/rally/commit/e28c04618876b67d4b21adb2a5a5cd7cb54e8a44))
+* **infra:** drop develop's standalone secrets, completing the bundle migration ([#314](https://github.com/QNSC-VN/rally/issues/314)) ([898c6b0](https://github.com/QNSC-VN/rally/commit/898c6b068b290a4bf19528627984fdf5ef0238c8))
+* **infra:** stop develop twice nightly, at 21:00 and 03:00 ([#320](https://github.com/QNSC-VN/rally/issues/320)) ([78470f2](https://github.com/QNSC-VN/rally/commit/78470f26bf304c8825fc75c6dfb1efb0d964eb8c))
+
+
+### ♻️ Refactors
+
+* **scheduling:** share one ExclusiveJob helper, and stop a cache outage silencing every cron ([#409](https://github.com/QNSC-VN/rally/issues/409)) ([4af4593](https://github.com/QNSC-VN/rally/commit/4af4593c00de4820ff8296014df6df38b4243048))
+* **web:** five surfaces onto the shared primitives they already had ([#370](https://github.com/QNSC-VN/rally/issues/370)) ([573f54d](https://github.com/QNSC-VN/rally/commit/573f54d25f34023ed3f00e5a2608068d59cb6304))
+* **web:** one Rank column, and give the Children tab the one it was missing ([#361](https://github.com/QNSC-VN/rally/issues/361)) ([788b941](https://github.com/QNSC-VN/rally/commit/788b94191da3d6f35c2d01dabd2ee6a7f53a28cc))
+* **web:** one row, one cell, one size — shared grid chrome ([#381](https://github.com/QNSC-VN/rally/issues/381)) ([4a6e9a5](https://github.com/QNSC-VN/rally/commit/4a6e9a539ab92988c49e7a2722572c44531b6ae3))
+* **web:** one source for column sizing, deleting five hand-built copies ([#354](https://github.com/QNSC-VN/rally/issues/354)) ([ae33447](https://github.com/QNSC-VN/rally/commit/ae334477ef393ad56d80b0157c011ab0cff9dfff))
+* **web:** remove the Defects tab and align Tasks/Epic Children on one grid ([#364](https://github.com/QNSC-VN/rally/issues/364)) ([0894269](https://github.com/QNSC-VN/rally/commit/08942695ad66fd9030169ec4fbdeadb0130f09bd))
+
+
+### 🔒 Security
+
+* **access:** bind an invitation to its address, and stop gates denying the roles they should allow ([#349](https://github.com/QNSC-VN/rally/issues/349)) ([83dc31a](https://github.com/QNSC-VN/rally/commit/83dc31a905b3de7a4a824ef80eee825cfaaabad4))
+* **authz:** deny routes that declare no authorization, and refuse to boot on one ([#410](https://github.com/QNSC-VN/rally/issues/410)) ([25527f7](https://github.com/QNSC-VN/rally/commit/25527f78e8b4fa57d24e2300ff53f46275421366))
+* **projects:** scope the project list and roster to what the caller may read ([#352](https://github.com/QNSC-VN/rally/issues/352)) ([f74c2c8](https://github.com/QNSC-VN/rally/commit/f74c2c8a7c981fc4f9f69a90c6b573fb8ceaed91))
+
 ## [0.6.1](https://github.com/QNSC-VN/rally/compare/v0.6.0...v0.6.1) (2026-07-31)
 
 
