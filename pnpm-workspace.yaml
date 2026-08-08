@@ -48,6 +48,36 @@ overrides:
   # This one reaches PRODUCTION (fastify → @fastify/ajv-compiler → fast-uri), unlike
   # the undici pins below.
   "fast-uri@<3.1.5": ">=3.1.5"
+  # GHSA-55q2-fjhq-7xh7 — DOMPurify, "IN_PLACE hook removal leaves a detached subtree
+  # executable", fixed in 3.4.13. This one REACHES PRODUCTION and is a real XSS sink:
+  # dompurify is a DIRECT dependency of apps/web (^3.4.12), used to sanitise rendered
+  # HTML, so this is not a scanner-appeasement pin like the undici ones below.
+  #
+  # apps/web's own range already admits 3.4.13; the lockfile was simply resolved before
+  # the advisory published. The override is here anyway so a fresh resolution cannot go
+  # backwards, and so `@types/dompurify` (which pins the runtime package as a real
+  # dependency, not a peer) moves with it.
+  "dompurify@<3.4.13": ">=3.4.13"
+  # GHSA-2v37-7h3g-55p8 — nanoid, "custom generators can loop indefinitely when size is
+  # zero", fixed in 3.3.17 (and 5.1.6 on the 4.x+ line). Reached only via
+  # postcss@8.5.23 -> nanoid@3.3.16, i.e. the web BUILD toolchain, and postcss calls it
+  # with a fixed non-zero size — so the zero-size path is not reachable here. Pinned to
+  # clear the blocking scanner rather than because it is exploitable in this tree.
+  #
+  # PINNED to 3.3.17 exactly, not a floor — and that is against this file's usual habit,
+  # so it needs a reason. An open floor resolved to 3.3.18, published 2026-08-07, which
+  # this repo's `minimumReleaseAge` policy (24h) then REJECTED: the CVE fix and the
+  # supply-chain cooldown pulled in opposite directions and `pnpm install` failed
+  # outright. 3.3.17 is the version the advisory names as fixed and it published
+  # 2026-08-03, so it is comfortably outside the cooldown.
+  #
+  # Deliberately NOT forced across majors — postcss declares ^3.3.11 and 4.x+ are
+  # ESM-only, so a cross-major force would break the build exactly the way the undici
+  # pin below once broke jsdom.
+  #
+  # Raise this by hand when 3.3.18+ has aged past the cooldown; there is no floor here
+  # doing it automatically.
+  "nanoid@>=3.0.0 <3.3.17": "3.3.17"
   # GHSA-r28c-9q8g-f849 — postcss (line-return parsing), fixed in 8.5.18.
   # Transitive via the web build toolchain (vite / tailwind ecosystem). A newly
   # published advisory that also affects main; pinned via override.
