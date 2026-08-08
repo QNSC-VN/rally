@@ -91,14 +91,23 @@ export function assertEveryRouteDeclaresAuthz(discovery: DiscoveryService): void
     }
   }
 
-  // A scanner that finds no routes reports no violations, which is indistinguishable from a
-  // fully decorated app. Nest's controller discovery is the kind of internal that a major
-  // version rearranges, so this floor is the difference between "clean" and "blind".
-  if (routes < 150) {
+  // A scanner that finds NOTHING reports no violations, which is indistinguishable from a fully
+  // decorated app — that is the failure this catches, and it is not hypothetical: run from
+  // `bootstrapApp` (before `app.init()` instantiates controllers) the scan found zero and
+  // reported success while 45 routes were undeclared.
+  //
+  // The floor is ZERO, not the real route count, because a partial Nest module is legitimate:
+  // `governance-audit-flow.e2e.spec.ts` builds a test module with 15 controllers, and a
+  // 150-route floor failed it — the floor could not tell a deliberately small module from a
+  // blind scanner. The "does the scanner still see the WHOLE surface" question belongs to
+  // `test/route-policy.ratchet.spec.ts`, which reads source text and so can assert
+  // `MIN_ROUTES_FOUND` reliably against every controller in the repo.
+  if (routes === 0) {
     throw new Error(
-      `RouteAuthzAudit found only ${routes} route handlers, expected at least 150. The ` +
-        `scanner is broken, not the controllers — Nest's DiscoveryService or PATH_METADATA ` +
-        `shape has probably changed. Fix the scanner; do not lower this floor.`,
+      `RouteAuthzAudit found NO route handlers. The scanner is broken, not the controllers — ` +
+        `Nest's DiscoveryService or PATH_METADATA shape has probably changed, or this ran ` +
+        `before app.init() instantiated the controllers. Fix the scanner; do not delete this ` +
+        `check.`,
     );
   }
 

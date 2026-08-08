@@ -24,8 +24,7 @@ function discoveryOf(...controllers: (new () => unknown)[]): DiscoveryService {
 }
 
 /**
- * The audit requires at least 150 handlers before it trusts its own result, so a fixture has
- * to clear that floor. Generated rather than hand-written: what varies between the cases below
+ * A few declared routes, so each case below differs by exactly one handler. Generated rather than hand-written: what varies between the cases below
  * is one handler, and 100 copies of the same declared route is noise.
  */
 function paddedController(extra?: (proto: object) => void): new () => unknown {
@@ -33,7 +32,7 @@ function paddedController(extra?: (proto: object) => void): new () => unknown {
   class PadController {}
 
   const proto = PadController.prototype as unknown as Record<string, unknown>;
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; i < 3; i++) {
     const name = `route${i}`;
     proto[name] = function handler(this: void) {};
     // Apply real decorators so the metadata is exactly what Nest would set.
@@ -88,7 +87,7 @@ describe('assertEveryRouteDeclaresAuthz', () => {
     @Controller('all')
     class ClassDeclaredController {}
     const proto = ClassDeclaredController.prototype as unknown as Record<string, unknown>;
-    for (let i = 0; i < 150; i++) {
+    for (let i = 0; i < 3; i++) {
       const name = `route${i}`;
       proto[name] = function handler(this: void) {};
       Get(`r${i}`)(proto, name, { value: proto[name] } as PropertyDescriptor);
@@ -101,7 +100,7 @@ describe('assertEveryRouteDeclaresAuthz', () => {
     ).not.toThrow();
   });
 
-  it('refuses to report success when it finds too few routes', () => {
+  it('refuses to report success when it finds NO routes', () => {
     @Controller('tiny')
     class TinyController {}
     const proto = TinyController.prototype as unknown as Record<string, unknown>;
@@ -109,11 +108,19 @@ describe('assertEveryRouteDeclaresAuthz', () => {
     Get('one')(proto, 'one', { value: proto['one'] } as PropertyDescriptor);
     SelfScoped('declared')(proto, 'one', { value: proto['one'] } as PropertyDescriptor);
 
-    // Every route here IS declared, so a scanner without this floor would say "all clear" —
-    // which is precisely what happened when the check ran before controllers existed.
+    // A SMALL module is legitimate — `governance-audit-flow.e2e.spec.ts` builds one with 15
+    // controllers — so only an EMPTY scan is a broken scanner.
     expect(() =>
       assertEveryRouteDeclaresAuthz(discoveryOf(TinyController as unknown as new () => unknown)),
-    ).toThrow(/found only 1 route handlers/);
+    ).not.toThrow();
+
+    @Controller('none')
+    class NoRoutesController {}
+    expect(() =>
+      assertEveryRouteDeclaresAuthz(
+        discoveryOf(NoRoutesController as unknown as new () => unknown),
+      ),
+    ).toThrow(/found NO route handlers/);
   });
 
   it('ignores non-route methods', () => {
