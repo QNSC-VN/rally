@@ -16,9 +16,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { sql } from 'drizzle-orm';
-import { InjectDrizzle, AppConfigService, StorageService, CacheService } from '@platform';
+import { InjectDrizzle, AppConfigService, StorageService, ExclusiveJob } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { JobMetrics, withJobContext } from '@qnsc-vn/observability';
 
 @Injectable()
 export class CleanupCronService {
@@ -49,31 +48,15 @@ export class CleanupCronService {
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly config: AppConfigService,
     private readonly storageService: StorageService,
-    private readonly cache: CacheService,
-    private readonly jobMetrics: JobMetrics,
+    private readonly exclusive: ExclusiveJob,
   ) {}
 
   @Cron('0 1 * * *', { name: 'daily-cleanup', timeZone: 'UTC' })
   async runCleanup(): Promise<void> {
-    // Job context so every line this run logs carries a correlationId (cron work
-    // previously logged with no context at all), and duration/outcome metrics so a
-    // job that starts failing or slowing is visible without reading logs.
-    await withJobContext('daily-cleanup', () =>
-      this.jobMetrics.time('daily-cleanup', () => this.runCleanupBody()),
-    );
-  }
-
-  private async runCleanupBody(): Promise<void> {
-    const acquired = await this.cache.acquireLock('cron:daily-cleanup', this.LOCK_TTL_MS);
-    if (!acquired) {
-      this.logger.warn('Cleanup cron lock held by another pod — skipping this tick');
-      return;
-    }
-    try {
-      await this.purgeStaleData();
-    } finally {
-      await this.cache.releaseLock('cron:daily-cleanup');
-    }
+    // ExclusiveJob owns the lock, the job context (a correlationId, which cron work has
+    // nothing to inherit) and the duration/outcome metrics. This class used to hand-roll
+    // all three, as did SnapshotCronService — identically, which is why they now share it.
+    await this.exclusive.run('daily-cleanup', this.LOCK_TTL_MS, () => this.purgeStaleData());
   }
 
   private async purgeStaleData(): Promise<void> {

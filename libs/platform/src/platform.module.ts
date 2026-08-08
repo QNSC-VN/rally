@@ -31,6 +31,7 @@ import { DevEmailProvider } from './email/providers/dev.provider';
 import { ResendEmailProvider } from './email/providers/resend.provider';
 import { NotificationSchedulerService } from './notifications/notification-scheduler.service';
 import { NotificationPubSubService } from './notifications/notification-pubsub.service';
+import { ExclusiveJob } from './scheduling/exclusive-job.service';
 import { HealthController } from './observability/health.controller';
 import { Algorithm } from 'jsonwebtoken';
 import { IdempotencyInterceptor } from './http/idempotency.interceptor';
@@ -80,6 +81,7 @@ import { StorageService } from './storage/storage.service';
   ],
   controllers: [HealthController],
   providers: [
+    ExclusiveJob,
     RequestContextService,
     HttpMetrics,
     JobMetrics,
@@ -125,6 +127,7 @@ import { StorageService } from './storage/storage.service';
     CacheModule,
     AuthTokenCache,
     JwtModule,
+    ExclusiveJob,
     RequestContextService,
     HttpMetrics,
     JobMetrics,

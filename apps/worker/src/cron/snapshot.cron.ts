@@ -10,14 +10,14 @@
  * rolls over the previous day stops being addressed by any write and is frozen.
  *
  * All measurement and persistence live in `ReportSnapshotService` inside the reporting
- * module, which owns the same rules the read path serves. This class is only the schedule:
- * the cross-pod lock, the job context, and the duration/outcome metrics.
+ * module, which owns the same rules the read path serves. This class is only the schedule;
+ * the cross-pod lock, the job context and the duration/outcome metrics come from
+ * {@link ExclusiveJob}.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { CacheService } from '@platform';
+import { ExclusiveJob } from '@platform';
 import { ReportSnapshotService } from '@modules/reporting';
-import { JobMetrics, withJobContext } from '@qnsc-vn/observability';
 
 @Injectable()
 export class SnapshotCronService {
@@ -27,8 +27,7 @@ export class SnapshotCronService {
 
   constructor(
     private readonly snapshots: ReportSnapshotService,
-    private readonly cache: CacheService,
-    private readonly jobMetrics: JobMetrics,
+    private readonly exclusive: ExclusiveJob,
   ) {}
 
   /**
@@ -37,29 +36,15 @@ export class SnapshotCronService {
    */
   @Cron('5 * * * *', { name: 'report-snapshot', timeZone: 'UTC' })
   async takeSnapshots(): Promise<void> {
-    // Job context so every line this run logs carries a correlationId (cron work otherwise
-    // has none at all), plus duration/outcome metrics so a job that starts failing or slowing
-    // is visible without reading logs.
-    await withJobContext('report-snapshot', () =>
-      this.jobMetrics.time('report-snapshot', () => this.runLocked()),
-    );
-  }
-
-  private async runLocked(): Promise<void> {
-    const acquired = await this.cache.acquireLock('cron:report-snapshot', this.LOCK_TTL_MS);
-    if (!acquired) {
-      this.logger.warn('Report snapshot lock held by another pod — skipping this tick');
-      return;
-    }
-    try {
+    // ExclusiveJob owns the lock, the job context and the duration/outcome metrics — this
+    // class and CleanupCronService hand-rolled the identical sequence.
+    await this.exclusive.run('report-snapshot', this.LOCK_TTL_MS, async () => {
       const result = await this.snapshots.takeSnapshots();
       this.logger.log(
         `Report snapshots complete — ${result.iterationsSnapshotted} iterations, ` +
           `${result.releasesSnapshotted} release rows, ${result.baselinesCaptured} baselines, ` +
           `${result.failures} failed`,
       );
-    } finally {
-      await this.cache.releaseLock('cron:report-snapshot');
-    }
+    });
   }
 }
