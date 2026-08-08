@@ -608,10 +608,22 @@ variable "wake_schedule" {
     saving. RDS takes ~4-5 minutes to become available, so this cannot be fixed by
     waiting.
 
-    WEEKDAYS ONLY is the intended shape. A 7-day wake pays for two days a week that
-    nobody works, which is most of what idling this environment was worth:
+    A DAILY wake is usually the right shape, not a weekday-restricted one:
 
-        cron(0 8 ? * MON-FRI *)
+        cron(0 8 * * ? *)
+
+    This variable's first version recommended MON-FRI, on the reasoning that a 7-day wake
+    "pays for two days a week nobody works". Develop was set that way and the reasoning
+    did not survive contact: people did work weekends, found the environment stopped, and
+    had to start it by hand — a ~7 minute wait each time. Two extra wake-days are ~$2.50/mo
+    against a ~$50/mo environment, which is a poor trade against a recurring interruption.
+
+    Restrict to weekdays only where nobody CAN use the environment at a weekend (a shared
+    QA environment for one office, say), not merely where nobody is expected to.
+
+    Note the saving lives in `idle_schedule`, not here — the nightly stop is what takes
+    the environment to zero. Widening the wake trims that saving at the edges; it does not
+    remove it.
 
     Expression is evaluated in Asia/Ho_Chi_Minh, like `idle_schedule`.
 
