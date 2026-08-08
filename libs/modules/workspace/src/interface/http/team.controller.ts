@@ -13,7 +13,7 @@ import {
 import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors, NotFoundException } from '@platform';
 import type { JwtPayload } from '@platform';
-import { AuthPolicy, RequirePermission } from '@modules/access';
+import { AuthPolicy, RequirePermission, AuthorizedInService } from '@modules/access';
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
 import { TeamService } from '../../application/team.service';
 import { z } from 'zod';
@@ -93,6 +93,10 @@ export class TeamController {
 
   // Workspace-scoped team list + create
   @Get('workspaces/:workspaceId/teams')
+  @AuthorizedInService(
+    'membership of the named workspace is checked in the service',
+    'workspace.service.spec.ts',
+  )
   @ApiOperation({ summary: 'List teams in a workspace' })
   @ApiParam({ name: 'workspaceId', type: 'string', format: 'uuid' })
   @ApiQuery({ name: 'includeInactive', required: false, type: 'boolean' })
@@ -142,6 +146,10 @@ export class TeamController {
 
   // Individual team operations
   @Get('teams/:id')
+  @AuthorizedInService(
+    'the team must belong to a workspace the caller is a member of',
+    'workspace.service.spec.ts',
+  )
   @ApiOperation({ summary: 'Get team details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, schema: { type: 'object' } })
@@ -168,6 +176,10 @@ export class TeamController {
 
   // Team member operations
   @Get('teams/:id/members')
+  @AuthorizedInService(
+    'the team must belong to a workspace the caller is a member of',
+    'workspace.service.spec.ts',
+  )
   @ApiOperation({ summary: 'List team members' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, schema: { type: 'array', items: { type: 'object' } } })

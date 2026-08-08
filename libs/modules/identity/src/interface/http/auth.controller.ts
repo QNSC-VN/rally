@@ -5,7 +5,7 @@ import '@fastify/cookie';
 import { Auth, ApiCommonErrors, BFF_SESSION_COOKIE, ConflictException } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AuthService } from '@qnsc-vn/identity';
-import { AccessService } from '@modules/access';
+import { AccessService, SelfScoped } from '@modules/access';
 import { WorkspaceService } from '@modules/workspace';
 import { AttachmentsService, USER_AVATAR_POLICY } from '@modules/attachments';
 import { UpdateProfileDto } from './dto/login.dto';
@@ -37,6 +37,7 @@ export class AuthController {
   // ── PATCH /auth/me ─────────────────────────────────────────────────────────
 
   @Patch('me')
+  @SelfScoped("updates the caller's own profile")
   @Auth()
   @ApiOperation({ summary: 'Update authenticated user profile' })
   @ApiResponse({ status: 200, type: UserProfileResponseDto })
@@ -83,6 +84,7 @@ export class AuthController {
   // identity (it is just a URL on the user row), so `currentOwnerCount` is 0:
   // each upload mints a fresh object and the old one is reaped.
   @Post('me/avatar/presign')
+  @SelfScoped("presigns an upload for the caller's own avatar")
   @Auth()
   @ApiOperation({ summary: 'Presign a PUT URL to upload the current user avatar' })
   @ApiResponse({ status: 201, type: PresignAvatarResponseDto })
@@ -108,6 +110,7 @@ export class AuthController {
   // ── POST /auth/me/avatar/confirm ────────────────────────────────────────────
 
   @Post('me/avatar/confirm')
+  @SelfScoped("confirms the caller's own avatar upload")
   @Auth()
   @ApiOperation({ summary: 'Confirm the uploaded avatar and store it on the profile' })
   @ApiResponse({ status: 201, type: ConfirmAvatarResponseDto })
@@ -139,6 +142,7 @@ export class AuthController {
   // ── POST /auth/logout-all ──────────────────────────────────────────────────
 
   @Post('logout-all')
+  @SelfScoped("revokes the caller's own sessions")
   @Auth()
   @HttpCode(204)
   @ApiOperation({ summary: 'Revoke all sessions for the authenticated user' })

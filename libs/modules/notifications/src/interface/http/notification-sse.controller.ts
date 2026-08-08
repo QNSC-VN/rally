@@ -54,6 +54,7 @@ import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { NotificationPubSubService } from '@platform/notifications';
 import { NotificationsService } from '../../application/notifications.service';
+import { SelfScoped } from '@modules/access';
 
 @ApiTags('notifications')
 @Controller('notifications')
@@ -65,6 +66,7 @@ export class NotificationSseController {
   ) {}
 
   @Get('stream')
+  @SelfScoped("subscribes to the caller's own notification channel")
   @ApiOperation({
     summary: 'SSE stream — real-time notification events',
     description:

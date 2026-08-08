@@ -7,6 +7,7 @@ import { NotificationsService } from '../../application/notifications.service';
 import { ListNotificationsDto, PagedNotificationsDto } from './dto/notification-request.dto';
 import { NotificationResponseDto } from './dto/notification-response.dto';
 import type { Notification } from '../../domain/notification.types';
+import { SelfScoped } from '@modules/access';
 
 function toDto(n: Notification): NotificationResponseDto {
   return {
@@ -31,6 +32,7 @@ export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get('unread-count')
+  @SelfScoped("counts only the caller's unread notifications")
   @ApiOperation({ summary: 'Get number of unread notifications for the current user' })
   @ApiResponse({ status: 200, schema: { properties: { count: { type: 'number' } } } })
   @ApiCommonErrors(401)
@@ -40,6 +42,7 @@ export class NotificationsController {
   }
 
   @Get()
+  @SelfScoped("lists only the caller's notifications")
   @ApiOperation({ summary: 'List notifications for the current user' })
   @ApiResponse({ status: 200, type: [NotificationResponseDto] })
   @ApiCommonErrors(401)
@@ -56,6 +59,7 @@ export class NotificationsController {
   }
 
   @Get('paged')
+  @SelfScoped("lists only the caller's notifications")
   @ApiOperation({ summary: 'Cursor-paginated notifications feed (full page, infinite scroll)' })
   @ApiPagedResponse(NotificationResponseDto)
   @ApiCommonErrors(400, 401)
@@ -73,6 +77,7 @@ export class NotificationsController {
   }
 
   @Post(':id/read')
+  @SelfScoped('marks a notification the caller owns')
   @HttpCode(204)
   @ApiOperation({ summary: 'Mark a notification as read' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -86,6 +91,7 @@ export class NotificationsController {
   }
 
   @Post('read-all')
+  @SelfScoped("marks only the caller's notifications")
   @HttpCode(204)
   @ApiOperation({ summary: 'Mark all notifications as read' })
   @ApiResponse({ status: 204, description: 'All notifications marked as read' })

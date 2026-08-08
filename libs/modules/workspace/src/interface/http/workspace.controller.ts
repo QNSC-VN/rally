@@ -29,7 +29,7 @@ import {
   NotFoundException,
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
-import { AuthPolicy, RequirePermission } from '@modules/access';
+import { AuthPolicy, RequirePermission, AuthorizedInService, AuthzGap } from '@modules/access';
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
 import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '../../../../../../db/schema/enums';
 import { WorkspaceService } from '../../application/workspace.service';
@@ -139,6 +139,10 @@ export class WorkspaceController {
   // ── List workspaces ────────────────────────────────────────────────────────
 
   @Get()
+  @AuthorizedInService(
+    'lists only the workspaces the caller is a member of',
+    'workspace.service.spec.ts',
+  )
   @ApiOperation({ summary: 'List workspaces the authenticated user belongs to' })
   @ApiPagedResponse(WorkspaceResponseDto)
   @ApiCommonErrors(401)
@@ -177,6 +181,10 @@ export class WorkspaceController {
   // ── Get workspace ──────────────────────────────────────────────────────────
 
   @Get(':id')
+  @AuthorizedInService(
+    'membership of the requested workspace is checked in the service',
+    'workspace.service.spec.ts',
+  )
   @ApiOperation({ summary: 'Get workspace details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: WorkspaceResponseDto })
@@ -230,6 +238,10 @@ export class WorkspaceController {
   // ── List members ───────────────────────────────────────────────────────────
 
   @Get(':id/members')
+  @AuthorizedInService(
+    'membership of the workspace whose members are listed',
+    'workspace.service.spec.ts',
+  )
   @ApiOperation({ summary: 'List workspace members' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiPagedResponse(MemberResponseDto)
@@ -248,6 +260,9 @@ export class WorkspaceController {
   // ── List members with profile (for User Management UI) ─────────────────────
 
   @Get(':id/members-with-profile')
+  @AuthzGap(
+    'documented in CLAUDE.md as an open decision: it carries phone, lastLoginAt and role ids, is documented for the User Management UI, but feeds the Portfolio and Projects owner pickers — gating it needs the feed split first, and whether a staff directory is member-visible is a product call.',
+  )
   @ApiOperation({ summary: 'List workspace members with user profile and role details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: MemberWithProfileResponseDto, isArray: true })
@@ -452,6 +467,10 @@ export class InvitationController {
   constructor(private readonly workspaceService: WorkspaceService) {}
 
   @Post('accept')
+  @AuthorizedInService(
+    'the invitation token identifies the row and acceptance is bound to the invited email, case-insensitively',
+    'invitation.service.spec.ts',
+  )
   @Auth()
   @HttpCode(204)
   @RateLimit('STRICT')

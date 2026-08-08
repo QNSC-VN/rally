@@ -13,7 +13,7 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@modules/identity';
-import { AuthPolicy, RequirePermission } from '@modules/access';
+import { AuthPolicy, RequirePermission, AuthorizedInService } from '@modules/access';
 import { CollaborationService } from '../../application/collaboration.service';
 import { CreateCommentDto, UpdateCommentDto } from './dto/collaboration-request.dto';
 import { CommentResponseDto, toCommentDto } from './dto/collaboration-response.dto';
@@ -83,6 +83,10 @@ export class CollaborationController {
   }
 
   @Patch('comments/:commentId')
+  @AuthorizedInService(
+    'author-only: refuses when comment.authorId !== actor.sub, after a workspace check',
+    'collaboration.service.spec.ts',
+  )
   @ApiOperation({ summary: 'Update a comment' })
   @ApiParam({ name: 'workItemId', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'commentId', type: 'string', format: 'uuid' })
@@ -98,6 +102,10 @@ export class CollaborationController {
   }
 
   @Delete('comments/:commentId')
+  @AuthorizedInService(
+    'author-only: refuses when comment.authorId !== actor.sub, after a workspace check',
+    'collaboration.service.spec.ts',
+  )
   @HttpCode(204)
   @ApiOperation({ summary: 'Delete a comment (soft delete)' })
   @ApiParam({ name: 'workItemId', type: 'string', format: 'uuid' })

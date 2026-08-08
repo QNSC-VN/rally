@@ -32,6 +32,7 @@ import { NotificationPreferencesService } from '../../application/notification-p
 import { UpsertPreferenceDto } from './dto/preference-request.dto';
 import type { PreferenceResponseDto } from './dto/preference-response.dto';
 import type { NotificationPreference } from '../../domain/notification-preference.types';
+import { SelfScoped } from '@modules/access';
 
 const VALID_TYPES = new Set<string>(['*', ...NOTIFICATION_TEMPLATE_NAMES]);
 
@@ -59,6 +60,7 @@ export class NotificationPreferencesController {
   constructor(private readonly prefsService: NotificationPreferencesService) {}
 
   @Get()
+  @SelfScoped("the caller's own notification preferences")
   @ApiOperation({
     summary: 'List notification preferences',
     description:
@@ -74,6 +76,7 @@ export class NotificationPreferencesController {
   }
 
   @Put(':type')
+  @SelfScoped("writes the caller's own preference row")
   @ApiOperation({
     summary: 'Upsert a notification preference',
     description:
@@ -101,6 +104,7 @@ export class NotificationPreferencesController {
   }
 
   @Delete(':type')
+  @SelfScoped("deletes the caller's own preference row")
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Reset a notification preference to default',

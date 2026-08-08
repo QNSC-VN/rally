@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import type { Reflector } from '@nestjs/core';
 import { PermissionDeniedException, type JwtPayload } from '@platform';
-import { PolicyGuard, type PolicyScope } from './policy.guard';
+import { PolicyGuard, type PolicyScope, AUTHZ_MODE_KEY } from './policy.guard';
 import type { AccessService } from '../../application/access.service';
 import type { ProjectScopeResolver } from '../../application/project-scope.resolver';
 
@@ -71,8 +71,35 @@ describe('PolicyGuard', () => {
       resolver as unknown as ProjectScopeResolver,
     );
 
-  it('allows a route with no policy metadata (authenticated-only)', async () => {
+  it('DENIES a route that declares no authorization', async () => {
+    // This test used to assert `resolves.toBe(true)` — it encoded the fail-open. A handler
+    // nobody decorated was allowed to every authenticated caller: JwtAuthGuard proved WHO the
+    // caller was and nothing then checked WHETHER they may. 45 handlers were in that state.
     const { ctx, reflector } = makeCtx(undefined, { user: actor([]) });
+    await expect(guardFor(reflector).canActivate(ctx)).rejects.toBeInstanceOf(
+      PermissionDeniedException,
+    );
+  });
+
+  it.each([
+    ['self-scoped', { mode: 'self-scoped', reason: 'the caller' }],
+    ['shared-read', { mode: 'shared-read', reason: 'reference data' }],
+    ['in-service', { mode: 'in-service', reason: 'runtime', pinnedBy: 'x.spec.ts' }],
+    ['gap', { mode: 'gap', reason: 'known hole' }],
+  ])('allows an explicitly declared %s route', async (_name, mode) => {
+    // A declared mode needs no permission code: the declaration IS the decision, and the
+    // narrowing that makes it true lives in the service.
+    const reflector = {
+      getAllAndOverride: vi.fn((key: string) => (key === AUTHZ_MODE_KEY ? mode : undefined)),
+    } as unknown as Reflector;
+    const ctx = {
+      getHandler: () => () => undefined,
+      getClass: () => class {},
+      switchToHttp: () => ({
+        getRequest: () => ({ user: actor([]), params: {}, query: {}, body: {} }),
+      }),
+    } as unknown as ExecutionContext;
+
     await expect(guardFor(reflector).canActivate(ctx)).resolves.toBe(true);
   });
 
