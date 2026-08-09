@@ -290,6 +290,48 @@ module "cache" {
 # `OTEL_ENABLED` below is gated on the same flag, so the app is never told to
 # export into a void. That is what makes turning telemetry on a one-line change
 # per environment rather than a migration.
+# ── Cloudflare Tunnel ─────────────────────────────────────────────────────────
+# Created by Terraform via the shared cf-tunnel module. Both of rally's tunnels predate
+# it and were made in the dashboard, so live/*/main.tf carries an `import` block that
+# adopts each one — the module ignores `secret` precisely so that adoption is a no-op
+# rather than a rotation. Rotating the secret would change the connector token, and every
+# running cloudflared would be left holding one that no longer authenticates.
+module "tunnel" {
+  count  = var.tunnel_enabled && var.cloudflare_account_id != "" ? 1 : 0
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cf-tunnel?ref=cf-tunnel-v0.1.0"
+
+  account_id = var.cloudflare_account_id
+  name       = local.name
+}
+
+# The connector token, in its own secret rather than as a key in the bundle.
+#
+# It cannot share the bundle: that is one JSON object an operator populates by hand, and
+# Terraform writing a single key of it would clobber the rest. Separate secrets keep the
+# two ownership models apart — this one is Terraform's, the bundle stays the operator's.
+#
+# MIGRATION NOTE: the bundle's existing `tunnel-token` key is left in place and simply
+# stops being referenced. Nothing deletes it, so a rollback is a one-line revert, and the
+# api task keeps serving from its current task definition until the next deploy moves it
+# onto this ARN.
+resource "aws_secretsmanager_secret" "tunnel_token" {
+  count = var.tunnel_enabled && var.cloudflare_account_id != "" ? 1 : 0
+
+  name                    = "${var.product}/${var.env}/tunnel-token-tf"
+  description             = "Cloudflare Tunnel connector token (TUNNEL_TOKEN). Managed by Terraform — do not edit by hand."
+  kms_key_id              = local.kms_key_arn
+  recovery_window_in_days = var.secrets_recovery_window_days
+
+  tags = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "tunnel_token" {
+  count = var.tunnel_enabled && var.cloudflare_account_id != "" ? 1 : 0
+
+  secret_id     = aws_secretsmanager_secret.tunnel_token[0].id
+  secret_string = module.tunnel[0].token
+}
+
 # ── Cloudflare Tunnel sidecar (api only) ──────────────────────────────────────
 # Ingress WITHOUT an ALB: cloudflared dials out to Cloudflare, so the task needs no
 # inbound listener and no public IPv4. Gated on `tunnel_token_secret_arn` — empty
@@ -303,7 +345,7 @@ module "cache" {
 module "tunnel_api" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/tunnel-agent?ref=tunnel-agent-v1.0.0"
 
-  tunnel_token_secret_arn = var.tunnel_enabled ? module.secrets.secret_arns["tunnel-token"] : ""
+  tunnel_token_secret_arn = length(aws_secretsmanager_secret.tunnel_token) > 0 ? aws_secretsmanager_secret.tunnel_token[0].arn : ""
   app_port                = 3000
   log_group               = local.api_log_group
   region                  = var.region
@@ -955,7 +997,7 @@ module "dns_api" {
   #            resolves through the edge. It CANNOT be unproxied: an orange-cloud
   #            record is the only way traffic reaches a connector.
   #   ALB    — the load balancer's public DNS name.
-  content = var.tunnel_enabled ? "${var.tunnel_id}.cfargotunnel.com" : data.terraform_remote_state.runtime.outputs.alb_dns_name
+  content = var.tunnel_enabled ? one(module.tunnel[*].cname) : data.terraform_remote_state.runtime.outputs.alb_dns_name
 
   proxied = true # orange cloud: required for a tunnel, and shields the ALB otherwise
   comment = var.tunnel_enabled ? "${local.name} API → Cloudflare Tunnel (managed by ${var.product}-infra ${var.env})" : "${local.name} API → ALB via Cloudflare proxy (managed by ${var.product}-infra ${var.env})"
