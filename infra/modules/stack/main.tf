@@ -298,10 +298,29 @@ module "cache" {
 # running cloudflared would be left holding one that no longer authenticates.
 module "tunnel" {
   count  = var.tunnel_enabled && var.cloudflare_account_id != "" ? 1 : 0
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cf-tunnel?ref=cf-tunnel-v0.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cf-tunnel?ref=cf-tunnel-v0.2.0"
 
   account_id = var.cloudflare_account_id
   name       = local.name
+
+  // ── STEP ONE OF TWO: ADOPT THE TUNNEL, CHANGE NOTHING ─────────────────────
+  // `hostname` is deliberately left unset, so this module creates NO configuration
+  // resource and rally keeps the routing it has today.
+  //
+  // That restraint is the whole point. Cloudflare's tunnel-configuration API is a
+  // whole-document PUT, so writing a partial rule set silently discards anything the
+  // live configuration holds that this file does not reproduce — against a tunnel that
+  // is currently carrying traffic, on a hostname nobody has compared rule-by-rule.
+  //
+  // config_src must equal what the tunnel ALREADY has, or the import rewrites how a
+  // working connector is configured. A dashboard-created tunnel serving a public
+  // hostname is normally "cloudflare"; CONFIRM IT IN THE PLAN before applying — the plan
+  // must show 1 to import and 0 to change.
+  //
+  // Step two moves routing under Terraform (set `hostname` and `service` to match what
+  // the tunnel serves today) as a separate change, once someone has read the existing
+  // rules. qnsc-kb already runs that way, having been created rather than adopted.
+  config_src = "cloudflare"
 }
 
 # The connector token, in its own secret rather than as a key in the bundle.
