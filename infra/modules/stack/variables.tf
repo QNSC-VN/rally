@@ -150,25 +150,6 @@ variable "seed_on_deploy" {
   default     = false
 }
 
-variable "tunnel_id" {
-  description = <<-EOT
-    Cloudflare Tunnel UUID, used to build the CNAME target
-    `<id>.cfargotunnel.com`. Required when `tunnel_enabled` is true.
-
-    Not discoverable from the connector token — a tunnel and its token are separate
-    reads on the Cloudflare API — so it is passed in rather than derived. The tunnel
-    itself is created out of band, because Terraform cannot mint a token without also
-    owning the tunnel's lifecycle, and destroying a tunnel to recreate it invalidates
-    every deployed connector.
-  EOT
-  type        = string
-  default     = ""
-
-  validation {
-    condition     = !var.tunnel_enabled || var.tunnel_id != ""
-    error_message = "tunnel_enabled = true requires tunnel_id — the CNAME has no target without it."
-  }
-}
 
 variable "entra_tenant_id" {
   type = string

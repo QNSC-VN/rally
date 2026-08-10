@@ -62,3 +62,21 @@ moved {
   from = aws_cloudwatch_metric_alarm.security_fail_open
   to   = module.stack.aws_cloudwatch_metric_alarm.security_fail_open
 }
+// ── Adopt the Cloudflare Tunnel that already exists ──────────────────────────
+// rally-develop was created in the dashboard before the cf-tunnel module existed. This
+// block hands it to Terraform instead of creating a second one.
+//
+// The plan MUST read "1 to import, 0 to change, 0 to destroy" for this resource. A
+// change here would rotate the tunnel's secret, which rotates the connector token, and
+// every running cloudflared would hold one that no longer authenticates — the API would
+// be unreachable until the next deploy shipped the new value. The module ignores
+// `secret` so that cannot happen; confirm it in the plan anyway.
+//
+// Safe to delete once applied: an import block whose target is already in state is a
+// no-op.
+import {
+  to = module.stack.module.tunnel[0].cloudflare_zero_trust_tunnel_cloudflared.this
+  # "<account id>/<tunnel uuid>", not the bare UUID: the provider rejects a bare id
+  # with `invalid id … should be in format "accountID/argoTunnelUUID"`.
+  id = "${var.cloudflare_account_id}/7134b087-ee8f-4768-907a-845fa8eaa692"
+}

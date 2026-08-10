@@ -159,7 +159,6 @@ module "stack" {
   // recreates the ALB attachment, but the runtime layer's ALB must exist first
   // (enable_alb there) and it comes back with a NEW DNS name.
   tunnel_enabled = true
-  tunnel_id      = "27d68d57-6acf-4516-98e1-dab55ea0512e" // rally-production
 
   // OFF, including in production. Audited every consumer: all 7 alarms and all 6
   // dashboard widgets read AWS/ECS, AWS/ApplicationELB and AWS/RDS — native namespaces

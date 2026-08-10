@@ -143,7 +143,6 @@ module "stack" {
   // proven — SSE held open past the heartbeat interval, Entra SSO end to end, and an
   // R2 upload — before production's hostname is cut over.
   tunnel_enabled = true
-  tunnel_id      = "7134b087-ee8f-4768-907a-845fa8eaa692" // rally-develop
 
   // OFF here and in production alike — see ../prod/main.tf for the audit. Per-task
   // metrics are billed as custom CloudWatch metrics at $0.07 each and no alarm,
