@@ -76,5 +76,7 @@ moved {
 // no-op.
 import {
   to = module.stack.module.tunnel[0].cloudflare_zero_trust_tunnel_cloudflared.this
-  id = "7134b087-ee8f-4768-907a-845fa8eaa692"
+  # "<account id>/<tunnel uuid>", not the bare UUID: the provider rejects a bare id
+  # with `invalid id … should be in format "accountID/argoTunnelUUID"`.
+  id = "${var.cloudflare_account_id}/7134b087-ee8f-4768-907a-845fa8eaa692"
 }
