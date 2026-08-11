@@ -199,15 +199,11 @@ export class ProjectsService {
       );
 
       await this.projectRepo.initCounter(actor.workspaceId, tx);
-      await this.projectMemberRepo.addMember(
-        {
-          id: uuidv7(),
-          workspaceId: actor.workspaceId,
-          projectId,
-          userId: resolvedLeadId,
-        },
-        tx,
-      );
+      // RBAC migration Phase 4: no auto-lead project membership. The lead is a
+      // display field; Project access (admin/editor/viewer) is granted
+      // separately by Workspace Admin. The WA creator sees the project via
+      // workspace:* regardless. SRS: "All normal users remain No Access until
+      // Workspace Admin grants Project access."
       for (const s of DEFAULT_WORKFLOW_STATUSES) {
         await this.statusRepo.create(
           {
