@@ -125,7 +125,12 @@ export class AccessService {
           eq(projectMembers.status, 'active'),
         ),
       );
-    const synthesized = accessRows
+    const synthesized: Array<{
+      scopeType: ScopeType;
+      scopeId: string;
+      roleSlug: string | null;
+      permissions: string[];
+    }> = accessRows
       .filter(
         (r) =>
           r.accessLevel === 'admin' || r.accessLevel === 'editor' || r.accessLevel === 'viewer',
