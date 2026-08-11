@@ -16,7 +16,9 @@ import {
   PERMISSION_TIER,
   permissionGrants,
   isProjectTierPermission,
+  ACCESS_LEVEL_PERMISSIONS,
   type ProjectPermission,
+  type ProjectAccessLevel,
 } from '@shared-kernel';
 import type { JwtPayload, DrizzleDB } from '@platform';
 import { InjectDrizzle } from '@platform';
@@ -103,12 +105,45 @@ export class AccessService {
     }
 
     const rows = await this.assignmentRepo.listEffectiveForUser(workspaceId, userId);
+
+    // RBAC migration Phase 3 — synthesize project-scoped assignments from the
+    // per-Project access_level (the new model on work.project_members). The
+    // legacy scopeType='project' rows from listEffectiveForUser still appear too
+    // (safety net until Phase 10 deletes them); they overlap during the
+    // transition, which is consistent and never over-grants because the Phase 1
+    // backfill mapped slugs to the same permission sets.
+    const accessRows = await this.db
+      .select({
+        projectId: projectMembers.projectId,
+        accessLevel: projectMembers.accessLevel,
+      })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.workspaceId, workspaceId),
+          eq(projectMembers.userId, userId),
+          eq(projectMembers.status, 'active'),
+        ),
+      );
+    const synthesized = accessRows
+      .filter(
+        (r) =>
+          r.accessLevel === 'admin' || r.accessLevel === 'editor' || r.accessLevel === 'viewer',
+      )
+      .map((r) => ({
+        scopeType: 'project',
+        scopeId: r.projectId,
+        roleSlug: r.accessLevel,
+        permissions: [...ACCESS_LEVEL_PERMISSIONS[r.accessLevel as ProjectAccessLevel]],
+      }));
+    const all = [...rows, ...synthesized];
+
     try {
-      await this.cache.setJson(key, rows, AccessService.ASSIGNMENTS_TTL_SECONDS);
+      await this.cache.setJson(key, all, AccessService.ASSIGNMENTS_TTL_SECONDS);
     } catch (err) {
       this.logger.warn({ err, userId }, 'Effective-assignment cache write failed; continuing');
     }
-    return rows;
+    return all;
   }
 
   /**
