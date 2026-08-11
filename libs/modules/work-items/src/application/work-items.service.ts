@@ -317,6 +317,8 @@ export class WorkItemsService {
       foundInReleaseId: opts.foundInReleaseId ?? null,
       memberIds: [opts.assigneeId, opts.reporterId, opts.devOwnerId],
     });
+    // RBAC migration Phase 9: an Editor may only create work in their assigned teams.
+    await this.accessService.assertTeamScoped(actor, projectId, opts.teamId ?? null);
 
     // Rank is assigned INSIDE the transaction below, under a per-scope advisory
     // lock — see the `create` call. It used to be computed here, on the pool
@@ -714,6 +716,8 @@ export class WorkItemsService {
     }
 
     const effectiveTeamId = input.teamId !== undefined ? input.teamId : item.teamId;
+    // RBAC migration Phase 9: an Editor may only edit work in their assigned teams.
+    await this.accessService.assertTeamScoped(actor, item.projectId, effectiveTeamId);
     /**
      * A TEAM change revalidates the iteration the item already sits in.
      *
@@ -830,7 +834,9 @@ export class WorkItemsService {
        * silently overwrite a planner who deliberately typed 0.
        */
       const firstEstimate =
-        input.estimateHours !== undefined && input.todoHours === undefined && item.todoHours === null;
+        input.estimateHours !== undefined &&
+        input.todoHours === undefined &&
+        item.todoHours === null;
       if (firstEstimate) {
         input.todoHours = input.estimateHours;
       }
@@ -1065,6 +1071,8 @@ export class WorkItemsService {
         'Defects cannot be deleted. Resolve the defect by setting its state to Closed or Closed Declined.',
       );
     }
+    // RBAC migration Phase 9: an Editor may only delete work in their assigned teams.
+    await this.accessService.assertTeamScoped(actor, item.projectId, item.teamId);
     await this.workItemRepo.softDelete(id, actor.workspaceId);
     // Remove this item's F6 relations so no dangling links survive the delete
     // (the relations table has no FK/cascade to work_items).
@@ -1464,7 +1472,10 @@ export class WorkItemsService {
           tx,
         );
         if (flipped) {
-          this.logger.log({ iterationId: affected }, 'Iteration auto-accepted after bulk assignment');
+          this.logger.log(
+            { iterationId: affected },
+            'Iteration auto-accepted after bulk assignment',
+          );
         }
       }
     });

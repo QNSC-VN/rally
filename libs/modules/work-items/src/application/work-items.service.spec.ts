@@ -203,6 +203,7 @@ const makeProjectsService = () => {
 // Grants everything by default; individual tests override to assert denial.
 const makeAccessService = () => ({
   assertProjectPermission: vi.fn().mockResolvedValue(undefined),
+  assertTeamScoped: vi.fn().mockResolvedValue(undefined),
   getProjectPermissions: vi.fn().mockResolvedValue(['work_item:*']),
 });
 

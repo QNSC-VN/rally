@@ -23,7 +23,7 @@ import {
 import type { JwtPayload, DrizzleDB } from '@platform';
 import { InjectDrizzle } from '@platform';
 import { and, eq } from 'drizzle-orm';
-import { projectMembers, projects } from '../../../../../db/schema/work';
+import { projectMembers, projects, teamMembers, projectTeams } from '../../../../../db/schema/work';
 import { IRoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository';
 import {
   IRoleAssignmentRepository,
@@ -570,6 +570,62 @@ export class AccessService {
     return effective.some(
       (a) => a.permissions.includes(`${reqNs}:*`) || a.permissions.includes(permission),
     );
+  }
+
+  /**
+   * The user's per-Project access level (RBAC migration Phase 9). Resolved from
+   * the synthesized project-scoped entry in effectiveAssignments (roleSlug =
+   * 'admin' | 'editor' | 'viewer'). null when the user has no project entry
+   * (Workspace Admin via workspace:*, or No Access).
+   */
+  async getProjectAccessLevel(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+  ): Promise<ProjectAccessLevel | null> {
+    const eff = await this.effectiveAssignments(workspaceId, userId);
+    const entry = eff.find(
+      (a) =>
+        a.scopeType === 'project' &&
+        a.scopeId === projectId &&
+        (a.roleSlug === 'admin' || a.roleSlug === 'editor' || a.roleSlug === 'viewer'),
+    );
+    return (entry?.roleSlug as ProjectAccessLevel | undefined) ?? null;
+  }
+
+  /**
+   * Phase 9 team-scoped enforcement. An Editor may only mutate work in their
+   * assigned Teams; Admin (All Teams), Viewer (no writes), and Workspace Admin
+   * (workspace:*) bypass. Call AFTER the project-level write permission check.
+   * A team-agnostic item (teamId null) is not team-scoped.
+   */
+  async assertTeamScoped(
+    actor: JwtPayload,
+    projectId: string,
+    teamId: string | null,
+  ): Promise<void> {
+    if (!teamId) return;
+    const level = await this.getProjectAccessLevel(actor.workspaceId, actor.sub, projectId);
+    if (level !== 'editor') return; // admin/WA bypass; viewer holds no write codes
+    const teams = await this.db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .innerJoin(projectTeams, eq(projectTeams.teamId, teamMembers.teamId))
+      .where(
+        and(
+          eq(teamMembers.workspaceId, actor.workspaceId),
+          eq(teamMembers.userId, actor.sub),
+          eq(projectTeams.projectId, projectId),
+          eq(teamMembers.status, 'active'),
+          eq(projectTeams.status, 'active'),
+        ),
+      );
+    if (!teams.some((t) => t.teamId === teamId)) {
+      throw new PermissionDeniedException(
+        'TEAM_NOT_IN_SCOPE',
+        'Editors can only modify work in their assigned teams',
+      );
+    }
   }
 
   /**
