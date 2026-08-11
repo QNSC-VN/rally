@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { SettingsTabHeader } from './settings-tab-header'
-import { useForm, Controller } from 'react-hook-form'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -44,9 +44,9 @@ import { RowGutter } from '@/shared/ui/row-gutter'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { formatDateIso } from '@/shared/lib/utils'
-import { useSystemRoles } from '../model/use-system-roles'
+// useSystemRoles removed — no custom roles under the R1 access-level model.
 
-type InviteForm = { email: string; roleId: string }
+type InviteForm = { email: string }
 type MemberStatus = 'active' | 'suspended' | 'removed'
 
 /** Best-available display label for a member (typed-confirmation copy). */
@@ -70,18 +70,14 @@ interface MemberCtx {
   currentUserId: string | undefined
   youLabel: string
   neverLabel: string
-  roleOptions: SelectOption[]
   statusOptions: SelectOption[]
   labels: {
-    role: string
-    rolePlaceholder: string
     status: string
   }
-  commitRole: (member: WorkspaceMember, roleId: string) => void
   commitStatus: (member: WorkspaceMember, status: MemberStatus) => void
 }
 
-type MemberColKey = 'user' | 'email' | 'role' | 'status' | 'lastLogin'
+type MemberColKey = 'user' | 'email' | 'status' | 'lastLogin'
 
 const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
   {
@@ -125,31 +121,6 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
       >
         {m.email ?? '--'}
       </span>
-    ),
-  },
-  {
-    key: 'role',
-    label: 'Role',
-    sortCol: 'role',
-    defaultWidth: 150,
-    minWidth: 100,
-    cellClassName: 'flex min-w-0 items-center',
-    // Inline role picker — commits a role-assignment change (delete + recreate).
-    // Workspace Admin accounts are guarded (P4-SET-07): their role/status/teams
-    // are read-only in this grid, so an admin can't casually demote or lock out
-    // another workspace owner from the roster.
-    cell: (m, ctx) => (
-      <div className="min-w-0 flex-1">
-        <SearchableSelect
-          variant="cell"
-          value={m.roleId ?? ''}
-          readOnly={m.roleSlug === 'workspace_admin'}
-          options={ctx.roleOptions}
-          ariaLabel={ctx.labels.role}
-          placeholder={ctx.labels.rolePlaceholder}
-          onChange={(v) => ctx.commitRole(m, v as string)}
-        />
-      </div>
     ),
   },
   {
@@ -235,11 +206,9 @@ export function MembersTab() {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [search, setSearch] = useState('')
-  const [roleFilter, setRoleFilter] = useState('') // '' = all
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all')
 
   const { data: members = [], isLoading: membersLoading } = useWorkspaceMembers(workspaceId)
-  const { data: roles = [] } = useSystemRoles()
 
   const { data: invitations = [] } = useQuery({
     queryKey: ['workspace-invitations', workspaceId],
@@ -281,23 +250,17 @@ export function MembersTab() {
 
   const metrics = useMemo(() => {
     const active = members.filter((m) => m.status === 'active').length
-    const admins = members.filter((m) => m.roleSlug === 'workspace_admin').length
-    return { total: members.length, active, admins }
+    return { total: members.length, active }
   }, [members])
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase()
     return members.filter((m) => {
       if (statusFilter !== 'all' && m.status !== statusFilter) return false
-      if (roleFilter && m.roleId !== roleFilter) return false
       if (!q) return true
-      return (
-        m.displayName?.toLowerCase().includes(q) ||
-        m.email?.toLowerCase().includes(q) ||
-        m.roleName?.toLowerCase().includes(q)
-      )
+      return m.displayName?.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q)
     })
-  }, [members, search, roleFilter, statusFilter])
+  }, [members, search, statusFilter])
 
   // Shared table engine (resize / reorder / Show-Fields) + click-to-sort header.
   const { sortCol, sortDir, sort } = useColumnSort()
@@ -307,48 +270,6 @@ export function MembersTab() {
   // Shared member mutation — drives inline Teams/Status edits + the bulk deactivate.
   const bulkUpdate = useUpdateMember(workspaceId)
 
-  // Inline role change — a workspace role lives in a role-assignment, so a change
-  // deletes the current assignment (if any) then creates the new one. Same
-  // semantics the removed Edit-User modal used. Invalidates the roster AND the
-  // user's effective permissions.
-  const changeRole = useMutation({
-    mutationFn: async ({ member, roleId }: { member: WorkspaceMember; roleId: string }) => {
-      // DELETE the old assignment, then POST the new one. If the POST fails
-      // after a successful DELETE, restore the original assignment so the user
-      // is never left with zero workspace roles (lockout). HTTP errors are
-      // checked + thrown so they surface (the old code ignored them silently).
-      const previousRoleId = member.roleId
-      const hadAssignment = !!member.roleAssignmentId
-      if (member.roleAssignmentId) {
-        const { error, response } = await apiClient.DELETE('/v1/role-assignments/{id}', {
-          params: { path: { id: member.roleAssignmentId } },
-        })
-        if (error) throw new Error(apiErrorMessage(error, response.status))
-      }
-      const { error, response } = await apiClient.POST('/v1/role-assignments', {
-        body: { userId: member.userId, roleId, scopeType: 'workspace' },
-      })
-      if (error) {
-        if (hadAssignment && previousRoleId) {
-          // Compensate: re-create the original assignment to avoid lockout.
-          await apiClient.POST('/v1/role-assignments', {
-            body: { userId: member.userId, roleId: previousRoleId, scopeType: 'workspace' },
-          })
-        }
-        throw new Error(apiErrorMessage(error, response.status))
-      }
-    },
-    onSuccess: () => notify.success(t('members.roleUpdated')),
-    onError: (err) => notify.fromError(err, t('members.roleUpdateError')),
-    meta: { invalidates: ['workspace', 'access'] },
-  })
-  const commitRole = useCallback(
-    (member: WorkspaceMember, roleId: string) => {
-      if (!roleId || roleId === (member.roleId ?? '')) return
-      changeRole.mutate({ member, roleId })
-    },
-    [changeRole],
-  )
   // Holds the member + status pending a destructive confirmation (null = closed).
   const [confirmStatusTarget, setConfirmStatusTarget] = useState<{
     member: WorkspaceMember
@@ -379,8 +300,6 @@ export function MembersTab() {
             return m.displayName?.toLowerCase() ?? ''
           case 'email':
             return m.email?.toLowerCase() ?? ''
-          case 'role':
-            return m.roleName?.toLowerCase() ?? ''
           case 'status':
             return m.status
           case 'lastLogin':
@@ -392,10 +311,6 @@ export function MembersTab() {
     [filteredMembers, sortCol, sortDir],
   )
 
-  const roleOptions = useMemo<SelectOption[]>(
-    () => roles.map((r) => ({ value: r.id, label: r.name })),
-    [roles],
-  )
   const statusOptions = useMemo<SelectOption[]>(
     () => [
       { value: 'active', label: t('members.statusActive') },
@@ -413,20 +328,16 @@ export function MembersTab() {
       currentUserId: user?.id,
       youLabel: t('members.you'),
       neverLabel: t('members.never'),
-      roleOptions,
       statusOptions,
       labels: {
-        role: t('members.editRole'),
-        rolePlaceholder: t('members.selectRoleOption'),
         status: t('members.editStatus'),
       },
-      commitRole,
       commitStatus,
     }),
-    [user?.id, t, roleOptions, statusOptions, commitRole, commitStatus],
+    [user?.id, t, statusOptions, commitStatus],
   )
 
-  const activeFilterCount = (roleFilter ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0)
+  const activeFilterCount = statusFilter !== 'all' ? 1 : 0
 
   // ── Client-side pagination over the filtered/sorted roster ──────────────
   // Mirrors the Iteration Status page: paginate the already-loaded rows in the
@@ -435,7 +346,7 @@ export function MembersTab() {
   const [page, setPage] = useState(1)
   const pageCount = Math.max(1, Math.ceil(sortedMembers.length / pageSize))
   // Snap back to the first page whenever the view identity changes.
-  const pageResetKey = `${search}|${roleFilter}|${statusFilter}|${sortCol ?? ''}|${sortDir}|${pageSize}`
+  const pageResetKey = `${search}|${statusFilter}|${sortCol ?? ''}|${sortDir}|${pageSize}`
   const [syncedPageKey, setSyncedPageKey] = useState(pageResetKey)
   if (syncedPageKey !== pageResetKey) {
     setSyncedPageKey(pageResetKey)
@@ -498,7 +409,6 @@ export function MembersTab() {
         <MetricStrip className="rounded-lg border">
           <MetricCard label="Total Users" value={metrics.total} />
           <MetricCard label="Active" value={metrics.active} valueColor={BRAND.success} />
-          <MetricCard label="Admins" value={metrics.admins} />
         </MetricStrip>
 
         {/* Pending invitations — a compact section above the sortable table.
@@ -511,7 +421,6 @@ export function MembersTab() {
             </h3>
             <div className="max-h-56 overflow-y-auto rounded-lg border">
               {invitations.map((inv: { id: string; email: string; roleId: string | null }) => {
-                const roleLabel = roles.find((r) => r.id === inv.roleId)?.name ?? '--'
                 return (
                   <div
                     key={`inv-${inv.id}`}
@@ -521,7 +430,6 @@ export function MembersTab() {
                     <span className="min-w-0 flex-1 truncate text-ui-md text-foreground-subtle">
                       {inv.email}
                     </span>
-                    <span className="shrink-0 text-ui-md text-muted-foreground">{roleLabel}</span>
                     <MemberStatusBadge status="invited" />
                     <IconButton
                       size="sm"
@@ -567,19 +475,6 @@ export function MembersTab() {
         defaultFiltersOpen={activeFilterCount > 0}
         filters={
           <>
-            <div className="w-48">
-              <SearchableSelect
-                variant="field"
-                value={roleFilter}
-                ariaLabel={t('members.filterByRole')}
-                placeholder={t('members.allRoles')}
-                options={[
-                  { value: '', label: t('members.allRoles') },
-                  ...roles.map((r) => ({ value: r.id, label: r.name })),
-                ]}
-                onChange={(v) => setRoleFilter(v as string)}
-              />
-            </div>
             <div className="w-40">
               <SearchableSelect
                 variant="field"
@@ -616,7 +511,7 @@ export function MembersTab() {
         empty={
           sortedMembers.length === 0 ? (
             <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-ui-sm text-foreground-subtle">
-              {search.trim() || roleFilter || statusFilter !== 'all'
+              {search.trim() || statusFilter !== 'all'
                 ? t('members.noMembersSearch')
                 : t('members.noMembers')}
             </div>
@@ -663,7 +558,6 @@ export function MembersTab() {
       {showInviteModal && (
         <InviteUserModal
           workspaceId={workspaceId}
-          roles={roles}
           onClose={() => setShowInviteModal(false)}
           onSuccess={() => setShowInviteModal(false)}
         />
@@ -702,7 +596,8 @@ export function MembersTab() {
             ? confirmStatusTarget.status === 'removed'
               ? t('members.removeAccessConfirm', {
                   name: memberName(confirmStatusTarget.member),
-                  defaultValue: 'Permanently remove access for "{{name}}". They lose all workspace access.',
+                  defaultValue:
+                    'Permanently remove access for "{{name}}". They lose all workspace access.',
                 })
               : t('members.deactivateOneConfirm', {
                   name: memberName(confirmStatusTarget.member),
@@ -773,30 +668,27 @@ function MemberStatusBadge({ status }: { status: string }) {
 
 function InviteUserModal({
   workspaceId,
-  roles,
   onClose,
   onSuccess,
 }: {
   workspaceId: string
-  roles: { id: string; name: string }[]
   onClose: () => void
   onSuccess: () => void
 }) {
   const { t } = useTranslation('settings')
   const inviteSchema = z.object({
     email: z.string().email(t('members.invalidEmail')),
-    roleId: z.string().min(1, t('members.selectRoleError')),
   })
   const form = useForm<InviteForm>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { email: '', roleId: '' },
+    defaultValues: { email: '' },
   })
 
   const invite = useMutation({
     mutationFn: async (data: InviteForm) => {
       const { error, response } = await apiClient.POST('/v1/workspaces/{id}/invitations', {
         params: { path: { id: workspaceId } },
-        body: { email: data.email, roleId: data.roleId },
+        body: { email: data.email },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
@@ -824,29 +716,6 @@ function InviteUserModal({
               type="email"
               autoFocus
               placeholder="colleague@company.com"
-            />
-          </FormField>
-          <FormField
-            label={t('members.roleFieldLabel')}
-            required
-            error={form.formState.errors.roleId?.message}
-          >
-            <Controller
-              control={form.control}
-              name="roleId"
-              render={({ field }) => (
-                <SearchableSelect
-                  variant="field"
-                  value={field.value ?? ''}
-                  ariaLabel={t('members.roleFieldLabel')}
-                  placeholder={t('members.selectRoleOption')}
-                  options={[
-                    { value: '', label: t('members.selectRoleOption') },
-                    ...roles.map((r) => ({ value: r.id, label: r.name })),
-                  ]}
-                  onChange={field.onChange}
-                />
-              )}
             />
           </FormField>
           {form.formState.errors.root && (
