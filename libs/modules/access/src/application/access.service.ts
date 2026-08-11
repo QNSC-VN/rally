@@ -582,36 +582,19 @@ export class AccessService {
    * Called after SSO creates a new user — no actor needed (system operation).
    * Idempotent: does nothing if the user already has an assignment.
    */
-  async ensureDefaultRole(
-    userId: string,
-    workspaceId: string,
-    defaultRoleSlug: string = SYSTEM_ROLE.PROJECT_MEMBER,
+  ensureDefaultRole(
+    _userId: string,
+    _workspaceId: string,
+    _defaultRoleSlug: string = SYSTEM_ROLE.PROJECT_MEMBER,
   ): Promise<void> {
-    const existing = await this.assignmentRepo.listForUser(workspaceId, userId);
-    if (existing.length > 0) return; // already has a role
-
-    const roles = await this.roleRepo.listForWorkspace(workspaceId);
-    const defaultRole = roles.find((r) => r.slug === defaultRoleSlug);
-    if (!defaultRole) {
-      this.logger.warn({ userId, workspaceId }, 'No default role found for JIT-provisioned user');
-      return;
-    }
-
-    const input: AssignRoleInput = {
-      id: uuidv7(),
-      workspaceId,
-      userId,
-      roleId: defaultRole.id,
-      scopeType: 'workspace',
-      scopeId: undefined,
-      grantedBy: userId, // self-assigned by system on JIT provision
-    };
-    await this.assignmentRepo.create(input);
-    await this.invalidateUser(workspaceId, userId);
-    this.logger.log(
-      { userId, roleSlug: defaultRole.slug },
-      'Default role assigned to JIT-provisioned SSO user',
-    );
+    // RBAC migration Phase 4: a JIT-provisioned (first SSO sign-in) user lands
+    // with ZERO project access — no automatic workspace-scoped role, because
+    // that would grant project delivery access company-wide. The user is still
+    // an authenticated company member (workspace_members row from SSO) and can
+    // sign in + see the shell via the empty-baseline fallback; Workspace Admin
+    // grants per-Project access (admin/editor/viewer) afterwards. No-op until a
+    // non-project default role exists.
+    return Promise.resolve();
   }
 
   /**
@@ -689,12 +672,13 @@ export class AccessService {
 
     if (!baseline.length) {
       // No workspace/global assignment: minimal authenticated baseline so the
-      // app shell + workspace read work; all project delivery access is granted
-      // per-project by an explicit role (SRS: project access is the primary
-      // gate). No canonical role fits, so report an empty representative role.
+      // app shell + workspace read work. Project delivery access is granted
+      // ONLY by an explicit per-Project access_level (RBAC migration Phase 4:
+      // No Access is the default for JIT/no-assignment users until Workspace
+      // Admin grants access). No canonical role fits, so report an empty role.
       return {
         role: '',
-        permissions: [PERMISSION.WORKSPACE_VIEW, PERMISSION.PROJECT_VIEW],
+        permissions: [PERMISSION.WORKSPACE_VIEW],
       };
     }
 

@@ -273,11 +273,12 @@ describe('AccessService — scope-aware permission resolution', () => {
     it('falls back to a minimal baseline (empty role) when the user has no assignments', async () => {
       assignmentRepo.listEffectiveForUser.mockResolvedValue([]);
       const result = await service.getUserRoleAndPermissions(USER, WORKSPACE);
-      // workspace_member role was removed in Phase 4.2; a user with no
-      // assignment reports an empty representative role + the minimal read
-      // baseline (project delivery access is granted per-project by a role).
+      // RBAC migration Phase 4: a user with no assignment gets the minimal
+      // baseline (workspace shell only). Project delivery access is NO Access
+      // until Workspace Admin grants a per-Project access_level — project:view
+      // is no longer in the empty baseline.
       expect(result.role).toBe('');
-      expect(result.permissions).toEqual(['workspace:view', 'project:view']);
+      expect(result.permissions).toEqual(['workspace:view']);
     });
 
     it('unions permissions across multiple baseline (workspace + global) roles', async () => {
