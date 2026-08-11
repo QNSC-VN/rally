@@ -1,6 +1,15 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { UserCheck, Globe, Users, UsersRound, Plug, FileText, Lock } from 'lucide-react'
+import {
+  UserCheck,
+  Globe,
+  Users,
+  UsersRound,
+  FolderKanban,
+  Plug,
+  FileText,
+  Lock,
+} from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { PERMISSION, type Permission } from '@/shared/config/permissions'
 import type { ComponentType } from 'react'
@@ -13,6 +22,7 @@ import { TeamsTab } from './ui/teams-tab'
 import { AuditLogTab } from './ui/audit-log-tab'
 // RolesTab removed — no custom roles under the R1 access-level model (RBAC migration).
 import { IntegrationsTab } from './ui/integrations-tab'
+import { ProjectsAccessTab } from './ui/projects-access-tab'
 // NotificationsTab is intentionally NOT wired into the sidebar: Notification
 // Preferences is Future Backlog (BA decision 2026-08-06, C6). Phase 4 ships fixed
 // in-app notifications only; user-configurable preferences stay out of scope. The
@@ -64,6 +74,12 @@ const SIDEBAR: SettingsGroup[] = [
         requires: PERMISSION.TEAMS_CREATE,
       },
       {
+        key: 'projects-access',
+        label: 'Workspaces & Projects',
+        icon: FolderKanban,
+        requires: PERMISSION.WORKSPACE_VIEW,
+      },
+      {
         key: 'integrations',
         label: 'nav.integrations',
         icon: Plug,
@@ -111,6 +127,8 @@ export function SettingsPage() {
       <WorkspaceSettingsTab />
     ) : activeTab === 'audit' ? (
       <AuditLogTab />
+    ) : activeTab === 'projects-access' ? (
+      <ProjectsAccessTab />
     ) : activeTab === 'integrations' ? (
       <IntegrationsTab />
     ) : (
