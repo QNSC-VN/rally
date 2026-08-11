@@ -19,6 +19,8 @@ import type {
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 let projectMemberRows: Array<{ projectId: string }> = [];
+// Phase 3: effectiveAssignments reads per-Project access_level rows directly.
+let accessLevelRows: Array<{ projectId: string; accessLevel: string | null }> = [];
 
 const WORKSPACE = 'ws-1';
 const USER = 'user-1';
@@ -101,6 +103,9 @@ describe('AccessService — scope-aware permission resolution', () => {
           useValue: {
             select: () => ({
               from: () => ({
+                // Phase 3: effectiveAssignments access_level query (no join).
+                where: () => Promise.resolve(accessLevelRows),
+                // listReadableProjectIds (joins projects).
                 innerJoin: () => ({
                   where: () => Promise.resolve(projectMemberRows),
                 }),
@@ -129,6 +134,7 @@ describe('AccessService — scope-aware permission resolution', () => {
     // so tests that exercise a write need a resolvable actor; the no-escalation
     // cases narrow this deliberately.
     projectMemberRows = [];
+    accessLevelRows = [];
     assignmentRepo.listEffectiveForUser.mockResolvedValue([
       {
         scopeType: 'workspace',
@@ -702,6 +708,9 @@ describe('AccessService — cached-permission invalidation', () => {
           useValue: {
             select: () => ({
               from: () => ({
+                // Phase 3: effectiveAssignments access_level query (no join).
+                where: () => Promise.resolve(accessLevelRows),
+                // listReadableProjectIds (joins projects).
                 innerJoin: () => ({
                   where: () => Promise.resolve(projectMemberRows),
                 }),
