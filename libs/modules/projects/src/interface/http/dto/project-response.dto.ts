@@ -82,7 +82,6 @@ export const ProjectMemberResponseSchema = z.object({
   projectId: z.string().uuid(),
   userId: z.string().uuid(),
   accessLevel: z.enum(['admin', 'editor']).nullable(),
-  roleId: z.string().uuid().nullable(),
   status: z.enum(projectMemberStatusEnum.enumValues),
   joinedAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

@@ -3238,7 +3238,6 @@ export interface components {
       /** Format: uuid */
       userId: string
       accessLevel: ('admin' | 'editor') | null
-      roleId: string | null
       /** @enum {string} */
       status: 'active' | 'removed'
       /** Format: date-time */
@@ -3250,8 +3249,6 @@ export interface components {
       avatarUrl: string | null
     }
     UpdateProjectMemberDto: {
-      /** Format: uuid */
-      roleId?: string
       /** @enum {string} */
       accessLevel?: 'admin' | 'editor'
       /** @enum {string} */

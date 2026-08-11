@@ -47,7 +47,6 @@ export interface ProjectMember {
   userId: string
   workspaceId: string
   projectId: string
-  roleId: string | null
   accessLevel: 'admin' | 'editor' | null
   status: string
   displayName?: string

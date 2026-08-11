@@ -143,7 +143,6 @@ export interface ProjectMember {
   workspaceId: string;
   projectId: string;
   userId: string;
-  roleId: string | null;
   accessLevel: string | null;
   status: ProjectMemberStatus;
   joinedAt: Date;
@@ -159,11 +158,9 @@ export interface AddProjectMemberInput {
   workspaceId: string;
   projectId: string;
   userId: string;
-  roleId?: string;
 }
 
 export interface UpdateProjectMemberInput {
-  roleId?: string;
   accessLevel?: 'admin' | 'editor';
   status?: ProjectMemberStatus;
 }

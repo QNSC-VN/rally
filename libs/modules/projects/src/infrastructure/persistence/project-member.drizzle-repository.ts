@@ -47,7 +47,6 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
         workspaceId: projectMembers.workspaceId,
         projectId: projectMembers.projectId,
         userId: projectMembers.userId,
-        roleId: projectMembers.roleId,
         accessLevel: projectMembers.accessLevel,
         status: projectMembers.status,
         joinedAt: projectMembers.joinedAt,
@@ -105,7 +104,6 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       })
       .map((m) => ({
         ...m,
-        roleId: null as string | null,
         accessLevel: null as string | null,
       })) as unknown as ProjectMember[];
     return [...explicit, ...teamOnly];
@@ -119,7 +117,6 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
         workspaceId: input.workspaceId,
         projectId: input.projectId,
         userId: input.userId,
-        roleId: input.roleId ?? null,
         status: 'active',
         joinedAt: new Date(),
         updatedAt: new Date(),
@@ -132,7 +129,6 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
     const rows = await this.db
       .update(projectMembers)
       .set({
-        ...(input.roleId !== undefined && { roleId: input.roleId }),
         ...(input.accessLevel !== undefined && { accessLevel: input.accessLevel }),
         ...(input.status !== undefined && { status: input.status }),
         updatedAt: new Date(),

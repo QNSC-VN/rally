@@ -66,7 +66,6 @@ export class UpdateLabelDto extends createZodDto(UpdateLabelSchema) {}
 // ── Update Project Member ─────────────────────────────────────────────────────
 
 export const UpdateProjectMemberSchema = z.object({
-  roleId: z.string().uuid().optional(),
   accessLevel: z.enum(['admin', 'editor']).optional(),
   status: z.enum(projectMemberStatusEnum.enumValues).optional(),
 });

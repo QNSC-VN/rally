@@ -125,7 +125,6 @@ function toProjectMemberDto(m: ProjectMember): ProjectMemberResponseDto {
     projectId: m.projectId,
     userId: m.userId,
     accessLevel: (m.accessLevel as 'admin' | 'editor' | null) ?? null,
-    roleId: m.roleId,
     status: m.status,
     joinedAt: m.joinedAt instanceof Date ? m.joinedAt.toISOString() : m.joinedAt,
     updatedAt: m.updatedAt instanceof Date ? m.updatedAt.toISOString() : m.updatedAt,
@@ -492,14 +491,9 @@ export class ProjectsController {
   async addProjectMember(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: { userId: string; roleId?: string; accessLevel?: 'admin' | 'editor' },
+    @Body() dto: { userId: string; accessLevel?: 'admin' | 'editor' },
   ): Promise<ProjectMemberResponseDto> {
-    const member = await this.projectsService.addProjectMember(
-      user.workspaceId,
-      id,
-      dto.userId,
-      dto.roleId,
-    );
+    const member = await this.projectsService.addProjectMember(user.workspaceId, id, dto.userId);
     return toProjectMemberDto(member);
   }
 
