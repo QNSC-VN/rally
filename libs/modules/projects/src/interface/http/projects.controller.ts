@@ -186,6 +186,7 @@ export class ProjectsController {
   // ── Get project ────────────────────────────────────────────────────────────
 
   @Get(':id')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService(
     'assertWorkspaceMember, then the project must be readable by this actor',
     'project-authz.e2e.spec.ts',
@@ -203,6 +204,7 @@ export class ProjectsController {
   }
 
   @Get(':id/activity')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService('assertWorkspaceMember on the owning project', 'project-authz.e2e.spec.ts')
   @ApiOperation({ summary: 'List the revision history of a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -291,6 +293,7 @@ export class ProjectsController {
   // ── Workflow statuses ──────────────────────────────────────────────────────
 
   @Get(':id/statuses')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService(
     'workspace reference data for a project the actor can read',
     'project-authz.e2e.spec.ts',
@@ -310,6 +313,7 @@ export class ProjectsController {
   // ── Workflow transitions ───────────────────────────────────────────────────
 
   @Get(':id/transitions')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService(
     'workspace reference data for a project the actor can read',
     'project-authz.e2e.spec.ts',
@@ -328,6 +332,7 @@ export class ProjectsController {
   // ── Labels ──────────────────────────────────────────────────────────────
 
   @Get(':id/labels')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService(
     'workspace reference data for a project the actor can read',
     'project-authz.e2e.spec.ts',
@@ -395,6 +400,7 @@ export class ProjectsController {
   // ── Project Teams ─────────────────────────────────────────────────────────
 
   @Get(':id/teams')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService('assertWorkspaceMember on the owning project', 'project-authz.e2e.spec.ts')
   @ApiOperation({ summary: 'List teams linked to a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
