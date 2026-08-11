@@ -15,12 +15,7 @@ import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@platform';
 import { AccessService } from '../../application/access.service';
 import { AuthPolicy, RequirePermission } from './policy.guard';
-import {
-  AssignRoleDto,
-  AssignProjectRoleDto,
-  CreateRoleDto,
-  UpdateRolePermissionsDto,
-} from './dto/access-request.dto';
+import { AssignRoleDto, CreateRoleDto, UpdateRolePermissionsDto } from './dto/access-request.dto';
 import {
   RoleResponseDto,
   RoleAssignmentResponseDto,
@@ -203,47 +198,5 @@ export class AccessController {
       projectId,
     );
     return { projectId, permissions };
-  }
-
-  @Post('projects/:projectId/role-assignments')
-  @RequirePermission('project:manage_members', { from: 'param', field: 'projectId' })
-  @ApiOperation({
-    summary: 'Assign a project-scoped role to a user (project admin)',
-    description:
-      'Grants a project-scoped role on this project. Only roles whose permissions ' +
-      'are entirely project-tier may be granted here; workspace-level roles require ' +
-      'the workspace-scoped endpoint.',
-  })
-  @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 201, type: RoleAssignmentResponseDto })
-  @ApiCommonErrors(400, 401, 403, 404, 409, 422)
-  async assignProjectRole(
-    @CurrentUser() user: JwtPayload,
-    @Param('projectId', ParseUUIDPipe) projectId: string,
-    @Body() dto: AssignProjectRoleDto,
-  ): Promise<RoleAssignmentResponseDto> {
-    const assignment = await this.accessService.assignProjectRole(
-      user,
-      projectId,
-      dto.userId,
-      dto.roleId,
-    );
-    return toAssignmentDto(assignment);
-  }
-
-  @Delete('projects/:projectId/role-assignments/:id')
-  @RequirePermission('project:manage_members', { from: 'param', field: 'projectId' })
-  @HttpCode(204)
-  @ApiOperation({ summary: 'Revoke a project-scoped role assignment (project admin)' })
-  @ApiParam({ name: 'projectId', type: 'string', format: 'uuid' })
-  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 204, description: 'Role assignment revoked' })
-  @ApiCommonErrors(401, 403, 404)
-  async revokeProjectRole(
-    @CurrentUser() user: JwtPayload,
-    @Param('projectId', ParseUUIDPipe) projectId: string,
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<void> {
-    await this.accessService.revokeProjectRole(user, projectId, id);
   }
 }

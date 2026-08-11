@@ -138,12 +138,11 @@ describe('project isolation: a project-scoped grant does not reach another proje
 
     // The grant under test: project_admin carries every project-tier permission,
     // so a denial below can only mean wrong PROJECT — never a missing permission.
-    const roles = await access.listRoles(WORKSPACE_ID);
-    const projectAdmin = roles.find(
-      (r) => r.slug === 'project_admin' && r.workspaceId === WORKSPACE_ID,
-    );
-    if (!projectAdmin) throw new Error('Seeded workspace copy of project_admin not found');
-    await access.assignProjectRole(admin, projectAId, scopedUserId, projectAdmin.id);
+    // RBAC migration: project access is now access_level on project_members.
+    const member = await projects.addProjectMember(WORKSPACE_ID, projectAId, scopedUserId);
+    await projects.updateProjectMember(WORKSPACE_ID, projectAId, member.id, {
+      accessLevel: 'admin',
+    });
   });
 
   afterAll(async () => {

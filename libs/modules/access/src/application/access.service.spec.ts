@@ -380,73 +380,6 @@ describe('AccessService — scope-aware permission resolution', () => {
     });
   });
 
-  describe('assignProjectRole (project-scoped grant)', () => {
-    const actor = { sub: USER, workspaceId: WORKSPACE, permissions: [] } as never;
-
-    it('rejects a role that carries any workspace-tier permission', async () => {
-      roleRepo.findById.mockResolvedValue(role('workspace_admin', ['workspace:*']));
-
-      await expect(
-        service.assignProjectRole(actor, 'proj-9', 'user-2', 'role-workspace_admin'),
-      ).rejects.toMatchObject({ code: 'CANNOT_GRANT_WORKSPACE_ROLE' });
-      expect(assignmentRepo.create).not.toHaveBeenCalled();
-    });
-
-    it('assigns a project-tier role scoped to the project', async () => {
-      roleRepo.findById.mockResolvedValue(
-        role('project_admin', ['project:edit', 'project:manage_members']),
-      );
-      assignmentRepo.findExisting.mockResolvedValue(null);
-      assignmentRepo.create.mockImplementation(async (input) => ({
-        id: input.id,
-        workspaceId: input.workspaceId,
-        userId: input.userId,
-        roleId: input.roleId,
-        scopeType: input.scopeType,
-        scopeId: input.scopeId ?? null,
-        grantedBy: input.grantedBy,
-        createdAt: new Date(),
-      }));
-
-      const result = await service.assignProjectRole(actor, 'proj-9', 'user-2', 'role-x');
-      expect(assignmentRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ scopeType: 'project', scopeId: 'proj-9', userId: 'user-2' }),
-        expect.anything(),
-      );
-      expect(result.scopeType).toBe('project');
-      expect(result.scopeId).toBe('proj-9');
-    });
-  });
-
-  describe('revokeProjectRole (project-scoped revoke)', () => {
-    const actor = { sub: USER, workspaceId: WORKSPACE, permissions: [] } as never;
-
-    it('throws when the assignment is not scoped to a project', async () => {
-      assignmentRepo.findById.mockResolvedValue(assignment('role-x', 'workspace'));
-
-      await expect(service.revokeProjectRole(actor, 'proj-9', 'a-1')).rejects.toMatchObject({
-        code: 'ROLE_ASSIGNMENT_NOT_FOUND',
-      });
-      expect(assignmentRepo.delete).not.toHaveBeenCalled();
-    });
-
-    it('throws when the assignment belongs to a different project', async () => {
-      assignmentRepo.findById.mockResolvedValue(assignment('role-x', 'project', 'proj-OTHER'));
-
-      await expect(service.revokeProjectRole(actor, 'proj-9', 'a-1')).rejects.toMatchObject({
-        code: 'ROLE_ASSIGNMENT_NOT_FOUND',
-      });
-      expect(assignmentRepo.delete).not.toHaveBeenCalled();
-    });
-
-    it('deletes the assignment when it is scoped to this project', async () => {
-      assignmentRepo.findById.mockResolvedValue(assignment('role-x', 'project', 'proj-9'));
-
-      await service.revokeProjectRole(actor, 'proj-9', 'a-1');
-      expect(assignmentRepo.delete).toHaveBeenCalledWith('a-1', expect.anything());
-    });
-  });
-
   describe('updateRolePermissions', () => {
     // workspace_admin (workspace:*) — holds every code, so the no-escalation
     // guard is satisfied and these tests exercise the rest of the method.
@@ -777,16 +710,6 @@ describe('AccessService — cached-permission invalidation', () => {
     assignmentRepo.create.mockResolvedValue(assignment(target.id, 'project', 'proj-9'));
 
     await service.assignRole(actor, USER, target.id, 'project', 'proj-9');
-
-    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
-  });
-
-  it('invalidates the permission cache when a project-scoped role is revoked', async () => {
-    assignmentRepo.findById.mockResolvedValue(
-      assignment('role-project_admin', 'project', 'proj-9'),
-    );
-
-    await service.revokeProjectRole(actor, 'proj-9', 'a-1');
 
     expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
   });

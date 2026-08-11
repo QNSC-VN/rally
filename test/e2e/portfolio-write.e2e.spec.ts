@@ -18,7 +18,6 @@ import { randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { AccessService } from '@modules/access';
 import { PortfolioItemsService } from '@modules/portfolio';
 import { WorkItemsService } from '@modules/work-items';
 import { ProjectsService } from '@modules/projects';
@@ -41,7 +40,6 @@ describe('portfolio write paths (e2e)', () => {
   let portfolio: PortfolioItemsService;
   let items: WorkItemsService;
   let projects: ProjectsService;
-  let access: AccessService;
   let db: DrizzleDB;
 
   const admin = adminActor();
@@ -53,7 +51,6 @@ describe('portfolio write paths (e2e)', () => {
     portfolio = app.get(PortfolioItemsService);
     items = app.get(WorkItemsService);
     projects = app.get(ProjectsService);
-    access = app.get(AccessService);
     db = app.get<DrizzleDB>(DRIZZLE);
 
     const a = await projects.createProject(admin, { key: uniqueKey(), name: 'Portfolio Write A' });
@@ -507,12 +504,11 @@ describe('portfolio write paths (e2e)', () => {
   it('grants create rights through a project-scoped role, not just workspace admin', async () => {
     const userId = randomUUID();
     const scoped = makeActor(userId, []);
-    const roles = await access.listRoles(WORKSPACE_ID);
-    const projectAdmin = roles.find(
-      (r) => r.slug === 'project_admin' && r.workspaceId === WORKSPACE_ID,
-    );
-    if (!projectAdmin) throw new Error('Seeded workspace copy of project_admin not found');
-    await access.assignProjectRole(admin, projectAId, userId, projectAdmin.id);
+    // RBAC migration: project access is now access_level on project_members.
+    const member = await projects.addProjectMember(WORKSPACE_ID, projectAId, userId);
+    await projects.updateProjectMember(WORKSPACE_ID, projectAId, member.id, {
+      accessLevel: 'admin',
+    });
 
     const created = await portfolio.createItem(scoped, {
       projectId: projectAId,

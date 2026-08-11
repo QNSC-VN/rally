@@ -15,7 +15,6 @@ import {
   PERMISSION,
   PERMISSION_TIER,
   permissionGrants,
-  isProjectTierPermission,
   ACCESS_LEVEL_PERMISSIONS,
   type ProjectPermission,
   type ProjectAccessLevel,
@@ -475,82 +474,6 @@ export class AccessService {
     });
     await this.invalidateUser(assignment.workspaceId, assignment.userId);
     this.logger.log({ assignmentId, revokedBy: actor.sub }, 'Role revoked');
-  }
-
-  /**
-   * Assign a role to a user scoped to a SINGLE project. This is the endpoint a
-   * project admin (holding `project:manage_members` on that project) uses to
-   * manage their own project's membership — distinct from workspace-wide
-   * assignment which requires `users:assign_role`.
-   *
-   * Privilege-escalation guard: only roles whose permissions are ALL project-tier
-   * may be granted here. A role carrying any workspace-tier permission (e.g.
-   * workspace_admin's `workspace:*`) can only be granted by a workspace admin via
-   * the workspace-scoped endpoint, so a project admin can never escalate a member
-   * to workspace-wide power.
-   */
-  async assignProjectRole(
-    actor: JwtPayload,
-    projectId: string,
-    userId: string,
-    roleId: string,
-  ): Promise<UserRoleAssignment> {
-    const role = await this.roleRepo.findById(roleId);
-    if (!role || (role.workspaceId !== null && role.workspaceId !== actor.workspaceId)) {
-      throw new NotFoundException('ROLE_NOT_FOUND', 'Role not found');
-    }
-
-    if (!role.permissions.every((p) => isProjectTierPermission(p))) {
-      throw new PermissionDeniedException(
-        'CANNOT_GRANT_WORKSPACE_ROLE',
-        'This role carries workspace-level permissions and cannot be granted at project scope',
-      );
-    }
-
-    return this.assignRole(actor, userId, roleId, 'project', projectId);
-  }
-
-  /**
-   * Revoke a PROJECT-scoped role assignment. Guards that the assignment is
-   * actually scoped to `projectId` so a project admin can't revoke a user's
-   * workspace-wide (or other project's) role through their project endpoint.
-   */
-  async revokeProjectRole(
-    actor: JwtPayload,
-    projectId: string,
-    assignmentId: string,
-  ): Promise<void> {
-    const assignment = await this.assignmentRepo.findById(assignmentId, actor.workspaceId);
-    if (!assignment || assignment.scopeType !== 'project' || assignment.scopeId !== projectId) {
-      throw new NotFoundException('ROLE_ASSIGNMENT_NOT_FOUND', 'Role assignment not found');
-    }
-    await this.uow.run(async (tx) => {
-      await this.assignmentRepo.delete(assignmentId, tx);
-      await this.audit.emit(
-        {
-          action: AUDIT_ACTION.ROLE_REVOKED,
-          resourceType: AUDIT_RESOURCE.ROLE_ASSIGNMENT,
-          resourceId: assignmentId,
-          workspaceId: actor.workspaceId,
-          actor: { id: actor.sub },
-          projectId,
-          changes: {
-            before: {
-              userId: assignment.userId,
-              roleId: assignment.roleId,
-              scopeType: assignment.scopeType,
-              scopeId: assignment.scopeId,
-            },
-          },
-        },
-        tx,
-      );
-    });
-    // Invalidate the permission cache so the revocation takes effect on the
-    // user's next request (mirrors revokeRole). Without this a revoked project
-    // role stays effective up to the cache TTL on every replica.
-    await this.invalidateUser(assignment.workspaceId, assignment.userId);
-    this.logger.log({ assignmentId, projectId, revokedBy: actor.sub }, 'Project role revoked');
   }
 
   /** Check if a user has a specific permission in any scope. Used by guards.
