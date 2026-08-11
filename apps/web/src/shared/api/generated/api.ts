@@ -803,7 +803,7 @@ export interface paths {
     delete?: never
     options?: never
     head?: never
-    /** Update a project member role/status */
+    /** Update a project member access level / status */
     patch: operations['ProjectsController_updateProjectMember']
     trace?: never
   }
@@ -3271,9 +3271,32 @@ export interface components {
       name?: string
       color?: string
     }
+    ProjectMemberResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      /** Format: uuid */
+      userId: string
+      accessLevel: ('admin' | 'editor') | null
+      roleId: string | null
+      /** @enum {string} */
+      status: 'active' | 'removed'
+      /** Format: date-time */
+      joinedAt: string
+      /** Format: date-time */
+      updatedAt: string
+      displayName: string | null
+      email: string | null
+      avatarUrl: string | null
+    }
     UpdateProjectMemberDto: {
       /** Format: uuid */
       roleId?: string
+      /** @enum {string} */
+      accessLevel?: 'admin' | 'editor'
       /** @enum {string} */
       status?: 'active' | 'removed'
     }
@@ -8162,7 +8185,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': Record<string, never>[]
+          'application/json': components['schemas']['ProjectMemberResponseDto'][]
         }
       }
       /** @description Unauthorized — missing or invalid authentication */
@@ -8197,7 +8220,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': Record<string, never>
+          'application/json': components['schemas']['ProjectMemberResponseDto']
         }
       }
       /** @description Bad Request — validation error or malformed input */
@@ -8258,7 +8281,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': Record<string, never>
+          'application/json': components['schemas']['ProjectMemberResponseDto']
         }
       }
       /** @description Bad Request — validation error or malformed input */

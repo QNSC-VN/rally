@@ -2,6 +2,7 @@ import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import {
   projectStatusEnum,
+  projectMemberStatusEnum,
   workflowStatusCategoryEnum,
 } from '../../../../../../../db/schema/enums';
 
@@ -73,3 +74,21 @@ export const LabelResponseSchema = z.object({
 });
 
 export class LabelResponseDto extends createZodDto(LabelResponseSchema) {}
+
+// ── Project Member (RBAC migration: exposes access_level) ─────────────────────
+export const ProjectMemberResponseSchema = z.object({
+  id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  projectId: z.string().uuid(),
+  userId: z.string().uuid(),
+  accessLevel: z.enum(['admin', 'editor']).nullable(),
+  roleId: z.string().uuid().nullable(),
+  status: z.enum(projectMemberStatusEnum.enumValues),
+  joinedAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  displayName: z.string().nullable(),
+  email: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+});
+
+export class ProjectMemberResponseDto extends createZodDto(ProjectMemberResponseSchema) {}

@@ -144,6 +144,7 @@ export interface ProjectMember {
   projectId: string;
   userId: string;
   roleId: string | null;
+  accessLevel: string | null;
   status: ProjectMemberStatus;
   joinedAt: Date;
   updatedAt: Date;
@@ -163,5 +164,6 @@ export interface AddProjectMemberInput {
 
 export interface UpdateProjectMemberInput {
   roleId?: string;
+  accessLevel?: 'admin' | 'editor';
   status?: ProjectMemberStatus;
 }

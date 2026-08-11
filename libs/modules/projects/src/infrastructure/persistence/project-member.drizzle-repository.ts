@@ -48,6 +48,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
         projectId: projectMembers.projectId,
         userId: projectMembers.userId,
         roleId: projectMembers.roleId,
+        accessLevel: projectMembers.accessLevel,
         status: projectMembers.status,
         joinedAt: projectMembers.joinedAt,
         updatedAt: projectMembers.updatedAt,
@@ -98,11 +99,15 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
     const seenUserIds = new Set(explicit.map((m) => m.userId));
     const teamOnly = teamDerived
       .filter((m) => {
-        if (seenUserIds.has(m.userId)) return false
-        seenUserIds.add(m.userId)
-        return true
+        if (seenUserIds.has(m.userId)) return false;
+        seenUserIds.add(m.userId);
+        return true;
       })
-      .map((m) => ({ ...m, roleId: null as string | null })) as unknown as ProjectMember[];
+      .map((m) => ({
+        ...m,
+        roleId: null as string | null,
+        accessLevel: null as string | null,
+      })) as unknown as ProjectMember[];
     return [...explicit, ...teamOnly];
   }
 
@@ -128,6 +133,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       .update(projectMembers)
       .set({
         ...(input.roleId !== undefined && { roleId: input.roleId }),
+        ...(input.accessLevel !== undefined && { accessLevel: input.accessLevel }),
         ...(input.status !== undefined && { status: input.status }),
         updatedAt: new Date(),
       })
