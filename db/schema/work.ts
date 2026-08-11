@@ -909,7 +909,7 @@ export const projectMembers = workSchema.table(
     userId: uuid('user_id').notNull(),
     roleId: uuid('role_id'),
     // Per-Project access level (RBAC migration Phase 1, migration 0104).
-    // 'admin' | 'editor' | 'viewer'; NULL (or no active row) = No Access.
+    // 'admin' | 'editor'; NULL (or no active row) = No Access (not a member).
     // role_id is retained only as a rollback safety net until the Phase 10 contract drop.
     accessLevel: varchar('access_level', { length: 10 }),
     status: projectMemberStatusEnum('status').notNull().default('active'),

@@ -409,33 +409,23 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
  * PROJECT_ADMIN / PROJECT_MEMBER tier roles. Carried on
  * work.project_members.access_level; no active row = No Access.
  *
+ * The model has THREE levels total: workspace_admin + per-Project admin/editor.
+ * There is no 'viewer' level and no named 'No Access' level — No Access is
+ * simply the absence of an active project_members row.
+ *
  * admin  = full delivery administration in one Project (today's PROJECT_ADMIN set).
  * editor = team-scoped delivery contributor (today's PROJECT_MEMBER set; team
  *          scoping enforced in Phase 9).
- * viewer = Project-wide read-only.
  *
  * admin/editor DERIVE from the existing tier sets so they stay in lockstep until
  * the Phase 10 contract retires the tiers — no duplication to drift.
  */
-export const PROJECT_ACCESS_LEVEL = ['admin', 'editor', 'viewer'] as const;
+export const PROJECT_ACCESS_LEVEL = ['admin', 'editor'] as const;
 export type ProjectAccessLevel = (typeof PROJECT_ACCESS_LEVEL)[number];
 
 export const ACCESS_LEVEL_PERMISSIONS: Record<ProjectAccessLevel, readonly Permission[]> = {
   admin: ROLE_PERMISSIONS[SYSTEM_ROLE.PROJECT_ADMIN],
   editor: ROLE_PERMISSIONS[SYSTEM_ROLE.PROJECT_MEMBER],
-  viewer: [
-    PERMISSION.PROJECT_VIEW,
-    PERMISSION.WORK_ITEM_VIEW,
-    PERMISSION.ITERATION_VIEW,
-    PERMISSION.RELEASE_VIEW,
-    PERMISSION.TEAM_STATUS_VIEW,
-    PERMISSION.QUALITY_VIEW,
-    PERMISSION.MILESTONE_VIEW,
-    PERMISSION.PORTFOLIO_VIEW,
-    PERMISSION.CAPACITY_VIEW,
-    PERMISSION.CAPACITY_VIEW_DRAFT,
-    PERMISSION.REPORT_VIEW,
-  ],
 };
 
 /** Human-readable role names for the seed / admin UI. */

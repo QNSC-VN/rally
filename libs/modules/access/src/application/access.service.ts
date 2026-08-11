@@ -131,10 +131,7 @@ export class AccessService {
       roleSlug: string | null;
       permissions: string[];
     }> = accessRows
-      .filter(
-        (r) =>
-          r.accessLevel === 'admin' || r.accessLevel === 'editor' || r.accessLevel === 'viewer',
-      )
+      .filter((r) => r.accessLevel === 'admin' || r.accessLevel === 'editor')
       .map((r) => ({
         scopeType: 'project',
         scopeId: r.projectId,
@@ -575,7 +572,7 @@ export class AccessService {
   /**
    * The user's per-Project access level (RBAC migration Phase 9). Resolved from
    * the synthesized project-scoped entry in effectiveAssignments (roleSlug =
-   * 'admin' | 'editor' | 'viewer'). null when the user has no project entry
+   * 'admin' | 'editor'). null when the user has no project entry
    * (Workspace Admin via workspace:*, or No Access).
    */
   async getProjectAccessLevel(
@@ -588,7 +585,7 @@ export class AccessService {
       (a) =>
         a.scopeType === 'project' &&
         a.scopeId === projectId &&
-        (a.roleSlug === 'admin' || a.roleSlug === 'editor' || a.roleSlug === 'viewer'),
+        (a.roleSlug === 'admin' || a.roleSlug === 'editor'),
     );
     return (entry?.roleSlug as ProjectAccessLevel | undefined) ?? null;
   }
@@ -606,7 +603,7 @@ export class AccessService {
   ): Promise<void> {
     if (!teamId) return;
     const level = await this.getProjectAccessLevel(actor.workspaceId, actor.sub, projectId);
-    if (level !== 'editor') return; // admin/WA bypass; viewer holds no write codes
+    if (level !== 'editor') return; // admin/WA bypass (All Teams)
     const teams = await this.db
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
@@ -648,7 +645,7 @@ export class AccessService {
     // that would grant project delivery access company-wide. The user is still
     // an authenticated company member (workspace_members row from SSO) and can
     // sign in + see the shell via the empty-baseline fallback; Workspace Admin
-    // grants per-Project access (admin/editor/viewer) afterwards. No-op until a
+    // grants per-Project access (admin/editor) afterwards. No-op until a
     // non-project default role exists.
     return Promise.resolve();
   }
@@ -753,7 +750,7 @@ export class AccessService {
    * Effective permissions for a specific PROJECT: the user's workspace-wide
    * baseline (global + workspace) unioned with any role they hold that is
    * scoped to exactly this project. Used by the PolicyGuard at request time so
-   * "admin of Project X, viewer of Project Y" is actually enforced.
+   * "admin of Project X, editor of Project Y" is actually enforced.
    */
   async getProjectPermissions(
     userId: string,
