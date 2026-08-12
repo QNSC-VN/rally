@@ -22,12 +22,12 @@ import { randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { AccessService } from '@modules/access';
 import { PortfolioItemsService } from '@modules/portfolio';
 import { ProjectsService } from '@modules/projects';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { portfolioItems } from '@db/schema/work';
+import { workspaceMembers } from '@db/schema/workspace';
 
 import {
   ALL,
@@ -42,7 +42,6 @@ describe('portfolio cross-project isolation (e2e)', () => {
   let app: NestFastifyApplication;
   let portfolio: PortfolioItemsService;
   let projects: ProjectsService;
-  let access: AccessService;
   let db: DrizzleDB;
 
   const admin = adminActor();
@@ -60,7 +59,6 @@ describe('portfolio cross-project isolation (e2e)', () => {
     app = await bootRallyApp();
     portfolio = app.get(PortfolioItemsService);
     projects = app.get(ProjectsService);
-    access = app.get(AccessService);
     db = app.get<DrizzleDB>(DRIZZLE);
 
     const a = await projects.createProject(admin, { key: uniqueKey(), name: 'Portfolio Iso A' });
@@ -96,12 +94,17 @@ describe('portfolio cross-project isolation (e2e)', () => {
 
     // project_admin carries every project-tier permission, so a denial below can only
     // mean WRONG PROJECT — never a missing permission.
-    const roles = await access.listRoles(WORKSPACE_ID);
-    const projectAdmin = roles.find(
-      (r) => r.slug === 'project_admin' && r.workspaceId === WORKSPACE_ID,
-    );
-    if (!projectAdmin) throw new Error('Seeded workspace copy of project_admin not found');
-    await access.assignProjectRole(admin, projectAId, scopedUserId, projectAdmin.id);
+    // RBAC migration: addProjectMember requires workspace membership first.
+    await db.insert(workspaceMembers).values({
+      workspaceId: WORKSPACE_ID,
+      userId: scopedUserId,
+      status: 'active',
+    });
+    // RBAC migration: project access is now access_level on project_members.
+    const member = await projects.addProjectMember(WORKSPACE_ID, projectAId, scopedUserId);
+    await projects.updateProjectMember(WORKSPACE_ID, projectAId, member.id, {
+      accessLevel: 'admin',
+    });
   });
 
   afterAll(async () => {

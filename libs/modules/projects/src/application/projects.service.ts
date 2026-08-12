@@ -199,15 +199,11 @@ export class ProjectsService {
       );
 
       await this.projectRepo.initCounter(actor.workspaceId, tx);
-      await this.projectMemberRepo.addMember(
-        {
-          id: uuidv7(),
-          workspaceId: actor.workspaceId,
-          projectId,
-          userId: resolvedLeadId,
-        },
-        tx,
-      );
+      // RBAC migration Phase 4: no auto-lead project membership. The lead is a
+      // display field; Project access (admin/editor/viewer) is granted
+      // separately by Workspace Admin. The WA creator sees the project via
+      // workspace:* regardless. SRS: "All normal users remain No Access until
+      // Workspace Admin grants Project access."
       for (const s of DEFAULT_WORKFLOW_STATUSES) {
         await this.statusRepo.create(
           {
@@ -692,7 +688,6 @@ export class ProjectsService {
     workspaceId: string,
     projectId: string,
     userId: string,
-    roleId?: string,
   ): Promise<ProjectMember> {
     await this.getProject(workspaceId, projectId);
 
@@ -714,8 +709,10 @@ export class ProjectsService {
       workspaceId,
       projectId,
       userId,
-      roleId,
     });
+    // RBAC migration Phase 4: invalidate so the new access_level lands on the
+    // user's next request, not the 5-min cache TTL.
+    await this.access.invalidateUser(workspaceId, userId);
     this.logger.log({ projectId, userId }, 'Project member added');
     return member;
   }
@@ -733,7 +730,9 @@ export class ProjectsService {
       throw new NotFoundException('PROJECT_MEMBER_NOT_FOUND', 'Project member not found');
     }
 
-    return this.projectMemberRepo.updateMember(memberId, input);
+    const updated = await this.projectMemberRepo.updateMember(memberId, input);
+    await this.access.invalidateUser(workspaceId, member.userId);
+    return updated;
   }
 
   async removeProjectMember(workspaceId: string, projectId: string, userId: string): Promise<void> {
@@ -748,6 +747,9 @@ export class ProjectsService {
     }
 
     await this.projectMemberRepo.removeMember(projectId, userId);
+    // RBAC migration Phase 4: invalidate so the removal (No Access) lands on the
+    // user's next request.
+    await this.access.invalidateUser(workspaceId, userId);
     this.logger.log({ projectId, userId }, 'Project member removed');
   }
 }

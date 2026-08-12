@@ -15,13 +15,14 @@ import {
   PERMISSION,
   PERMISSION_TIER,
   permissionGrants,
-  isProjectTierPermission,
+  ACCESS_LEVEL_PERMISSIONS,
   type ProjectPermission,
+  type ProjectAccessLevel,
 } from '@shared-kernel';
 import type { JwtPayload, DrizzleDB } from '@platform';
 import { InjectDrizzle } from '@platform';
 import { and, eq } from 'drizzle-orm';
-import { projectMembers, projects } from '../../../../../db/schema/work';
+import { projectMembers, projects, teamMembers, projectTeams } from '../../../../../db/schema/work';
 import { IRoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository';
 import {
   IRoleAssignmentRepository,
@@ -103,12 +104,47 @@ export class AccessService {
     }
 
     const rows = await this.assignmentRepo.listEffectiveForUser(workspaceId, userId);
+
+    // RBAC migration Phase 3 — synthesize project-scoped assignments from the
+    // per-Project access_level (the new model on work.project_members). The
+    // legacy scopeType='project' rows from listEffectiveForUser still appear too
+    // (safety net until Phase 10 deletes them); they overlap during the
+    // transition, which is consistent and never over-grants because the Phase 1
+    // backfill mapped slugs to the same permission sets.
+    const accessRows = await this.db
+      .select({
+        projectId: projectMembers.projectId,
+        accessLevel: projectMembers.accessLevel,
+      })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.workspaceId, workspaceId),
+          eq(projectMembers.userId, userId),
+          eq(projectMembers.status, 'active'),
+        ),
+      );
+    const synthesized: Array<{
+      scopeType: ScopeType;
+      scopeId: string;
+      roleSlug: string | null;
+      permissions: string[];
+    }> = accessRows
+      .filter((r) => r.accessLevel === 'admin' || r.accessLevel === 'editor')
+      .map((r) => ({
+        scopeType: 'project',
+        scopeId: r.projectId,
+        roleSlug: r.accessLevel,
+        permissions: [...ACCESS_LEVEL_PERMISSIONS[r.accessLevel as ProjectAccessLevel]],
+      }));
+    const all = [...rows, ...synthesized];
+
     try {
-      await this.cache.setJson(key, rows, AccessService.ASSIGNMENTS_TTL_SECONDS);
+      await this.cache.setJson(key, all, AccessService.ASSIGNMENTS_TTL_SECONDS);
     } catch (err) {
       this.logger.warn({ err, userId }, 'Effective-assignment cache write failed; continuing');
     }
-    return rows;
+    return all;
   }
 
   /**
@@ -440,82 +476,6 @@ export class AccessService {
     this.logger.log({ assignmentId, revokedBy: actor.sub }, 'Role revoked');
   }
 
-  /**
-   * Assign a role to a user scoped to a SINGLE project. This is the endpoint a
-   * project admin (holding `project:manage_members` on that project) uses to
-   * manage their own project's membership — distinct from workspace-wide
-   * assignment which requires `users:assign_role`.
-   *
-   * Privilege-escalation guard: only roles whose permissions are ALL project-tier
-   * may be granted here. A role carrying any workspace-tier permission (e.g.
-   * workspace_admin's `workspace:*`) can only be granted by a workspace admin via
-   * the workspace-scoped endpoint, so a project admin can never escalate a member
-   * to workspace-wide power.
-   */
-  async assignProjectRole(
-    actor: JwtPayload,
-    projectId: string,
-    userId: string,
-    roleId: string,
-  ): Promise<UserRoleAssignment> {
-    const role = await this.roleRepo.findById(roleId);
-    if (!role || (role.workspaceId !== null && role.workspaceId !== actor.workspaceId)) {
-      throw new NotFoundException('ROLE_NOT_FOUND', 'Role not found');
-    }
-
-    if (!role.permissions.every((p) => isProjectTierPermission(p))) {
-      throw new PermissionDeniedException(
-        'CANNOT_GRANT_WORKSPACE_ROLE',
-        'This role carries workspace-level permissions and cannot be granted at project scope',
-      );
-    }
-
-    return this.assignRole(actor, userId, roleId, 'project', projectId);
-  }
-
-  /**
-   * Revoke a PROJECT-scoped role assignment. Guards that the assignment is
-   * actually scoped to `projectId` so a project admin can't revoke a user's
-   * workspace-wide (or other project's) role through their project endpoint.
-   */
-  async revokeProjectRole(
-    actor: JwtPayload,
-    projectId: string,
-    assignmentId: string,
-  ): Promise<void> {
-    const assignment = await this.assignmentRepo.findById(assignmentId, actor.workspaceId);
-    if (!assignment || assignment.scopeType !== 'project' || assignment.scopeId !== projectId) {
-      throw new NotFoundException('ROLE_ASSIGNMENT_NOT_FOUND', 'Role assignment not found');
-    }
-    await this.uow.run(async (tx) => {
-      await this.assignmentRepo.delete(assignmentId, tx);
-      await this.audit.emit(
-        {
-          action: AUDIT_ACTION.ROLE_REVOKED,
-          resourceType: AUDIT_RESOURCE.ROLE_ASSIGNMENT,
-          resourceId: assignmentId,
-          workspaceId: actor.workspaceId,
-          actor: { id: actor.sub },
-          projectId,
-          changes: {
-            before: {
-              userId: assignment.userId,
-              roleId: assignment.roleId,
-              scopeType: assignment.scopeType,
-              scopeId: assignment.scopeId,
-            },
-          },
-        },
-        tx,
-      );
-    });
-    // Invalidate the permission cache so the revocation takes effect on the
-    // user's next request (mirrors revokeRole). Without this a revoked project
-    // role stays effective up to the cache TTL on every replica.
-    await this.invalidateUser(assignment.workspaceId, assignment.userId);
-    this.logger.log({ assignmentId, projectId, revokedBy: actor.sub }, 'Project role revoked');
-  }
-
   /** Check if a user has a specific permission in any scope. Used by guards.
    * Wildcard expansion: `workspace:*` matches any `workspace:<action>`.
    * NOTE: assumes 2-segment permission strings (namespace:action). If 3-segment
@@ -533,6 +493,62 @@ export class AccessService {
   }
 
   /**
+   * The user's per-Project access level (RBAC migration Phase 9). Resolved from
+   * the synthesized project-scoped entry in effectiveAssignments (roleSlug =
+   * 'admin' | 'editor'). null when the user has no project entry
+   * (Workspace Admin via workspace:*, or No Access).
+   */
+  async getProjectAccessLevel(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+  ): Promise<ProjectAccessLevel | null> {
+    const eff = await this.effectiveAssignments(workspaceId, userId);
+    const entry = eff.find(
+      (a) =>
+        a.scopeType === 'project' &&
+        a.scopeId === projectId &&
+        (a.roleSlug === 'admin' || a.roleSlug === 'editor'),
+    );
+    return (entry?.roleSlug as ProjectAccessLevel | undefined) ?? null;
+  }
+
+  /**
+   * Phase 9 team-scoped enforcement. An Editor may only mutate work in their
+   * assigned Teams; Admin (All Teams), Viewer (no writes), and Workspace Admin
+   * (workspace:*) bypass. Call AFTER the project-level write permission check.
+   * A team-agnostic item (teamId null) is not team-scoped.
+   */
+  async assertTeamScoped(
+    actor: JwtPayload,
+    projectId: string,
+    teamId: string | null,
+  ): Promise<void> {
+    if (!teamId) return;
+    const level = await this.getProjectAccessLevel(actor.workspaceId, actor.sub, projectId);
+    if (level !== 'editor') return; // admin/WA bypass (All Teams)
+    const teams = await this.db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .innerJoin(projectTeams, eq(projectTeams.teamId, teamMembers.teamId))
+      .where(
+        and(
+          eq(teamMembers.workspaceId, actor.workspaceId),
+          eq(teamMembers.userId, actor.sub),
+          eq(projectTeams.projectId, projectId),
+          eq(teamMembers.status, 'active'),
+          eq(projectTeams.status, 'active'),
+        ),
+      );
+    if (!teams.some((t) => t.teamId === teamId)) {
+      throw new PermissionDeniedException(
+        'TEAM_NOT_IN_SCOPE',
+        'Editors can only modify work in their assigned teams',
+      );
+    }
+  }
+
+  /**
    * Resolve the primary role + effective permissions for a user.
    * Workspace-scoped assignments take precedence over workspace/project scope.
    * Falls back to 'workspace_member' defaults when the user has no assignments.
@@ -542,36 +558,19 @@ export class AccessService {
    * Called after SSO creates a new user — no actor needed (system operation).
    * Idempotent: does nothing if the user already has an assignment.
    */
-  async ensureDefaultRole(
-    userId: string,
-    workspaceId: string,
-    defaultRoleSlug: string = SYSTEM_ROLE.PROJECT_MEMBER,
+  ensureDefaultRole(
+    _userId: string,
+    _workspaceId: string,
+    _defaultRoleSlug: string = SYSTEM_ROLE.PROJECT_MEMBER,
   ): Promise<void> {
-    const existing = await this.assignmentRepo.listForUser(workspaceId, userId);
-    if (existing.length > 0) return; // already has a role
-
-    const roles = await this.roleRepo.listForWorkspace(workspaceId);
-    const defaultRole = roles.find((r) => r.slug === defaultRoleSlug);
-    if (!defaultRole) {
-      this.logger.warn({ userId, workspaceId }, 'No default role found for JIT-provisioned user');
-      return;
-    }
-
-    const input: AssignRoleInput = {
-      id: uuidv7(),
-      workspaceId,
-      userId,
-      roleId: defaultRole.id,
-      scopeType: 'workspace',
-      scopeId: undefined,
-      grantedBy: userId, // self-assigned by system on JIT provision
-    };
-    await this.assignmentRepo.create(input);
-    await this.invalidateUser(workspaceId, userId);
-    this.logger.log(
-      { userId, roleSlug: defaultRole.slug },
-      'Default role assigned to JIT-provisioned SSO user',
-    );
+    // RBAC migration Phase 4: a JIT-provisioned (first SSO sign-in) user lands
+    // with ZERO project access — no automatic workspace-scoped role, because
+    // that would grant project delivery access company-wide. The user is still
+    // an authenticated company member (workspace_members row from SSO) and can
+    // sign in + see the shell via the empty-baseline fallback; Workspace Admin
+    // grants per-Project access (admin/editor) afterwards. No-op until a
+    // non-project default role exists.
+    return Promise.resolve();
   }
 
   /**
@@ -649,12 +648,13 @@ export class AccessService {
 
     if (!baseline.length) {
       // No workspace/global assignment: minimal authenticated baseline so the
-      // app shell + workspace read work; all project delivery access is granted
-      // per-project by an explicit role (SRS: project access is the primary
-      // gate). No canonical role fits, so report an empty representative role.
+      // app shell + workspace read work. Project delivery access is granted
+      // ONLY by an explicit per-Project access_level (RBAC migration Phase 4:
+      // No Access is the default for JIT/no-assignment users until Workspace
+      // Admin grants access). No canonical role fits, so report an empty role.
       return {
         role: '',
-        permissions: [PERMISSION.WORKSPACE_VIEW, PERMISSION.PROJECT_VIEW],
+        permissions: [PERMISSION.WORKSPACE_VIEW],
       };
     }
 
@@ -673,7 +673,7 @@ export class AccessService {
    * Effective permissions for a specific PROJECT: the user's workspace-wide
    * baseline (global + workspace) unioned with any role they hold that is
    * scoped to exactly this project. Used by the PolicyGuard at request time so
-   * "admin of Project X, viewer of Project Y" is actually enforced.
+   * "admin of Project X, editor of Project Y" is actually enforced.
    */
   async getProjectPermissions(
     userId: string,

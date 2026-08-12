@@ -17,8 +17,11 @@ export {
   PERMISSION_TIER,
   permissionGrants,
   isProjectTierPermission,
+  PROJECT_ACCESS_LEVEL,
+  ACCESS_LEVEL_PERMISSIONS,
   type Permission,
   type WorkspacePermission,
   type ProjectPermission,
   type SystemRoleSlug,
+  type ProjectAccessLevel,
 } from '@db/permissions.catalog';

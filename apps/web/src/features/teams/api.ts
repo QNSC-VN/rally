@@ -46,13 +46,14 @@ export interface ProjectMember {
   id: string
   userId: string
   workspaceId: string
-  roleId: string | null
+  projectId: string
+  accessLevel: 'admin' | 'editor' | null
   status: string
   displayName?: string
   email?: string
   avatarUrl?: string | null
   joinedAt: string
-  createdAt: string
+  updatedAt: string
 }
 
 // ── Query keys ────────────────────────────────────────────────────────────────
@@ -247,6 +248,27 @@ export function useRemoveTeamMember(teamId: string) {
     // assignments in this team — Iteration Status, Work Item detail and Backlog
     // all render task assignees, so they must refetch or they show a stale owner.
     meta: { invalidates: ['team', 'work-item'] },
+  })
+}
+
+// ── Per-Project access level (RBAC migration Phase 7) ─────────────────────────
+
+export function useUpdateProjectAccess(projectId: string) {
+  return useMutation({
+    mutationFn: async ({
+      memberId,
+      accessLevel,
+    }: {
+      memberId: string
+      accessLevel: 'admin' | 'editor'
+    }) => {
+      const { error, response } = await apiClient.PATCH('/v1/projects/{id}/members/{memberId}', {
+        params: { path: { id: projectId, memberId } },
+        body: { accessLevel },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    meta: { invalidates: ['team'] },
   })
 }
 

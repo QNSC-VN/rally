@@ -736,6 +736,27 @@
       "when": 1787901503005,
       "tag": "0103_recover_sns_era_failed_outbox_events",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1787987903005,
+      "tag": "0104_project_members_access_level",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1788074303005,
+      "tag": "0105_drop_role_id_and_project_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1788160703005,
+      "tag": "0106_project_estimation_settings",
+      "breakpoints": true
     }
   ]
 }

@@ -15,7 +15,7 @@ export interface ProjectCtx {
   /** Owner (Project lead) options for the inline owner dropdown. */
   members: OwnerSelectMember[]
   /** Inline commit — one shared project mutation for the whole list. */
-  onPatch: (id: string, input: UpdateProjectInput) => void
+  onPatch?: (id: string, input: UpdateProjectInput) => void
   /** Open the detail page (Key link). */
   onOpen: (projectKey: string) => void
 }

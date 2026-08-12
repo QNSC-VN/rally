@@ -20,6 +20,7 @@ import { useRowSelection, type RowSelection } from '@/shared/lib/hooks/use-row-s
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { PERMISSION } from '@/shared/config/permissions'
 import { useProjects, useUpdateProject, useDeleteProject } from '@/features/projects/api'
 import type { Project } from '@/features/projects/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
@@ -31,7 +32,8 @@ export function ProjectsPage() {
   const navigate = useNavigate()
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId
-  const { user: currentUser } = useAuthStore()
+  const { user: currentUser, hasPermission } = useAuthStore()
+  const isWorkspaceAdmin = hasPermission(PERMISSION.WORKSPACE_VIEW)
 
   const { data: projects = [], isLoading } = useProjects(workspaceId)
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
@@ -129,7 +131,7 @@ export function ProjectsPage() {
     currentUserId: currentUser?.id,
     currentUserName: currentUser?.displayName,
     members: wsMembers,
-    onPatch: (id, input) => update.mutate({ id, input }),
+    onPatch: isWorkspaceAdmin ? (id, input) => update.mutate({ id, input }) : undefined,
     onOpen: (key) => void navigate({ to: '/projects/$projectKey', params: { projectKey: key } }),
   }
 
@@ -181,10 +183,12 @@ export function ProjectsPage() {
       <PageToolbar
         search={{ value: search, onChange: setSearch, placeholder: t('search') }}
         actions={
-          <Button size="sm" onClick={() => setShowNewModal(true)}>
-            <Plus size={13} />
-            {t('create.title')}
-          </Button>
+          isWorkspaceAdmin ? (
+            <Button size="sm" onClick={() => setShowNewModal(true)}>
+              <Plus size={13} />
+              {t('create.title')}
+            </Button>
+          ) : undefined
         }
         filters={statusFilter}
         activeFilterCount={filter === 'active' ? 0 : 1}
@@ -213,7 +217,11 @@ export function ProjectsPage() {
             />
           ) : undefined
         }
-        bulkActions={(sel) => <ProjectsBulkBar selection={sel} projects={paged} />}
+        bulkActions={
+          isWorkspaceAdmin
+            ? (sel) => <ProjectsBulkBar selection={sel} projects={paged} />
+            : undefined
+        }
         footer={
           filtered.length > 0 ? (
             <PaginationFooter
@@ -269,7 +277,7 @@ function ProjectsBulkBar({
   const { t } = useTranslation('projects')
   const update = useUpdateProject()
   const del = useDeleteProject()
-  const [confirm, setConfirm] = useState<'archive' | 'delete' | null>(null)
+  const [confirm, setConfirm] = useState<'archive' | 'restore' | 'delete' | null>(null)
   const ids = [...selection.selectedIds]
   const selected = projects.filter((p) => selection.selectedIds.has(p.id))
   const anyActive = selected.some((p) => p.status === 'active')
@@ -316,12 +324,7 @@ function ProjectsBulkBar({
         <BulkBarButton
           icon={<RotateCcw size={13} />}
           label={t('actions.restore')}
-          onClick={() =>
-            void run(
-              (id) => update.mutateAsync({ id, input: { status: 'active' } }),
-              'toast.restoredN',
-            )
-          }
+          onClick={() => setConfirm('restore')}
         />
       )}
       <BulkBarButton
@@ -345,6 +348,24 @@ function ProjectsBulkBar({
           void run(
             (id) => update.mutateAsync({ id, input: { status: 'archived' } }),
             'toast.archivedN',
+          )
+        }}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm === 'restore'}
+        title={t('actions.restore')}
+        message={t('bulk.confirmRestore', {
+          defaultValue: 'Restore {{count}} project(s) to active?',
+          count: ids.length,
+        })}
+        confirmLabel={t('actions.restore')}
+        pending={update.isPending}
+        onConfirm={() => {
+          setConfirm(null)
+          void run(
+            (id) => update.mutateAsync({ id, input: { status: 'active' } }),
+            'toast.restoredN',
           )
         }}
         onCancel={() => setConfirm(null)}

@@ -1,10 +1,10 @@
 /* eslint-disable react-refresh/only-export-components -- PROJECT_COLUMNS is config that must co-locate with the cell renderers it references */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Loader2, UsersRound } from 'lucide-react'
+import { Loader2, UsersRound } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
-import { cn, formatDateIso } from '@/shared/lib/utils'
+import { formatDateIso } from '@/shared/lib/utils'
 import { DateField } from '@/shared/ui/date-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
@@ -19,6 +19,7 @@ import {
   useUnlinkProjectTeam,
 } from '@/features/teams/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { PERMISSION } from '@/shared/config/permissions'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
@@ -30,81 +31,8 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { type ColumnSpec } from '@/shared/ui/table'
 import { type ProjectColKey, type ProjectCtx } from '../model/columns'
 
-export function ArchiveConfirmModal({
-  project,
-  onConfirm,
-  onClose,
-  isPending,
-}: {
-  project: Project
-  onConfirm: () => void
-  onClose: () => void
-  isPending: boolean
-}) {
-  const { t } = useTranslation('projects')
-  const [typed, setTyped] = useState('')
-  const confirmed = typed.trim().toUpperCase() === project.key.toUpperCase()
-
-  return (
-    <AppModal open onClose={onClose} title={t('actions.archive')} width={440}>
-      {/* Danger header band */}
-      <div className="flex items-center gap-3 border-b border-destructive-border bg-destructive-bg px-5 py-3">
-        <AlertTriangle size={16} className="text-destructive" style={{ flexShrink: 0 }} />
-        <p className="text-ui-sm text-destructive">{t('archive.warning')}</p>
-      </div>
-
-      <ModalBody className="space-y-4">
-        {/* Impact summary */}
-        <div className="rounded border border-border-subtle bg-surface-subtle p-3 text-ui-sm">
-          <p className="font-semibold text-foreground">{t('archive.whatWillHappen')}</p>
-          <ul className="mt-1.5 space-y-0.5 text-muted-foreground">
-            <li>
-              {t('archive.statusChange')} <strong>{t('status.archived')}</strong>
-            </li>
-            <li>{t('archive.item2')}</li>
-            <li>{t('archive.item3')}</li>
-            <li>{t('archive.item4')}</li>
-          </ul>
-        </div>
-
-        {/* Key confirmation */}
-        <FormField
-          label={
-            <>
-              {t('archive.confirmPrefix')}{' '}
-              <span className="font-mono font-bold text-foreground">{project.key}</span>{' '}
-              {t('archive.confirmSuffix')}
-            </>
-          }
-        >
-          <Input
-            autoFocus
-            type="text"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            placeholder={project.key}
-            className={cn('font-mono', confirmed && 'border-destructive-border')}
-          />
-        </FormField>
-      </ModalBody>
-
-      <ModalFooter>
-        <Button variant="outline" type="button" onClick={onClose}>
-          {t('common:cancel')}
-        </Button>
-        <Button
-          variant="destructive"
-          type="button"
-          onClick={onConfirm}
-          disabled={!confirmed || isPending}
-        >
-          {isPending && <Loader2 size={12} className="animate-spin" />}
-          {t('actions.archive')}
-        </Button>
-      </ModalFooter>
-    </AppModal>
-  )
-}
+// ArchiveConfirmModal removed — dead code. Bulk archive uses ConfirmDialog;
+// SRS §9 reserves typed-key confirmation for Delete only.
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -206,6 +134,12 @@ interface ProjectFormValues {
   startDate: string
   endDate: string
   teamIds: string[]
+  xsPoints?: number
+  sPoints?: number
+  mPoints?: number
+  lPoints?: number
+  xlPoints?: number
+  hoursPerPoint?: number
 }
 
 function ProjectFormFields({
@@ -215,6 +149,7 @@ function ProjectFormFields({
   keyEditable,
   currentUserId,
   autoFocusName,
+  isWorkspaceAdmin,
 }: {
   workspaceId: string
   values: ProjectFormValues
@@ -222,6 +157,7 @@ function ProjectFormFields({
   keyEditable: boolean
   currentUserId?: string
   autoFocusName?: boolean
+  isWorkspaceAdmin?: boolean
 }) {
   const { t } = useTranslation('projects')
   return (
@@ -273,7 +209,7 @@ function ProjectFormFields({
         />
       </FormField>
       <div className="grid grid-cols-2 gap-3">
-        <FormField label={t('form.owner')} required>
+        <FormField label={t('form.owner')}>
           <OwnerSelect
             workspaceId={workspaceId}
             value={values.leadId}
@@ -303,6 +239,54 @@ function ProjectFormFields({
           onChange={(teamIds) => onPatch({ teamIds })}
         />
       </FormField>
+
+      {/* Estimation Settings (SRS §6.2) — WA-admin only */}
+      {isWorkspaceAdmin && (
+        <div className="space-y-3 rounded-lg border border-border-subtle p-4">
+          <h4 className="text-ui-sm font-semibold text-foreground">Estimation Settings</h4>
+          <p className="text-ui-xs text-foreground-subtle">
+            Fixed T-shirt labels with editable point values. Consumed by Capacity Planning and
+            Reports.
+          </p>
+          <div className="grid grid-cols-5 gap-2">
+            {(['xsPoints', 'sPoints', 'mPoints', 'lPoints', 'xlPoints'] as const).map(
+              (field, i) => {
+                const label = ['XS', 'S', 'M', 'L', 'XL'][i]
+                return (
+                  <FormField key={field} label={label}>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={String(
+                        (values as unknown as Record<string, unknown>)[field] ??
+                          [1, 3, 5, 8, 13][i],
+                      )}
+                      onChange={(e) => {
+                        const v = Number(e.target.value)
+                        if (v > 0) onPatch({ [field]: v } as Partial<ProjectFormValues>)
+                      }}
+                      className="text-center"
+                    />
+                  </FormField>
+                )
+              },
+            )}
+          </div>
+          <FormField label="Hours per point">
+            <Input
+              type="number"
+              min={0.5}
+              step={0.5}
+              value={String((values as unknown as Record<string, unknown>).hoursPerPoint ?? 8)}
+              onChange={(e) => {
+                const v = Number(e.target.value)
+                if (v > 0) onPatch({ hoursPerPoint: v } as Partial<ProjectFormValues>)
+              }}
+              className="w-24"
+            />
+          </FormField>
+        </div>
+      )}
     </>
   )
 }
@@ -317,15 +301,22 @@ export function NewProjectModal({
   onClose: () => void
 }) {
   const { t } = useTranslation('projects')
-  const { user } = useAuthStore()
+  const { user, hasPermission } = useAuthStore()
+  const isWA = hasPermission(PERMISSION.WORKSPACE_VIEW)
   const [values, setValues] = useState<ProjectFormValues>({
     name: '',
     key: '',
     description: '',
-    leadId: user?.id ?? '',
+    leadId: '',
     startDate: '',
     endDate: '',
     teamIds: [],
+    xsPoints: 1,
+    sPoints: 3,
+    mPoints: 5,
+    lPoints: 8,
+    xlPoints: 13,
+    hoursPerPoint: 8,
   })
   const { mutateAsync, isPending } = useCreateProject()
 
@@ -360,7 +351,7 @@ export function NewProjectModal({
         name: values.name.trim(),
         key: trimmedKey,
         description: values.description.trim() || undefined,
-        leadId: values.leadId || user?.id,
+        leadId: values.leadId || undefined,
         startDate: values.startDate || undefined,
         endDate: values.endDate || undefined,
         teamIds: values.teamIds.length > 0 ? values.teamIds : undefined,
@@ -384,6 +375,7 @@ export function NewProjectModal({
             keyEditable
             autoFocusName
             currentUserId={user?.id}
+            isWorkspaceAdmin={isWA}
           />
         </ModalBody>
         <ModalFooter>
@@ -518,7 +510,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
           inputClassName="text-ui-md text-foreground"
           onCommit={(v) => {
             const n = v.trim()
-            if (n && n !== p.name) ctx.onPatch(p.id, { name: n })
+            if (n && n !== p.name) ctx.onPatch?.(p.id, { name: n })
           }}
         />
       ),
@@ -538,7 +530,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
           { value: 'active', label: 'Active' },
           { value: 'archived', label: 'Archived' },
         ]}
-        onChange={(v) => ctx.onPatch(p.id, { status: v as 'active' | 'archived' })}
+        onChange={(v) => ctx.onPatch?.(p.id, { status: v as 'active' | 'archived' })}
       />
     ),
   },
@@ -559,7 +551,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
         members={ctx.members}
         canEdit={p.status !== 'archived'}
         ariaLabel="Owner"
-        onChange={(v) => ctx.onPatch(p.id, { leadId: v })}
+        onChange={(v) => ctx.onPatch?.(p.id, { leadId: v })}
       />
     ),
   },
@@ -598,7 +590,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
         value={p.startDate}
         readOnly={p.status === 'archived'}
         ariaLabel="Start Date"
-        onChange={(v) => ctx.onPatch(p.id, { startDate: v })}
+        onChange={(v) => ctx.onPatch?.(p.id, { startDate: v })}
       />
     ),
   },
@@ -614,7 +606,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
         value={p.endDate}
         readOnly={p.status === 'archived'}
         ariaLabel="End Date"
-        onChange={(v) => ctx.onPatch(p.id, { endDate: v })}
+        onChange={(v) => ctx.onPatch?.(p.id, { endDate: v })}
       />
     ),
   },

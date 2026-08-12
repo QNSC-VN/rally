@@ -56,7 +56,13 @@ describe('BA flows: Company → Project → Team foundation (real AppModule + se
         name: 'Lifecycle Project',
       });
 
-      // Archive is allowed for a project member (the creator is the lead/member).
+      // RBAC migration: creator is no longer auto-lead — explicitly add as admin.
+      const member = await projects.addProjectMember(actor.workspaceId, project.id, actor.sub);
+      await projects.updateProjectMember(actor.workspaceId, project.id, member.id, {
+        accessLevel: 'admin',
+      });
+
+      // Archive is allowed for a project member (explicitly added above).
       const archived = await projects.updateProject(actor, project.id, { status: 'archived' });
       expect(archived.status).toBe('archived');
 

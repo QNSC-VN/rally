@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   UserCheck,
+  KeyRound,
   Globe,
   Users,
   UsersRound,
-  Shield,
+  FolderKanban,
+  ShieldCheck,
   Plug,
   FileText,
   Lock,
@@ -20,8 +22,11 @@ import { WorkspaceSettingsTab } from './ui/workspace-settings-tab'
 import { MembersTab } from './ui/members-tab'
 import { TeamsTab } from './ui/teams-tab'
 import { AuditLogTab } from './ui/audit-log-tab'
-import { RolesTab } from './ui/roles-tab'
+// RolesTab removed — no custom roles under the R1 access-level model (RBAC migration).
 import { IntegrationsTab } from './ui/integrations-tab'
+import { ProjectsAccessTab } from './ui/projects-access-tab'
+import { MyPermissionsTab } from './ui/my-permissions-tab'
+import { PermissionModelTab } from './ui/permission-model-tab'
 // NotificationsTab is intentionally NOT wired into the sidebar: Notification
 // Preferences is Future Backlog (BA decision 2026-08-06, C6). Phase 4 ships fixed
 // in-app notifications only; user-configurable preferences stay out of scope. The
@@ -46,6 +51,7 @@ const SIDEBAR: SettingsGroup[] = [
     group: 'groups.personal',
     items: [
       { key: 'profile', label: 'nav.profile', icon: UserCheck, requires: null },
+      { key: 'my-permissions', label: 'My Permissions', icon: KeyRound, requires: null },
       // Notification Preferences tab removed per BA C6 (Future Backlog).
     ],
   },
@@ -73,10 +79,10 @@ const SIDEBAR: SettingsGroup[] = [
         requires: PERMISSION.TEAMS_CREATE,
       },
       {
-        key: 'roles',
-        label: 'nav.roles',
-        icon: Shield,
-        requires: PERMISSION.ROLES_VIEW,
+        key: 'projects-access',
+        label: 'Workspaces & Projects',
+        icon: FolderKanban,
+        requires: PERMISSION.PROJECT_EDIT,
       },
       {
         key: 'integrations',
@@ -85,6 +91,12 @@ const SIDEBAR: SettingsGroup[] = [
         requires: PERMISSION.SCM_MANAGE,
       },
       { key: 'audit', label: 'nav.audit', icon: FileText, requires: PERMISSION.AUDIT_VIEW },
+      {
+        key: 'permission-model',
+        label: 'Permission Model',
+        icon: ShieldCheck,
+        requires: PERMISSION.PROJECT_EDIT,
+      },
     ],
   },
 ]
@@ -118,6 +130,8 @@ export function SettingsPage() {
   const tabEl =
     activeTab === 'profile' ? (
       <ProfileTab />
+    ) : activeTab === 'my-permissions' ? (
+      <MyPermissionsTab />
     ) : activeTab === 'members' ? (
       <MembersTab />
     ) : activeTab === 'teams' ? (
@@ -126,8 +140,10 @@ export function SettingsPage() {
       <WorkspaceSettingsTab />
     ) : activeTab === 'audit' ? (
       <AuditLogTab />
-    ) : activeTab === 'roles' ? (
-      <RolesTab />
+    ) : activeTab === 'projects-access' ? (
+      <ProjectsAccessTab />
+    ) : activeTab === 'permission-model' ? (
+      <PermissionModelTab />
     ) : activeTab === 'integrations' ? (
       <IntegrationsTab />
     ) : (

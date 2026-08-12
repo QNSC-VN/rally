@@ -263,43 +263,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/projects/{projectId}/role-assignments': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /**
-     * Assign a project-scoped role to a user (project admin)
-     * @description Grants a project-scoped role on this project. Only roles whose permissions are entirely project-tier may be granted here; workspace-level roles require the workspace-scoped endpoint.
-     */
-    post: operations['AccessController_assignProjectRole']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/projects/{projectId}/role-assignments/{id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** Revoke a project-scoped role assignment (project admin) */
-    delete: operations['AccessController_revokeProjectRole']
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/v1/workspaces': {
     parameters: {
       query?: never
@@ -803,7 +766,7 @@ export interface paths {
     delete?: never
     options?: never
     head?: never
-    /** Update a project member role/status */
+    /** Update a project member access level / status */
     patch: operations['ProjectsController_updateProjectMember']
     trace?: never
   }
@@ -2975,12 +2938,6 @@ export interface components {
       projectId: string
       permissions: string[]
     }
-    AssignProjectRoleDto: {
-      /** Format: uuid */
-      userId: string
-      /** Format: uuid */
-      roleId: string
-    }
     WorkspaceResponseDto: {
       /** Format: uuid */
       id: string
@@ -3271,9 +3228,29 @@ export interface components {
       name?: string
       color?: string
     }
-    UpdateProjectMemberDto: {
+    ProjectMemberResponseDto: {
       /** Format: uuid */
-      roleId?: string
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      /** Format: uuid */
+      userId: string
+      accessLevel: ('admin' | 'editor') | null
+      /** @enum {string} */
+      status: 'active' | 'removed'
+      /** Format: date-time */
+      joinedAt: string
+      /** Format: date-time */
+      updatedAt: string
+      displayName: string | null
+      email: string | null
+      avatarUrl: string | null
+    }
+    UpdateProjectMemberDto: {
+      /** @enum {string} */
+      accessLevel?: 'admin' | 'editor'
       /** @enum {string} */
       status?: 'active' | 'removed'
     }
@@ -6252,115 +6229,6 @@ export interface operations {
       }
     }
   }
-  AccessController_assignProjectRole: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        projectId: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AssignProjectRoleDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['RoleAssignmentResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AccessController_revokeProjectRole: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        projectId: string
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Role assignment revoked */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
   WorkspaceController_listWorkspaces: {
     parameters: {
       query?: {
@@ -8162,7 +8030,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': Record<string, never>[]
+          'application/json': components['schemas']['ProjectMemberResponseDto'][]
         }
       }
       /** @description Unauthorized — missing or invalid authentication */
@@ -8197,7 +8065,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': Record<string, never>
+          'application/json': components['schemas']['ProjectMemberResponseDto']
         }
       }
       /** @description Bad Request — validation error or malformed input */
@@ -8258,7 +8126,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': Record<string, never>
+          'application/json': components['schemas']['ProjectMemberResponseDto']
         }
       }
       /** @description Bad Request — validation error or malformed input */

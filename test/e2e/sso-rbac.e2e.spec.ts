@@ -125,7 +125,9 @@ describe('SSO login → RBAC/PBAC (real AppModule + seeded DB)', () => {
 
     // The store is the single source of authority, so assert against it directly.
     const resolved = await access.getUserRoleAndPermissions(token.sub, token.contextId!);
-    expect(resolved.role).toBe('project_member');
+    // RBAC migration: ensureDefaultRole is a no-op — JIT user gets zero project
+    // access until WA grants one. The resolved role is empty (baseline workspace:view).
+    expect(resolved.role).toBe('');
     expect(resolved.permissions.length).toBeGreaterThan(0);
 
     // A plain member is NOT a workspace admin.

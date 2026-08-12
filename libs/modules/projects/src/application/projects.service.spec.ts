@@ -183,7 +183,10 @@ describe('ProjectsService', () => {
         // covered end-to-end in `test/e2e/read-scoping.e2e.spec.ts`.
         {
           provide: AccessService,
-          useValue: { listReadableProjectIds: vi.fn().mockResolvedValue(null) },
+          useValue: {
+            listReadableProjectIds: vi.fn().mockResolvedValue(null),
+            invalidateUser: vi.fn().mockResolvedValue(undefined),
+          },
         },
         {
           provide: DRIZZLE,

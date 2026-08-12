@@ -907,7 +907,10 @@ export const projectMembers = workSchema.table(
     workspaceId: uuid('workspace_id').notNull(),
     projectId: uuid('project_id').notNull(),
     userId: uuid('user_id').notNull(),
-    roleId: uuid('role_id'),
+    // Per-Project access level (RBAC migration Phase 1, migration 0104).
+    // 'admin' | 'editor'; NULL (or no active row) = No Access (not a member).
+    // role_id is retained only as a rollback safety net until the Phase 10 contract drop.
+    accessLevel: varchar('access_level', { length: 10 }),
     status: projectMemberStatusEnum('status').notNull().default('active'),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1265,5 +1268,28 @@ export const memberCapacity = workSchema.table(
     workspaceIdx: index('ix_mc_workspace').on(t.workspaceId),
     iterationIdx: index('ix_mc_iteration').on(t.iterationId),
     userIdx: index('ix_mc_user').on(t.userId),
+  }),
+);
+
+// ── project_settings (Phase 1.8 §6.2 Estimation Settings) ───────────────────
+
+export const projectSettings = workSchema.table(
+  'project_settings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    xsPoints: integer('xs_points').notNull().default(1),
+    sPoints: integer('s_points').notNull().default(3),
+    mPoints: integer('m_points').notNull().default(5),
+    lPoints: integer('l_points').notNull().default(8),
+    xlPoints: integer('xl_points').notNull().default(13),
+    hoursPerPoint: numeric('hours_per_point', { precision: 8, scale: 2 }).notNull().default('8.0'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectUq: uniqueIndex('uq_project_settings_project').on(t.projectId),
+    workspaceIdx: index('ix_project_settings_workspace').on(t.workspaceId),
   }),
 );

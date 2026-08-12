@@ -160,6 +160,7 @@ async function seedProject(project: {
       workspaceId: WORKSPACE_ID,
       projectId: actualId,
       userId: ADMIN_USER_ID,
+      accessLevel: 'admin',
       status: 'active',
     })
     .onConflictDoNothing();
@@ -1543,6 +1544,7 @@ export async function seed(connectionUrl?: string): Promise<void> {
         workspaceId: WORKSPACE_ID,
         projectId: SEED_PROJECTS[0].id, // NXP
         userId: DEVELOPER_ID,
+        accessLevel: 'editor',
         status: 'active',
       })
       .onConflictDoNothing();

@@ -35,6 +35,9 @@ import { MilestonesService } from '@modules/milestones';
 import { ProjectsService } from '@modules/projects';
 import { ReleasesService } from '@modules/releases';
 import { WorkItemsService } from '@modules/work-items';
+import { DRIZZLE } from '@platform/database/drizzle.provider';
+import type { DrizzleDB } from '@platform';
+import { workspaceMembers } from '@db/schema/workspace';
 import type { JwtPayload } from '@platform';
 
 import {
@@ -104,6 +107,7 @@ describe('project isolation: a project-scoped grant does not reach another proje
     app = await bootRallyApp();
     guard = app.get(PolicyGuard);
     access = app.get(AccessService);
+    const db = app.get<DrizzleDB>(DRIZZLE);
 
     const projects = app.get(ProjectsService);
     const workItems = app.get(WorkItemsService);
@@ -136,14 +140,17 @@ describe('project isolation: a project-scoped grant does not reach another proje
       milestones.createMilestone(admin, p, `${l} milestone`, {}),
     );
 
-    // The grant under test: project_admin carries every project-tier permission,
-    // so a denial below can only mean wrong PROJECT — never a missing permission.
-    const roles = await access.listRoles(WORKSPACE_ID);
-    const projectAdmin = roles.find(
-      (r) => r.slug === 'project_admin' && r.workspaceId === WORKSPACE_ID,
-    );
-    if (!projectAdmin) throw new Error('Seeded workspace copy of project_admin not found');
-    await access.assignProjectRole(admin, projectAId, scopedUserId, projectAdmin.id);
+    // RBAC migration: addProjectMember requires workspace membership first.
+    await db.insert(workspaceMembers).values({
+      workspaceId: WORKSPACE_ID,
+      userId: scopedUserId,
+      status: 'active',
+    });
+    // RBAC migration: project access is now access_level on project_members.
+    const member = await projects.addProjectMember(WORKSPACE_ID, projectAId, scopedUserId);
+    await projects.updateProjectMember(WORKSPACE_ID, projectAId, member.id, {
+      accessLevel: 'admin',
+    });
   });
 
   afterAll(async () => {

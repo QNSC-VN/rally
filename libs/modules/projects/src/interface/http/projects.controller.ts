@@ -30,8 +30,14 @@ import {
   WorkflowStatusResponseDto,
   WorkflowTransitionResponseDto,
   LabelResponseDto,
+  ProjectMemberResponseDto,
 } from './dto/project-response.dto';
-import type { Project, WorkflowStatus, WorkflowTransition } from '../../domain/project.types';
+import type {
+  Project,
+  ProjectMember,
+  WorkflowStatus,
+  WorkflowTransition,
+} from '../../domain/project.types';
 import type { Label } from '../../domain/label.types';
 import {
   ActivityQueryDto,
@@ -112,6 +118,22 @@ function toLabelDto(l: Label): LabelResponseDto {
   };
 }
 
+function toProjectMemberDto(m: ProjectMember): ProjectMemberResponseDto {
+  return {
+    id: m.id,
+    workspaceId: m.workspaceId,
+    projectId: m.projectId,
+    userId: m.userId,
+    accessLevel: (m.accessLevel as 'admin' | 'editor' | null) ?? null,
+    status: m.status,
+    joinedAt: m.joinedAt instanceof Date ? m.joinedAt.toISOString() : m.joinedAt,
+    updatedAt: m.updatedAt instanceof Date ? m.updatedAt.toISOString() : m.updatedAt,
+    displayName: m.displayName ?? null,
+    email: m.email ?? null,
+    avatarUrl: m.avatarUrl ?? null,
+  };
+}
+
 // ── Controller ───────────────────────────────────────────────────────────────
 
 @ApiTags('projects')
@@ -186,6 +208,7 @@ export class ProjectsController {
   // ── Get project ────────────────────────────────────────────────────────────
 
   @Get(':id')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService(
     'assertWorkspaceMember, then the project must be readable by this actor',
     'project-authz.e2e.spec.ts',
@@ -203,6 +226,7 @@ export class ProjectsController {
   }
 
   @Get(':id/activity')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService('assertWorkspaceMember on the owning project', 'project-authz.e2e.spec.ts')
   @ApiOperation({ summary: 'List the revision history of a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -291,6 +315,7 @@ export class ProjectsController {
   // ── Workflow statuses ──────────────────────────────────────────────────────
 
   @Get(':id/statuses')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService(
     'workspace reference data for a project the actor can read',
     'project-authz.e2e.spec.ts',
@@ -310,6 +335,7 @@ export class ProjectsController {
   // ── Workflow transitions ───────────────────────────────────────────────────
 
   @Get(':id/transitions')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService(
     'workspace reference data for a project the actor can read',
     'project-authz.e2e.spec.ts',
@@ -328,6 +354,7 @@ export class ProjectsController {
   // ── Labels ──────────────────────────────────────────────────────────────
 
   @Get(':id/labels')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService(
     'workspace reference data for a project the actor can read',
     'project-authz.e2e.spec.ts',
@@ -395,6 +422,7 @@ export class ProjectsController {
   // ── Project Teams ─────────────────────────────────────────────────────────
 
   @Get(':id/teams')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
   @AuthorizedInService('assertWorkspaceMember on the owning project', 'project-authz.e2e.spec.ts')
   @ApiOperation({ summary: 'List teams linked to a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -444,40 +472,51 @@ export class ProjectsController {
   @RequirePermission('project:view', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List project members' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ProjectMemberResponseDto, isArray: true })
   @ApiCommonErrors(401, 404)
   async listProjectMembers(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-  ) {
-    return this.projectsService.listProjectMembers(user.workspaceId, id);
+  ): Promise<ProjectMemberResponseDto[]> {
+    const members = await this.projectsService.listProjectMembers(user.workspaceId, id);
+    return members.map(toProjectMemberDto);
   }
 
   @Post(':id/members')
   @RequirePermission('project:manage_members', { from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Add a member to a project' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 201, type: ProjectMemberResponseDto })
   @ApiCommonErrors(400, 401, 404, 409, 422)
   async addProjectMember(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: { userId: string; roleId?: string },
-  ) {
-    return this.projectsService.addProjectMember(user.workspaceId, id, dto.userId, dto.roleId);
+    @Body() dto: { userId: string; accessLevel?: 'admin' | 'editor' },
+  ): Promise<ProjectMemberResponseDto> {
+    const member = await this.projectsService.addProjectMember(user.workspaceId, id, dto.userId);
+    return toProjectMemberDto(member);
   }
 
   @Patch(':id/members/:memberId')
   @RequirePermission('project:manage_members', { from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'Update a project member role/status' })
+  @ApiOperation({ summary: 'Update a project member access level / status' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'memberId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ProjectMemberResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
   async updateProjectMember(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('memberId', ParseUUIDPipe) memberId: string,
     @Body() dto: UpdateProjectMemberDto,
-  ) {
-    return this.projectsService.updateProjectMember(user.workspaceId, id, memberId, dto);
+  ): Promise<ProjectMemberResponseDto> {
+    const member = await this.projectsService.updateProjectMember(
+      user.workspaceId,
+      id,
+      memberId,
+      dto,
+    );
+    return toProjectMemberDto(member);
   }
 
   @Delete(':id/members/:userId')

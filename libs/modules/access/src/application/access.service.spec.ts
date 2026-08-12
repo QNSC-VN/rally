@@ -19,6 +19,8 @@ import type {
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 let projectMemberRows: Array<{ projectId: string }> = [];
+// Phase 3: effectiveAssignments reads per-Project access_level rows directly.
+let accessLevelRows: Array<{ projectId: string; accessLevel: string | null }> = [];
 
 const WORKSPACE = 'ws-1';
 const USER = 'user-1';
@@ -101,6 +103,9 @@ describe('AccessService — scope-aware permission resolution', () => {
           useValue: {
             select: () => ({
               from: () => ({
+                // Phase 3: effectiveAssignments access_level query (no join).
+                where: () => Promise.resolve(accessLevelRows),
+                // listReadableProjectIds (joins projects).
                 innerJoin: () => ({
                   where: () => Promise.resolve(projectMemberRows),
                 }),
@@ -129,6 +134,7 @@ describe('AccessService — scope-aware permission resolution', () => {
     // so tests that exercise a write need a resolvable actor; the no-escalation
     // cases narrow this deliberately.
     projectMemberRows = [];
+    accessLevelRows = [];
     assignmentRepo.listEffectiveForUser.mockResolvedValue([
       {
         scopeType: 'workspace',
@@ -267,11 +273,12 @@ describe('AccessService — scope-aware permission resolution', () => {
     it('falls back to a minimal baseline (empty role) when the user has no assignments', async () => {
       assignmentRepo.listEffectiveForUser.mockResolvedValue([]);
       const result = await service.getUserRoleAndPermissions(USER, WORKSPACE);
-      // workspace_member role was removed in Phase 4.2; a user with no
-      // assignment reports an empty representative role + the minimal read
-      // baseline (project delivery access is granted per-project by a role).
+      // RBAC migration Phase 4: a user with no assignment gets the minimal
+      // baseline (workspace shell only). Project delivery access is NO Access
+      // until Workspace Admin grants a per-Project access_level — project:view
+      // is no longer in the empty baseline.
       expect(result.role).toBe('');
-      expect(result.permissions).toEqual(['workspace:view', 'project:view']);
+      expect(result.permissions).toEqual(['workspace:view']);
     });
 
     it('unions permissions across multiple baseline (workspace + global) roles', async () => {
@@ -370,73 +377,6 @@ describe('AccessService — scope-aware permission resolution', () => {
       await expect(
         service.assertProjectPermission(actor([]), 'proj-9', 'release:edit'),
       ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
-    });
-  });
-
-  describe('assignProjectRole (project-scoped grant)', () => {
-    const actor = { sub: USER, workspaceId: WORKSPACE, permissions: [] } as never;
-
-    it('rejects a role that carries any workspace-tier permission', async () => {
-      roleRepo.findById.mockResolvedValue(role('workspace_admin', ['workspace:*']));
-
-      await expect(
-        service.assignProjectRole(actor, 'proj-9', 'user-2', 'role-workspace_admin'),
-      ).rejects.toMatchObject({ code: 'CANNOT_GRANT_WORKSPACE_ROLE' });
-      expect(assignmentRepo.create).not.toHaveBeenCalled();
-    });
-
-    it('assigns a project-tier role scoped to the project', async () => {
-      roleRepo.findById.mockResolvedValue(
-        role('project_admin', ['project:edit', 'project:manage_members']),
-      );
-      assignmentRepo.findExisting.mockResolvedValue(null);
-      assignmentRepo.create.mockImplementation(async (input) => ({
-        id: input.id,
-        workspaceId: input.workspaceId,
-        userId: input.userId,
-        roleId: input.roleId,
-        scopeType: input.scopeType,
-        scopeId: input.scopeId ?? null,
-        grantedBy: input.grantedBy,
-        createdAt: new Date(),
-      }));
-
-      const result = await service.assignProjectRole(actor, 'proj-9', 'user-2', 'role-x');
-      expect(assignmentRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ scopeType: 'project', scopeId: 'proj-9', userId: 'user-2' }),
-        expect.anything(),
-      );
-      expect(result.scopeType).toBe('project');
-      expect(result.scopeId).toBe('proj-9');
-    });
-  });
-
-  describe('revokeProjectRole (project-scoped revoke)', () => {
-    const actor = { sub: USER, workspaceId: WORKSPACE, permissions: [] } as never;
-
-    it('throws when the assignment is not scoped to a project', async () => {
-      assignmentRepo.findById.mockResolvedValue(assignment('role-x', 'workspace'));
-
-      await expect(service.revokeProjectRole(actor, 'proj-9', 'a-1')).rejects.toMatchObject({
-        code: 'ROLE_ASSIGNMENT_NOT_FOUND',
-      });
-      expect(assignmentRepo.delete).not.toHaveBeenCalled();
-    });
-
-    it('throws when the assignment belongs to a different project', async () => {
-      assignmentRepo.findById.mockResolvedValue(assignment('role-x', 'project', 'proj-OTHER'));
-
-      await expect(service.revokeProjectRole(actor, 'proj-9', 'a-1')).rejects.toMatchObject({
-        code: 'ROLE_ASSIGNMENT_NOT_FOUND',
-      });
-      expect(assignmentRepo.delete).not.toHaveBeenCalled();
-    });
-
-    it('deletes the assignment when it is scoped to this project', async () => {
-      assignmentRepo.findById.mockResolvedValue(assignment('role-x', 'project', 'proj-9'));
-
-      await service.revokeProjectRole(actor, 'proj-9', 'a-1');
-      expect(assignmentRepo.delete).toHaveBeenCalledWith('a-1', expect.anything());
     });
   });
 
@@ -702,6 +642,9 @@ describe('AccessService — cached-permission invalidation', () => {
           useValue: {
             select: () => ({
               from: () => ({
+                // Phase 3: effectiveAssignments access_level query (no join).
+                where: () => Promise.resolve(accessLevelRows),
+                // listReadableProjectIds (joins projects).
                 innerJoin: () => ({
                   where: () => Promise.resolve(projectMemberRows),
                 }),
@@ -767,16 +710,6 @@ describe('AccessService — cached-permission invalidation', () => {
     assignmentRepo.create.mockResolvedValue(assignment(target.id, 'project', 'proj-9'));
 
     await service.assignRole(actor, USER, target.id, 'project', 'proj-9');
-
-    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
-  });
-
-  it('invalidates the permission cache when a project-scoped role is revoked', async () => {
-    assignmentRepo.findById.mockResolvedValue(
-      assignment('role-project_admin', 'project', 'proj-9'),
-    );
-
-    await service.revokeProjectRole(actor, 'proj-9', 'a-1');
 
     expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
   });
