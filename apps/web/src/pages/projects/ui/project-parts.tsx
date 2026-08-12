@@ -19,6 +19,7 @@ import {
   useUnlinkProjectTeam,
 } from '@/features/teams/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { PERMISSION } from '@/shared/config/permissions'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
@@ -206,6 +207,12 @@ interface ProjectFormValues {
   startDate: string
   endDate: string
   teamIds: string[]
+  xsPoints?: number
+  sPoints?: number
+  mPoints?: number
+  lPoints?: number
+  xlPoints?: number
+  hoursPerPoint?: number
 }
 
 function ProjectFormFields({
@@ -275,7 +282,7 @@ function ProjectFormFields({
         />
       </FormField>
       <div className="grid grid-cols-2 gap-3">
-        <FormField label={t('form.owner')} required>
+        <FormField label={t('form.owner')}>
           <OwnerSelect
             workspaceId={workspaceId}
             value={values.leadId}
@@ -367,15 +374,22 @@ export function NewProjectModal({
   onClose: () => void
 }) {
   const { t } = useTranslation('projects')
-  const { user } = useAuthStore()
+  const { user, hasPermission } = useAuthStore()
+  const isWA = hasPermission(PERMISSION.WORKSPACE_VIEW)
   const [values, setValues] = useState<ProjectFormValues>({
     name: '',
     key: '',
     description: '',
-    leadId: user?.id ?? '',
+    leadId: '',
     startDate: '',
     endDate: '',
     teamIds: [],
+    xsPoints: 1,
+    sPoints: 3,
+    mPoints: 5,
+    lPoints: 8,
+    xlPoints: 13,
+    hoursPerPoint: 8,
   })
   const { mutateAsync, isPending } = useCreateProject()
 
@@ -410,7 +424,7 @@ export function NewProjectModal({
         name: values.name.trim(),
         key: trimmedKey,
         description: values.description.trim() || undefined,
-        leadId: values.leadId || user?.id,
+        leadId: values.leadId || undefined,
         startDate: values.startDate || undefined,
         endDate: values.endDate || undefined,
         teamIds: values.teamIds.length > 0 ? values.teamIds : undefined,
@@ -434,6 +448,7 @@ export function NewProjectModal({
             keyEditable
             autoFocusName
             currentUserId={user?.id}
+            isWorkspaceAdmin={isWA}
           />
         </ModalBody>
         <ModalFooter>
