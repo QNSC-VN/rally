@@ -17,7 +17,6 @@ import {
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
 import { AccessService } from '@modules/access';
-import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '../../../../../db/schema/enums';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
 import {
   ITeamMemberRepository,
@@ -717,10 +716,6 @@ export class WorkspaceService {
         timezone: null,
         defaultLocale: null,
         dateFormat: null,
-        // The seeded default, not `{}`: a workspace with no settings row must still report the
-        // map its estimates are actually computed with, or Settings would show blanks while
-        // the meters use real numbers.
-        preliminaryEstimateMap: DEFAULT_PRELIMINARY_ESTIMATE_MAP,
         createdAt: new Date(),
         updatedAt: new Date(),
       };

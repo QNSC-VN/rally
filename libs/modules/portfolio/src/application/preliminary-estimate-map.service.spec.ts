@@ -6,8 +6,8 @@ import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '../../../../../db/schema/enums
 
 describe('PreliminaryEstimateMapService', () => {
   let service: PreliminaryEstimateMapService;
-  /** Rows the stubbed Drizzle returns for the settings lookup. */
-  let rows: Array<{ map: unknown }>;
+  /** project_settings rows the stubbed Drizzle returns. */
+  let rows: unknown[];
 
   beforeEach(async () => {
     rows = [];
@@ -27,33 +27,28 @@ describe('PreliminaryEstimateMapService', () => {
     service = module.get(PreliminaryEstimateMapService);
   });
 
-  it('returns the seeded default when no settings row exists', async () => {
-    // A workspace created before migration 0071. An empty map would make every Estimated
-    // figure null and read as a product bug rather than as missing configuration.
+  it('returns the default map when no project_settings row exists', async () => {
     rows = [];
-    await expect(service.forWorkspace('ws-1')).resolves.toEqual(DEFAULT_PRELIMINARY_ESTIMATE_MAP);
+    await expect(service.forProject('proj-1')).resolves.toEqual(DEFAULT_PRELIMINARY_ESTIMATE_MAP);
   });
 
-  it('returns the seeded default when the row holds an empty object', async () => {
-    rows = [{ map: {} }];
-    await expect(service.forWorkspace('ws-1')).resolves.toEqual(DEFAULT_PRELIMINARY_ESTIMATE_MAP);
+  it('builds the map from a stored row, with the fixed Fibonacci counts', async () => {
+    // Counts (1/2/3/5/8) are fixed companions to the point scale, not stored — a project
+    // configures points only. Verify the row's points flow through and the counts hold.
+    rows = [
+      { xsPoints: 2, sPoints: 4, mPoints: 6, lPoints: 9, xlPoints: 14, hoursPerPoint: '8.00' },
+    ];
+    const map = await service.forProject('proj-1');
+    expect(map.xs).toEqual({ points: 2, count: 1 });
+    expect(map.m).toEqual({ points: 6, count: 3 });
+    expect(map.xl).toEqual({ points: 14, count: 8 });
   });
 
-  it('MERGES a partial override onto the default rather than replacing it', async () => {
-    // An operator who retunes only 'm' must not silently lose xs/s/l/xl — a replace would
-    // leave those sizes at zero and every Feature using them unmeasurable.
-    rows = [{ map: { m: { points: 100, count: 50 } } }];
-
-    const map = await service.forWorkspace('ws-1');
-
-    expect(map.m).toEqual({ points: 100, count: 50 });
-    expect(map.l).toEqual(DEFAULT_PRELIMINARY_ESTIMATE_MAP.l);
-    expect(map.xs).toEqual(DEFAULT_PRELIMINARY_ESTIMATE_MAP.xs);
-  });
-
-  it('keeps no_entry at zero so an unsized Feature stays unmeasurable', async () => {
-    rows = [];
-    const map = await service.forWorkspace('ws-1');
+  it('keeps no_entry at zero so an unsized item stays unmeasurable', async () => {
+    rows = [
+      { xsPoints: 1, sPoints: 3, mPoints: 5, lPoints: 8, xlPoints: 13, hoursPerPoint: '8.00' },
+    ];
+    const map = await service.forProject('proj-1');
     expect(map.no_entry).toEqual({ points: 0, count: 0 });
   });
 });

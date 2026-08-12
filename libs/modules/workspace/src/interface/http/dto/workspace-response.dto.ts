@@ -1,8 +1,5 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { preliminaryEstimateSizeEnum } from '../../../../../../../db/schema/enums';
-
-const SIZES = preliminaryEstimateSizeEnum.enumValues;
 
 export const WorkspaceResponseSchema = z.object({
   id: z.string().uuid(),
@@ -46,22 +43,11 @@ export const InvitationResponseSchema = z.object({
 
 export class InvitationResponseDto extends createZodDto(InvitationResponseSchema) {}
 
-const PreliminaryEstimateEntrySchema = z.object({
-  points: z.number().int().min(0),
-  count: z.number().int().min(0),
-});
-
 export const WorkspaceSettingsResponseSchema = z.object({
   workspaceId: z.string().uuid(),
   timezone: z.string().nullable(),
   defaultLocale: z.string().nullable(),
   dateFormat: z.string().nullable(),
-  /**
-   * The EFFECTIVE map — stored overrides merged over the seeded default, so it is always
-   * complete. The client edits what the estimates are actually computed with rather than a
-   * sparse override set it would have to complete itself.
-   */
-  preliminaryEstimateMap: z.record(z.enum(SIZES), PreliminaryEstimateEntrySchema),
   updatedAt: z.string().datetime(),
 });
 
