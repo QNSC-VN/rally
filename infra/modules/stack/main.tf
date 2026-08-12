@@ -606,7 +606,27 @@ module "api" {
   # built from those matches NOTHING while still applying cleanly. The failure surfaces
   # at the next task start as "unable to pull secrets", long after the apply reported
   # success. `secret_iam_arns` returns the container ARNs in both modes.
-  secret_arns = concat(local.secret_iam_arns, [module.rds.master_secret_arn])
+  # The tunnel token is appended EXPLICITLY because it is the one secret this stack
+  # creates outside `module.secrets`, so `secret_iam_arns` — which is built from the
+  # bundle and standalone names — does not cover it. Omitting it is the exact boot
+  # failure the paragraph above describes, and it is what broke every develop deploy
+  # between 2026-08-10 and this change:
+  #
+  #   AccessDeniedException: assumed-role/rally-develop-api-exec is not authorized to
+  #   perform: secretsmanager:GetSecretValue on resource: .../rally/develop/tunnel-token-tf-*
+  #
+  # The apply that introduced the secret succeeded, the sidecar was wired to it, and
+  # nothing failed until the next deploy tried to start a task — which then could not,
+  # so the circuit breaker rolled back and develop sat on a stale image while reporting
+  # healthy. qnsc-kb-backend already does this; rally's cf-tunnel adoption did not.
+  #
+  # A splat, not a conditional: `tunnel_token` is count-gated on tunnel_enabled and a
+  # configured Cloudflare account, and `[*].arn` is an empty list when that count is 0.
+  secret_arns = concat(
+    local.secret_iam_arns,
+    [module.rds.master_secret_arn],
+    aws_secretsmanager_secret.tunnel_token[*].arn,
+  )
   kms_key_arn = local.kms_key_arn
   secrets = concat(local.api_db_secrets, [
     # DB credentials come from local.api_db_secrets above: the RDS-managed secret

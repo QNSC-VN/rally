@@ -24,6 +24,7 @@ import { ProjectsService } from '@modules/projects';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { portfolioItems } from '@db/schema/work';
+import { workspaceMembers } from '@db/schema/workspace';
 import { and, eq, sql } from 'drizzle-orm';
 
 import {
@@ -504,6 +505,12 @@ describe('portfolio write paths (e2e)', () => {
   it('grants create rights through a project-scoped role, not just workspace admin', async () => {
     const userId = randomUUID();
     const scoped = makeActor(userId, []);
+    // RBAC migration: addProjectMember requires workspace membership first.
+    await db.insert(workspaceMembers).values({
+      workspaceId: WORKSPACE_ID,
+      userId,
+      status: 'active',
+    });
     // RBAC migration: project access is now access_level on project_members.
     const member = await projects.addProjectMember(WORKSPACE_ID, projectAId, userId);
     await projects.updateProjectMember(WORKSPACE_ID, projectAId, member.id, {
