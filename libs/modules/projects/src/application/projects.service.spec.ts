@@ -135,9 +135,16 @@ const makeWorkspaceMemberRepo = () => ({
 
 // Execute the wrapped work immediately with a stub transaction so repository
 // mocks receive a tx argument exactly as they would in production.
-const makeUow = () => ({
-  run: vi.fn((fn: (tx: unknown) => unknown) => fn({})),
-});
+const makeUow = () => {
+  // `updateEstimationSettings` writes via `tx.insert(projectSettings).values().onConflictDoUpdate()`;
+  // the default `{}` tx made `tx.insert` undefined. Expose `tx` so a test can assert the upsert ran.
+  const tx = {
+    insert: vi.fn(() => ({
+      values: () => ({ onConflictDoUpdate: () => Promise.resolve(undefined) }),
+    })),
+  };
+  return { run: vi.fn((fn: (tx: unknown) => unknown) => fn(tx)), tx };
+};
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -153,9 +160,14 @@ describe('ProjectsService', () => {
   let uow: ReturnType<typeof makeUow>;
   /** Capacity plans that BLOCK an unlink. Empty unless a test is about that refusal. */
   let capacityPlanRows: Array<{ planKey: string; name: string }>;
+  /** work.project_settings rows for the estimation-settings read. Empty by default → fallback. */
+  let estimationRows: unknown[];
+  let audit: { emit: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     capacityPlanRows = [];
+    estimationRows = [];
+    audit = { emit: vi.fn().mockResolvedValue(undefined) };
     projectRepo = makeProjectRepo();
     statusRepo = makeStatusRepo();
     labelRepo = makeLabelRepo();
@@ -176,7 +188,7 @@ describe('ProjectsService', () => {
         { provide: WORKSPACE_MEMBER_REPOSITORY, useValue: workspaceMemberRepo },
         { provide: TeamService, useValue: teamService },
         { provide: UnitOfWork, useValue: uow },
-        { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
+        { provide: AuditProducer, useValue: audit },
         { provide: ActivityLogger, useValue: activityMock() },
         // `listProjects` now asks which projects the caller may read. `null` = UNRESTRICTED, which
         // keeps these specs' expectations about the unfiltered page intact; the restriction itself is
@@ -203,6 +215,8 @@ describe('ProjectsService', () => {
                     orderBy: () => ({ limit: () => Promise.resolve(capacityPlanRows) }),
                   }),
                 }),
+                // estimation-settings read chain: select().from().where().limit()
+                where: () => ({ limit: () => Promise.resolve(estimationRows) }),
               }),
             }),
           },
@@ -605,6 +619,74 @@ describe('ProjectsService', () => {
 
       await expect(service.deleteStatus('ws-1', 'proj-1', 'status-1')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+  });
+
+  // ── estimation settings (SRS §6.2) ─────────────────────────────────────────
+
+  describe('estimation settings', () => {
+    const storedRow = {
+      workspaceId: 'ws-1',
+      projectId: 'proj-1',
+      xsPoints: 1,
+      sPoints: 3,
+      mPoints: 5,
+      lPoints: 8,
+      xlPoints: 13,
+      // numeric(8,2) reads back as a string from drizzle.
+      hoursPerPoint: '8.00',
+    };
+
+    it('getEstimationSettings falls back to the default scale when no row exists', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      estimationRows = [];
+
+      const s = await service.getEstimationSettings('ws-1', 'proj-1');
+      // The defaults mirror migration 0106 column DEFAULTs + DEFAULT_PRELIMINARY_ESTIMATE_MAP.
+      expect(s).toEqual({
+        xsPoints: 1,
+        sPoints: 3,
+        mPoints: 5,
+        lPoints: 8,
+        xlPoints: 13,
+        hoursPerPoint: 8,
+      });
+    });
+
+    it('getEstimationSettings returns the stored scale, coercing numeric hours to a number', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      estimationRows = [{ ...storedRow, mPoints: 50, hoursPerPoint: '6.50' }];
+
+      const s = await service.getEstimationSettings('ws-1', 'proj-1');
+      expect(s.mPoints).toBe(50);
+      expect(s.hoursPerPoint).toBe(6.5);
+    });
+
+    it('updateEstimationSettings merges the patch onto current values, upserts, and audits', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      estimationRows = [storedRow]; // current mPoints = 5
+
+      const result = await service.updateEstimationSettings(mockActor, 'proj-1', { mPoints: 50 });
+
+      // PATCH, not replace: only mPoints moved, the rest retained from the stored row.
+      expect(result).toEqual({
+        xsPoints: 1,
+        sPoints: 3,
+        mPoints: 50,
+        lPoints: 8,
+        xlPoints: 13,
+        hoursPerPoint: 8,
+      });
+      expect(uow.tx.insert).toHaveBeenCalledTimes(1);
+      // The audit event carries the merged `after`, proving the merge reached the writer.
+      expect(audit.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resourceType: 'project',
+          resourceId: 'proj-1',
+          changes: { before: expect.any(Object), after: result },
+        }),
+        expect.anything(),
       );
     });
   });

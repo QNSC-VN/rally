@@ -13,7 +13,7 @@ import {
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
 import { and, eq } from 'drizzle-orm';
-import { capacityPlanTeams, capacityPlans } from '../../../../../db/schema/work';
+import { capacityPlanTeams, capacityPlans, projectSettings } from '../../../../../db/schema/work';
 import { IProjectRepository, PROJECT_REPOSITORY } from '../domain/ports/project.repository';
 import {
   IWorkflowStatusRepository,
@@ -53,6 +53,36 @@ import type { Label } from '../domain/label.types';
 import type { WorkItemType } from '../domain/ports/project.repository';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
 import { PROJECT_ACTIVITY_CONFIG } from './project-activity-diff';
+
+/**
+ * Per-project T-shirt → points scale + hours/point (SRS §6.2), persisted in
+ * `work.project_settings`. The application-layer shape; the HTTP DTO in
+ * `project-request.dto.ts` mirrors it for the wire + codegen.
+ */
+export interface ProjectEstimationSettings {
+  xsPoints: number;
+  sPoints: number;
+  mPoints: number;
+  lPoints: number;
+  xlPoints: number;
+  hoursPerPoint: number;
+}
+
+/**
+ * Fallback when a project has no `project_settings` row yet. Mirrors the column
+ * DEFAULTs in migration 0106 AND the points in `DEFAULT_PRELIMINARY_ESTIMATE_MAP` —
+ * a project is usable before a WA sets a scale, and the three must stay in step or
+ * "M" means a different number on the settings form, the progress bar and the
+ * capacity plan.
+ */
+const DEFAULT_PROJECT_ESTIMATION_SETTINGS: ProjectEstimationSettings = {
+  xsPoints: 1,
+  sPoints: 3,
+  mPoints: 5,
+  lPoints: 8,
+  xlPoints: 13,
+  hoursPerPoint: 8,
+};
 
 @Injectable()
 export class ProjectsService {
@@ -352,6 +382,98 @@ export class ProjectsService {
     await this.getProject(workspaceId, projectId);
     await this.projectRepo.softDelete(projectId, workspaceId);
     this.logger.log({ projectId }, 'Project soft-deleted');
+  }
+
+  // ── Estimation Settings (SRS §6.2) ────────────────────────────────────────
+
+  /**
+   * Read the per-project estimate scale. Falls back to the defaults when no row exists,
+   * so the settings form, the progress bars and `forProject()` all agree before a WA
+   * has configured anything. Existence is checked first — a bad or cross-workspace id
+   * is a 404, not silently the default scale for a project that does not exist.
+   */
+  async getEstimationSettings(
+    workspaceId: string,
+    projectId: string,
+  ): Promise<ProjectEstimationSettings> {
+    await this.getProject(workspaceId, projectId);
+    const rows = await this.db
+      .select()
+      .from(projectSettings)
+      .where(
+        and(eq(projectSettings.projectId, projectId), eq(projectSettings.workspaceId, workspaceId)),
+      )
+      .limit(1);
+    const s = rows[0];
+    if (!s) return { ...DEFAULT_PROJECT_ESTIMATION_SETTINGS };
+    return {
+      xsPoints: s.xsPoints,
+      sPoints: s.sPoints,
+      mPoints: s.mPoints,
+      lPoints: s.lPoints,
+      xlPoints: s.xlPoints,
+      // numeric(8,2) returns a string; the wire type is a number.
+      hoursPerPoint: Number(s.hoursPerPoint),
+    };
+  }
+
+  /**
+   * Partial update of the estimate scale. Merges onto the current values (PATCH, not
+   * replace) so a WA editing one size does not reset the others, then upserts the single
+   * `project_settings` row in one transaction with the audit event. `workspace:edit` on
+   * the route already proved the actor is a Workspace Admin — the BA scope for this
+   * setting — so there is no second authorisation check here.
+   */
+  async updateEstimationSettings(
+    actor: JwtPayload,
+    projectId: string,
+    input: Partial<ProjectEstimationSettings>,
+  ): Promise<ProjectEstimationSettings> {
+    // Resolves existence + workspace scope (404 on miss/cross-workspace) and carries
+    // workspaceId into the upsert row.
+    const project = await this.getProject(actor.workspaceId, projectId);
+    const before = await this.getEstimationSettings(actor.workspaceId, projectId);
+    const after = { ...before, ...input };
+
+    return this.uow.run(async (tx) => {
+      await tx
+        .insert(projectSettings)
+        .values({
+          workspaceId: project.workspaceId,
+          projectId: project.id,
+          xsPoints: after.xsPoints,
+          sPoints: after.sPoints,
+          mPoints: after.mPoints,
+          lPoints: after.lPoints,
+          xlPoints: after.xlPoints,
+          hoursPerPoint: String(after.hoursPerPoint),
+        })
+        .onConflictDoUpdate({
+          target: projectSettings.projectId,
+          set: {
+            xsPoints: after.xsPoints,
+            sPoints: after.sPoints,
+            mPoints: after.mPoints,
+            lPoints: after.lPoints,
+            xlPoints: after.xlPoints,
+            hoursPerPoint: String(after.hoursPerPoint),
+            updatedAt: new Date(),
+          },
+        });
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.PROJECT_UPDATED,
+          resourceType: AUDIT_RESOURCE.PROJECT,
+          resourceId: projectId,
+          workspaceId: actor.workspaceId,
+          actor: { id: actor.sub },
+          projectId,
+          changes: { before, after },
+        },
+        tx,
+      );
+      return after;
+    });
   }
 
   // ── Workflow statuses ─────────────────────────────────────────────────────
