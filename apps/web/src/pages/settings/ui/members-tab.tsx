@@ -8,6 +8,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { Loader2, Mail, Send, UserPlus, UserX, X } from 'lucide-react'
 import { BulkBarButton } from '@/shared/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
+import { UserAccessModal } from './user-access-modal'
 
 import { BRAND } from '@/shared/config/brand'
 import { apiClient } from '@/shared/api/http-client'
@@ -205,6 +206,11 @@ export function MembersTab() {
   const { user } = useAuthStore()
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const [accessTarget, setAccessTarget] = useState<{
+    userId: string
+    displayName?: string | null
+    email?: string | null
+  } | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all')
 
@@ -551,6 +557,20 @@ export function MembersTab() {
               }}
             />
             {table.renderCells(m, cellCtx)}
+            {/* User-Centric Journey: View Project Access (SRS §5.1) */}
+            <button
+              type="button"
+              onClick={() =>
+                setAccessTarget({
+                  userId: m.userId,
+                  displayName: m.displayName,
+                  email: m.email,
+                })
+              }
+              className="ml-auto shrink-0 rounded px-2 py-0.5 text-ui-xs text-primary hover:bg-primary-lighter"
+            >
+              View Access
+            </button>
           </div>
         )}
       />
@@ -560,6 +580,17 @@ export function MembersTab() {
           workspaceId={workspaceId}
           onClose={() => setShowInviteModal(false)}
           onSuccess={() => setShowInviteModal(false)}
+        />
+      )}
+
+      {/* User-Centric Journey: per-user project access modal (SRS §5.1) */}
+      {accessTarget && (
+        <UserAccessModal
+          userId={accessTarget.userId}
+          displayName={accessTarget.displayName}
+          email={accessTarget.email}
+          workspaceId={workspaceId ?? ''}
+          onClose={() => setAccessTarget(null)}
         />
       )}
 
