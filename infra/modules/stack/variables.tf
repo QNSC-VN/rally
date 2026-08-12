@@ -395,11 +395,16 @@ variable "container_insights" {
   description = <<-EOT
     ECS Container Insights mode: "enhanced", "enabled" or "disabled".
 
-    Stated here rather than inherited, because the ecs-cluster module defaults to
-    "enhanced" and that default is expensive: enhanced adds per-task and per-container
-    metrics that CloudWatch bills as CUSTOM metrics at $0.07 each. Four clusters
-    silently on that default produced 606 metric-months (~$42) on the July 2026 bill,
-    and the count grows with task churn rather than with traffic.
+    Stated here rather than inherited. "enhanced" adds per-task and per-container metrics
+    that CloudWatch bills as CUSTOM metrics at $0.07 each: four clusters silently on that
+    default produced 606 metric-months (~$42) on the July 2026 bill, and the count grows
+    with task churn rather than with traffic.
+
+    The module used to DEFAULT to "enhanced", which is how those four clusters got there.
+    ecs-cluster v2.0.0 changed that default to "enabled" — cluster- and service-level
+    metrics, in the free AWS/ECS namespace — so inheriting is no longer expensive. Still
+    stated explicitly, because "no longer expensive" is not the same as "queried by
+    anything", and the audit below says nothing queries it.
 
     Defaults to "disabled" because an audit of every consumer found none: all 7 alarms
     and all 6 dashboard widgets read AWS/ECS, AWS/ApplicationELB and AWS/RDS, which are
@@ -558,19 +563,56 @@ variable "idle_schedule" {
     stopped RDS instance after seven days. Without a recurring re-stop the instance
     quietly comes back and the saving disappears with nothing reporting it.
 
-    Expression is evaluated in Asia/Ho_Chi_Minh. Example, every Sunday 01:00 local —
-    comfortably inside the 7-day window:
+    MUST FIRE AT LEAST DAILY. This used to read "every Sunday 01:00 local — comfortably
+    inside the 7-day window: cron(0 1 ? * SUN *)", and that example was wrong in a way
+    both products copied.
 
-        cron(0 1 ? * SUN *)
+    The 7-day window bounds when AWS force-STARTS the instance, not how long it then runs.
+    Stop it on Sunday, AWS starts it the following Sunday, and the next weekly pass is up
+    to seven days after that. So a weekly re-stop bounds the exposure at seven days rather
+    than one. Measured on rally-prod under exactly that expression: 59 of 168 hours in a
+    week published CloudWatch datapoints — a pre-launch database with no users, no tasks
+    and no cache node running 35% of the time, roughly $4/mo for nothing.
 
-    Stopping an already-stopped instance fails with InvalidDBInstanceState, which is the
-    DESIRED state rather than an error, so the target is configured with no retries and
-    no dead-letter queue.
+    Daily costs nothing extra. Stopping an already-stopped instance fails with
+    InvalidDBInstanceState, which is the DESIRED state rather than an error, so the target
+    is configured with no retries and no dead-letter queue — and the ECS half scales
+    services that a zero floor already holds at zero.
+
+    Expression is evaluated in Asia/Ho_Chi_Minh. A daily pass, and develop's two-pass
+    form (see the note above about deploys waking the environment):
+
+        cron(0 1 * * ? *)        production, pre-launch
+        cron(0 0,3 * * ? *)      develop
 
     See `wake_schedule` for the reverse. The two are independent on purpose: an
     environment may idle with no wake (production before go-live) but must never wake
     with no idle, which `check "wake_requires_idle"` enforces.
   EOT
+
+  // Enforced, because the description alone did not hold: it recommended the weekly form
+  // and both products shipped it to production.
+  //
+  // Checked rather than replaced by a named-posture enum ("pre-launch", "working-hours"):
+  // three call sites across two repos do not justify inventing a vocabulary, and the
+  // constraint is a property of the VALUE, so it belongs on the value.
+  //
+  // Fields are minute hour day-of-month month day-of-week year. Restricting either day
+  // field, or the month, means the schedule skips days; `*` and `?` are the only spellings
+  // that do not. A `rate(...)` expression is rejected as well — it cannot be checked this
+  // way, and nothing here uses one.
+  validation {
+    condition = var.idle_schedule == null || can(
+      regex("^cron\\([^ ]+ [^ ]+ [*?] [*?] [*?] [^ )]+\\)$", var.idle_schedule)
+    )
+    error_message = <<-EOT
+      idle_schedule must fire at least daily: day-of-month, month and day-of-week must all
+      be "*" or "?". AWS force-starts a stopped RDS instance after 7 days, so a weekly
+      schedule leaves it running for up to six of them — rally-prod measured 35% uptime
+      under "cron(0 1 ? * SUN *)". Use "cron(0 1 * * ? *)" for a daily pass, or
+      "cron(0 0,3 * * ? *)" for develop's two-pass form.
+    EOT
+  }
 }
 
 variable "wake_schedule" {
