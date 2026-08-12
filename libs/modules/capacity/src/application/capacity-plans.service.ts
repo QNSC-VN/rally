@@ -1257,7 +1257,7 @@ export class CapacityPlansService {
 
   async getPlanDetail(actor: JwtPayload, id: string): Promise<CapacityPlanDetail> {
     const plan = await this.getPlan(actor, id);
-    const map = await this.estimateMaps.forWorkspace(actor.workspaceId);
+    const map = await this.estimateMaps.forProject(plan.projectId);
     const rows = await this.repo.listAllocations(plan);
 
     const inUnit = (size: PreliminaryEstimateSize) =>
@@ -1704,7 +1704,7 @@ export class CapacityPlansService {
       refinedItemCountEstimate: number;
     },
   ): Promise<number> {
-    const map = await this.estimateMaps.forWorkspace(actor.workspaceId);
+    const map = await this.estimateMaps.forProject(plan.projectId);
     const size = map[item.preliminaryEstimate];
     return defaultAllocationEstimate(
       plan.unit === 'points'
