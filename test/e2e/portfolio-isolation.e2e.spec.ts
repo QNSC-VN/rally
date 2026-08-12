@@ -27,6 +27,7 @@ import { ProjectsService } from '@modules/projects';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { portfolioItems } from '@db/schema/work';
+import { workspaceMembers } from '@db/schema/workspace';
 
 import {
   ALL,
@@ -93,6 +94,12 @@ describe('portfolio cross-project isolation (e2e)', () => {
 
     // project_admin carries every project-tier permission, so a denial below can only
     // mean WRONG PROJECT — never a missing permission.
+    // RBAC migration: addProjectMember requires workspace membership first.
+    await db.insert(workspaceMembers).values({
+      workspaceId: WORKSPACE_ID,
+      userId: scopedUserId,
+      status: 'active',
+    });
     // RBAC migration: project access is now access_level on project_members.
     const member = await projects.addProjectMember(WORKSPACE_ID, projectAId, scopedUserId);
     await projects.updateProjectMember(WORKSPACE_ID, projectAId, member.id, {
