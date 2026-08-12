@@ -22,7 +22,10 @@ import {
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { and, eq } from 'drizzle-orm';
-import type { PreliminaryEstimateMap } from '../../../../../db/schema/enums';
+import {
+  DEFAULT_PRELIMINARY_ESTIMATE_MAP,
+  type PreliminaryEstimateMap,
+} from '../../../../../db/schema/enums';
 import {
   computePortfolioProgress,
   defaultAllocationEstimate,
@@ -209,13 +212,28 @@ export class PortfolioItemsService {
       { ...filter, readableProjectIds: readable },
       args,
     );
-    const map = await this.estimateMap(actor.workspaceId);
+    // Per-PROJECT maps (SRS §6.2): a cross-project page can mix projects whose XS…XL
+    // scales differ, so one workspace-level map would size an item from project A by
+    // project B's points. Resolve each distinct project's map once, then look up per row.
+    const byProject = new Map(
+      await Promise.all(
+        [...new Set(page.data.map((i) => i.projectId))].map(
+          async (id): Promise<[string, PreliminaryEstimateMap]> => [
+            id,
+            await this.estimateMaps.forProject(id),
+          ],
+        ),
+      ),
+    );
     // One clock for the whole page: two rows with identical dates and identical rollups
     // must never disagree because the loop crossed midnight between them.
     const today = new Date();
 
     return {
-      data: page.data.map((item) => this.withProgress(item, map, today)),
+      data: page.data.map((item) => {
+        const map = byProject.get(item.projectId) ?? DEFAULT_PRELIMINARY_ESTIMATE_MAP;
+        return this.withProgress(item, map, today);
+      }),
       pageInfo: page.pageInfo,
     };
   }
@@ -225,7 +243,7 @@ export class PortfolioItemsService {
     if (!item) {
       throw new NotFoundException('PORTFOLIO_ITEM_NOT_FOUND', 'Portfolio item not found');
     }
-    const map = await this.estimateMap(actor.workspaceId);
+    const map = await this.estimateMaps.forProject(item.projectId);
     const [groups, milestones] = await Promise.all([
       this.repo.childRollupByType(id, actor.workspaceId),
       this.repo.listMilestones(id, actor.workspaceId),
@@ -274,7 +292,7 @@ export class PortfolioItemsService {
     if (!item) {
       throw new NotFoundException('PORTFOLIO_ITEM_NOT_FOUND', 'Portfolio item not found');
     }
-    const map = await this.estimateMap(actor.workspaceId);
+    const map = await this.estimateMaps.forProject(item.projectId);
     const children = await this.repo.listChildFeatures(id, actor.workspaceId);
     const today = new Date();
     return children.map((c) => this.withProgress(c, map, today));
@@ -841,11 +859,6 @@ export class PortfolioItemsService {
         }),
       },
     };
-  }
-
-  /** Delegates to the shared reader so portfolio and capacity cannot disagree on sizes. */
-  private estimateMap(workspaceId: string): Promise<PreliminaryEstimateMap> {
-    return this.estimateMaps.forWorkspace(workspaceId);
   }
 }
 

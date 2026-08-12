@@ -122,7 +122,7 @@ describe('CapacityPlansService', () => {
         },
         {
           provide: PreliminaryEstimateMapService,
-          useValue: { forWorkspace: vi.fn().mockResolvedValue(DEFAULT_PRELIMINARY_ESTIMATE_MAP) },
+          useValue: { forProject: vi.fn().mockResolvedValue(DEFAULT_PRELIMINARY_ESTIMATE_MAP) },
         },
         {
           provide: PortfolioItemsService,
@@ -507,10 +507,10 @@ describe('CapacityPlansService', () => {
 
       it('flags a Feature whose estimate came from no tier at all', async () => {
         // Every tier empty: no allocation, no refined forecast, and a preliminary size the
-        // workspace maps to zero. `resolveEstimate` reports `none`, so Rally's Missing
+        // project maps to zero. `resolveEstimate` reports `none`, so Rally's Missing
         // Estimate Error applies — and the SERVICE is what supplies that tier, because the
-        // repository cannot see the workspace estimate map.
-        maps.forWorkspace.mockResolvedValue({
+        // repository cannot see the project estimate map.
+        maps.forProject.mockResolvedValue({
           ...DEFAULT_PRELIMINARY_ESTIMATE_MAP,
           m: { points: 0, count: 0 },
         });
