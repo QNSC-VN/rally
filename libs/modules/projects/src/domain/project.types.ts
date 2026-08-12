@@ -161,6 +161,7 @@ export interface AddProjectMemberInput {
 }
 
 export interface UpdateProjectMemberInput {
+  roleId?: string;
   accessLevel?: 'admin' | 'editor';
   status?: ProjectMemberStatus;
 }
