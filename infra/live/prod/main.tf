@@ -224,7 +224,20 @@ module "stack" {
     enabled = false
   }
 
-  idle_schedule = "cron(0 1 ? * SUN *)"
+  // DAILY, not weekly. The note above `api` explains why this exists: RDS run-state is
+  // not a Terraform concept, so the instance is stopped out of band, and AWS FORCE-STARTS
+  // a stopped instance after 7 days. A WEEKLY re-stop bounds that at seven days, not one
+  // — a force-start landing on a Monday runs until the following Sunday.
+  //
+  // Measured before this change: 59 of 168 hours in a week published CloudWatch
+  // datapoints. A pre-launch database with no users, no tasks and no cache was running
+  // 35% of the time, roughly $4/mo. The saving had partly evaporated in exactly the way
+  // that note warns about, just on a longer timescale than the weekly pass could catch.
+  //
+  // Daily costs nothing extra: the ECS half of this schedule scales services that are
+  // already at a zero floor, so the only behaviour that changes is how quickly a
+  // force-started database is put back to sleep.
+  idle_schedule = "cron(0 1 * * ? *)"
 
   // Both halves of rally/production/r2-public-* are populated, so the public-bucket
   // credential can be injected. Same fix as develop: `rally-production-r2-app` is scoped
