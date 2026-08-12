@@ -606,26 +606,36 @@ module "api" {
   # built from those matches NOTHING while still applying cleanly. The failure surfaces
   # at the next task start as "unable to pull secrets", long after the apply reported
   # success. `secret_iam_arns` returns the container ARNs in both modes.
-  # The tunnel token is appended EXPLICITLY because it is the one secret this stack
-  # creates outside `module.secrets`, so `secret_iam_arns` — built from the bundle and
-  # standalone NAMES — cannot cover it. Omitting it is the exact failure the paragraph
-  # above describes, reached by a different route, and it broke every develop deploy
-  # between 2026-08-10 and this change:
+  # `module.tunnel_api.secret_arns` is the sidecar's OWN declaration of what the execution
+  # role must read, and taking it from there rather than naming the secret again is the
+  # point. Its description says so: "Concat into ecs-service's secret_arns, or the task
+  # fails to start with ResourceInitializationError."
+  #
+  # Nothing consumed it, and that is what broke every develop deploy between 2026-08-10
+  # and this change:
   #
   #   AccessDeniedException: assumed-role/rally-develop-api-exec is not authorized to
   #   perform: secretsmanager:GetSecretValue on .../rally/develop/tunnel-token-tf-*
   #
-  # The apply that introduced the secret succeeded and wired the sidecar to it, so
-  # nothing failed until the next task START — which then could not, the circuit breaker
-  # rolled back, and develop sat on a stale image while reporting healthy. The worker
-  # deployed normally throughout, which is what isolates the cause: it has no sidecar.
+  # The apply that introduced the secret succeeded and wired the sidecar to it, so nothing
+  # failed until the next task START — which then could not, the circuit breaker rolled
+  # back, and develop sat on a stale image while reporting healthy. The worker deployed
+  # normally throughout, which is what isolates the cause: it has no sidecar.
   #
-  # qnsc-kb-backend already does this. A splat, not a conditional: `tunnel_token` is
-  # count-gated, and `[*].arn` is an empty list when that count is 0.
+  # Two reasons not to write `aws_secretsmanager_secret.tunnel_token[*].arn` here instead,
+  # which is the obvious fix and the one this change started as:
+  #
+  #   - the output strips a `:<key>::` valueFrom suffix, so it stays correct if the token
+  #     ever moves into the bundle, where the raw ARN form would match nothing in IAM while
+  #     still applying cleanly — the failure this file's next paragraph up already warns of
+  #   - it keeps the requirement with the module that HAS the requirement, so adding a
+  #     second secret to the sidecar cannot silently need an edit here
+  #
+  # Empty list when the sidecar is off, so an environment without a tunnel is unchanged.
   secret_arns = concat(
     local.secret_iam_arns,
     [module.rds.master_secret_arn],
-    aws_secretsmanager_secret.tunnel_token[*].arn,
+    module.tunnel_api.secret_arns,
   )
   kms_key_arn = local.kms_key_arn
   secrets = concat(local.api_db_secrets, [
