@@ -124,6 +124,42 @@ export function useDeleteProject() {
   })
 }
 
+// ── Estimation Settings (SRS §6.2) ────────────────────────────────────────────
+
+export interface ProjectEstimationSettings {
+  xsPoints: number
+  sPoints: number
+  mPoints: number
+  lPoints: number
+  xlPoints: number
+  hoursPerPoint: number
+}
+
+/**
+ * Persist the per-project T-shirt → points scale + hours/point. Write side is
+ * Workspace-Admin only on the backend (`workspace:edit`); the caller gates the UI to
+ * match. Omitted fields keep their current value (PATCH, not replace).
+ */
+export function useUpdateProjectEstimationSettings() {
+  return useMutation({
+    mutationFn: async ({
+      id,
+      input,
+    }: {
+      id: string
+      input: Partial<ProjectEstimationSettings>
+    }) => {
+      const { data, error, response } = await apiClient.PATCH(
+        '/v1/projects/{id}/estimation-settings',
+        { params: { path: { id } }, body: input },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as ProjectEstimationSettings
+    },
+    meta: { invalidates: ['project'] },
+  })
+}
+
 // ── Project Statuses ──────────────────────────────────────────────────────────
 
 export interface ProjectStatus {
