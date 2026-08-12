@@ -395,11 +395,16 @@ variable "container_insights" {
   description = <<-EOT
     ECS Container Insights mode: "enhanced", "enabled" or "disabled".
 
-    Stated here rather than inherited, because the ecs-cluster module defaults to
-    "enhanced" and that default is expensive: enhanced adds per-task and per-container
-    metrics that CloudWatch bills as CUSTOM metrics at $0.07 each. Four clusters
-    silently on that default produced 606 metric-months (~$42) on the July 2026 bill,
-    and the count grows with task churn rather than with traffic.
+    Stated here rather than inherited. "enhanced" adds per-task and per-container metrics
+    that CloudWatch bills as CUSTOM metrics at $0.07 each: four clusters silently on that
+    default produced 606 metric-months (~$42) on the July 2026 bill, and the count grows
+    with task churn rather than with traffic.
+
+    The module used to DEFAULT to "enhanced", which is how those four clusters got there.
+    ecs-cluster v2.0.0 changed that default to "enabled" — cluster- and service-level
+    metrics, in the free AWS/ECS namespace — so inheriting is no longer expensive. Still
+    stated explicitly, because "no longer expensive" is not the same as "queried by
+    anything", and the audit below says nothing queries it.
 
     Defaults to "disabled" because an audit of every consumer found none: all 7 alarms
     and all 6 dashboard widgets read AWS/ECS, AWS/ApplicationELB and AWS/RDS, which are
