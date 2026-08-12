@@ -277,7 +277,7 @@ function ProjectsBulkBar({
   const { t } = useTranslation('projects')
   const update = useUpdateProject()
   const del = useDeleteProject()
-  const [confirm, setConfirm] = useState<'archive' | 'delete' | null>(null)
+  const [confirm, setConfirm] = useState<'archive' | 'restore' | 'delete' | null>(null)
   const ids = [...selection.selectedIds]
   const selected = projects.filter((p) => selection.selectedIds.has(p.id))
   const anyActive = selected.some((p) => p.status === 'active')
@@ -324,12 +324,7 @@ function ProjectsBulkBar({
         <BulkBarButton
           icon={<RotateCcw size={13} />}
           label={t('actions.restore')}
-          onClick={() =>
-            void run(
-              (id) => update.mutateAsync({ id, input: { status: 'active' } }),
-              'toast.restoredN',
-            )
-          }
+          onClick={() => setConfirm('restore')}
         />
       )}
       <BulkBarButton
@@ -353,6 +348,24 @@ function ProjectsBulkBar({
           void run(
             (id) => update.mutateAsync({ id, input: { status: 'archived' } }),
             'toast.archivedN',
+          )
+        }}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm === 'restore'}
+        title={t('actions.restore')}
+        message={t('bulk.confirmRestore', {
+          defaultValue: 'Restore {{count}} project(s) to active?',
+          count: ids.length,
+        })}
+        confirmLabel={t('actions.restore')}
+        pending={update.isPending}
+        onConfirm={() => {
+          setConfirm(null)
+          void run(
+            (id) => update.mutateAsync({ id, input: { status: 'active' } }),
+            'toast.restoredN',
           )
         }}
         onCancel={() => setConfirm(null)}

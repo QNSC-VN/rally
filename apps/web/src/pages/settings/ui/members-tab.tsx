@@ -93,7 +93,7 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
     // Read-only PRIMARY identity cell: avatar + name at text-ui-md — matches the
     // Teams grid's Team-name column exactly (OwnerCell is the smaller secondary
     // treatment used for attribute columns like Owner/Lead). Name/avatar are
-    // IdP/Profile-owned (not editable here); only Role/Status/Teams are editable.
+    // IdP/Profile-owned (not editable here); only Status is editable inline.
     cell: (m, ctx) => (
       <>
         <OwnerAvatar name={m.displayName ?? undefined} />
@@ -541,7 +541,7 @@ export function MembersTab() {
           ) : undefined
         }
         renderRow={(m, { selected, onToggleSelect }) => (
-          // Plain row — the cells (Role/Status/Teams selects) are the interactive
+          // Plain row — the cells (Status select) are the interactive
           // surface; there is no whole-row click. The gutter checkbox selects.
           <div
             key={m.id}

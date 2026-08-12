@@ -1,10 +1,10 @@
 /* eslint-disable react-refresh/only-export-components -- PROJECT_COLUMNS is config that must co-locate with the cell renderers it references */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Loader2, UsersRound } from 'lucide-react'
+import { Loader2, UsersRound } from 'lucide-react'
 
 import { BRAND } from '@/shared/config/brand'
-import { cn, formatDateIso } from '@/shared/lib/utils'
+import { formatDateIso } from '@/shared/lib/utils'
 import { DateField } from '@/shared/ui/date-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
@@ -31,81 +31,8 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { type ColumnSpec } from '@/shared/ui/table'
 import { type ProjectColKey, type ProjectCtx } from '../model/columns'
 
-export function ArchiveConfirmModal({
-  project,
-  onConfirm,
-  onClose,
-  isPending,
-}: {
-  project: Project
-  onConfirm: () => void
-  onClose: () => void
-  isPending: boolean
-}) {
-  const { t } = useTranslation('projects')
-  const [typed, setTyped] = useState('')
-  const confirmed = typed.trim().toUpperCase() === project.key.toUpperCase()
-
-  return (
-    <AppModal open onClose={onClose} title={t('actions.archive')} width={440}>
-      {/* Danger header band */}
-      <div className="flex items-center gap-3 border-b border-destructive-border bg-destructive-bg px-5 py-3">
-        <AlertTriangle size={16} className="text-destructive" style={{ flexShrink: 0 }} />
-        <p className="text-ui-sm text-destructive">{t('archive.warning')}</p>
-      </div>
-
-      <ModalBody className="space-y-4">
-        {/* Impact summary */}
-        <div className="rounded border border-border-subtle bg-surface-subtle p-3 text-ui-sm">
-          <p className="font-semibold text-foreground">{t('archive.whatWillHappen')}</p>
-          <ul className="mt-1.5 space-y-0.5 text-muted-foreground">
-            <li>
-              {t('archive.statusChange')} <strong>{t('status.archived')}</strong>
-            </li>
-            <li>{t('archive.item2')}</li>
-            <li>{t('archive.item3')}</li>
-            <li>{t('archive.item4')}</li>
-          </ul>
-        </div>
-
-        {/* Key confirmation */}
-        <FormField
-          label={
-            <>
-              {t('archive.confirmPrefix')}{' '}
-              <span className="font-mono font-bold text-foreground">{project.key}</span>{' '}
-              {t('archive.confirmSuffix')}
-            </>
-          }
-        >
-          <Input
-            autoFocus
-            type="text"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            placeholder={project.key}
-            className={cn('font-mono', confirmed && 'border-destructive-border')}
-          />
-        </FormField>
-      </ModalBody>
-
-      <ModalFooter>
-        <Button variant="outline" type="button" onClick={onClose}>
-          {t('common:cancel')}
-        </Button>
-        <Button
-          variant="destructive"
-          type="button"
-          onClick={onConfirm}
-          disabled={!confirmed || isPending}
-        >
-          {isPending && <Loader2 size={12} className="animate-spin" />}
-          {t('actions.archive')}
-        </Button>
-      </ModalFooter>
-    </AppModal>
-  )
-}
+// ArchiveConfirmModal removed — dead code. Bulk archive uses ConfirmDialog;
+// SRS §9 reserves typed-key confirmation for Delete only.
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
