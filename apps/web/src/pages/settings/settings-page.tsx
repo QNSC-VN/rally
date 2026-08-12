@@ -77,7 +77,7 @@ const SIDEBAR: SettingsGroup[] = [
         key: 'projects-access',
         label: 'Workspaces & Projects',
         icon: FolderKanban,
-        requires: PERMISSION.WORKSPACE_VIEW,
+        requires: PERMISSION.PROJECT_EDIT,
       },
       {
         key: 'integrations',

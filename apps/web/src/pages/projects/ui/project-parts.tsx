@@ -518,7 +518,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
           inputClassName="text-ui-md text-foreground"
           onCommit={(v) => {
             const n = v.trim()
-            if (n && n !== p.name) ctx.onPatch(p.id, { name: n })
+            if (n && n !== p.name) ctx.onPatch?.(p.id, { name: n })
           }}
         />
       ),
@@ -538,7 +538,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
           { value: 'active', label: 'Active' },
           { value: 'archived', label: 'Archived' },
         ]}
-        onChange={(v) => ctx.onPatch(p.id, { status: v as 'active' | 'archived' })}
+        onChange={(v) => ctx.onPatch?.(p.id, { status: v as 'active' | 'archived' })}
       />
     ),
   },
@@ -559,7 +559,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
         members={ctx.members}
         canEdit={p.status !== 'archived'}
         ariaLabel="Owner"
-        onChange={(v) => ctx.onPatch(p.id, { leadId: v })}
+        onChange={(v) => ctx.onPatch?.(p.id, { leadId: v })}
       />
     ),
   },
@@ -598,7 +598,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
         value={p.startDate}
         readOnly={p.status === 'archived'}
         ariaLabel="Start Date"
-        onChange={(v) => ctx.onPatch(p.id, { startDate: v })}
+        onChange={(v) => ctx.onPatch?.(p.id, { startDate: v })}
       />
     ),
   },
@@ -614,7 +614,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
         value={p.endDate}
         readOnly={p.status === 'archived'}
         ariaLabel="End Date"
-        onChange={(v) => ctx.onPatch(p.id, { endDate: v })}
+        onChange={(v) => ctx.onPatch?.(p.id, { endDate: v })}
       />
     ),
   },

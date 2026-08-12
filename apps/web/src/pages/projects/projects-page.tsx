@@ -20,6 +20,7 @@ import { useRowSelection, type RowSelection } from '@/shared/lib/hooks/use-row-s
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { PERMISSION } from '@/shared/config/permissions'
 import { useProjects, useUpdateProject, useDeleteProject } from '@/features/projects/api'
 import type { Project } from '@/features/projects/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
@@ -31,7 +32,8 @@ export function ProjectsPage() {
   const navigate = useNavigate()
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId
-  const { user: currentUser } = useAuthStore()
+  const { user: currentUser, hasPermission } = useAuthStore()
+  const isWorkspaceAdmin = hasPermission(PERMISSION.WORKSPACE_VIEW)
 
   const { data: projects = [], isLoading } = useProjects(workspaceId)
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
@@ -129,7 +131,7 @@ export function ProjectsPage() {
     currentUserId: currentUser?.id,
     currentUserName: currentUser?.displayName,
     members: wsMembers,
-    onPatch: (id, input) => update.mutate({ id, input }),
+    onPatch: isWorkspaceAdmin ? (id, input) => update.mutate({ id, input }) : undefined,
     onOpen: (key) => void navigate({ to: '/projects/$projectKey', params: { projectKey: key } }),
   }
 
@@ -181,10 +183,12 @@ export function ProjectsPage() {
       <PageToolbar
         search={{ value: search, onChange: setSearch, placeholder: t('search') }}
         actions={
-          <Button size="sm" onClick={() => setShowNewModal(true)}>
-            <Plus size={13} />
-            {t('create.title')}
-          </Button>
+          isWorkspaceAdmin ? (
+            <Button size="sm" onClick={() => setShowNewModal(true)}>
+              <Plus size={13} />
+              {t('create.title')}
+            </Button>
+          ) : undefined
         }
         filters={statusFilter}
         activeFilterCount={filter === 'active' ? 0 : 1}
@@ -213,7 +217,11 @@ export function ProjectsPage() {
             />
           ) : undefined
         }
-        bulkActions={(sel) => <ProjectsBulkBar selection={sel} projects={paged} />}
+        bulkActions={
+          isWorkspaceAdmin
+            ? (sel) => <ProjectsBulkBar selection={sel} projects={paged} />
+            : undefined
+        }
         footer={
           filtered.length > 0 ? (
             <PaginationFooter
