@@ -194,7 +194,7 @@ locals {
 }
 
 module "secrets" {
-  source      = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/secrets?ref=secrets-v2.1.0"
+  source      = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/secrets?ref=secrets-v2.1.1"
   prefix      = "${var.product}/${var.env}"
   kms_key_arn = local.kms_key_arn
 
