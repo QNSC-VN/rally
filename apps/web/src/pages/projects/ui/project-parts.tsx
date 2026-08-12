@@ -215,6 +215,7 @@ function ProjectFormFields({
   keyEditable,
   currentUserId,
   autoFocusName,
+  isWorkspaceAdmin,
 }: {
   workspaceId: string
   values: ProjectFormValues
@@ -222,6 +223,7 @@ function ProjectFormFields({
   keyEditable: boolean
   currentUserId?: string
   autoFocusName?: boolean
+  isWorkspaceAdmin?: boolean
 }) {
   const { t } = useTranslation('projects')
   return (
@@ -303,6 +305,54 @@ function ProjectFormFields({
           onChange={(teamIds) => onPatch({ teamIds })}
         />
       </FormField>
+
+      {/* Estimation Settings (SRS §6.2) — WA-admin only */}
+      {isWorkspaceAdmin && (
+        <div className="space-y-3 rounded-lg border border-border-subtle p-4">
+          <h4 className="text-ui-sm font-semibold text-foreground">Estimation Settings</h4>
+          <p className="text-ui-xs text-foreground-subtle">
+            Fixed T-shirt labels with editable point values. Consumed by Capacity Planning and
+            Reports.
+          </p>
+          <div className="grid grid-cols-5 gap-2">
+            {(['xsPoints', 'sPoints', 'mPoints', 'lPoints', 'xlPoints'] as const).map(
+              (field, i) => {
+                const label = ['XS', 'S', 'M', 'L', 'XL'][i]
+                return (
+                  <FormField key={field} label={label}>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={String(
+                        (values as unknown as Record<string, unknown>)[field] ??
+                          [1, 3, 5, 8, 13][i],
+                      )}
+                      onChange={(e) => {
+                        const v = Number(e.target.value)
+                        if (v > 0) onPatch({ [field]: v } as Partial<ProjectFormValues>)
+                      }}
+                      className="text-center"
+                    />
+                  </FormField>
+                )
+              },
+            )}
+          </div>
+          <FormField label="Hours per point">
+            <Input
+              type="number"
+              min={0.5}
+              step={0.5}
+              value={String((values as unknown as Record<string, unknown>).hoursPerPoint ?? 8)}
+              onChange={(e) => {
+                const v = Number(e.target.value)
+                if (v > 0) onPatch({ hoursPerPoint: v } as Partial<ProjectFormValues>)
+              }}
+              className="w-24"
+            />
+          </FormField>
+        </div>
+      )}
     </>
   )
 }

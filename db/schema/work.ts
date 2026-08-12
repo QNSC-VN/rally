@@ -1270,3 +1270,26 @@ export const memberCapacity = workSchema.table(
     userIdx: index('ix_mc_user').on(t.userId),
   }),
 );
+
+// ── project_settings (Phase 1.8 §6.2 Estimation Settings) ───────────────────
+
+export const projectSettings = workSchema.table(
+  'project_settings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    xsPoints: integer('xs_points').notNull().default(1),
+    sPoints: integer('s_points').notNull().default(3),
+    mPoints: integer('m_points').notNull().default(5),
+    lPoints: integer('l_points').notNull().default(8),
+    xlPoints: integer('xl_points').notNull().default(13),
+    hoursPerPoint: numeric('hours_per_point', { precision: 8, scale: 2 }).notNull().default('8.0'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectUq: uniqueIndex('uq_project_settings_project').on(t.projectId),
+    workspaceIdx: index('ix_project_settings_workspace').on(t.workspaceId),
+  }),
+);
