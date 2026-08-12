@@ -606,36 +606,45 @@ module "api" {
   # built from those matches NOTHING while still applying cleanly. The failure surfaces
   # at the next task start as "unable to pull secrets", long after the apply reported
   # success. `secret_iam_arns` returns the container ARNs in both modes.
-  # `module.tunnel_api.secret_arns` is the sidecar's OWN declaration of what the execution
-  # role must read, and taking it from there rather than naming the secret again is the
-  # point. Its description says so: "Concat into ecs-service's secret_arns, or the task
-  # fails to start with ResourceInitializationError."
-  #
-  # Nothing consumed it, and that is what broke every develop deploy between 2026-08-10
-  # and this change:
+  # The tunnel token is appended EXPLICITLY because it is the one secret this stack
+  # creates outside `module.secrets`, so `secret_iam_arns` — built from the bundle and
+  # standalone NAMES — cannot cover it. Omitting it is the exact failure the paragraph
+  # above describes, reached by a different route, and it broke every develop deploy
+  # between 2026-08-10 and this change:
   #
   #   AccessDeniedException: assumed-role/rally-develop-api-exec is not authorized to
   #   perform: secretsmanager:GetSecretValue on .../rally/develop/tunnel-token-tf-*
   #
-  # The apply that introduced the secret succeeded and wired the sidecar to it, so nothing
-  # failed until the next task START — which then could not, the circuit breaker rolled
-  # back, and develop sat on a stale image while reporting healthy. The worker deployed
-  # normally throughout, which is what isolates the cause: it has no sidecar.
+  # The apply that introduced the secret succeeded and wired the sidecar to it, so
+  # nothing failed until the next task START — which then could not, the circuit breaker
+  # rolled back, and develop sat on a stale image while reporting healthy. The worker
+  # deployed normally throughout, which is what isolates the cause: it has no sidecar.
   #
-  # Two reasons not to write `aws_secretsmanager_secret.tunnel_token[*].arn` here instead,
-  # which is the obvious fix and the one this change started as:
+  # qnsc-kb-backend already does this.
   #
-  #   - the output strips a `:<key>::` valueFrom suffix, so it stays correct if the token
-  #     ever moves into the bundle, where the raw ARN form would match nothing in IAM while
-  #     still applying cleanly — the failure this file's next paragraph up already warns of
-  #   - it keeps the requirement with the module that HAS the requirement, so adding a
-  #     second secret to the sidecar cannot silently need an edit here
+  # THE SPLAT IS LOAD-BEARING — do not "clean this up" into
+  # `module.tunnel_api.secret_arns`, which is the sidecar's own declaration of the same
+  # thing and looks strictly better. It was tried here and broke `plan` for prod:
   #
-  # Empty list when the sidecar is off, so an environment without a tunnel is unchanged.
+  #   Error: Invalid count argument
+  #     on modules/ecs-service/main.tf line 35, in data "aws_iam_policy_document"
+  #     "execution_secrets": count = length(var.secret_arns) + ... > 0 ? 1 : 0
+  #   The "count" value depends on resource attributes that cannot be determined until
+  #   apply
+  #
+  # tunnel-agent gates that output on `enabled = var.tunnel_token_secret_arn != ""`, and
+  # in an environment where the secret does not exist YET, the ARN is an unknown resource
+  # attribute — so the comparison is unknown, the returned list's LENGTH is unknown, and a
+  # count that calls `length()` on it cannot be computed. `[*].arn` has no such problem:
+  # its length comes from `count`, which is known from configuration whatever the ARN
+  # turns out to be.
+  #
+  # Develop hid this, because there the secret already exists and its ARN is known. Only
+  # the prod workspace — never applied — surfaced it.
   secret_arns = concat(
     local.secret_iam_arns,
     [module.rds.master_secret_arn],
-    module.tunnel_api.secret_arns,
+    aws_secretsmanager_secret.tunnel_token[*].arn,
   )
   kms_key_arn = local.kms_key_arn
   secrets = concat(local.api_db_secrets, [
