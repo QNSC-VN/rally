@@ -67,7 +67,7 @@
   "form": {
     "name": "Project Name",
     "key": "Project Key",
-    "keyHintEditable": "2–6 letters",
+    "keyHintEditable": "2–10 letters/digits",
     "keyHintImmutable": "Immutable",
     "owner": "Project Owner",
     "startDate": "Start Date",

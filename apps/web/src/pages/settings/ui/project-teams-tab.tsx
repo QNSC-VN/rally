@@ -47,6 +47,8 @@ export function ProjectTeamsTab({
 }) {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { data: teams = [], isLoading } = useProjectTeams(projectId)
+  // Workspace roster — resolves each team row's Lead name/avatar (mockup parity).
+  const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
   const [editing, setEditing] = useState<Team | null>(null)
   const [creating, setCreating] = useState(false)
   const [deactivateTarget, setDeactivateTarget] = useState<Team | null>(null)
@@ -89,6 +91,7 @@ export function ProjectTeamsTab({
           <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
             <span className="w-20">Key</span>
             <span className="flex-1">Team</span>
+            <span className="w-28">Lead</span>
             <span className="w-24">Status</span>
             <span className="w-20 text-center">Members</span>
             {isWA && <span className="w-20 text-center">Actions</span>}
@@ -105,6 +108,18 @@ export function ProjectTeamsTab({
               <span className="w-20 font-mono text-ui-xs text-foreground-subtle">{t.key}</span>
               <span className="flex-1 truncate text-ui-sm font-medium text-foreground">
                 {t.name}
+              </span>
+              <span className="flex w-28 min-w-0 items-center gap-1.5">
+                {(() => {
+                  const lead = wsMembers.find((m) => m.userId === t.leadId)
+                  const name = lead?.displayName ?? lead?.email ?? '--'
+                  return (
+                    <>
+                      <OwnerAvatar name={name} size={16} />
+                      <span className="truncate text-ui-xs text-foreground-subtle">{name}</span>
+                    </>
+                  )
+                })()}
               </span>
               <span className="w-24 text-ui-xs text-foreground-subtle capitalize">
                 {t.status === 'active' ? 'Active' : 'Deactivated'}

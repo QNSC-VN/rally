@@ -48,6 +48,8 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { FormField } from '@/shared/ui/form-field'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
+import { useQuery } from '@tanstack/react-query'
+import { apiClient } from '@/shared/api/http-client'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 
 type TabKey = 'details' | 'users' | 'teams'
@@ -458,21 +460,28 @@ function ProjectDetail({
       {/* Header — destructive project lifecycle actions (Edit is the inline Details tab) */}
       <div className="mb-4 flex items-start justify-between border-b border-border-subtle pb-3">
         <div>
-          <h2 className="text-ui-lg font-semibold text-foreground">{project.name}</h2>
+          <h2 className="flex items-center gap-2 text-ui-lg font-semibold text-foreground">
+            {project.name}
+            {!isWA && <EffectiveAccessChip projectId={project.id} />}
+          </h2>
           <p className="text-ui-xs text-foreground-subtle">
             {project.key} · {project.status} · {project.teamCount ?? 0} teams
           </p>
         </div>
         {isWA && (
           <div className="flex gap-1">
-            <IconButton
-              size="sm"
-              aria-label="Edit project"
-              title="Edit"
-              onClick={() => setEditOpen(true)}
-            >
-              <Pencil size={14} />
-            </IconButton>
+            {/* P0-PRJ-008: an archived project offers Restore ONLY — Edit/Delete
+                are hidden so the read-only state is not half-enforced by icons. */}
+            {project.status === 'active' && (
+              <IconButton
+                size="sm"
+                aria-label="Edit project"
+                title="Edit"
+                onClick={() => setEditOpen(true)}
+              >
+                <Pencil size={14} />
+              </IconButton>
+            )}
             {project.status === 'active' ? (
               <IconButton
                 size="sm"
@@ -492,15 +501,17 @@ function ProjectDetail({
                 <RotateCcw size={14} />
               </IconButton>
             )}
-            <IconButton
-              size="sm"
-              aria-label="Delete project"
-              title="Delete"
-              className="text-destructive hover:text-destructive"
-              onClick={() => setDeleteOpen(true)}
-            >
-              <Trash2 size={14} />
-            </IconButton>
+            {project.status === 'active' && (
+              <IconButton
+                size="sm"
+                aria-label="Delete project"
+                title="Delete"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 size={14} />
+              </IconButton>
+            )}
           </div>
         )}
       </div>
@@ -557,6 +568,39 @@ function ProjectDetail({
         onCancel={() => setDeleteOpen(false)}
       />
     </div>
+  )
+}
+
+/** PM-FR-005 / mockup:424 — a non-WA viewer sees their effective access beside the
+ *  project name (the WA sees everything, so no chip). Reads the same feed
+ *  MyPermissions renders from. */
+function EffectiveAccessChip({ projectId }: { projectId: string }) {
+  const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
+  const { data } = useQuery({
+    queryKey: ['my-project-permissions', workspaceId ?? '', projectId],
+    queryFn: async () => {
+      const res = await apiClient.GET('/v1/projects/{projectId}/my-permissions', {
+        params: { path: { projectId } },
+      })
+      if (res.error) return { accessLevel: null }
+      return {
+        accessLevel: ((res.data as { accessLevel?: string | null }) ?? {}).accessLevel ?? null,
+      }
+    },
+    staleTime: 60_000,
+  })
+  const level = data?.accessLevel ?? 'no_access'
+  const label = level === 'no_access' ? 'No Access' : level === 'admin' ? 'Admin' : 'Editor'
+  return (
+    <span
+      className={
+        level === 'admin'
+          ? 'rounded bg-primary-lighter px-1.5 py-0.5 text-ui-xs font-medium text-primary'
+          : 'rounded bg-surface-hover px-1.5 py-0.5 text-ui-xs font-medium text-foreground-subtle'
+      }
+    >
+      {label}
+    </span>
   )
 }
 
