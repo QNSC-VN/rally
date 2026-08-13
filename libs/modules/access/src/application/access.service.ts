@@ -21,7 +21,7 @@ import {
 } from '@shared-kernel';
 import type { JwtPayload, DrizzleDB } from '@platform';
 import { InjectDrizzle } from '@platform';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import {
   projectMembers,
   projects,
@@ -803,6 +803,11 @@ export class AccessService {
           eq(projectMembers.workspaceId, workspaceId),
           eq(projectMembers.userId, userId),
           eq(projectMembers.status, 'active'),
+          // The "real access level" half of the comment above, as code: an explicit
+          // NULL-level row (legitimately created by addMember with no level) is not
+          // a grant — the synthesis denies it, so listing the project here put it in
+          // every picker while opening it 403'd.
+          isNotNull(projectMembers.accessLevel),
         ),
       );
 
