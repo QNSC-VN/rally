@@ -35,8 +35,6 @@ import {
   WORKSPACE_ID,
 } from '../../db/seeds/constants';
 
-const TENANT = process.env['ENTRA_TENANT_ID'] ?? 'dev-tenant';
-const DOMAIN = (process.env['SSO_ALLOWED_EMAIL_DOMAINS'] ?? 'qnsc.vn').split(',')[0].trim();
 const SEEDED_ADMIN_ID = '00000000-0000-7000-8000-000000000002';
 const NXP = SEED_PROJECTS[0].id;
 const ITERATION = NXP_ITER_CURRENT_ID;
@@ -67,11 +65,6 @@ const ROUTES = [
 // `/audit-logs` for the same reason. Getting this wrong reads as a 404 — which is exactly what a
 // missing route and a refused one must never be confused for, and is why the assertions below
 // distinguish 403 from everything else rather than asserting "not 200".
-
-function decodeAccessToken(token: string): JwtPayload {
-  const payload = token.split('.')[1];
-  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as JwtPayload;
-}
 
 describe('report routes: authorization over HTTP (e2e)', () => {
   let app: NestFastifyApplication;
@@ -148,13 +141,19 @@ describe('report routes: authorization over HTTP (e2e)', () => {
   });
 
   it('ALLOWS them for a member whose role carries report:view', async () => {
-    // `dev@qnsc.dev` holds the workspace-scoped `project_member` role — the row `PolicyGuard`
-    // resolves, and the one migration 0092 had to backfill. Same routes, same queries, different
-    // principal: the ONLY difference is the permission.
-    const session = await tokenFor('dev@qnsc.dev');
+    // Under the 3-level model, editor (project_member) no longer carries report:view (§5).
+    // Grant dev a project_admin role on NXP — which HAS report:view — so the routes resolve 200.
+    const session = await auth.devLogin('dev@qnsc.dev', '127.0.0.1');
+    const devId = JSON.parse(Buffer.from(session.accessToken.split('.')[1], 'base64').toString())[
+      'sub'
+    ] as string;
+    const roles = await access.listRoles(WORKSPACE_ID);
+    const projectAdmin = roles.find((r) => r.slug === 'project_admin' && r.workspaceId !== null);
+    expect(projectAdmin, 'workspace-scoped project_admin must exist').toBeDefined();
+    await access.assignRole(actorFor(WORKSPACE_ID), devId, projectAdmin!.id, 'project', NXP);
 
     for (const url of ROUTES) {
-      const response = await get(url, session);
+      const response = await get(url, session.accessToken);
       expect(response.statusCode, `${url} must be allowed`).toBe(200);
     }
   });

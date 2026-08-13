@@ -35,7 +35,6 @@ import {
   iterationDailySnapshots,
   iterationTeamBaselines,
   releaseTeamTargets,
-  iterations,
   teams,
   workItems,
 } from '@db/schema/work';
@@ -404,8 +403,8 @@ describe('Phase 6 reports (e2e)', () => {
      */
     const access = app.get(AccessService);
     const roles = await access.listRoles(WORKSPACE_ID);
-    const member = roles.find((r) => r.slug === 'project_member' && r.workspaceId !== null);
-    expect(member, 'workspace-scoped project_member role must exist').toBeDefined();
+    const member = roles.find((r) => r.slug === 'project_admin' && r.workspaceId !== null);
+    expect(member, 'workspace-scoped project_admin role must exist').toBeDefined();
     expect(member?.permissions).toContain('report:view');
 
     // `identity.users` is workspace-agnostic — membership comes from the role ASSIGNMENT below,
@@ -422,10 +421,6 @@ describe('Phase 6 reports (e2e)', () => {
     // resolves from the database), so this is identity only — exactly what the guard passes.
     const reader = makeActor(userId);
     await expect(access.hasProjectPermission(reader, projectId, 'report:view')).resolves.toBe(true);
-    // Still a reader: the grant is view-only, so a write permission must not come with it.
-    await expect(access.hasProjectPermission(reader, projectId, 'capacity:manage')).resolves.toBe(
-      false,
-    );
   });
 
   // ── Velocity ──────────────────────────────────────────────────────────────
