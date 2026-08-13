@@ -1497,39 +1497,34 @@ export async function seed(connectionUrl?: string): Promise<void> {
         .onConflictDoNothing();
     }
 
-    // ── Developer role assignment (project_member) ────────────────────────────
-    const memberRoleId = await resolveRoleId('project_member');
-
-    if (memberRoleId) {
-      await db
-        .insert(userRoleAssignments)
-        .values({
-          workspaceId: WORKSPACE_ID,
-          userId: DEVELOPER_ID,
-          roleId: memberRoleId,
-          scopeType: 'workspace',
-          scopeId: WORKSPACE_ID,
-          grantedBy: ADMIN_USER_ID,
-        })
-        .onConflictDoNothing();
-    }
-
-    // ── Viewer role assignment (project_viewer) ───────────────────────────────
-    const viewerRoleId = await resolveRoleId('project_viewer');
-
-    if (viewerRoleId) {
-      await db
-        .insert(userRoleAssignments)
-        .values({
-          workspaceId: WORKSPACE_ID,
-          userId: VIEWER_ID,
-          roleId: viewerRoleId,
-          scopeType: 'workspace',
-          scopeId: WORKSPACE_ID,
-          grantedBy: ADMIN_USER_ID,
-        })
-        .onConflictDoNothing();
-    }
+    // ── The developer and the viewer get NO workspace-scoped tier role ─────────
+    //
+    // This block used to assign `project_member` to DEVELOPER_ID and `project_viewer` to
+    // VIEWER_ID at `scopeType: 'workspace'`. Both are gone deliberately, and re-adding either
+    // would undo migration 0111 on every seed.
+    //
+    // Under the 3-level model a per-Project tier role is granted PER PROJECT, through
+    // `work.project_members.access_level` — which is why 0111 DELETEs exactly these rows as
+    // "pure legacy over-grant". The seed re-created them immediately afterwards, so a
+    // developer carried the full Editor delivery set as a workspace baseline in every project,
+    // including ones they hold no grant on.
+    //
+    // The cost of that was not hypothetical: it made the project-scoped path unreachable in
+    // testing, and so it MASKED the two P0 access defects of 2026-08-14 — the same shape
+    // CLAUDE.md records for `report:view`, where a Workspace Admin's `workspace:*` hid a broken
+    // gate from every test. `read-scoping.e2e.spec.ts` said so out loud in a comment: "the
+    // honest expectation here is not 'fewer projects'", because with this grant in place there
+    // was no narrowing left to observe.
+    //
+    // DEVELOPER_ID's real access is the NXP `editor` row written below; VIEWER_ID deliberately
+    // has none, which is what makes it usable as a No Access principal. A spec that needs a
+    // read-only workspace grant asks for one explicitly — `ensureViewerGrant` in
+    // `test/e2e/support/flow-harness.ts` creates a custom role, exercising the supported
+    // mechanism instead of a fixture shortcut.
+    //
+    // `project_viewer` did not exist to be granted anyway: it was removed in the Phase 4.2
+    // reconciliation, so `resolveRoleId('project_viewer')` had been returning undefined and
+    // that half of the block was already dead.
 
     // ── Projects (real business flow: project + counter + member + statuses) ──
     for (const project of SEED_PROJECTS) {

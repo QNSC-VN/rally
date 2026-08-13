@@ -14,7 +14,8 @@ import {
 import { BRAND } from '@/shared/config/brand'
 import { PERMISSION, type Permission } from '@/shared/config/permissions'
 import type { ComponentType } from 'react'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useProjectPermissions } from '@/features/access/api'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { ProfileTab } from './ui/profile-tab'
 import { WorkspaceSettingsTab } from './ui/workspace-settings-tab'
@@ -72,9 +73,15 @@ const SIDEBAR: SettingsGroup[] = [
       },
       {
         key: 'projects-access',
+        // `project:view`, not `project:edit`. §3.1 shows this surface to all three levels and
+        // varies only its SCOPE — "All Projects" for a Workspace Admin, "Assigned Project, all
+        // Teams" for an Admin, "Assigned Project and assigned Teams" for an Editor — so an edit
+        // code was never the right gate for visibility. An Editor holds `project:view` and no
+        // `project:edit`, and was locked out of a surface the BA gives them read-only.
+        // Write controls inside the panel stay gated on their own codes.
         label: 'Workspaces & Projects',
         icon: FolderKanban,
-        requires: PERMISSION.PROJECT_EDIT,
+        requires: PERMISSION.PROJECT_VIEW,
       },
       {
         key: 'integrations',
@@ -111,10 +118,21 @@ function ComingSoonTab({ label }: { label: string }) {
 export function SettingsPage() {
   const { t } = useTranslation('settings')
   const [activeTab, setActiveTab] = useState('profile')
-  const { hasPermission } = useAuthStore()
-  // Each tab is gated on the exact permission its API enforces, so what the FE
-  // shows matches what the backend allows. hasPermission handles the workspace:*
-  // and namespace wildcards, so an admin still sees everything.
+  // Each tab is gated on the exact permission its API enforces, so what the FE shows matches what
+  // the backend allows.
+  //
+  // Resolved against the SELECTED PROJECT rather than the workspace baseline, because two of these
+  // tabs require project-tier codes (`projects-access` → `project:view`, `permission-model` →
+  // `project:edit`) and a normal user holds those through `work.project_members.access_level`,
+  // which never appears in the `/bff/me` baseline. Gating on the baseline padlocked both tabs for
+  // every non-Workspace-Admin — including the `Workspaces & Projects` surface that is the BA's
+  // project-centric access journey (§5.2).
+  //
+  // One function covers both tiers: `GET /projects/:id/my-permissions` returns the baseline UNIONED
+  // with the project grants, so a workspace-tier code like `audit:view` still resolves, and
+  // `workspace:*` still matches everything.
+  const { project } = useAppContext()
+  const { can: hasPermission } = useProjectPermissions(project?.projectId)
 
   const allItems = SIDEBAR.flatMap((g) => g.items)
   const activeItem = allItems.find((i) => i.key === activeTab)

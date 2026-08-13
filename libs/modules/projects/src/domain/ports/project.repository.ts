@@ -29,7 +29,11 @@ export interface IProjectRepository {
     args: { limit: number; cursor: CursorPayload | null },
     readableProjectIds: string[] | null,
   ): Promise<PagedResult<ProjectWithStats>>;
-  listHealthByWorkspace(workspaceId: string, args: { limit: number }): Promise<ProjectHealth[]>;
+  listHealthByWorkspace(
+    workspaceId: string,
+    args: { limit: number },
+    readableProjectIds: string[] | null,
+  ): Promise<ProjectHealth[]>;
   create(input: CreateProjectInput, tx?: DbExecutor): Promise<Project>;
   update(
     id: string,

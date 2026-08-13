@@ -155,9 +155,22 @@ export class ProjectsService {
     return this.projectRepo.listByWorkspaceWithStats(actor.workspaceId, args, readable);
   }
 
-  /** Home "Project Health" widget — bounded, attention-sorted per-project rollup. */
+  /**
+   * Home "Project Health" widget — bounded, attention-sorted per-project rollup.
+   *
+   * Scoped by the same `listReadableProjectIds` fact as `listProjects`, which its route decorator
+   * already claimed and the code did not do: the widget read the whole workspace, so a principal
+   * with access to no project still received every project's key, name, lead, active sprint,
+   * open-defect and blocked counts and progress. A rollup is not less sensitive than the list it
+   * rolls up.
+   */
   async listProjectHealth(actor: JwtPayload, limit: number): Promise<ProjectHealth[]> {
-    return this.projectRepo.listHealthByWorkspace(actor.workspaceId, { limit });
+    const readable = await this.access.listReadableProjectIds(
+      actor.workspaceId,
+      actor.sub,
+      'project:view',
+    );
+    return this.projectRepo.listHealthByWorkspace(actor.workspaceId, { limit }, readable);
   }
 
   /**

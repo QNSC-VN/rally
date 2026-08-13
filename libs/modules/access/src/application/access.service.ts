@@ -610,8 +610,11 @@ export class AccessService {
     // with ZERO project access — no automatic workspace-scoped role, because
     // that would grant project delivery access company-wide. The user is still
     // an authenticated company member (workspace_members row from SSO) and can
-    // sign in + see the shell via the empty-baseline fallback; Workspace Admin
-    // grants per-Project access (admin/editor) afterwards. No-op until a
+    // sign in; the shell renders from the `/bff/me` profile and `memberships`,
+    // neither of which needs a permission. They hold NOTHING else until
+    // Workspace Admin grants a per-Project access_level — that is the BA's
+    // implicit No Access, and it is why `getUserRoleAndPermissions` returns an
+    // empty permission array rather than a `workspace:view` floor. No-op until a
     // non-project default role exists.
     return Promise.resolve();
   }
@@ -690,15 +693,29 @@ export class AccessService {
     );
 
     if (!baseline.length) {
-      // No workspace/global assignment: minimal authenticated baseline so the
-      // app shell + workspace read work. Project delivery access is granted
-      // ONLY by an explicit per-Project access_level (RBAC migration Phase 4:
-      // No Access is the default for JIT/no-assignment users until Workspace
-      // Admin grants access). No canonical role fits, so report an empty role.
-      return {
-        role: '',
-        permissions: [PERMISSION.WORKSPACE_VIEW],
-      };
+      // No workspace/global assignment means NO workspace-tier permission. Not one, not a
+      // "minimal" one.
+      //
+      // This used to return `[PERMISSION.WORKSPACE_VIEW]` as a floor "so the app shell +
+      // workspace read work". Two things made that untenable:
+      //
+      //   1. Migration 0111 deleted the workspace-scoped tier assignments, so EVERY normal user
+      //      — per-Project Admin, Editor and No Access alike — now lands in this branch. The
+      //      floor stopped being an edge case and became the baseline for the whole company.
+      //   2. `workspace:view` is not a harmless code. It gates `GET /workspaces/:id/settings`
+      //      (timezone, locale, working days) and the two SCM inventory routes
+      //      (`scm/installations`, `scm/repositories`) — all three admin-only surfaces, and the
+      //      settings read was given that decorator specifically to close this hole. Granting it
+      //      here re-opened it from the other side, to a principal with no access to anything.
+      //
+      // The app shell does not need it: the workspace name it renders comes from `memberships`
+      // on the `/bff/me` payload, and `workspaceDefaults` is already `.catch(() => null)` at the
+      // call site. Delivery access is per-Project via `work.project_members.access_level`, read
+      // through `getProjectPermissions` — which unions this baseline, so an empty one subtracts
+      // nothing a project grant confers.
+      //
+      // Pinned by `test/e2e/project-authz.e2e.spec.ts`, both directions.
+      return { role: '', permissions: [] };
     }
 
     const permissions = [...new Set(baseline.flatMap((a) => a.permissions))];

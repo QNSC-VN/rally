@@ -174,8 +174,32 @@ export class ProjectDrizzleRepository implements IProjectRepository {
   async listHealthByWorkspace(
     workspaceId: string,
     { limit }: { limit: number },
+    readableProjectIds: string[] | null,
   ): Promise<ProjectHealth[]> {
-    // 1. Active projects in the workspace.
+    const conditions = [
+      eq(projects.workspaceId, workspaceId),
+      eq(projects.status, 'active'),
+      isNull(projects.deletedAt),
+    ];
+
+    /**
+     * Same sentinel contract as `listByWorkspaceWithStats`: `null` is UNRESTRICTED, an array —
+     * including an EMPTY one — restricts, and the empty case short-circuits because
+     * `inArray(col, [])` is not portable as "match nothing".
+     *
+     * This widget was scoped by `workspace_id` alone, which meant a principal with access to no
+     * project at all received every active project's key, name, lead name, active sprint name,
+     * open-defect count, blocked count and progress percentage. The route's own
+     * `@AuthorizedInService` decorator claimed it was "scoped by listReadableProjectIds, like the
+     * list above" — it was not, and nothing checked, because the spec that citation named did not
+     * exist. Found the moment `test/e2e/project-authz.e2e.spec.ts` was written.
+     */
+    if (readableProjectIds !== null) {
+      if (readableProjectIds.length === 0) return [];
+      conditions.push(inArray(projects.id, readableProjectIds));
+    }
+
+    // 1. Active projects in the workspace the caller may read.
     const projectRows = await this.db
       .select({
         id: projects.id,
@@ -184,13 +208,7 @@ export class ProjectDrizzleRepository implements IProjectRepository {
         leadId: projects.leadId,
       })
       .from(projects)
-      .where(
-        and(
-          eq(projects.workspaceId, workspaceId),
-          eq(projects.status, 'active'),
-          isNull(projects.deletedAt),
-        ),
-      );
+      .where(and(...conditions));
     if (projectRows.length === 0) return [];
 
     // 2. Work-item rollup per project — ONE grouped query over the workspace.

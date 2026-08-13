@@ -24,6 +24,7 @@ import { useWorkspaces } from '@/features/workspaces/api'
 import { useProjects } from '@/features/projects/api'
 import { useProjectTeams, type Team } from '@/features/teams/api'
 import { useNotificationUnreadCount, useNotificationSse } from '@/features/notifications/api'
+import { useProjectPermissions } from '@/features/access/api'
 import { ENV } from '@/shared/config/env'
 import { withCsrfHeader } from '@/shared/api/csrf'
 import { isFeatureEnabled } from '@/shared/config/feature-flags'
@@ -274,7 +275,7 @@ function ProjectTreeItem({
 }
 
 export function AppShell() {
-  const { user, hasPermission, clearAuth, memberships, activeWorkspaceId } = useAuthStore()
+  const { user, clearAuth, memberships, activeWorkspaceId } = useAuthStore()
   const { workspace, project, team, setWorkspace, setProject, setTeam } = useAppContext()
   const navigate = useNavigate()
   const routerState = useRouterState()
@@ -290,6 +291,12 @@ export function AppShell() {
   // Workspace-switcher project tree state (filter + which project is expanded).
   const [projectSearch, setProjectSearch] = useState('')
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
+
+  /**
+   * The caller's effective permissions in the SELECTED project — the set the nav must gate on.
+   * See `navItemState` for why the workspace baseline cannot serve here.
+   */
+  const { can: canInProject } = useProjectPermissions(project?.projectId)
 
   const { data: unreadCount = 0 } = useNotificationUnreadCount()
 
@@ -423,12 +430,27 @@ export function AppShell() {
    *  - Feature disabled → show as "coming soon" (not hidden, per spec)
    *  - Feature enabled + permission required + user lacks it → hide
    *  - Otherwise → show as active link
+   *
+   * Resolved against the SELECTED PROJECT, not the workspace baseline. Every code these items
+   * carry — `work_item:view`, `iteration:view`, `project:view`, `portfolio:view`,
+   * `capacity:view`, `report:view` — is project-tier, and a normal user holds them through
+   * `work.project_members.access_level`, which reaches the client only via
+   * `GET /projects/:id/my-permissions`.
+   *
+   * `hasPermission` reads the workspace baseline from `/bff/me`, which for a per-Project Admin or
+   * Editor is now EMPTY (migration 0111 removed the workspace-scoped tier assignments). Gating on
+   * it therefore hid Plan, Track, Quality, Portfolio and Reports from exactly the levels the BA
+   * grants them to — the whole delivery surface, for everyone except a Workspace Admin, whose
+   * `workspace:*` matched every code and hid the fault from every test.
+   *
+   * A Workspace Admin is unaffected: `useProjectPermissions` unions the baseline, so `workspace:*`
+   * still grants everything with no project selected at all.
    */
   function navItemState(
     item: Pick<NavItem, 'featureFlag' | 'permission'>,
   ): 'coming-soon' | 'hidden' | 'active' {
     if (item.featureFlag && !isFeatureEnabled(item.featureFlag)) return 'coming-soon'
-    if (item.permission && !hasPermission(item.permission)) return 'hidden'
+    if (item.permission && !canInProject(item.permission)) return 'hidden'
     return 'active'
   }
 
