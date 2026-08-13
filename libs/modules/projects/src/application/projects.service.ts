@@ -810,6 +810,7 @@ export class ProjectsService {
     workspaceId: string,
     projectId: string,
     userId: string,
+    accessLevel?: 'admin' | 'editor',
   ): Promise<ProjectMember> {
     await this.getProject(workspaceId, projectId);
 
@@ -831,6 +832,9 @@ export class ProjectsService {
       workspaceId,
       projectId,
       userId,
+      // Persist the chosen level up front (the Add Existing User flow) rather than
+      // landing a NULL row the caller must immediately PATCH. Repo ignores undefined.
+      ...(accessLevel !== undefined && { accessLevel }),
     });
     // RBAC migration Phase 4: invalidate so the new access_level lands on the
     // user's next request, not the 5-min cache TTL.

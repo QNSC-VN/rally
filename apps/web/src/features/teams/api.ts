@@ -272,6 +272,32 @@ export function useUpdateProjectAccess(projectId: string) {
   })
 }
 
+/**
+ * Add an existing workspace user to a Project (creates a project_members row). NOTE:
+ * the BE currently ignores `accessLevel` on add (Stage 5 fix) — callers must follow
+ * with `useUpdateProjectAccess` to set the level, which is why the Add Existing User
+ * flow PATCHes immediately after this resolves.
+ */
+export function useAddProjectMember(projectId: string) {
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      accessLevel,
+    }: {
+      userId: string
+      accessLevel?: 'admin' | 'editor'
+    }) => {
+      const { data, error, response } = await apiClient.POST('/v1/projects/{id}/members', {
+        params: { path: { id: projectId } },
+        body: { userId, ...(accessLevel ? { accessLevel } : {}) } as never as never,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data
+    },
+    meta: { invalidates: ['team'] },
+  })
+}
+
 // ── Project ⇄ Team links ──────────────────────────────────────────────────────
 
 export function useLinkProjectTeam(projectId: string) {

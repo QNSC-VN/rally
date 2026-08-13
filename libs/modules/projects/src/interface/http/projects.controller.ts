@@ -539,7 +539,12 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: { userId: string; accessLevel?: 'admin' | 'editor' },
   ): Promise<ProjectMemberResponseDto> {
-    const member = await this.projectsService.addProjectMember(user.workspaceId, id, dto.userId);
+    const member = await this.projectsService.addProjectMember(
+      user.workspaceId,
+      id,
+      dto.userId,
+      dto.accessLevel,
+    );
     return toProjectMemberDto(member);
   }
 

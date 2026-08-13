@@ -444,6 +444,32 @@ describe('ProjectsService', () => {
       );
       expect(projectMemberRepo.addMember).not.toHaveBeenCalled();
     });
+
+    it('persists the chosen access level on add (Add Existing User flow)', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
+      projectMemberRepo.findMember.mockResolvedValue(null);
+      projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
+
+      await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'editor');
+
+      expect(projectMemberRepo.addMember).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-2', accessLevel: 'editor' }),
+      );
+    });
+
+    it('omits accessLevel when none is supplied (lands NULL until a PATCH)', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
+      projectMemberRepo.findMember.mockResolvedValue(null);
+      projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
+
+      await service.addProjectMember('ws-1', 'proj-1', 'user-2');
+
+      expect(projectMemberRepo.addMember).toHaveBeenCalledWith(
+        expect.not.objectContaining({ accessLevel: expect.anything() }),
+      );
+    });
   });
 
   describe('createTransition', () => {
