@@ -466,12 +466,36 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
     setPending(true)
     try {
       const { error, response } = await apiClient.POST('/v1/projects/{id}/members', {
-        params: { path: { id: projectId! } },
+        params: { path: { id: projectId } },
         body: { userId, accessLevel: level } as never,
       })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
+      if (error) {
+        // UPSERT: a member row may already exist with a NULL access_level
+        // (team-derived union rows + rows created before add-with-level). 409
+        // ALREADY_EXISTS meant "you're in but shown No Access, and Add can't fix
+        // it" — PATCH the existing row's level instead of failing.
+        if (response.status === 409) {
+          const { data: members } = await apiClient.GET('/v1/projects/{id}/members', {
+            params: { path: { id: projectId } },
+          })
+          const existing = ((members as never[] | undefined) ?? []).find(
+            (m) => (m as { userId: string }).userId === userId,
+          ) as { id: string } | undefined
+          if (!existing) throw new Error(apiErrorMessage(error, response.status))
+          const { error: patchError, response: patchRes } = await apiClient.PATCH(
+            '/v1/projects/{id}/members/{memberId}',
+            {
+              params: { path: { id: projectId, memberId: existing.id } },
+              body: { accessLevel: level },
+            },
+          )
+          if (patchError) throw new Error(apiErrorMessage(patchError, patchRes.status))
+        } else {
+          throw new Error(apiErrorMessage(error, response.status))
+        }
+      }
       await qc.invalidateQueries({ queryKey: ['teams'] })
-      notify.success('Project access added')
+      notify.success(`Project access set to ${level}`)
       setProjectId(null)
       setLevel('editor')
       setOpen(false)
