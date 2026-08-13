@@ -393,13 +393,10 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORK_ITEM_EDIT,
     PERMISSION.WORK_ITEM_DELETE,
     PERMISSION.ITERATION_VIEW,
-    // Read-only portfolio access: the spec lets a Project Member see the Epics,
-    // Features and capacity plans for their Project/Team but never mutate them.
-    PERMISSION.PORTFOLIO_VIEW,
-    PERMISSION.CAPACITY_VIEW,
-    // Reports are read-only and describe the member's own delivery, so the delivery
-    // tier reads them too. Export stays gated on a write permission in the UI.
-    PERMISSION.REPORT_VIEW,
+    // Editor is delivery-only and Team-scoped. Per the 3-level access matrix (§5),
+    // Portfolio Items, Capacity Planning and Reports are admin/report surfaces the
+    // Editor does NOT see — only Admin and WA do. (assertTeamScoped enforces the
+    // Team boundary on the delivery CRUD below.)
   ],
 };
 

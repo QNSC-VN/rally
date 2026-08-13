@@ -201,7 +201,10 @@ function AddExistingUserModal({
   const [userId, setUserId] = useState<string | null>(null)
   const [level, setLevel] = useState<'admin' | 'editor'>('editor')
 
-  const candidates = wsMembers.filter((m) => !existingIds.has(m.userId) && m.status === 'active')
+  // Workspace Admin is company-level only — never a Project member candidate (§2).
+  const candidates = wsMembers.filter(
+    (m) => !existingIds.has(m.userId) && m.status === 'active' && m.roleSlug !== 'workspace_admin',
+  )
   const options: SelectOption[] = candidates.map((m) => ({
     value: m.userId,
     label: m.displayName ?? m.email ?? m.userId,

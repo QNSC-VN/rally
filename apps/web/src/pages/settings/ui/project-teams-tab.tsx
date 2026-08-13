@@ -11,7 +11,15 @@
 import { useState } from 'react'
 import { Loader2, Plus, Pencil, Archive, RotateCcw } from 'lucide-react'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useProjectTeams, useCreateTeam, useUpdateTeam, type Team } from '@/features/teams/api'
+import {
+  useProjectTeams,
+  useCreateTeam,
+  useUpdateTeam,
+  useProjectMembers,
+  useAddProjectMember,
+  useUpdateProjectAccess,
+  type Team,
+} from '@/features/teams/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
@@ -182,19 +190,47 @@ function TeamFormModal({
   onClose: () => void
 }) {
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  // Existing project members — only needed on create, to sync access for selected members.
+  const { data: projectMembers = [] } = useProjectMembers(team ? undefined : projectId)
   const createTeam = useCreateTeam()
   const updateTeam = useUpdateTeam(team?.id ?? '')
+  const addProjectMember = useAddProjectMember(projectId)
+  const updateAccess = useUpdateProjectAccess(projectId)
   const [name, setName] = useState(team?.name ?? '')
   const [key, setKey] = useState(team?.key ?? '')
   const [leadId, setLeadId] = useState<string | null>(team?.leadId ?? null)
+  const [memberUserIds, setMemberUserIds] = useState<string[]>([])
+  const [memberLevel, setMemberLevel] = useState<'admin' | 'editor'>('editor')
 
-  const leadOptions: SelectOption[] = wsMembers
-    .filter((m) => m.status === 'active')
-    .map((m) => ({ value: m.userId, label: m.displayName ?? m.email ?? m.userId }))
+  // Workspace Admin is company-level only — not a Team lead or member candidate (§2).
+  const eligible = wsMembers.filter(
+    (m) => m.status === 'active' && m.roleSlug !== 'workspace_admin',
+  )
+  const leadOptions: SelectOption[] = eligible.map((m) => ({
+    value: m.userId,
+    label: m.displayName ?? m.email ?? m.userId,
+  }))
+  const memberOptions: SelectOption[] = leadOptions
+  const levelOptions: SelectOption[] = [
+    { value: 'admin', label: 'Admin' },
+    { value: 'editor', label: 'Editor' },
+  ]
 
   const valid = name.trim().length >= 2 && /^[A-Z][A-Z0-9]{1,9}$/.test(key)
 
-  function handleSave() {
+  /** P4-RBAC-010: setting up a team assigns each selected member their Project access. */
+  async function syncMemberAccess() {
+    for (const uid of memberUserIds) {
+      const existing = projectMembers.find((pm) => pm.userId === uid)
+      if (existing) {
+        await updateAccess.mutateAsync({ memberId: existing.id, accessLevel: memberLevel })
+      } else {
+        await addProjectMember.mutateAsync({ userId: uid, accessLevel: memberLevel })
+      }
+    }
+  }
+
+  async function handleSave() {
     if (!valid) return
     const base = { name: name.trim(), key, leadId: leadId ?? null }
     if (team) {
@@ -205,21 +241,28 @@ function TeamFormModal({
         },
         onError: (e) => notify.fromError(e, 'Failed to update team'),
       })
-    } else {
-      createTeam.mutate(
-        { workspaceId: workspaceId ?? '', ...base, projectIds: [projectId] },
-        {
-          onSuccess: () => {
-            notify.success('Team created')
-            onClose()
-          },
-          onError: (e) => notify.fromError(e, 'Failed to create team'),
-        },
-      )
+      return
+    }
+    try {
+      await createTeam.mutateAsync({
+        workspaceId: workspaceId ?? '',
+        ...base,
+        projectIds: [projectId],
+        memberUserIds,
+      })
+      await syncMemberAccess()
+      notify.success('Team created')
+      onClose()
+    } catch (e) {
+      notify.fromError(e, 'Failed to create team')
     }
   }
 
-  const pending = createTeam.isPending || updateTeam.isPending
+  const pending =
+    createTeam.isPending ||
+    updateTeam.isPending ||
+    addProjectMember.isPending ||
+    updateAccess.isPending
 
   return (
     <AppModal open onClose={onClose} title={team ? 'Edit team' : 'Create team'} width={460}>
@@ -257,6 +300,32 @@ function TeamFormModal({
             onChange={(v) => setLeadId(v as string | null)}
           />
         </FormField>
+        {!team && memberOptions.length > 0 && (
+          <>
+            <FormField label="Members" hint="Added to the team; their Project access is set below.">
+              <SearchableSelect
+                variant="field"
+                multiple
+                value={memberUserIds}
+                ariaLabel="Team members"
+                placeholder="Select members"
+                options={memberOptions}
+                onChange={(v) => setMemberUserIds(v as string[])}
+              />
+            </FormField>
+            {memberUserIds.length > 0 && (
+              <FormField label="Access level for these members">
+                <SearchableSelect
+                  variant="field"
+                  value={memberLevel}
+                  ariaLabel="Access level"
+                  options={levelOptions}
+                  onChange={(v) => setMemberLevel(v as 'admin' | 'editor')}
+                />
+              </FormField>
+            )}
+          </>
+        )}
       </ModalBody>
       <ModalFooter>
         <Button variant="outline" type="button" onClick={onClose}>
