@@ -17,5 +17,5 @@ export interface IProjectMemberRepository {
     input: UpdateProjectMemberInput,
     tx?: DbExecutor,
   ): Promise<ProjectMember>;
-  removeMember(projectId: string, userId: string, tx?: DbExecutor): Promise<void>;
+  removeMember(projectId: string, userId: string, actorId: string, tx?: DbExecutor): Promise<void>;
 }

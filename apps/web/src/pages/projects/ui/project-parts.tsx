@@ -307,7 +307,7 @@ export function NewProjectModal({
 }) {
   const { t } = useTranslation('projects')
   const { user, hasPermission } = useAuthStore()
-  const isWA = hasPermission(PERMISSION.WORKSPACE_VIEW)
+  const isWA = hasPermission(PERMISSION.WORKSPACE_ALL)
   const [values, setValues] = useState<ProjectFormValues>({
     name: '',
     key: '',

@@ -16,7 +16,7 @@ import { BRAND } from '@/shared/config/brand'
 export function MyPermissionsTab() {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { hasPermission, user } = useAuthStore()
-  const isWA = hasPermission(PERMISSION.WORKSPACE_VIEW)
+  const isWA = hasPermission(PERMISSION.WORKSPACE_ALL)
 
   return (
     <>

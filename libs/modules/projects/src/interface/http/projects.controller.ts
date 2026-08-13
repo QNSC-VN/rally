@@ -525,7 +525,7 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ProjectMemberResponseDto[]> {
-    const members = await this.projectsService.listProjectMembers(user.workspaceId, id);
+    const members = await this.projectsService.listProjectMembers(user.workspaceId, id, user.sub);
     return members.map(toProjectMemberDto);
   }
 

@@ -74,7 +74,7 @@ export function UserAccessModal({
   onClose: () => void
 }) {
   const { hasPermission, user } = useAuthStore()
-  const isWA = hasPermission(PERMISSION.WORKSPACE_VIEW)
+  const isWA = hasPermission(PERMISSION.WORKSPACE_ALL)
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<ModalTab>('general')
   const { data: projects = [], isLoading } = useProjects(workspaceId)

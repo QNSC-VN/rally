@@ -676,6 +676,25 @@ export class WorkspaceService {
        * would enrol someone with no role at all.
        */
       if (invitation.roleId) {
+        /**
+         * The 3-level model grants per-Project access ONLY via
+         * `project_members.access_level`. A workspace-scoped grant of a per-Project
+         * TIER role (project_admin / project_member) would hand the invitee the full
+         * delivery set across EVERY project — exactly the legacy over-grant migration
+         * 0111 deletes. The FE invites email-only (lands No Access until a WA grants
+         * levels), but the API still accepts an arbitrary roleId, so validate here:
+         * tier roles are refused loudly instead of silently over-granting.
+         */
+        const invitedRole = await this.access.findRole(invitation.workspaceId, invitation.roleId);
+        if (
+          invitedRole &&
+          (invitedRole.slug === 'project_admin' || invitedRole.slug === 'project_member')
+        ) {
+          throw new ConflictException(
+            'INVITED_ROLE_IS_PROJECT_TIER',
+            'Per-Project roles cannot be granted at invitation; grant per-Project access levels after the member joins',
+          );
+        }
         await this.memberRepo.grantWorkspaceRole(
           {
             workspaceId: invitation.workspaceId,

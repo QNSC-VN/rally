@@ -376,7 +376,11 @@ function TeamFormModal({
   async function syncMemberAccess() {
     for (const [uid, level] of Object.entries(memberAccess)) {
       const existing = projectMembers.find((pm) => pm.userId === uid)
-      if (existing) {
+      // NULL accessLevel rows are team-derived: their `id` is a team_members id and
+      // PATCHing it 404s — and the team is already created by now, so the 404 surfaced
+      // as "Failed to create team" over a half-write. POST upserts (sets the level on
+      // the existing row or creates the grant), same guard as the other two journeys.
+      if (existing?.accessLevel) {
         if (existing.accessLevel === level) continue
         await updateAccess.mutateAsync({ memberId: existing.id, accessLevel: level })
       } else {

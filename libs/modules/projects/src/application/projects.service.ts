@@ -338,11 +338,13 @@ export class ProjectsService {
       );
     }
 
-    // G-6: archive or restore requires the actor to be a project member — EXCEPT the
-    // Workspace Admin, who is company-level and deliberately excluded from project
-    // membership (§2). Without the bypass the only role allowed to click Archive got a
-    // 403 on a freshly-created project (createProject intentionally writes no
-    // project_members row for the WA).
+    // G-6 (per audit + role-mapping §4): archive/restore is WA-ONLY. Project
+    // lifecycle is company-level structure — "Create/edit/archive/restore/delete
+    // Project: Workspace Admin" — and the old any-active-member branch was an
+    // archive path around the WA-only POST /:id/archive (an Editor could flip
+    // status through this PATCH). WA is company-level and never has a
+    // project_members row (§2), so the check is the workspace permission, not
+    // membership.
     const isStatusChange =
       input.status === 'archived' || (project.status === 'archived' && input.status === 'active');
     if (isStatusChange) {
@@ -352,13 +354,10 @@ export class ProjectsService {
         'workspace:edit',
       );
       if (!isWorkspaceAdmin) {
-        const membership = await this.projectMemberRepo.findMember(projectId, actor.sub);
-        if (!membership || membership.status !== 'active') {
-          throw new PermissionDeniedException(
-            'PROJECT_PERMISSION_DENIED',
-            'You must be an active project member to archive or restore this project',
-          );
-        }
+        throw new PermissionDeniedException(
+          'PROJECT_PERMISSION_DENIED',
+          'Only a Workspace Admin can archive or restore a project',
+        );
       }
     }
 
@@ -828,8 +827,23 @@ export class ProjectsService {
 
   // ── Project Members ───────────────────────────────────────────────────────
 
-  async listProjectMembers(workspaceId: string, projectId: string): Promise<ProjectMember[]> {
+  async listProjectMembers(
+    workspaceId: string,
+    projectId: string,
+    actorId: string,
+  ): Promise<ProjectMember[]> {
     await this.getProject(workspaceId, projectId);
+    // §4: "View Project Users & Permissions — Editor: No." The route only carries
+    // project:view (which the Editor holds), so the level check lives here. WA has no
+    // access_level row — the workspace-wide grant is what authorizes it; the same
+    // resolution an Editor's write scoping uses.
+    const level = await this.access.getProjectAccessLevel(workspaceId, actorId, projectId);
+    if (level === 'editor') {
+      throw new PermissionDeniedException(
+        'PROJECT_PERMISSION_DENIED',
+        'Editors cannot view the project user roster',
+      );
+    }
     return this.projectMemberRepo.listByProject(projectId);
   }
 
@@ -978,7 +992,7 @@ export class ProjectsService {
     await this.uow.run(async (tx) => {
       // Also clears the user's team_members rows in this project's teams (repo does
       // both) — same tx as the audit row below.
-      await this.projectMemberRepo.removeMember(projectId, userId, tx);
+      await this.projectMemberRepo.removeMember(projectId, userId, actorId, tx);
       await this.audit.emit(
         {
           action: AUDIT_ACTION.PROJECT_MEMBER_REMOVED,

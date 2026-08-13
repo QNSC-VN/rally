@@ -393,6 +393,13 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORK_ITEM_EDIT,
     PERMISSION.WORK_ITEM_DELETE,
     PERMISSION.ITERATION_VIEW,
+    // §5 Editor rows: Quality Defects View = Assigned Teams and Team Status View =
+    // the Editor's own teams' hours — both are Editor surfaces (the nav shows them,
+    // gated on work_item:view), and without these codes every Editor 403'd the whole
+    // Quality surface and Team Status (P4-RBAC-006). Edit/write still flows through
+    // work_item:* + quality's own write path.
+    PERMISSION.QUALITY_VIEW,
+    PERMISSION.TEAM_STATUS_VIEW,
     // Editor is delivery-only and Team-scoped. Per the 3-level access matrix (§5),
     // Portfolio Items, Capacity Planning and Reports are admin/report surfaces the
     // Editor does NOT see — only Admin and WA do. (assertTeamScoped enforces the

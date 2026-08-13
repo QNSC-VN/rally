@@ -194,7 +194,12 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
     return rows[0];
   }
 
-  async removeMember(projectId: string, userId: string, tx?: DbExecutor): Promise<void> {
+  async removeMember(
+    projectId: string,
+    userId: string,
+    actorId: string,
+    tx?: DbExecutor,
+  ): Promise<void> {
     const db = tx ?? this.db;
     await db
       .update(projectMembers)
@@ -216,5 +221,23 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
         ),
       ),
     );
+    // Unassign their tasks in this project's teams, same rule removeTeamMember already
+    // enforces: Team Status folds in any user who still owns a task, so a No-Access
+    // member otherwise stays visible in Team Status / assignee cells indefinitely.
+    // Scoped by the project's actively-linked teams so tasks elsewhere are untouched.
+    await db.execute(sql`
+      UPDATE work.tasks t
+      SET assignee_id = NULL, updated_by = ${actorId}, updated_at = NOW()
+      WHERE t.assignee_id = ${userId}
+        AND t.deleted_at IS NULL
+        AND COALESCE(
+              t.team_id,
+              (SELECT wi.team_id FROM work.work_items wi WHERE wi.id = t.parent_id),
+              (SELECT it.team_id FROM work.iterations it WHERE it.id = t.iteration_id)
+            ) IN (
+              SELECT pt.team_id FROM work.project_teams pt
+              WHERE pt.project_id = ${projectId} AND pt.status = 'active'
+            )
+    `);
   }
 }

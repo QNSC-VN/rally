@@ -33,7 +33,7 @@ export function ProjectsPage() {
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId
   const { user: currentUser, hasPermission } = useAuthStore()
-  const isWorkspaceAdmin = hasPermission(PERMISSION.WORKSPACE_VIEW)
+  const isWorkspaceAdmin = hasPermission(PERMISSION.WORKSPACE_ALL)
 
   const { data: projects = [], isLoading } = useProjects(workspaceId)
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)

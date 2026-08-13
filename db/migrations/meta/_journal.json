@@ -778,6 +778,20 @@
       "when": 1788247103115,
       "tag": "0109_remove_delivery_perms_from_project_member",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1788333603005,
+      "tag": "0110_editor_quality_team_status_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1788333703005,
+      "tag": "0111_drop_workspace_scoped_tier_assignments",
+      "breakpoints": true
     }
   ]
 }

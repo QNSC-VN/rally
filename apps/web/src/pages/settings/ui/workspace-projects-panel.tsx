@@ -66,7 +66,7 @@ export function WorkspaceProjectsPanel() {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const workspaceName = useAppContext((s) => s.workspace?.workspaceName) ?? 'Workspace'
   const { hasPermission } = useAuthStore()
-  const isWA = hasPermission(PERMISSION.WORKSPACE_VIEW)
+  const isWA = hasPermission(PERMISSION.WORKSPACE_ALL)
   const { data: projects = [], isLoading } = useProjects(workspaceId)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // A TEAM node clicked in the tree (mockup parity) — takes the detail pane.
