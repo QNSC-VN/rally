@@ -80,6 +80,10 @@ function toTeamMemberDto(m: TeamMember) {
     userId: m.userId,
     status: m.status,
     joinedAt: m.joinedAt.toISOString(),
+    // Resolved by the repo's identity.users join — the roster renders them.
+    displayName: m.displayName ?? null,
+    email: m.email ?? null,
+    avatarUrl: m.avatarUrl ?? null,
   };
 }
 

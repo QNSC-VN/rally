@@ -4,6 +4,7 @@ import { uuidv7 } from 'uuidv7';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { teamMembers } from '../../../../../../db/schema/work';
+import { users } from '../../../../../../db/schema/identity';
 import type { TeamMember } from '../../domain/team.types';
 import { ITeamMemberRepository } from '../../domain/ports/team-member.repository';
 
@@ -27,9 +28,24 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
   }
 
   async listByTeam(teamId: string): Promise<TeamMember[]> {
+    // Joined to identity.users so the roster carries displayName/email — the
+    // TeamMember type has always claimed these are "resolved at query time", and
+    // every consumer (team detail, memberships fan-out) renders them. LEFT join:
+    // a member whose user row vanished must still appear (status/history), just unnamed.
     const rows = await this.db
-      .select()
+      .select({
+        id: teamMembers.id,
+        teamId: teamMembers.teamId,
+        workspaceId: teamMembers.workspaceId,
+        userId: teamMembers.userId,
+        status: teamMembers.status,
+        joinedAt: teamMembers.joinedAt,
+        displayName: users.displayName,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+      })
       .from(teamMembers)
+      .leftJoin(users, eq(users.id, teamMembers.userId))
       .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, 'active')))
       .orderBy(teamMembers.joinedAt, asc(teamMembers.id));
     return rows;
