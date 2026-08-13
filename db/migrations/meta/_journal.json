@@ -764,6 +764,20 @@
       "when": 1788247103005,
       "tag": "0107_backfill_project_estimation_from_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1788247103114,
+      "tag": "0108_drop_workspace_preliminary_estimate_map",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1788247103115,
+      "tag": "0109_remove_delivery_perms_from_project_member",
+      "breakpoints": true
     }
   ]
 }
