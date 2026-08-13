@@ -134,7 +134,8 @@ export function WorkspaceProjectsPanel() {
                 <ProjectNode
                   key={p.id}
                   project={p}
-                  selected={selectedId === p.id}
+                  selected={selectedId === p.id && selectedTeam?.projectId !== p.id}
+                  activeTeamId={selectedTeam?.projectId === p.id ? selectedTeam.teamId : null}
                   expanded={expanded.has(p.id)}
                   onToggle={() => toggle(p.id)}
                   onSelect={() => {
@@ -336,13 +337,16 @@ function EditProjectModal({ project, onClose }: { project: Project; onClose: () 
 function ProjectNode({
   project,
   selected,
+  activeTeamId,
   expanded,
   onToggle,
   onSelect,
   onSelectTeam,
 }: {
   project: Project
+  /** Project row is the highlighted node only when no TEAM under it is selected. */
   selected: boolean
+  activeTeamId: string | null
   expanded: boolean
   onToggle: () => void
   onSelect: () => void
@@ -388,9 +392,14 @@ function ProjectNode({
                 key={t.id}
                 role="button"
                 tabIndex={0}
+                aria-current={t.id === activeTeamId ? 'true' : undefined}
                 onClick={() => onSelectTeam(t)}
                 onKeyDown={(e) => e.key === 'Enter' && onSelectTeam(t)}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-ui-xs text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
+                className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-ui-xs transition-colors hover:bg-surface-hover ${
+                  t.id === activeTeamId
+                    ? 'bg-surface-hover font-medium text-foreground'
+                    : 'text-foreground-subtle hover:text-foreground'
+                }`}
               >
                 <Users size={11} /> <span className="truncate">{t.name}</span>
               </div>
