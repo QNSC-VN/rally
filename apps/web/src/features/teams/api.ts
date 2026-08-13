@@ -115,6 +115,18 @@ async function fetchTeamMembers(teamId: string): Promise<TeamMember[]> {
   return (data as TeamMember[]) ?? []
 }
 
+/** One team's full member roster — the team DETAIL view on the project Teams tab
+ *  (mockup parity: clicking a team row shows its members). Shares cache with the
+ *  memberships fan-out via `teamKeys.members`. */
+export function useTeamMembers(teamId: string | undefined) {
+  return useQuery({
+    queryKey: teamKeys.members(teamId ?? ''),
+    queryFn: () => fetchTeamMembers(teamId as string),
+    enabled: !!teamId,
+    staleTime: 30_000,
+  })
+}
+
 /**
  * Membership across SEVERAL teams for one user. The per-project Teams picker in
  * UserAccessModal needs "is this user in team X" for every team on a project

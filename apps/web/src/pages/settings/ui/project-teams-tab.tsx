@@ -9,7 +9,7 @@
  * deactivated (history preserved), per SRS §488.
  */
 import { useState } from 'react'
-import { Loader2, Plus, Pencil, Archive, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Loader2, Plus, Pencil, Archive, RotateCcw } from 'lucide-react'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useProjectTeams,
@@ -18,13 +18,10 @@ import {
   useProjectMembers,
   useAddProjectMember,
   useUpdateProjectAccess,
+  useTeamMembers,
   type Team,
-  type ProjectMember,
 } from '@/features/teams/api'
-import { apiClient } from '@/shared/api/http-client'
-import { apiErrorMessage } from '@/shared/api/api-error'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
-import { useProjects } from '@/features/projects/api'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
@@ -42,6 +39,11 @@ export function ProjectTeamsTab({ projectId, isWA }: { projectId: string; isWA: 
   const [editing, setEditing] = useState<Team | null>(null)
   const [creating, setCreating] = useState(false)
   const [deactivateTarget, setDeactivateTarget] = useState<Team | null>(null)
+  // Mockup parity: clicking a team row opens its DETAIL view (fields + members),
+  // not just a dead table row. The teams list refetches (tag invalidation) on every
+  // mutation, so a selected team can go stale — re-resolve by id like the panel does.
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
+  const selectedTeam = teams.find((t) => t.id === selectedTeamId) ?? null
   const updateTeam = useUpdateTeam(deactivateTarget?.id ?? editing?.id ?? '')
 
   function confirmDeactivate() {
@@ -60,74 +62,95 @@ export function ProjectTeamsTab({ projectId, isWA }: { projectId: string; isWA: 
 
   return (
     <>
-      {isWA && (
-        <div className="mb-3 flex justify-end">
-          <Button type="button" onClick={() => setCreating(true)}>
-            <Plus size={14} /> Add team
-          </Button>
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="flex items-center gap-2 py-4 text-ui-md text-foreground-subtle">
-          <Loader2 size={14} className="animate-spin" /> Loading teams…
-        </div>
-      ) : teams.length === 0 ? (
-        <div className="rounded-lg border border-border-subtle px-4 py-8 text-center text-ui-md text-foreground-subtle">
-          No teams linked to this project yet.
-        </div>
+      {selectedTeam ? (
+        <TeamDetail
+          team={selectedTeam}
+          workspaceId={workspaceId}
+          isWA={isWA}
+          onBack={() => setSelectedTeamId(null)}
+          onEdit={() => setEditing(selectedTeam)}
+        />
       ) : (
-        <div className="rounded-lg border border-border-subtle">
-          <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
-            <span className="w-20">Key</span>
-            <span className="flex-1">Team</span>
-            <span className="w-24">Status</span>
-            <span className="w-20 text-center">Members</span>
-            {isWA && <span className="w-20 text-center">Actions</span>}
-          </div>
-          {teams.map((t) => (
-            <div
-              key={t.id}
-              className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5 last:border-b-0"
-            >
-              <span className="w-20 font-mono text-ui-xs text-foreground-subtle">{t.key}</span>
-              <span className="flex-1 truncate text-ui-sm font-medium text-foreground">
-                {t.name}
-              </span>
-              <span className="w-24 text-ui-xs text-foreground-subtle capitalize">
-                {t.status === 'active' ? 'Active' : 'Deactivated'}
-              </span>
-              <span className="w-20 text-center text-ui-sm text-foreground-subtle">
-                {t.memberCount ?? 0}
-              </span>
-              {isWA && (
-                <span className="flex w-20 justify-center gap-1">
-                  <IconButton
-                    size="sm"
-                    aria-label="Edit team"
-                    title="Edit"
-                    onClick={() => setEditing(t)}
-                  >
-                    <Pencil size={13} />
-                  </IconButton>
-                  {t.status === 'active' ? (
-                    <IconButton
-                      size="sm"
-                      aria-label="Deactivate team"
-                      title="Deactivate"
-                      onClick={() => setDeactivateTarget(t)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Archive size={13} />
-                    </IconButton>
-                  ) : (
-                    <RestoreButton teamId={t.id} name={t.name} />
-                  )}
-                </span>
-              )}
+        <>
+          {isWA && (
+            <div className="mb-3 flex justify-end">
+              <Button type="button" onClick={() => setCreating(true)}>
+                <Plus size={14} /> Add team
+              </Button>
             </div>
-          ))}
-        </div>
+          )}
+
+          {isLoading ? (
+            <div className="flex items-center gap-2 py-4 text-ui-md text-foreground-subtle">
+              <Loader2 size={14} className="animate-spin" /> Loading teams…
+            </div>
+          ) : teams.length === 0 ? (
+            <div className="rounded-lg border border-border-subtle px-4 py-8 text-center text-ui-md text-foreground-subtle">
+              No teams linked to this project yet.
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border-subtle">
+              <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
+                <span className="w-20">Key</span>
+                <span className="flex-1">Team</span>
+                <span className="w-24">Status</span>
+                <span className="w-20 text-center">Members</span>
+                {isWA && <span className="w-20 text-center">Actions</span>}
+              </div>
+              {teams.map((t) => (
+                <div
+                  key={t.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedTeamId(t.id)}
+                  onKeyDown={(e) => e.key === 'Enter' && setSelectedTeamId(t.id)}
+                  className="flex cursor-pointer items-center gap-2 border-b border-border-subtle px-4 py-2.5 text-left transition-colors last:border-b-0 hover:bg-surface-hover"
+                >
+                  <span className="w-20 font-mono text-ui-xs text-foreground-subtle">{t.key}</span>
+                  <span className="flex-1 truncate text-ui-sm font-medium text-foreground">
+                    {t.name}
+                  </span>
+                  <span className="w-24 text-ui-xs text-foreground-subtle capitalize">
+                    {t.status === 'active' ? 'Active' : 'Deactivated'}
+                  </span>
+                  <span className="w-20 text-center text-ui-sm text-foreground-subtle">
+                    {t.memberCount ?? 0}
+                  </span>
+                  {isWA && (
+                    /* stopPropagation: the row opens detail; the icon acts alone. */
+                    <span
+                      className="flex w-20 justify-center gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <IconButton
+                        size="sm"
+                        aria-label="Edit team"
+                        title="Edit"
+                        onClick={() => setEditing(t)}
+                      >
+                        <Pencil size={13} />
+                      </IconButton>
+                      {t.status === 'active' ? (
+                        <IconButton
+                          size="sm"
+                          aria-label="Deactivate team"
+                          title="Deactivate"
+                          onClick={() => setDeactivateTarget(t)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Archive size={13} />
+                        </IconButton>
+                      ) : (
+                        <RestoreButton teamId={t.id} name={t.name} />
+                      )}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <ConfirmDialog
@@ -183,24 +206,103 @@ function RestoreButton({ teamId, name }: { teamId: string; name: string }) {
   )
 }
 
-/** Members of a project other than the tab's own (raw apiClient — the hooks are
- *  single-project). Used by syncMemberAccess to cover every linked project. */
-async function fetchMembers(projectId: string): Promise<ProjectMember[]> {
-  const { data, error, response } = await apiClient.GET('/v1/projects/{id}/members', {
-    params: { path: { id: projectId } },
-  })
-  if (error) throw new Error(apiErrorMessage(error, response.status))
-  return (data as ProjectMember[]) ?? []
+/** Team DETAIL view (mockup parity): fields grid + member roster + WA Edit.
+ *  Reached by clicking a team row; Back returns to the list. */
+function TeamDetail({
+  team,
+  workspaceId,
+  isWA,
+  onBack,
+  onEdit,
+}: {
+  team: Team
+  workspaceId: string | undefined
+  isWA: boolean
+  onBack: () => void
+  onEdit: () => void
+}) {
+  const { data: members = [], isLoading } = useTeamMembers(team.id)
+  const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  const leadName =
+    wsMembers.find((m) => m.userId === team.leadId)?.displayName ??
+    wsMembers.find((m) => m.userId === team.leadId)?.email
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center gap-2">
+        <Button variant="ghost" type="button" onClick={onBack} aria-label="Back to teams list">
+          <ArrowLeft size={14} /> Back
+        </Button>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-ui-lg font-semibold text-foreground">{team.name}</h3>
+          <p className="text-ui-xs text-foreground-subtle">{team.key}</p>
+        </div>
+        {isWA && (
+          <IconButton size="sm" aria-label="Edit team" title="Edit team" onClick={onEdit}>
+            <Pencil size={14} />
+          </IconButton>
+        )}
+      </div>
+
+      <div className="mb-5 grid grid-cols-2 gap-x-6 gap-y-4">
+        {(
+          [
+            ['Team key', team.key],
+            ['Status', team.status === 'active' ? 'Active' : 'Deactivated'],
+            ['Team lead', leadName ?? '--'],
+            ['Members', String(members.length)],
+          ] as const
+        ).map(([label, value]) => (
+          <div key={label}>
+            <p className="text-ui-xs font-medium tracking-wide text-foreground-subtle uppercase">
+              {label}
+            </p>
+            <p className="mt-0.5 text-ui-sm text-foreground">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <p className="mb-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
+        Team members
+      </p>
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-3 text-ui-sm text-foreground-subtle">
+          <Loader2 size={13} className="animate-spin" /> Loading members…
+        </div>
+      ) : members.length === 0 ? (
+        <div className="rounded-lg border border-border-subtle px-4 py-6 text-center text-ui-sm text-foreground-subtle">
+          No members in this team yet.
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border-subtle">
+          {members.map((m) => (
+            <div
+              key={m.id}
+              className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 last:border-b-0"
+            >
+              <OwnerAvatar name={m.displayName ?? m.email ?? m.userId} size={20} />
+              <span className="truncate text-ui-sm font-medium text-foreground">
+                {m.displayName ?? m.email ?? '--'}
+              </span>
+              {m.email && (
+                <span className="ml-auto truncate text-ui-xs text-foreground-subtle">
+                  {m.email}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
- * Create or edit a team. On create the team defaults to this project only
- * (projectIds: [projectId]) but the WA can add more before submitting. On edit,
- * the Linked Projects field defaults to the team's current project links
- * (`team.projects`) and is included in the PATCH, so this is also the only
- * project-scoped surface that can add/remove which projects a team belongs to
- * — mirrors teams-tab.tsx's TeamProjectsCell, including its "keep >=1 project"
- * guard (a team must always stay linked to at least one project).
+ * Create or edit a team — mockup parity: NO project picker. The tab's own project IS
+ * the context: create links the team to exactly this project (the API's ≥1-project
+ * rule is satisfied by construction); edit sends no projectIds at all, so existing
+ * links are untouched. (Cross-project links are managed from each project's own
+ * Teams tab, exactly like the mockup.)
  */
 function TeamFormModal({
   projectId,
@@ -214,7 +316,6 @@ function TeamFormModal({
   onClose: () => void
 }) {
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
-  const { data: projects = [] } = useProjects(workspaceId)
   // Existing project members — only needed on create, to sync access for selected members.
   const { data: projectMembers = [] } = useProjectMembers(team ? undefined : projectId)
   const createTeam = useCreateTeam()
@@ -224,9 +325,6 @@ function TeamFormModal({
   const [name, setName] = useState(team?.name ?? '')
   const [key, setKey] = useState(team?.key ?? '')
   const [leadId, setLeadId] = useState<string | null>(team?.leadId ?? null)
-  const [projectIds, setProjectIds] = useState<string[]>(
-    team ? (team.projects ?? []).map((p) => p.projectId) : [projectId],
-  )
   // Per-user access map: presence of a userId = included; its value = the level that
   // row gets. Replaces the old (memberUserIds[] + one shared memberLevel) shape, which
   // could only add everyone at the SAME level — the mockup's Members & Access table lets
@@ -241,16 +339,12 @@ function TeamFormModal({
     value: m.userId,
     label: m.displayName ?? m.email ?? m.userId,
   }))
-  const projectOptions: SelectOption[] = projects.map((p) => ({
-    value: p.id,
-    label: `${p.key} · ${p.name}`,
-  }))
   const levelOptions: SelectOption[] = [
     { value: 'admin', label: 'Admin' },
     { value: 'editor', label: 'Editor' },
   ]
 
-  const valid = name.trim().length >= 2 && /^[A-Z][A-Z0-9]{1,9}$/.test(key) && projectIds.length > 0
+  const valid = name.trim().length >= 2 && /^[A-Z][A-Z0-9]{1,9}$/.test(key)
 
   /** Toggling a row includes/excludes it. A newly-checked row defaults to its CURRENT
    *  project access level (mockup: Priya Nair, already Admin, shows "Admin" once
@@ -272,67 +366,45 @@ function TeamFormModal({
   }
 
   /** P4-RBAC-010: setting up a team assigns each selected member their Project access —
-   *  each at ITS OWN level, per `memberAccess` — on EVERY project the team is linked to.
-   *  The roster implies membership in all linked projects; syncing only the tab's own
-   *  project left an Editor No Access on the others (finding #4). Other projects use
-   *  raw apiClient because the mutation hooks are bound to this tab's projectId. */
+   *  each at ITS OWN level, per `memberAccess`. A team created here is linked to THIS
+   *  project only (no picker), so this project is the only one to sync. */
   async function syncMemberAccess() {
-    for (const pid of projectIds) {
-      const list: ProjectMember[] =
-        pid === projectId ? projectMembers : ((await fetchMembers(pid)) ?? [])
-      for (const [uid, level] of Object.entries(memberAccess)) {
-        const existing = list.find((pm) => pm.userId === uid)
-        if (existing) {
-          if (existing.accessLevel === level) continue
-          if (pid === projectId) {
-            await updateAccess.mutateAsync({ memberId: existing.id, accessLevel: level })
-          } else {
-            const { error, response } = await apiClient.PATCH(
-              '/v1/projects/{id}/members/{memberId}',
-              {
-                params: { path: { id: pid, memberId: existing.id } },
-                body: { accessLevel: level },
-              },
-            )
-            if (error) throw new Error(apiErrorMessage(error, response.status))
-          }
-        } else if (pid === projectId) {
-          await addProjectMember.mutateAsync({ userId: uid, accessLevel: level })
-        } else {
-          const { error, response } = await apiClient.POST('/v1/projects/{id}/members', {
-            params: { path: { id: pid } },
-            body: { userId: uid, accessLevel: level } as never,
-          })
-          if (error) throw new Error(apiErrorMessage(error, response.status))
-        }
+    for (const [uid, level] of Object.entries(memberAccess)) {
+      const existing = projectMembers.find((pm) => pm.userId === uid)
+      if (existing) {
+        if (existing.accessLevel === level) continue
+        await updateAccess.mutateAsync({ memberId: existing.id, accessLevel: level })
+      } else {
+        await addProjectMember.mutateAsync({ userId: uid, accessLevel: level })
       }
     }
   }
 
   async function handleSave() {
     if (!valid) return
-    // A team must keep >=1 linked project (API constraint, same as
-    // TeamProjectsCell's inline guard) — `valid` already covers this, but
-    // guard here too since it's the actual submit path.
-    if (projectIds.length === 0) {
-      notify.error('A team must stay linked to at least one project')
-      return
-    }
-    const base = { name: name.trim(), key, leadId: leadId ?? null, projectIds }
     if (team) {
-      updateTeam.mutate(base, {
-        onSuccess: () => {
-          notify.success('Team updated')
-          onClose()
+      // No projectIds (links are not this modal's concern) and no key (immutable
+      // after create) in the PATCH.
+      updateTeam.mutate(
+        { name: name.trim(), leadId: leadId ?? null },
+        {
+          onSuccess: () => {
+            notify.success('Team updated')
+            onClose()
+          },
+          onError: (e) => notify.fromError(e, 'Failed to update team'),
         },
-        onError: (e) => notify.fromError(e, 'Failed to update team'),
-      })
+      )
       return
     }
     try {
       await createTeam.mutateAsync({
         workspaceId: workspaceId ?? '',
-        ...base,
+        name: name.trim(),
+        key,
+        leadId: leadId ?? null,
+        // No project picker (mockup parity): the tab's project IS the context.
+        projectIds: [projectId],
         memberUserIds: Object.keys(memberAccess),
       })
       await syncMemberAccess()
@@ -373,21 +445,6 @@ function TeamFormModal({
             }
             placeholder="CP"
             className="font-mono"
-          />
-        </FormField>
-        <FormField
-          label="Linked projects"
-          hint="A team must stay linked to at least one project."
-          required
-        >
-          <SearchableSelect
-            variant="field"
-            multiple
-            value={projectIds}
-            ariaLabel="Linked projects"
-            placeholder="Select projects"
-            options={projectOptions}
-            onChange={(v) => setProjectIds(v as string[])}
           />
         </FormField>
         <FormField label="Team lead">
