@@ -47,6 +47,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
+import { ProjectsService } from '@modules/projects';
 import { PlatformModule } from '@platform';
 import { NotificationsModule } from '@modules/notifications';
 import { AuditModule } from '@modules/audit';
@@ -209,6 +210,35 @@ export async function ensureViewerGrant(app: INestApplication): Promise<void> {
   if (assignments.some((a) => a.roleId === role.id && a.scopeType === 'workspace')) return;
 
   await access.assignRole(admin, VIEWER_ID, role.id, 'workspace');
+}
+
+/**
+ * Grant a user per-Project access at `admin` or `editor` — the ONLY supported way to give someone
+ * project-tier permissions.
+ *
+ * Replaces `access.assignRole(actor, userId, roleId, 'project', projectId)`, which now throws
+ * `PROJECT_SCOPE_RETIRED`: migration 0105 deleted the `scope_type='project'` rows and the service
+ * refuses to create more, because a per-Project tier role is carried on
+ * `work.project_members.access_level`. Four e2e tests across three files were still calling it and
+ * had been red ever since.
+ *
+ * Goes through `ProjectsService.addProjectMember`, deliberately, rather than writing the row:
+ * that path also invalidates the permission cache for the affected user, so a spec asserting a
+ * grant is visible on the NEXT REQUEST is exercising the real invalidation rather than a TTL
+ * expiry. It upserts, so repeated runs against the same seeded database stay clean.
+ *
+ * The level maps onto the same permission sets the retired roles carried —
+ * `ACCESS_LEVEL_PERMISSIONS.admin` IS `ROLE_PERMISSIONS[PROJECT_ADMIN]` — so a test that wanted
+ * "project_admin on this project" wants `'admin'` here and gets an identical permission set.
+ */
+export async function grantProjectAccess(
+  app: INestApplication,
+  userId: string,
+  projectId: string,
+  accessLevel: 'admin' | 'editor',
+): Promise<void> {
+  const projects = app.get(ProjectsService);
+  await projects.addProjectMember(WORKSPACE_ID, projectId, userId, ADMIN_USER_ID, accessLevel);
 }
 
 /**

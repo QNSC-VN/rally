@@ -24,18 +24,16 @@ import { Test } from '@nestjs/testing';
 import { AuthService, EntraTokenVerifier, type EntraClaims } from '@qnsc-vn/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { AccessService } from '@modules/access';
-import type { JwtPayload } from '@platform';
+import { ACCESS_LEVEL_PERMISSIONS } from '@shared-kernel';
 import { AppModule } from '../../apps/api/src/app.module';
 import {
   NXP_ITER_CURRENT_ID,
   NXP_RELEASE_1_ID,
+  PAY_PROJECT_ID,
   SEED_PROJECTS,
-  VIEWER_ID,
-  WORKSPACE_ID,
 } from '../../db/seeds/constants';
+import { grantProjectAccess } from './support/flow-harness';
 
-const SEEDED_ADMIN_ID = '00000000-0000-7000-8000-000000000002';
 const NXP = SEED_PROJECTS[0].id;
 const ITERATION = NXP_ITER_CURRENT_ID;
 const RELEASE = NXP_RELEASE_1_ID;
@@ -69,7 +67,6 @@ const ROUTES = [
 describe('report routes: authorization over HTTP (e2e)', () => {
   let app: NestFastifyApplication;
   let auth: AuthService;
-  let access: AccessService;
 
   /**
    * Sign in as a SEEDED user and return a bearer token.
@@ -93,10 +90,6 @@ describe('report routes: authorization over HTTP (e2e)', () => {
     return app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${accessToken}` } });
   }
 
-  function actorFor(workspaceId: string): JwtPayload {
-    return { sub: SEEDED_ADMIN_ID, workspaceId } as unknown as JwtPayload;
-  }
-
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(EntraTokenVerifier)
@@ -110,7 +103,6 @@ describe('report routes: authorization over HTTP (e2e)', () => {
     await app.getHttpAdapter().getInstance().ready();
 
     auth = app.get(AuthService);
-    access = app.get(AccessService);
   });
 
   afterAll(async () => {
@@ -121,14 +113,13 @@ describe('report routes: authorization over HTTP (e2e)', () => {
     /**
      * The boundary as it actually exists.
      *
-     * A JIT-provisioned SSO user is NOT the denied case: `assignDefaultRole` grants
-     * `project_member` at workspace scope, and the BA gives that role `report:view` — so every SSO
-     * user can read reports by design. Asserting 403 for a fresh login got 200, correctly, and that
-     * is worth stating rather than quietly working around: if reports should not be open to every
-     * member, the catalogue is the thing to change, not this test.
-     *
-     * The seeded `viewer@qnsc.dev` is the real negative case: two custom roles, `project:view` and
-     * `work_item:view` between them, and no default-role assignment.
+     * A JIT-provisioned SSO user USED to be the wrong negative case, because `assignDefaultRole`
+     * granted `project_member` at workspace scope and that role carried `report:view` — so a fresh
+     * login returned 200. `ensureDefaultRole` is now a no-op and migration 0111 deleted those rows,
+     * so a JIT user would work here too; the seeded `viewer@qnsc.dev` is kept because it is
+     * DELIBERATELY narrow rather than accidentally empty — two custom roles carrying `project:view`
+     * and `work_item:view` between them and nothing else, so a 403 below is the missing
+     * `report:view` and not a principal with no grants at all.
      */
     const session = await tokenFor('viewer@qnsc.dev');
 
@@ -140,17 +131,33 @@ describe('report routes: authorization over HTTP (e2e)', () => {
     }
   });
 
-  it('ALLOWS them for a member whose role carries report:view', async () => {
-    // Under the 3-level model, editor (project_member) no longer carries report:view (§5).
-    // Grant dev a project_admin role on NXP — which HAS report:view — so the routes resolve 200.
-    const session = await auth.devLogin('dev@qnsc.dev', '127.0.0.1');
-    const devId = JSON.parse(Buffer.from(session.accessToken.split('.')[1], 'base64').toString())[
-      'sub'
-    ] as string;
-    const roles = await access.listRoles(WORKSPACE_ID);
-    const projectAdmin = roles.find((r) => r.slug === 'project_admin' && r.workspaceId !== null);
-    expect(projectAdmin, 'workspace-scoped project_admin must exist').toBeDefined();
-    await access.assignRole(actorFor(WORKSPACE_ID), devId, projectAdmin!.id, 'project', NXP);
+  it('ALLOWS them for a principal granted Admin on that project', async () => {
+    /**
+     * Under the 3-level model the Editor level no longer carries `report:view` (§5, migration 0109),
+     * so the allowed principal is an Admin. Granted with `access_level: 'admin'` rather than
+     * `assignRole(..., 'project', NXP)`, which now throws `PROJECT_SCOPE_RETIRED`; the permission
+     * set is identical, since `ACCESS_LEVEL_PERMISSIONS.admin` IS `ROLE_PERMISSIONS[PROJECT_ADMIN]`.
+     *
+     * On a DEDICATED user, not `dev@qnsc.dev`. Granting a shared fixture user a level is a lasting
+     * edit: `work.project_members` survives until the next reset, so upgrading dev to Admin here
+     * changed what every later spec saw. It broke `read-scoping.e2e.spec.ts`, which asserts that an
+     * Editor is refused the project roster — dev had silently stopped being an Editor. A spec that
+     * needs a grant should create the principal it grants to.
+     */
+    const email = `report-reader-${randomUUID().slice(0, 8)}@qnsc.vn`;
+    const claims: EntraClaims = {
+      oid: `report-reader-${randomUUID()}`,
+      email,
+      displayName: 'E2E Report Reader',
+      externalTenantId: 'dev-tenant',
+      roles: [],
+    };
+    const session = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
+    const userId = JSON.parse(
+      Buffer.from(session.accessToken.split('.')[1], 'base64url').toString(),
+    )['sub'] as string;
+
+    await grantProjectAccess(app, userId, NXP, 'admin');
 
     for (const url of ROUTES) {
       const response = await get(url, session.accessToken);
@@ -164,21 +171,32 @@ describe('report routes: authorization over HTTP (e2e)', () => {
      * grants the viewer a role carrying `report:view` on a project that is not NXP; if the tier were
      * decorative, that would open NXP's reports too.
      */
-    const roles = await access.listRoles(WORKSPACE_ID);
-    const projectAdmin = roles.find((r) => r.slug === 'project_admin' && r.workspaceId !== null);
-    expect(projectAdmin, 'workspace-scoped project_admin must exist').toBeDefined();
-    expect(projectAdmin!.permissions).toContain('report:view');
+    // The level really does carry the code, so a 403 below can only be the SCOPE refusing.
+    expect(ACCESS_LEVEL_PERMISSIONS.admin).toContain('report:view');
 
-    await access.assignRole(
-      actorFor(WORKSPACE_ID),
-      VIEWER_ID,
-      projectAdmin!.id,
-      'project',
-      // A real grant whose scope simply is not NXP.
-      randomUUID(),
-    );
+    /**
+     * PAY, the seed's second project, rather than a random uuid: `access_level` is a real
+     * `project_members` row and the write path validates the project exists. `SEEDED.pay` exists
+     * precisely so a test needing "somewhere else" has one.
+     *
+     * Also a dedicated principal, for the reason above — and here it matters twice over, because
+     * `viewer@qnsc.dev` is the negative case in the first test of this file. Granting it Admin
+     * anywhere would eventually make that test meaningless.
+     */
+    const claims: EntraClaims = {
+      oid: `cross-project-${randomUUID()}`,
+      email: `cross-project-${randomUUID().slice(0, 8)}@qnsc.vn`,
+      displayName: 'E2E Cross-project Reader',
+      externalTenantId: 'dev-tenant',
+      roles: [],
+    };
+    const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
+    const userId = JSON.parse(Buffer.from(login.accessToken.split('.')[1], 'base64url').toString())[
+      'sub'
+    ] as string;
+    await grantProjectAccess(app, userId, PAY_PROJECT_ID, 'admin');
 
-    const session = await tokenFor('viewer@qnsc.dev');
+    const session = login.accessToken;
     for (const url of ROUTES) {
       expect((await get(url, session)).statusCode, `${url} cross-project`).toBe(403);
     }

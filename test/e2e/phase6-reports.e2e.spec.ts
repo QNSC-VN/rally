@@ -39,12 +39,16 @@ import {
   workItems,
 } from '@db/schema/work';
 import { users } from '@db/schema/identity';
+import { workspaceMembers } from '@db/schema/workspace';
 
+import { ACCESS_LEVEL_PERMISSIONS } from '@shared-kernel';
+import { PAY_PROJECT_ID } from '../../db/seeds/constants';
 import {
   ADMIN_USER_ID,
   WORKSPACE_ID,
   adminActor,
   bootRallyApp,
+  grantProjectAccess,
   makeActor,
   uniqueKey,
 } from './support/flow-harness';
@@ -387,7 +391,7 @@ describe('Phase 6 reports (e2e)', () => {
     expect(report.status).toBe('unknown');
   });
 
-  it('resolves report:view for a WORKSPACE-SCOPED project_member role', async () => {
+  it('resolves report:view from a per-Project access level, and only on that project', async () => {
     /**
      * The permission that makes every report reachable at all.
      *
@@ -398,29 +402,49 @@ describe('Phase 6 reports (e2e)', () => {
      * answered 403 on all five report routes to everyone except Workspace Admin — whose grant is
      * the global immutable anchor and hid the fault. Migration 0092 backfills it.
      *
-     * Asserted through the workspace-scoped role row that `PolicyGuard` actually resolves, not
-     * through the global template, because the template was never the one that was wrong.
+     * The MECHANISM under test has since moved twice and the assertion moved with it: migration
+     * 0109 removed `report:view` from the Editor tier (§5 makes Reports an Admin/WA surface), and
+     * migration 0105 retired `scope_type='project'` role assignments in favour of
+     * `work.project_members.access_level`. So this now grants `admin` on one project through the
+     * real write path and asserts the code resolves there — and, the half the old version could not
+     * express, that it does NOT resolve on a project the same user holds nothing on.
      */
     const access = app.get(AccessService);
-    const roles = await access.listRoles(WORKSPACE_ID);
-    const member = roles.find((r) => r.slug === 'project_admin' && r.workspaceId !== null);
-    expect(member, 'workspace-scoped project_admin role must exist').toBeDefined();
-    expect(member?.permissions).toContain('report:view');
+    expect(ACCESS_LEVEL_PERMISSIONS.admin, 'Admin must carry report:view (§5)').toContain(
+      'report:view',
+    );
+    expect(ACCESS_LEVEL_PERMISSIONS.editor, 'Editor must NOT (migration 0109)').not.toContain(
+      'report:view',
+    );
 
-    // `identity.users` is workspace-agnostic — membership comes from the role ASSIGNMENT below,
-    // which is what carries the workspace and the project scope.
+    /**
+     * A workspace MEMBER row is required now, where the old project-scoped role assignment needed
+     * none: `addProjectMember` runs `assertWorkspaceMember` first, the same rule that guards a
+     * project's lead and a work item's assignee. That is the point of the model — project access is
+     * granted to someone who is already in the company, not as a way of joining it.
+     */
     const userId = randomUUID();
     await db.insert(users).values({
       id: userId,
       email: `p6-report-reader-${userId.slice(0, 8)}@qnsc.dev`,
       displayName: 'P6 report reader',
     });
-    await access.assignRole(admin, userId, member!.id, 'project', projectId);
+    await db.insert(workspaceMembers).values({
+      workspaceId: WORKSPACE_ID,
+      userId,
+      status: 'active',
+    });
+    await grantProjectAccess(app, userId, projectId, 'admin');
 
     // The harness's own actor builder: the permission array on it is INERT (authorization
     // resolves from the database), so this is identity only — exactly what the guard passes.
     const reader = makeActor(userId);
     await expect(access.hasProjectPermission(reader, projectId, 'report:view')).resolves.toBe(true);
+
+    // Scoped, not global: the same principal on the seed's second project has nothing.
+    await expect(access.hasProjectPermission(reader, PAY_PROJECT_ID, 'report:view')).resolves.toBe(
+      false,
+    );
   });
 
   // ── Velocity ──────────────────────────────────────────────────────────────

@@ -104,12 +104,27 @@ describe('cross-project read scoping (e2e)', () => {
     expect([403, 404]).toContain(response.statusCode);
   });
 
-  it("serves a project's roster to someone who can see the project", async () => {
-    // The gate must not lock out the roles that legitimately read a project — all three tiers hold
-    // `project:view`.
-    const member = await tokenFor('dev@qnsc.dev');
-    const response = await get(`/projects/${SEED_PROJECTS[0].id}/members`, member);
-    expect(response.statusCode, response.body).toBe(200);
+  it("serves a project's roster to a Workspace Admin, and REFUSES it to an Editor", async () => {
+    /**
+     * SRS §3.1 gives "View Project `Users & Permissions`" to WA (Edit) and Admin (Read-only) and
+     * marks it Hidden for an Editor — so the roster is one of the few project reads where holding
+     * `project:view` is not enough. The route carries only `project:view`, which every level holds,
+     * so `ProjectsService.listProjectMembers` checks the access LEVEL itself.
+     *
+     * This test previously asserted 200 for `dev@qnsc.dev` on the grounds that "all three tiers
+     * hold project:view". That was true of the code and false of the contract, and it only passed
+     * because the seed granted dev a workspace-scoped tier role, which made
+     * `getProjectAccessLevel` resolve to something other than `editor`. With that over-grant gone
+     * (migration 0112) the refusal is reachable, so both directions are asserted here.
+     */
+    const admin = await tokenFor('admin@qnsc.dev');
+    const allowed = await get(`/projects/${SEED_PROJECTS[0].id}/members`, admin);
+    expect(allowed.statusCode, allowed.body).toBe(200);
+
+    const editor = await tokenFor('dev@qnsc.dev');
+    const refused = await get(`/projects/${SEED_PROJECTS[0].id}/members`, editor);
+    expect(refused.statusCode, refused.body).toBe(403);
+    expect(JSON.parse(refused.body).error.code).toBe('PROJECT_PERMISSION_DENIED');
   });
 
   it('still requires authentication for the project list', async () => {
