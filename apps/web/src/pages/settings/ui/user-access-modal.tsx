@@ -335,7 +335,11 @@ function UserProjectAccessRow({
   const reported = useRef<boolean | null>(null)
   useEffect(() => {
     if (isLoading) return
-    const has = !!me && me.accessLevel !== null && me.status === 'active'
+    // NULL access_level is a real member row (team-derived union rows and rows
+    // created before the add-with-level fix) — the user IS in the project; the
+    // row renders and its level select PATCHes. Excluding them hid the row while
+    // the server still answered 409 ALREADY_EXISTS on Add (finding from live use).
+    const has = !!me && me.status === 'active'
     if (reported.current !== has) {
       reported.current = has
       onMembership(projectId, has)
@@ -441,7 +445,7 @@ function MembershipProbe({
   useEffect(() => {
     if (isLoading) return
     const me = members.find((m) => m.userId === userId)
-    onMembership(projectId, !!me && me.accessLevel !== null && me.status === 'active')
+    onMembership(projectId, !!me && me.status === 'active')
   }, [isLoading, members, projectId, userId, onMembership])
   return null
 }
