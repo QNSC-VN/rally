@@ -569,7 +569,7 @@ export function MembersTab() {
               }
               className="ml-auto shrink-0 rounded px-2 py-0.5 text-ui-xs text-primary hover:bg-primary-lighter"
             >
-              View Access
+              Manage Access
             </button>
           </div>
         )}

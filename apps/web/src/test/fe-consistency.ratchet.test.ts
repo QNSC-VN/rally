@@ -35,7 +35,7 @@ const MAX_RAW_BUTTON = 62 // occurrences in pages/features/entities/widgets (rai
 const MAX_INLINE_STYLE = 182 // `style={{` in pages/features/entities/widgets (remainder is data-driven/dynamic)
 const MAX_ARBITRARY_TEXT = 2 // `text-[` app-wide (only text-[0] + one navy placeholder rgba remain)
 const MAX_RAW_FONT_SIZE = 12 // raw Tailwind text-{xs,sm,base,lg,xl,2xl,3xl} in consumer layers; use the text-ui-* scale. Residual = deliberate display text (login hero, big numbers, entity-title inputs)
-const MAX_HARDCODED_TEXT = 46 // capitalized JSX text nodes in consumer layers (RBAC Settings tabs + access/permission surface + the Workspaces & Projects tree/detail/teams/overview/edit surface are English-first; i18n deferred). Raised 41→46 for the workspace overview + Edit modal + Users&Permissions search.
+const MAX_HARDCODED_TEXT = 50 // capitalized JSX text nodes in consumer layers (RBAC Settings tabs + access/permission surface + Workspaces & Projects tree/detail/teams/overview/edit + user-centric access modal are English-first; i18n deferred). Raised 46→50 for the editable user-centric Project Access modal.
 const MAX_FILE_LINES = 961 // largest single source file — capacity-planning/capacity-plan-detail-page.tsx
 // Lowered from 1009: `backlog-page.tsx` held the ceiling and sat exactly on it, so it could not take
 // another line. Its column definitions moved to `pages/backlog/model/columns.ts` (the shape Iteration
