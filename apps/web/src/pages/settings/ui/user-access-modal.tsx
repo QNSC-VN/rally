@@ -455,14 +455,21 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
   const [open, setOpen] = useState(false)
   const [projectId, setProjectId] = useState<string | null>(null)
   const [level, setLevel] = useState<'admin' | 'editor'>('editor')
+  const [teamIds, setTeamIds] = useState<string[]>([])
   const [pending, setPending] = useState(false)
   // Raw apiClient carries no `meta.invalidates` — without this the member caches
   // stay stale, the probe never re-reports, and the new row/Teams field never
   // appear. `['teams']` is the teamKeys root: covers projectMembers by prefix.
   const qc = useQueryClient()
+  // Mockup parity: the Add form itself offers Teams (an Editor needs >=1). Teams
+  // of the CHOSEN project; unbound writer so the teamId travels with each call.
+  const { data: teams = [] } = useProjectTeams(projectId ?? undefined)
+  const addTeamMember = useAddTeamMember()
+  const teamOptions: SelectOption[] = teams.map((t) => ({ value: t.id, label: t.name }))
 
   async function handleAdd() {
     if (!projectId) return
+    if (level === 'editor' && teamIds.length === 0) return
     setPending(true)
     try {
       const { error, response } = await apiClient.POST('/v1/projects/{id}/members', {
@@ -494,10 +501,17 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
           throw new Error(apiErrorMessage(error, response.status))
         }
       }
+      // Editor lands WITH teams (mockup: team selection inside the Add form).
+      if (level === 'editor') {
+        for (const teamId of teamIds) {
+          await addTeamMember.mutateAsync({ teamId, userId })
+        }
+      }
       await qc.invalidateQueries({ queryKey: ['teams'] })
       notify.success(`Project access set to ${level}`)
       setProjectId(null)
       setLevel('editor')
+      setTeamIds([])
       setOpen(false)
     } catch (e) {
       notify.fromError(e, 'Failed to add project access')
@@ -523,7 +537,10 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
             ariaLabel="Project to add"
             placeholder="Select project"
             options={candidates}
-            onChange={(v) => setProjectId(v as string)}
+            onChange={(v) => {
+              setProjectId(v as string)
+              setTeamIds([])
+            }}
           />
         </FormField>
         <FormField label="Access Level" required>
@@ -536,18 +553,37 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
           />
         </FormField>
       </div>
+      {level === 'editor' && projectId && teamOptions.length > 0 && (
+        <FormField label="Teams" hint="An Editor needs at least one team." required>
+          <SearchableSelect
+            multiple
+            variant="field"
+            value={teamIds}
+            ariaLabel="Teams for the new project access"
+            placeholder="Select teams"
+            options={teamOptions}
+            onChange={(v) => setTeamIds(v as string[])}
+          />
+        </FormField>
+      )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={() => setOpen(false)}>
           Cancel
         </Button>
-        <Button type="button" disabled={!projectId || pending} onClick={handleAdd}>
+        <Button
+          type="button"
+          disabled={!projectId || pending || (level === 'editor' && teamIds.length === 0)}
+          onClick={handleAdd}
+        >
           {pending && <Loader2 size={12} className="animate-spin" />} Add
         </Button>
       </div>
       <p className="text-ui-xs text-foreground-subtle">
-        {level === 'editor'
-          ? 'After adding, assign teams on the row below — an Editor needs at least one.'
-          : 'Admin automatically covers all teams in the project.'}
+        {level === 'admin'
+          ? 'Admin automatically covers all teams in the project.'
+          : teamOptions.length === 0
+            ? 'This project has no teams yet — add one on its Teams tab.'
+            : 'Teams above write together with the access level.'}
       </p>
     </div>
   )
