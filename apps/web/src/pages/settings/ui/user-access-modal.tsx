@@ -29,6 +29,7 @@ import {
   useRemoveTeamMember,
   useUserTeamMemberships,
 } from '@/features/teams/api'
+import { useQueryClient } from '@tanstack/react-query'
 import { useUpdateMember, type WorkspaceMember } from '@/features/workspaces/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { PERMISSION } from '@/shared/config/permissions'
@@ -74,6 +75,7 @@ export function UserAccessModal({
 }) {
   const { hasPermission, user } = useAuthStore()
   const isWA = hasPermission(PERMISSION.WORKSPACE_VIEW)
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState<ModalTab>('general')
   const { data: projects = [], isLoading } = useProjects(workspaceId)
   const [removeProject, setRemoveProject] = useState<{ id: string; name: string } | null>(null)
@@ -248,6 +250,9 @@ export function UserAccessModal({
               { params: { path: { id: removeProject.id, userId: member.userId } } },
             )
             if (error) throw new Error(apiErrorMessage(error, response.status))
+            // Same staleness bug as Add: raw DELETE must bust the member caches
+            // or the removed row lingers until refetch-by-staleTime.
+            await queryClient.invalidateQueries({ queryKey: ['teams'] })
             notify.success('Access removed (No Access)')
           } catch (e) {
             notify.fromError(e, 'Failed to remove access')
@@ -447,6 +452,10 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
   const [projectId, setProjectId] = useState<string | null>(null)
   const [level, setLevel] = useState<'admin' | 'editor'>('editor')
   const [pending, setPending] = useState(false)
+  // Raw apiClient carries no `meta.invalidates` — without this the member caches
+  // stay stale, the probe never re-reports, and the new row/Teams field never
+  // appear. `['teams']` is the teamKeys root: covers projectMembers by prefix.
+  const qc = useQueryClient()
 
   async function handleAdd() {
     if (!projectId) return
@@ -457,6 +466,7 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
         body: { userId, accessLevel: level } as never,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
+      await qc.invalidateQueries({ queryKey: ['teams'] })
       notify.success('Project access added')
       setProjectId(null)
       setLevel('editor')
