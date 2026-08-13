@@ -64,11 +64,12 @@ export function ProjectTeamsTab({ projectId, isWA }: { projectId: string; isWA: 
     <>
       {selectedTeam ? (
         <TeamDetail
+          projectId={projectId}
           team={selectedTeam}
           workspaceId={workspaceId}
           isWA={isWA}
           onBack={() => setSelectedTeamId(null)}
-          onEdit={() => setEditing(selectedTeam)}
+          backLabel="Back"
         />
       ) : (
         <>
@@ -207,22 +208,26 @@ function RestoreButton({ teamId, name }: { teamId: string; name: string }) {
 }
 
 /** Team DETAIL view (mockup parity): fields grid + member roster + WA Edit.
- *  Reached by clicking a team row; Back returns to the list. */
-function TeamDetail({
+ *  Reached by clicking a team row OR a team node in the tree; Back returns to
+ *  whatever surface opened it. Self-contained on edit (renders TeamFormModal). */
+export function TeamDetail({
+  projectId,
   team,
   workspaceId,
   isWA,
   onBack,
-  onEdit,
+  backLabel = 'Back',
 }: {
+  projectId: string
   team: Team
   workspaceId: string | undefined
   isWA: boolean
   onBack: () => void
-  onEdit: () => void
+  backLabel?: string
 }) {
   const { data: members = [], isLoading } = useTeamMembers(team.id)
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  const [editing, setEditing] = useState(false)
   const leadName =
     wsMembers.find((m) => m.userId === team.leadId)?.displayName ??
     wsMembers.find((m) => m.userId === team.leadId)?.email
@@ -230,15 +235,20 @@ function TeamDetail({
   return (
     <div>
       <div className="mb-4 flex items-center gap-2">
-        <Button variant="ghost" type="button" onClick={onBack} aria-label="Back to teams list">
-          <ArrowLeft size={14} /> Back
+        <Button variant="ghost" type="button" onClick={onBack} aria-label={backLabel}>
+          <ArrowLeft size={14} /> {backLabel}
         </Button>
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-ui-lg font-semibold text-foreground">{team.name}</h3>
           <p className="text-ui-xs text-foreground-subtle">{team.key}</p>
         </div>
         {isWA && (
-          <IconButton size="sm" aria-label="Edit team" title="Edit team" onClick={onEdit}>
+          <IconButton
+            size="sm"
+            aria-label="Edit team"
+            title="Edit team"
+            onClick={() => setEditing(true)}
+          >
             <Pencil size={14} />
           </IconButton>
         )}
@@ -292,6 +302,15 @@ function TeamDetail({
             </div>
           ))}
         </div>
+      )}
+
+      {editing && (
+        <TeamFormModal
+          projectId={projectId}
+          workspaceId={workspaceId}
+          team={team}
+          onClose={() => setEditing(false)}
+        />
       )}
     </div>
   )

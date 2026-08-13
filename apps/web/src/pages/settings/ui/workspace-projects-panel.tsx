@@ -33,7 +33,8 @@ import {
   type ProjectEstimationSettings,
   type Project,
 } from '@/features/projects/api'
-import { useProjectTeams } from '@/features/teams/api'
+import { useProjectTeams, type Team } from '@/features/teams/api'
+import { TeamDetail } from './project-teams-tab'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { SettingsTabHeader } from './settings-tab-header'
 import { ProjectAccessList } from './projects-access-tab'
@@ -68,6 +69,12 @@ export function WorkspaceProjectsPanel() {
   const isWA = hasPermission(PERMISSION.WORKSPACE_VIEW)
   const { data: projects = [], isLoading } = useProjects(workspaceId)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // A TEAM node clicked in the tree (mockup parity) — takes the detail pane.
+  const [selectedTeam, setSelectedTeam] = useState<{
+    projectId: string
+    teamId: string
+    team: Team
+  } | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [createOpen, setCreateOpen] = useState(false)
   const selected = projects.find((p) => p.id === selectedId) ?? null
@@ -130,7 +137,13 @@ export function WorkspaceProjectsPanel() {
                   selected={selectedId === p.id}
                   expanded={expanded.has(p.id)}
                   onToggle={() => toggle(p.id)}
-                  onSelect={() => setSelectedId(p.id)}
+                  onSelect={() => {
+                    setSelectedId(p.id)
+                    setSelectedTeam(null)
+                  }}
+                  onSelectTeam={(team) =>
+                    setSelectedTeam({ projectId: p.id, teamId: team.id, team })
+                  }
                 />
               ))}
               {projects.length === 0 && (
@@ -142,7 +155,18 @@ export function WorkspaceProjectsPanel() {
 
         {/* ── Detail pane ── */}
         <section className="min-w-0 flex-1 overflow-y-auto px-8 py-6">
-          {selected ? (
+          {selectedTeam ? (
+            /* Mockup parity: clicking a TEAM node in the tree opens the team detail —
+             * same view the Teams tab's row click opens, self-contained on edit. */
+            <TeamDetail
+              projectId={selectedTeam.projectId}
+              team={selectedTeam.team}
+              workspaceId={workspaceId}
+              isWA={isWA}
+              onBack={() => setSelectedTeam(null)}
+              backLabel="Back"
+            />
+          ) : selected ? (
             <ProjectDetail project={selected} isWA={isWA} />
           ) : (
             <WorkspaceOverview
@@ -311,12 +335,14 @@ function ProjectNode({
   expanded,
   onToggle,
   onSelect,
+  onSelectTeam,
 }: {
   project: Project
   selected: boolean
   expanded: boolean
   onToggle: () => void
   onSelect: () => void
+  onSelectTeam: (team: Team) => void
 }) {
   // Each node fetches its own teams so the hook rules hold; only fetched when needed.
   const { data: teams = [] } = useProjectTeams(expanded ? project.id : undefined)
@@ -352,9 +378,15 @@ function ProjectNode({
             <p className="px-2 py-1 text-ui-xs text-foreground-subtle">No teams.</p>
           ) : (
             teams.map((t) => (
+              /* Mockup parity: a team node in the tree is CLICKABLE — selecting it
+               * opens the team detail in the right pane, like selecting a project. */
               <div
                 key={t.id}
-                className="flex items-center gap-2 rounded px-2 py-1 text-ui-xs text-foreground-subtle"
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelectTeam(t)}
+                onKeyDown={(e) => e.key === 'Enter' && onSelectTeam(t)}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-ui-xs text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
               >
                 <Users size={11} /> <span className="truncate">{t.name}</span>
               </div>
