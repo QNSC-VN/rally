@@ -46,6 +46,7 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { data: members = [], isLoading } = useProjectMembers(projectId)
   const updateAccess = useUpdateProjectAccess(projectId)
+  const addMember = useAddProjectMember(projectId)
   const [removeTarget, setRemoveTarget] = useState<ProjectMember | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -55,13 +56,26 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
   )
 
   function handleChange(member: ProjectMember, level: 'admin' | 'editor') {
-    updateAccess.mutate(
-      { memberId: member.id, accessLevel: level },
-      {
-        onSuccess: () => notify.success(`Access updated to ${level}`),
-        onError: (e) => notify.fromError(e, 'Failed to update access'),
-      },
-    )
+    // NULL access_level rows are team-derived: their `id` is a team_members id,
+    // and PATCHing it 404s. POST upserts (BE sets the level on the existing
+    // row or creates the explicit grant).
+    if (member.accessLevel) {
+      updateAccess.mutate(
+        { memberId: member.id, accessLevel: level },
+        {
+          onSuccess: () => notify.success(`Access updated to ${level}`),
+          onError: (e) => notify.fromError(e, 'Failed to update access'),
+        },
+      )
+    } else {
+      addMember.mutate(
+        { userId: member.userId, accessLevel: level },
+        {
+          onSuccess: () => notify.success(`Access set to ${level}`),
+          onError: (e) => notify.fromError(e, 'Failed to set access'),
+        },
+      )
+    }
   }
 
   const removeMember = useMutation({

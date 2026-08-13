@@ -849,10 +849,36 @@ export class ProjectsService {
 
     const existing = await this.projectMemberRepo.findMember(projectId, userId);
     if (existing) {
-      throw new ConflictException(
-        'PROJECT_MEMBER_ALREADY_EXISTS',
-        'User is already a member of this project',
-      );
+      // UPSERT, not 409: a member row can legitimately pre-exist with a NULL
+      // access_level (rows created before add-with-level, and every "team-derived"
+      // roster row — a user on a linked team with no explicit grant). Refusing the
+      // POST meant the UI could show the user in the project yet be unable to give
+      // them a level. With a level supplied, set it; without one, stay idempotent.
+      if (accessLevel !== undefined && accessLevel !== existing.accessLevel) {
+        const updated = await this.uow.run(async (tx) => {
+          const next = await this.projectMemberRepo.updateMember(existing.id, { accessLevel }, tx);
+          await this.audit.emit(
+            {
+              action: AUDIT_ACTION.PROJECT_MEMBER_UPDATED,
+              resourceType: AUDIT_RESOURCE.PROJECT,
+              resourceId: projectId,
+              workspaceId,
+              actor: { id: actorId },
+              projectId,
+              changes: {
+                before: { userId, accessLevel: existing.accessLevel },
+                after: { userId, accessLevel },
+              },
+            },
+            tx,
+          );
+          return next;
+        });
+        await this.access.invalidateUser(workspaceId, userId);
+        this.logger.log({ projectId, userId }, 'Project member level set (upsert)');
+        return updated;
+      }
+      return existing;
     }
 
     const member = await this.uow.run(async (tx) => {

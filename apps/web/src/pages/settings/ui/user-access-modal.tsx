@@ -347,7 +347,11 @@ function UserProjectAccessRow({
   }, [isLoading, me, projectId, onMembership])
 
   function handleChange(level: 'admin' | 'editor') {
-    if (me) {
+    // me.id is a project_members id ONLY for explicit rows. A NULL access_level
+    // row is team-derived (its id is a team_members id!) or a pre-fix row whose
+    // id may predate the union — PATCHing either 404s. POST upserts: the BE sets
+    // the level on the existing row or creates it.
+    if (me?.accessLevel) {
       updateAccess.mutate(
         { memberId: me.id, accessLevel: level },
         {
@@ -476,31 +480,9 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
         params: { path: { id: projectId } },
         body: { userId, accessLevel: level } as never,
       })
-      if (error) {
-        // UPSERT: a member row may already exist with a NULL access_level
-        // (team-derived union rows + rows created before add-with-level). 409
-        // ALREADY_EXISTS meant "you're in but shown No Access, and Add can't fix
-        // it" — PATCH the existing row's level instead of failing.
-        if (response.status === 409) {
-          const { data: members } = await apiClient.GET('/v1/projects/{id}/members', {
-            params: { path: { id: projectId } },
-          })
-          const existing = ((members as never[] | undefined) ?? []).find(
-            (m) => (m as { userId: string }).userId === userId,
-          ) as { id: string } | undefined
-          if (!existing) throw new Error(apiErrorMessage(error, response.status))
-          const { error: patchError, response: patchRes } = await apiClient.PATCH(
-            '/v1/projects/{id}/members/{memberId}',
-            {
-              params: { path: { id: projectId, memberId: existing.id } },
-              body: { accessLevel: level },
-            },
-          )
-          if (patchError) throw new Error(apiErrorMessage(patchError, patchRes.status))
-        } else {
-          throw new Error(apiErrorMessage(error, response.status))
-        }
-      }
+      // The BE POST upserts (sets the level on an existing NULL-level row or
+      // creates one) — no 409 fallback needed.
+      if (error) throw new Error(apiErrorMessage(error, response.status))
       // Editor lands WITH teams (mockup: team selection inside the Add form).
       if (level === 'editor') {
         for (const teamId of teamIds) {

@@ -459,6 +459,41 @@ describe('ProjectsService', () => {
       );
     });
 
+    it('upserts: an existing NULL-level row gets the level instead of a 409', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
+      // The team-derived / pre-fix shape: explicit row, no level.
+      projectMemberRepo.findMember.mockResolvedValue({
+        id: 'pm-existing',
+        userId: 'user-2',
+        accessLevel: null,
+      });
+      projectMemberRepo.updateMember.mockResolvedValue({
+        id: 'pm-existing',
+        userId: 'user-2',
+        accessLevel: 'editor',
+      });
+
+      const result = await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin', 'editor');
+
+      expect(projectMemberRepo.updateMember).toHaveBeenCalledWith(
+        'pm-existing',
+        { accessLevel: 'editor' },
+        expect.anything(),
+      );
+      expect(result.accessLevel).toBe('editor');
+      expect(audit.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'project.member.updated',
+          changes: {
+            before: { userId: 'user-2', accessLevel: null },
+            after: { userId: 'user-2', accessLevel: 'editor' },
+          },
+        }),
+        expect.anything(),
+      );
+    });
+
     it('omits accessLevel when none is supplied (lands NULL until a PATCH)', async () => {
       projectRepo.findById.mockResolvedValue(mockProject());
       workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
