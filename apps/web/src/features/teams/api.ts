@@ -2,7 +2,8 @@
  * Teams API hooks — TanStack Query wrappers.
  * Used by Work Item Detail sidebar dropdowns and Settings > Teams management.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 
@@ -54,6 +55,8 @@ export interface ProjectMember {
   avatarUrl?: string | null
   joinedAt: string
   updatedAt: string
+  /** Active team_members rows for Teams linked to this project — 0 means an Editor has no scope to act in. */
+  teamCount: number
 }
 
 // ── Query keys ────────────────────────────────────────────────────────────────
@@ -104,19 +107,57 @@ export function useTeam(id: string | undefined) {
   })
 }
 
+async function fetchTeamMembers(teamId: string): Promise<TeamMember[]> {
+  const { data, error, response } = await apiClient.GET('/v1/teams/{id}/members', {
+    params: { path: { id: teamId } },
+  })
+  if (error) throw new Error(apiErrorMessage(error, response.status))
+  return (data as TeamMember[]) ?? []
+}
+
+/** One team's full member roster — the team DETAIL view on the project Teams tab
+ *  (mockup parity: clicking a team row shows its members). Shares cache with the
+ *  memberships fan-out via `teamKeys.members`. */
 export function useTeamMembers(teamId: string | undefined) {
   return useQuery({
     queryKey: teamKeys.members(teamId ?? ''),
-    queryFn: async () => {
-      const { data, error, response } = await apiClient.GET('/v1/teams/{id}/members', {
-        params: { path: { id: teamId! } },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      return (data as TeamMember[]) ?? []
-    },
+    queryFn: () => fetchTeamMembers(teamId as string),
     enabled: !!teamId,
     staleTime: 30_000,
   })
+}
+
+/**
+ * Membership across SEVERAL teams for one user. The per-project Teams picker in
+ * UserAccessModal needs "is this user in team X" for every team on a project
+ * row, and there is no single endpoint for that, so this fans out one request
+ * per team via `useQueries`. Uses `teamKeys.members` / `fetchTeamMembers` so
+ * results share cache with `useTeamMembers` (e.g. the Teams tab's member cell),
+ * and stay live after `useAddTeamMember` / `useRemoveTeamMember` — both
+ * invalidate the `team` tag, whose `['teams']` root covers `teamKeys.members`
+ * by prefix.
+ */
+export function useUserTeamMemberships(teamIds: readonly string[], userId: string | undefined) {
+  const ids = useMemo(() => [...new Set(teamIds.filter(Boolean))], [teamIds])
+  const results = useQueries({
+    queries: ids.map((teamId) => ({
+      queryKey: teamKeys.members(teamId),
+      queryFn: () => fetchTeamMembers(teamId),
+      enabled: !!userId,
+      staleTime: 30_000,
+    })),
+  })
+  const isLoading = results.some((r) => r.isLoading)
+  // Stable signatures so the memo only recomputes when the underlying data
+  // (or the team-id set itself) actually changes, not on every render.
+  const signature = results.map((r) => r.dataUpdatedAt).join(',')
+  const idsSignature = ids.join(',')
+  const memberTeamIds = useMemo(
+    () => (userId ? ids.filter((_, i) => results[i]?.data?.some((m) => m.userId === userId)) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [signature, userId, idsSignature],
+  )
+  return { memberTeamIds, isLoading }
 }
 
 /**
@@ -222,11 +263,21 @@ export function useUpdateTeam(id: string) {
   })
 }
 
-export function useAddTeamMember(teamId: string) {
+/**
+ * `teamId` is optional at the hook level so ONE instance can serve a picker that
+ * varies the TEAM rather than the user (the per-project Teams picker in
+ * UserAccessModal: one user, many candidate teams). The Teams tab's own
+ * `TeamMembersCell` (one team, many candidate users) still binds `teamId` here
+ * and calls `.mutate(userId)` exactly as before — both shapes hit the same
+ * `POST /v1/teams/{id}/members`, so there is still exactly one write path.
+ */
+export function useAddTeamMember(teamId?: string) {
   return useMutation({
-    mutationFn: async (userId: string) => {
+    mutationFn: async (arg: string | { userId: string; teamId: string }) => {
+      const [id, userId] = typeof arg === 'string' ? [teamId, arg] : [arg.teamId, arg.userId]
+      if (!id) throw new Error('useAddTeamMember: no teamId bound or supplied')
       const { data, error, response } = await apiClient.POST('/v1/teams/{id}/members', {
-        params: { path: { id: teamId } },
+        params: { path: { id } },
         body: { userId } as never,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
@@ -236,11 +287,14 @@ export function useAddTeamMember(teamId: string) {
   })
 }
 
-export function useRemoveTeamMember(teamId: string) {
+/** See {@link useAddTeamMember} for why `teamId` is optional here too. */
+export function useRemoveTeamMember(teamId?: string) {
   return useMutation({
-    mutationFn: async (userId: string) => {
+    mutationFn: async (arg: string | { userId: string; teamId: string }) => {
+      const [id, userId] = typeof arg === 'string' ? [teamId, arg] : [arg.teamId, arg.userId]
+      if (!id) throw new Error('useRemoveTeamMember: no teamId bound or supplied')
       const { error, response } = await apiClient.DELETE('/v1/teams/{id}/members/{userId}', {
-        params: { path: { id: teamId, userId } },
+        params: { path: { id, userId } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
@@ -267,6 +321,32 @@ export function useUpdateProjectAccess(projectId: string) {
         body: { accessLevel },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
+    },
+    meta: { invalidates: ['team'] },
+  })
+}
+
+/**
+ * Add an existing workspace user to a Project (creates a project_members row). NOTE:
+ * the BE currently ignores `accessLevel` on add (Stage 5 fix) — callers must follow
+ * with `useUpdateProjectAccess` to set the level, which is why the Add Existing User
+ * flow PATCHes immediately after this resolves.
+ */
+export function useAddProjectMember(projectId: string) {
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      accessLevel,
+    }: {
+      userId: string
+      accessLevel?: 'admin' | 'editor'
+    }) => {
+      const { data, error, response } = await apiClient.POST('/v1/projects/{id}/members', {
+        params: { path: { id: projectId } },
+        body: { userId, ...(accessLevel ? { accessLevel } : {}) } as never as never,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data
     },
     meta: { invalidates: ['team'] },
   })

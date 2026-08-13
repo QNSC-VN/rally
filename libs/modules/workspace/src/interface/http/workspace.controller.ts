@@ -31,7 +31,6 @@ import {
 import type { JwtPayload, PagedResult } from '@platform';
 import { AuthPolicy, RequirePermission, AuthorizedInService, AuthzGap } from '@modules/access';
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
-import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '../../../../../../db/schema/enums';
 import { WorkspaceService } from '../../application/workspace.service';
 import {
   CreateWorkspaceDto,
@@ -106,13 +105,6 @@ function toSettingsDto(s: WorkspaceSettings): WorkspaceSettingsResponseDto {
     timezone: s.timezone,
     defaultLocale: s.defaultLocale,
     dateFormat: s.dateFormat,
-    // The EFFECTIVE map, merged the same way `PreliminaryEstimateMapService` merges it for the
-    // estimate readers. Returning the raw override set would show an operator a half-empty
-    // table while their meters were computed from the full one.
-    preliminaryEstimateMap: {
-      ...DEFAULT_PRELIMINARY_ESTIMATE_MAP,
-      ...s.preliminaryEstimateMap,
-    },
     updatedAt: s.updatedAt.toISOString(),
   };
 }

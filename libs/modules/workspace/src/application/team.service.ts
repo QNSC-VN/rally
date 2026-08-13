@@ -178,6 +178,23 @@ export class TeamService {
         ? await this.assertMembers(workspaceId, input.memberUserIds)
         : undefined;
 
+    // Mirror of the project-side unlink guard (PROJECT_TEAM_HAS_CAPACITY_PLAN):
+    // dropping a project link while the team sits on that project's capacity plan
+    // must be refused, not silently orphan committed planning demand.
+    if (projectIds !== undefined) {
+      const current = await this.teamRepo.listActiveProjectIds(id);
+      const removed = current.filter((pid) => !projectIds.includes(pid));
+      if (removed.length > 0) {
+        const blocking = await this.teamRepo.findBlockingCapacityPlans(workspaceId, id, removed);
+        if (blocking.length > 0) {
+          throw new ConflictException(
+            'PROJECT_TEAM_HAS_CAPACITY_PLAN',
+            `Team is allocated on capacity plan(s) ${blocking.map((b) => b.planKey).join(', ')} — remove the team from those plans before unlinking the project`,
+          );
+        }
+      }
+    }
+
     return this.uow.run(async (tx) => {
       const after = await this.teamRepo.update(
         id,

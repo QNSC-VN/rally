@@ -25,11 +25,17 @@ import type { Team, TeamMember, TeamWithStats } from '../../domain/team.types';
 
 const CreateTeamSchema = z.object({
   name: z.string().min(1).max(255).trim(),
+  // SRS Phase 1/08 §8.2 + §4.2: 2-10 uppercase letters/numbers, start with a
+  // letter, immutable after creation (UpdateTeamSchema carries no key). The FE
+  // enforced this (project-teams-tab) while the API accepted 1-char lowercase.
   key: z
     .string()
-    .min(1)
-    .max(20)
-    .regex(/^[A-Z0-9]+$/i, 'Key must be alphanumeric'),
+    .min(2)
+    .max(10)
+    .regex(
+      /^[A-Z][A-Z0-9]*$/,
+      'Key must be 2-10 uppercase letters/numbers, starting with a letter',
+    ),
   description: z.string().max(1000).trim().optional(),
   leadId: z.string().uuid().optional(),
   status: z.enum(teamStatusEnum.enumValues).optional(),
@@ -80,6 +86,10 @@ function toTeamMemberDto(m: TeamMember) {
     userId: m.userId,
     status: m.status,
     joinedAt: m.joinedAt.toISOString(),
+    // Resolved by the repo's identity.users join — the roster renders them.
+    displayName: m.displayName ?? null,
+    email: m.email ?? null,
+    avatarUrl: m.avatarUrl ?? null,
   };
 }
 

@@ -17,7 +17,6 @@ import {
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
 import { AccessService } from '@modules/access';
-import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '../../../../../db/schema/enums';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
 import {
   ITeamMemberRepository,
@@ -336,6 +335,12 @@ export class WorkspaceService {
       );
       return next;
     });
+    // §8: company disable/removal takes effect on the user's next page refresh.
+    // Invalidate the cached permission resolution so a suspended/removed member's
+    // next request resolves zero permissions instead of waiting out the 5-min TTL.
+    if (input.status === 'suspended' || input.status === 'removed') {
+      await this.access.invalidateUser(workspaceId, member.userId);
+    }
     this.logger.log({ workspaceId, memberId, actorId }, 'Member updated');
     return updated;
   }
@@ -376,6 +381,9 @@ export class WorkspaceService {
         tx,
       );
     });
+    // §8: removal is effective on the next page refresh — drop the permission cache
+    // now so the very next request from the removed member resolves nothing.
+    await this.access.invalidateUser(workspaceId, userId);
     this.logger.log({ workspaceId, userId, actorId }, 'Member removed from workspace');
   }
 
@@ -668,6 +676,25 @@ export class WorkspaceService {
        * would enrol someone with no role at all.
        */
       if (invitation.roleId) {
+        /**
+         * The 3-level model grants per-Project access ONLY via
+         * `project_members.access_level`. A workspace-scoped grant of a per-Project
+         * TIER role (project_admin / project_member) would hand the invitee the full
+         * delivery set across EVERY project — exactly the legacy over-grant migration
+         * 0111 deletes. The FE invites email-only (lands No Access until a WA grants
+         * levels), but the API still accepts an arbitrary roleId, so validate here:
+         * tier roles are refused loudly instead of silently over-granting.
+         */
+        const invitedRole = await this.access.findRole(invitation.workspaceId, invitation.roleId);
+        if (
+          invitedRole &&
+          (invitedRole.slug === 'project_admin' || invitedRole.slug === 'project_member')
+        ) {
+          throw new ConflictException(
+            'INVITED_ROLE_IS_PROJECT_TIER',
+            'Per-Project roles cannot be granted at invitation; grant per-Project access levels after the member joins',
+          );
+        }
         await this.memberRepo.grantWorkspaceRole(
           {
             workspaceId: invitation.workspaceId,
@@ -717,10 +744,6 @@ export class WorkspaceService {
         timezone: null,
         defaultLocale: null,
         dateFormat: null,
-        // The seeded default, not `{}`: a workspace with no settings row must still report the
-        // map its estimates are actually computed with, or Settings would show blanks while
-        // the meters use real numbers.
-        preliminaryEstimateMap: DEFAULT_PRELIMINARY_ESTIMATE_MAP,
         createdAt: new Date(),
         updatedAt: new Date(),
       };

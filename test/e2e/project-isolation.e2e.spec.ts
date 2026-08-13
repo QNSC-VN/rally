@@ -147,10 +147,19 @@ describe('project isolation: a project-scoped grant does not reach another proje
       status: 'active',
     });
     // RBAC migration: project access is now access_level on project_members.
-    const member = await projects.addProjectMember(WORKSPACE_ID, projectAId, scopedUserId);
-    await projects.updateProjectMember(WORKSPACE_ID, projectAId, member.id, {
-      accessLevel: 'admin',
-    });
+    const member = await projects.addProjectMember(
+      WORKSPACE_ID,
+      projectAId,
+      scopedUserId,
+      admin.sub,
+    );
+    await projects.updateProjectMember(
+      WORKSPACE_ID,
+      projectAId,
+      member.id,
+      { accessLevel: 'admin' },
+      admin.sub,
+    );
   });
 
   afterAll(async () => {

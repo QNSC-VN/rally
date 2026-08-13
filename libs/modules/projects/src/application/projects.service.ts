@@ -13,7 +13,7 @@ import {
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
 import { and, eq } from 'drizzle-orm';
-import { capacityPlanTeams, capacityPlans } from '../../../../../db/schema/work';
+import { capacityPlanTeams, capacityPlans, projectSettings } from '../../../../../db/schema/work';
 import { IProjectRepository, PROJECT_REPOSITORY } from '../domain/ports/project.repository';
 import {
   IWorkflowStatusRepository,
@@ -53,6 +53,36 @@ import type { Label } from '../domain/label.types';
 import type { WorkItemType } from '../domain/ports/project.repository';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
 import { PROJECT_ACTIVITY_CONFIG } from './project-activity-diff';
+
+/**
+ * Per-project T-shirt → points scale + hours/point (SRS §6.2), persisted in
+ * `work.project_settings`. The application-layer shape; the HTTP DTO in
+ * `project-request.dto.ts` mirrors it for the wire + codegen.
+ */
+export interface ProjectEstimationSettings {
+  xsPoints: number;
+  sPoints: number;
+  mPoints: number;
+  lPoints: number;
+  xlPoints: number;
+  hoursPerPoint: number;
+}
+
+/**
+ * Fallback when a project has no `project_settings` row yet. Mirrors the column
+ * DEFAULTs in migration 0106 AND the points in `DEFAULT_PRELIMINARY_ESTIMATE_MAP` —
+ * a project is usable before a WA sets a scale, and the three must stay in step or
+ * "M" means a different number on the settings form, the progress bar and the
+ * capacity plan.
+ */
+const DEFAULT_PROJECT_ESTIMATION_SETTINGS: ProjectEstimationSettings = {
+  xsPoints: 1,
+  sPoints: 3,
+  mPoints: 5,
+  lPoints: 8,
+  xlPoints: 13,
+  hoursPerPoint: 8,
+};
 
 @Injectable()
 export class ProjectsService {
@@ -128,6 +158,22 @@ export class ProjectsService {
   /** Home "Project Health" widget — bounded, attention-sorted per-project rollup. */
   async listProjectHealth(actor: JwtPayload, limit: number): Promise<ProjectHealth[]> {
     return this.projectRepo.listHealthByWorkspace(actor.workspaceId, { limit });
+  }
+
+  /**
+   * An archived project is read-only end to end (PRJ-FR-010): the project record and
+   * key-gen were guarded, but its CONTENT (work items, iterations, releases, milestones)
+   * stayed fully writable, so archiving stopped nothing inside the project. Shared by
+   * every content service's write path — also validates existence like getProject.
+   */
+  async assertProjectWritable(workspaceId: string, projectId: string): Promise<void> {
+    const project = await this.getProject(workspaceId, projectId);
+    if (project.status === 'archived') {
+      throw new PreconditionFailedException(
+        'PROJECT_ARCHIVED',
+        'This project is archived and read-only. Restore it to active before changing its content.',
+      );
+    }
   }
 
   async createProject(actor: JwtPayload, input: CreateProjectRequest): Promise<Project> {
@@ -292,15 +338,25 @@ export class ProjectsService {
       );
     }
 
-    // G-6: archive or restore requires the actor to be a project member
+    // G-6 (per audit + role-mapping §4): archive/restore is WA-ONLY. Project
+    // lifecycle is company-level structure — "Create/edit/archive/restore/delete
+    // Project: Workspace Admin" — and the old any-active-member branch was an
+    // archive path around the WA-only POST /:id/archive (an Editor could flip
+    // status through this PATCH). WA is company-level and never has a
+    // project_members row (§2), so the check is the workspace permission, not
+    // membership.
     const isStatusChange =
       input.status === 'archived' || (project.status === 'archived' && input.status === 'active');
     if (isStatusChange) {
-      const membership = await this.projectMemberRepo.findMember(projectId, actor.sub);
-      if (!membership || membership.status !== 'active') {
+      const isWorkspaceAdmin = await this.access.hasPermission(
+        actor.workspaceId,
+        actor.sub,
+        'workspace:edit',
+      );
+      if (!isWorkspaceAdmin) {
         throw new PermissionDeniedException(
           'PROJECT_PERMISSION_DENIED',
-          'You must be an active project member to archive or restore this project',
+          'Only a Workspace Admin can archive or restore a project',
         );
       }
     }
@@ -352,6 +408,98 @@ export class ProjectsService {
     await this.getProject(workspaceId, projectId);
     await this.projectRepo.softDelete(projectId, workspaceId);
     this.logger.log({ projectId }, 'Project soft-deleted');
+  }
+
+  // ── Estimation Settings (SRS §6.2) ────────────────────────────────────────
+
+  /**
+   * Read the per-project estimate scale. Falls back to the defaults when no row exists,
+   * so the settings form, the progress bars and `forProject()` all agree before a WA
+   * has configured anything. Existence is checked first — a bad or cross-workspace id
+   * is a 404, not silently the default scale for a project that does not exist.
+   */
+  async getEstimationSettings(
+    workspaceId: string,
+    projectId: string,
+  ): Promise<ProjectEstimationSettings> {
+    await this.getProject(workspaceId, projectId);
+    const rows = await this.db
+      .select()
+      .from(projectSettings)
+      .where(
+        and(eq(projectSettings.projectId, projectId), eq(projectSettings.workspaceId, workspaceId)),
+      )
+      .limit(1);
+    const s = rows[0];
+    if (!s) return { ...DEFAULT_PROJECT_ESTIMATION_SETTINGS };
+    return {
+      xsPoints: s.xsPoints,
+      sPoints: s.sPoints,
+      mPoints: s.mPoints,
+      lPoints: s.lPoints,
+      xlPoints: s.xlPoints,
+      // numeric(8,2) returns a string; the wire type is a number.
+      hoursPerPoint: Number(s.hoursPerPoint),
+    };
+  }
+
+  /**
+   * Partial update of the estimate scale. Merges onto the current values (PATCH, not
+   * replace) so a WA editing one size does not reset the others, then upserts the single
+   * `project_settings` row in one transaction with the audit event. `workspace:edit` on
+   * the route already proved the actor is a Workspace Admin — the BA scope for this
+   * setting — so there is no second authorisation check here.
+   */
+  async updateEstimationSettings(
+    actor: JwtPayload,
+    projectId: string,
+    input: Partial<ProjectEstimationSettings>,
+  ): Promise<ProjectEstimationSettings> {
+    // Resolves existence + workspace scope (404 on miss/cross-workspace) and carries
+    // workspaceId into the upsert row.
+    const project = await this.getProject(actor.workspaceId, projectId);
+    const before = await this.getEstimationSettings(actor.workspaceId, projectId);
+    const after = { ...before, ...input };
+
+    return this.uow.run(async (tx) => {
+      await tx
+        .insert(projectSettings)
+        .values({
+          workspaceId: project.workspaceId,
+          projectId: project.id,
+          xsPoints: after.xsPoints,
+          sPoints: after.sPoints,
+          mPoints: after.mPoints,
+          lPoints: after.lPoints,
+          xlPoints: after.xlPoints,
+          hoursPerPoint: String(after.hoursPerPoint),
+        })
+        .onConflictDoUpdate({
+          target: projectSettings.projectId,
+          set: {
+            xsPoints: after.xsPoints,
+            sPoints: after.sPoints,
+            mPoints: after.mPoints,
+            lPoints: after.lPoints,
+            xlPoints: after.xlPoints,
+            hoursPerPoint: String(after.hoursPerPoint),
+            updatedAt: new Date(),
+          },
+        });
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.PROJECT_UPDATED,
+          resourceType: AUDIT_RESOURCE.PROJECT,
+          resourceId: projectId,
+          workspaceId: actor.workspaceId,
+          actor: { id: actor.sub },
+          projectId,
+          changes: { before, after },
+        },
+        tx,
+      );
+      return after;
+    });
   }
 
   // ── Workflow statuses ─────────────────────────────────────────────────────
@@ -679,8 +827,23 @@ export class ProjectsService {
 
   // ── Project Members ───────────────────────────────────────────────────────
 
-  async listProjectMembers(workspaceId: string, projectId: string): Promise<ProjectMember[]> {
+  async listProjectMembers(
+    workspaceId: string,
+    projectId: string,
+    actorId: string,
+  ): Promise<ProjectMember[]> {
     await this.getProject(workspaceId, projectId);
+    // §4: "View Project Users & Permissions — Editor: No." The route only carries
+    // project:view (which the Editor holds), so the level check lives here. WA has no
+    // access_level row — the workspace-wide grant is what authorizes it; the same
+    // resolution an Editor's write scoping uses.
+    const level = await this.access.getProjectAccessLevel(workspaceId, actorId, projectId);
+    if (level === 'editor') {
+      throw new PermissionDeniedException(
+        'PROJECT_PERMISSION_DENIED',
+        'Editors cannot view the project user roster',
+      );
+    }
     return this.projectMemberRepo.listByProject(projectId);
   }
 
@@ -688,6 +851,8 @@ export class ProjectsService {
     workspaceId: string,
     projectId: string,
     userId: string,
+    actorId: string,
+    accessLevel?: 'admin' | 'editor',
   ): Promise<ProjectMember> {
     await this.getProject(workspaceId, projectId);
 
@@ -698,17 +863,67 @@ export class ProjectsService {
 
     const existing = await this.projectMemberRepo.findMember(projectId, userId);
     if (existing) {
-      throw new ConflictException(
-        'PROJECT_MEMBER_ALREADY_EXISTS',
-        'User is already a member of this project',
-      );
+      // UPSERT, not 409: a member row can legitimately pre-exist with a NULL
+      // access_level (rows created before add-with-level, and every "team-derived"
+      // roster row — a user on a linked team with no explicit grant). Refusing the
+      // POST meant the UI could show the user in the project yet be unable to give
+      // them a level. With a level supplied, set it; without one, stay idempotent.
+      if (accessLevel !== undefined && accessLevel !== existing.accessLevel) {
+        const updated = await this.uow.run(async (tx) => {
+          const next = await this.projectMemberRepo.updateMember(existing.id, { accessLevel }, tx);
+          await this.audit.emit(
+            {
+              action: AUDIT_ACTION.PROJECT_MEMBER_UPDATED,
+              resourceType: AUDIT_RESOURCE.PROJECT,
+              resourceId: projectId,
+              workspaceId,
+              actor: { id: actorId },
+              projectId,
+              changes: {
+                before: { userId, accessLevel: existing.accessLevel },
+                after: { userId, accessLevel },
+              },
+            },
+            tx,
+          );
+          return next;
+        });
+        await this.access.invalidateUser(workspaceId, userId);
+        this.logger.log({ projectId, userId }, 'Project member level set (upsert)');
+        return updated;
+      }
+      return existing;
     }
 
-    const member = await this.projectMemberRepo.addMember({
-      id: uuidv7(),
-      workspaceId,
-      projectId,
-      userId,
+    const member = await this.uow.run(async (tx) => {
+      const created = await this.projectMemberRepo.addMember(
+        {
+          id: uuidv7(),
+          workspaceId,
+          projectId,
+          userId,
+          // Persist the chosen level up front (the Add Existing User flow) rather than
+          // landing a NULL row the caller must immediately PATCH. Repo ignores undefined.
+          ...(accessLevel !== undefined && { accessLevel }),
+        },
+        tx,
+      );
+      // Access grants are administrative events — a grant of Admin/Editor is at least
+      // as sensitive as the team-membership writes that ARE logged. Same tx as the
+      // mutation: the outbox row can never diverge from the grant it records.
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.PROJECT_MEMBER_ADDED,
+          resourceType: AUDIT_RESOURCE.PROJECT,
+          resourceId: projectId,
+          workspaceId,
+          actor: { id: actorId },
+          projectId,
+          changes: { after: { userId, accessLevel: accessLevel ?? null } },
+        },
+        tx,
+      );
+      return created;
     });
     // RBAC migration Phase 4: invalidate so the new access_level lands on the
     // user's next request, not the 5-min cache TTL.
@@ -722,6 +937,7 @@ export class ProjectsService {
     projectId: string,
     memberId: string,
     input: UpdateProjectMemberInput,
+    actorId: string,
   ): Promise<ProjectMember> {
     await this.getProject(workspaceId, projectId);
 
@@ -730,12 +946,39 @@ export class ProjectsService {
       throw new NotFoundException('PROJECT_MEMBER_NOT_FOUND', 'Project member not found');
     }
 
-    const updated = await this.projectMemberRepo.updateMember(memberId, input);
+    const updated = await this.uow.run(async (tx) => {
+      const next = await this.projectMemberRepo.updateMember(memberId, input, tx);
+      // Level changes (Admin ⇄ Editor) are the core RBAC administrative write — the
+      // Audit Log must show who granted what, when. Same tx as the mutation.
+      if (input.accessLevel !== undefined && input.accessLevel !== member.accessLevel) {
+        await this.audit.emit(
+          {
+            action: AUDIT_ACTION.PROJECT_MEMBER_UPDATED,
+            resourceType: AUDIT_RESOURCE.PROJECT,
+            resourceId: projectId,
+            workspaceId,
+            actor: { id: actorId },
+            projectId,
+            changes: {
+              before: { userId: member.userId, accessLevel: member.accessLevel },
+              after: { userId: member.userId, accessLevel: input.accessLevel },
+            },
+          },
+          tx,
+        );
+      }
+      return next;
+    });
     await this.access.invalidateUser(workspaceId, member.userId);
     return updated;
   }
 
-  async removeProjectMember(workspaceId: string, projectId: string, userId: string): Promise<void> {
+  async removeProjectMember(
+    workspaceId: string,
+    projectId: string,
+    userId: string,
+    actorId: string,
+  ): Promise<void> {
     await this.getProject(workspaceId, projectId);
 
     const existing = await this.projectMemberRepo.findMember(projectId, userId);
@@ -746,7 +989,23 @@ export class ProjectsService {
       );
     }
 
-    await this.projectMemberRepo.removeMember(projectId, userId);
+    await this.uow.run(async (tx) => {
+      // Also clears the user's team_members rows in this project's teams (repo does
+      // both) — same tx as the audit row below.
+      await this.projectMemberRepo.removeMember(projectId, userId, actorId, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.PROJECT_MEMBER_REMOVED,
+          resourceType: AUDIT_RESOURCE.PROJECT,
+          resourceId: projectId,
+          workspaceId,
+          actor: { id: actorId },
+          projectId,
+          changes: { before: { userId, accessLevel: existing.accessLevel } },
+        },
+        tx,
+      );
+    });
     // RBAC migration Phase 4: invalidate so the removal (No Access) lands on the
     // user's next request.
     await this.access.invalidateUser(workspaceId, userId);

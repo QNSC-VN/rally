@@ -144,7 +144,7 @@ describe('PortfolioItemsService', () => {
           // The map's own fallback behaviour is covered by
           // `preliminary-estimate-map.service.spec.ts`; here it is a fixed input so these
           // tests are about how the SERVICE uses it.
-          useValue: { forWorkspace: vi.fn().mockResolvedValue(DEFAULT_PRELIMINARY_ESTIMATE_MAP) },
+          useValue: { forProject: vi.fn().mockResolvedValue(DEFAULT_PRELIMINARY_ESTIMATE_MAP) },
         },
         {
           provide: UnitOfWork,
@@ -301,10 +301,11 @@ describe('PortfolioItemsService', () => {
       expect(p.estimatedProgressByCount).toBe(0.25); // 1 / 4
     });
 
-    it('uses whatever mapping the workspace reader returns', async () => {
+    it('uses whatever mapping the project reader returns', async () => {
       // The whole reason the map is settings-backed: an operator changing XS/S/M must
-      // change what Estimated Progress means, without a deploy.
-      maps.forWorkspace.mockResolvedValue({
+      // change what Estimated Progress means, without a deploy. Per-project (SRS §6.2),
+      // resolved from the item's own projectId.
+      maps.forProject.mockResolvedValue({
         ...DEFAULT_PRELIMINARY_ESTIMATE_MAP,
         m: { points: 100, count: 50 },
       });

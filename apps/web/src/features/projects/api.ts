@@ -124,6 +124,64 @@ export function useDeleteProject() {
   })
 }
 
+// ── Estimation Settings (SRS §6.2) ────────────────────────────────────────────
+
+export interface ProjectEstimationSettings {
+  xsPoints: number
+  sPoints: number
+  mPoints: number
+  lPoints: number
+  xlPoints: number
+  hoursPerPoint: number
+}
+
+/**
+ * Persist the per-project T-shirt → points scale + hours/point. Write side is
+ * Workspace-Admin only on the backend (`workspace:edit`); the caller gates the UI to
+ * match. Omitted fields keep their current value (PATCH, not replace).
+ */
+export function useUpdateProjectEstimationSettings() {
+  return useMutation({
+    mutationFn: async ({
+      id,
+      input,
+    }: {
+      id: string
+      input: Partial<ProjectEstimationSettings>
+    }) => {
+      const { data, error, response } = await apiClient.PATCH(
+        '/v1/projects/{id}/estimation-settings',
+        { params: { path: { id } }, body: input },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as ProjectEstimationSettings
+    },
+    meta: { invalidates: ['project'] },
+  })
+}
+
+/**
+ * Read a project's estimation scale (SRS §6.2). Returns the stored values or, when
+ * no row exists, the backend's default scale (1/3/5/8/13 + 8) — so the Details tab
+ * always shows the effective scale the progress bars compute with.
+ */
+export function useProjectEstimationSettings(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['project-estimation-settings', projectId ?? ''],
+    queryFn: async () => {
+      if (!projectId) return null
+      const { data, error, response } = await apiClient.GET(
+        '/v1/projects/{id}/estimation-settings',
+        { params: { path: { id: projectId } } },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as ProjectEstimationSettings
+    },
+    enabled: !!projectId,
+    staleTime: 30_000,
+  })
+}
+
 // ── Project Statuses ──────────────────────────────────────────────────────────
 
 export interface ProjectStatus {

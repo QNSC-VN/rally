@@ -242,7 +242,7 @@ export class ReportingService {
       throw new NotFoundException('RELEASE_NOT_FOUND', 'Release not found');
     }
 
-    const map = await this.preliminaryEstimates.forWorkspace(workspaceId);
+    const map = await this.preliminaryEstimates.forProject(args.projectId);
     const [features, children] = await Promise.all([
       this.repo.getReleaseFeatures(
         workspaceId,

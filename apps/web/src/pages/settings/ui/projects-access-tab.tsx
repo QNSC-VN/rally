@@ -1,112 +1,81 @@
 /**
- * Settings > Workspaces & Projects — per-Project access management (RBAC Phase 7).
+ * The Users & Permissions roster used by Settings > Workspaces & Projects.
  *
- * Workspace Admin picks a Project, then sets each member's access level
- * (admin / editor) or removes their access (No Access = row deleted).
- * When level = editor, a Team multi-select appears (editor requires ≥1 team).
+ * Lists a project's members with each access level (admin / editor), lets a Workspace
+ * Admin change a level, remove access (No Access = row removed), and ADD an existing
+ * workspace user at a chosen level plus their Teams in one step. 3-level access
+ * (WA / Admin / Editor); no Viewer.
  *
- * Per BA ruling: 3 levels only — workspace_admin + per-Project admin/editor.
- * No viewer, no named No Access level (absence of row = implicit No Access).
+ * Editor team assignment for an EXISTING member's inline access-level change on this
+ * roster is still managed on the per-project Teams tab (Stage 3) — this list has no
+ * Teams column. `AddExistingUserModal` below is the one place team membership is
+ * wired in here, because a brand-new member has no `project_members` row yet for the
+ * Teams tab to attach to at the moment they're picked as Editor.
  */
 import { useState } from 'react'
-import { Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Trash2, UserPlus } from 'lucide-react'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useProjects } from '@/features/projects/api'
+import { useMutation } from '@tanstack/react-query'
 import {
   useProjectMembers,
   useUpdateProjectAccess,
+  useAddProjectMember,
   useProjectTeams,
+  useAddTeamMember,
   type ProjectMember,
 } from '@/features/teams/api'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
-import { PERMISSION } from '@/shared/config/permissions'
-import { SettingsTabHeader } from './settings-tab-header'
+import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
+import { WarningIndicator } from '@/shared/ui/warning-indicator'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { notify } from '@/shared/lib/toast'
-import { useMutation } from '@tanstack/react-query'
 
 const ACCESS_OPTIONS = [
   { value: 'admin', label: 'Admin' },
   { value: 'editor', label: 'Editor' },
 ] as const
 
-export function ProjectsAccessTab() {
+export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA: boolean }) {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
-  const { hasPermission } = useAuthStore()
-  const isWA = hasPermission(PERMISSION.WORKSPACE_VIEW)
-  const { data: projects = [], isLoading: projectsLoading } = useProjects(workspaceId)
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
-
-  const projectId =
-    selectedProjectId && projects.some((p) => p.id === selectedProjectId) ? selectedProjectId : null
-
-  const projectOptions: SelectOption[] = projects.map((p) => ({
-    value: p.id,
-    label: `${p.key} · ${p.name}`,
-    searchText: `${p.key} ${p.name}`,
-  }))
-
-  return (
-    <>
-      <SettingsTabHeader
-        contained
-        title="Workspaces & Projects"
-        description="Manage per-Project access levels (admin / editor)."
-      />
-      <div className="flex-1 overflow-y-auto px-8 py-6">
-        <div className="mx-auto max-w-3xl space-y-6">
-          {/* Project picker */}
-          <div className="space-y-2">
-            <p className="text-ui-sm font-semibold text-foreground-subtle">Select a Project</p>
-            {projectsLoading ? (
-              <div className="flex items-center gap-2 py-2 text-ui-md text-foreground-subtle">
-                <Loader2 size={14} className="animate-spin" /> Loading projects…
-              </div>
-            ) : (
-              <SearchableSelect
-                variant="field"
-                value={projectId ?? ''}
-                ariaLabel="Select a project"
-                placeholder="Choose a project"
-                options={projectOptions}
-                onChange={(v) => setSelectedProjectId(v as string)}
-              />
-            )}
-          </div>
-
-          {/* Members + access levels */}
-          {projectId && <ProjectAccessList projectId={projectId} isWA={isWA} />}
-        </div>
-      </div>
-    </>
-  )
-}
-
-function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA: boolean }) {
   const { data: members = [], isLoading } = useProjectMembers(projectId)
-  const { data: teams = [] } = useProjectTeams(projectId)
   const updateAccess = useUpdateProjectAccess(projectId)
+  const addMember = useAddProjectMember(projectId)
   const [removeTarget, setRemoveTarget] = useState<ProjectMember | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [query, setQuery] = useState('')
 
-  const teamOptions: SelectOption[] = teams.map((t) => ({
-    value: t.id,
-    label: t.name,
-    searchText: t.name,
-  }))
+  const filtered = members.filter((m) =>
+    `${m.displayName ?? ''} ${m.email ?? ''}`.toLowerCase().includes(query.toLowerCase()),
+  )
 
   function handleChange(member: ProjectMember, level: 'admin' | 'editor') {
-    updateAccess.mutate(
-      { memberId: member.id, accessLevel: level },
-      {
-        onSuccess: () => notify.success(`Access updated to ${level}`),
-        onError: (e) => notify.fromError(e, 'Failed to update access'),
-      },
-    )
+    // NULL access_level rows are team-derived: their `id` is a team_members id,
+    // and PATCHing it 404s. POST upserts (BE sets the level on the existing
+    // row or creates the explicit grant).
+    if (member.accessLevel) {
+      updateAccess.mutate(
+        { memberId: member.id, accessLevel: level },
+        {
+          onSuccess: () => notify.success(`Access updated to ${level}`),
+          onError: (e) => notify.fromError(e, 'Failed to update access'),
+        },
+      )
+    } else {
+      addMember.mutate(
+        { userId: member.userId, accessLevel: level },
+        {
+          onSuccess: () => notify.success(`Access set to ${level}`),
+          onError: (e) => notify.fromError(e, 'Failed to set access'),
+        },
+      )
+    }
   }
 
   const removeMember = useMutation({
@@ -130,99 +99,98 @@ function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA: boole
     })
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 py-4 text-ui-md text-foreground-subtle">
-        <Loader2 size={14} className="animate-spin" /> Loading members…
-      </div>
-    )
-  }
-
-  if (members.length === 0) {
-    return (
-      <div className="rounded-lg border border-border-subtle px-4 py-8 text-center text-ui-md text-foreground-subtle">
-        No members in this project yet.
-      </div>
-    )
-  }
-
   return (
     <>
-      <div className="rounded-lg border border-border-subtle">
-        <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
-          <span className="flex-1">User</span>
-          <span className="w-28 text-center">Access Level</span>
-          <span className="w-40 text-center">Teams (Editor only)</span>
-          {isWA && <span className="w-8 text-center">Action</span>}
-        </div>
-        {members.map((m) => (
-          <div
-            key={m.id}
-            className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5 last:border-b-0"
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <OwnerAvatar name={m.displayName ?? m.email ?? m.userId} size={20} />
-              <div className="min-w-0">
-                <p className="truncate text-ui-sm font-medium text-foreground">
-                  {m.displayName ?? m.email ?? '--'}
-                </p>
-                {m.email && <p className="truncate text-ui-xs text-foreground-subtle">{m.email}</p>}
-              </div>
-            </div>
-            <div className="w-28">
-              {m.accessLevel && isWA ? (
-                <SearchableSelect
-                  variant="cell"
-                  value={m.accessLevel}
-                  ariaLabel={`Access level for ${m.displayName ?? m.email ?? m.userId}`}
-                  options={ACCESS_OPTIONS as unknown as SelectOption[]}
-                  onChange={(v) => handleChange(m, v as 'admin' | 'editor')}
-                />
-              ) : (
-                <span className="text-ui-sm text-foreground-subtle capitalize">
-                  {m.accessLevel ?? '—'}
-                </span>
-              )}
-            </div>
-            {/* Team picker (Editor only) */}
-            <div className="w-40">
-              {m.accessLevel === 'editor' && isWA && teamOptions.length > 0 ? (
-                <SearchableSelect
-                  variant="cell"
-                  multiple
-                  value={[]}
-                  ariaLabel={`Teams for ${m.displayName ?? m.email ?? m.userId}`}
-                  placeholder="--"
-                  options={teamOptions}
-                  onChange={() => {
-                    /* Team membership managed via Team settings; this is a display-only placeholder */
-                  }}
-                />
-              ) : m.accessLevel === 'admin' ? (
-                <span className="text-ui-xs text-foreground-subtle">All Teams</span>
-              ) : (
-                <span className="text-ui-xs text-foreground-faint">—</span>
-              )}
-            </div>
-            {/* Remove action (WA only) */}
-            {isWA && (
-              <div className="w-8 text-center">
-                <IconButton
-                  size="sm"
-                  aria-label="Remove access"
-                  title="Remove access (No Access)"
-                  onClick={() => setRemoveTarget(m)}
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 size={13} />
-                </IconButton>
-              </div>
-            )}
-          </div>
-        ))}
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search users…"
+          className="max-w-xs"
+          aria-label="Search project users"
+        />
+        {isWA && (
+          <Button type="button" onClick={() => setAddOpen(true)}>
+            <UserPlus size={14} /> Add existing user
+          </Button>
+        )}
       </div>
 
-      {/* Remove confirmation */}
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-4 text-ui-md text-foreground-subtle">
+          <Loader2 size={14} className="animate-spin" /> Loading members…
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-lg border border-border-subtle px-4 py-8 text-center text-ui-md text-foreground-subtle">
+          {query ? 'No users match your search.' : 'No members in this project yet.'}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border-subtle">
+          <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
+            <span className="flex-1">User</span>
+            <span className="w-24 text-center">Status</span>
+            <span className="w-28 text-center">Access Level</span>
+            {isWA && <span className="w-8 text-center">Action</span>}
+          </div>
+          {filtered.map((m) => (
+            <div
+              key={m.id}
+              className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5 last:border-b-0"
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <OwnerAvatar name={m.displayName ?? m.email ?? m.userId} size={20} />
+                <div className="min-w-0">
+                  <p className="truncate text-ui-sm font-medium text-foreground">
+                    {m.displayName ?? m.email ?? '--'}
+                  </p>
+                  {m.email && (
+                    <p className="truncate text-ui-xs text-foreground-subtle">{m.email}</p>
+                  )}
+                </div>
+              </div>
+              <div className="w-24 text-center">
+                <span className="text-ui-xs text-foreground-subtle capitalize">{m.status}</span>
+              </div>
+              <div className="flex w-28 items-center gap-1">
+                <WarningIndicator
+                  labels={
+                    m.accessLevel === 'editor' && m.teamCount === 0
+                      ? [`Editor has no assigned team — can't act on any work in this project yet.`]
+                      : []
+                  }
+                />
+                {m.accessLevel && isWA ? (
+                  <SearchableSelect
+                    variant="cell"
+                    value={m.accessLevel}
+                    ariaLabel={`Access level for ${m.displayName ?? m.email ?? m.userId}`}
+                    options={ACCESS_OPTIONS as unknown as SelectOption[]}
+                    onChange={(v) => handleChange(m, v as 'admin' | 'editor')}
+                  />
+                ) : (
+                  <span className="text-ui-sm text-foreground-subtle capitalize">
+                    {m.accessLevel ?? '—'}
+                  </span>
+                )}
+              </div>
+              {isWA && (
+                <div className="w-8 text-center">
+                  <IconButton
+                    size="sm"
+                    aria-label="Remove access"
+                    title="Remove access (No Access)"
+                    onClick={() => setRemoveTarget(m)}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 size={13} />
+                  </IconButton>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <ConfirmDialog
         open={!!removeTarget}
         title="Remove project access"
@@ -237,6 +205,168 @@ function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA: boole
         onConfirm={handleRemove}
         onCancel={() => setRemoveTarget(null)}
       />
+
+      <AddExistingUserModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        projectId={projectId}
+        workspaceId={workspaceId}
+        existingIds={new Set(members.map((m) => m.userId))}
+      />
     </>
+  )
+}
+
+/**
+ * Pick an active workspace user who is not yet a project member, choose a level, and
+ * (when Editor) their Teams — all in one modal, one "Add to project" action, matching
+ * the BA mockup's single-modal shape. The POST persists the level up front (Stage-5 BE
+ * fix); Team membership is a separate write (`team_members`, not `project_members`), so
+ * on success this fires one `useAddTeamMember` call per selected team — same hooks and
+ * same per-selection call shape as `user-access-modal.tsx`'s `ProjectTeamsField`, just
+ * starting from an empty `memberTeamIds` since the user isn't on any team yet.
+ *
+ * Admin bypasses Team scoping entirely (`access.service.ts`'s `assertTeamScoped`), so
+ * the Teams picker only renders for Editor. Matching `ProjectTeamsField`'s `requireTeam`
+ * rule, an Editor with zero teams checked is a warning, not a hard block — Rally has no
+ * backend rule that makes an Editor invalid without a team, just a UX nudge to assign
+ * one, and the mockup itself only ever showed this as inline validation copy, never a
+ * disabled submit.
+ */
+function AddExistingUserModal({
+  open,
+  onClose,
+  projectId,
+  workspaceId,
+  existingIds,
+}: {
+  open: boolean
+  onClose: () => void
+  projectId: string
+  workspaceId: string | undefined
+  existingIds: Set<string>
+}) {
+  const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  const { data: teams = [] } = useProjectTeams(projectId)
+  const addMember = useAddProjectMember(projectId)
+  const addTeamMember = useAddTeamMember()
+  const [userId, setUserId] = useState<string | null>(null)
+  const [level, setLevel] = useState<'admin' | 'editor'>('editor')
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
+
+  // Workspace Admin is company-level only — never a Project member candidate (§2).
+  const candidates = wsMembers.filter(
+    (m) => !existingIds.has(m.userId) && m.status === 'active' && m.roleSlug !== 'workspace_admin',
+  )
+  const options: SelectOption[] = candidates.map((m) => ({
+    value: m.userId,
+    label: m.displayName ?? m.email ?? m.userId,
+    searchText: `${m.displayName ?? ''} ${m.email ?? ''}`,
+  }))
+  const teamOptions: SelectOption[] = teams.map((t) => ({ value: t.id, label: t.name }))
+
+  function handleClose() {
+    setUserId(null)
+    setLevel('editor')
+    setSelectedTeamIds([])
+    onClose()
+  }
+
+  function handleAdd() {
+    if (!userId) return
+    const newUserId = userId
+    addMember.mutate(
+      { userId: newUserId, accessLevel: level },
+      {
+        onSuccess: async () => {
+          if (level === 'editor' && selectedTeamIds.length > 0) {
+            await Promise.all(
+              selectedTeamIds.map((teamId) =>
+                addTeamMember
+                  .mutateAsync({ teamId, userId: newUserId })
+                  .catch((e) => notify.fromError(e, 'Failed to add to team')),
+              ),
+            )
+          }
+          notify.success('User added to project')
+          handleClose()
+        },
+        onError: (e) => notify.fromError(e, 'Failed to add user'),
+      },
+    )
+  }
+
+  return (
+    <AppModal open={open} onClose={handleClose} title="Add existing user" width={460}>
+      <ModalBody className="space-y-4">
+        <div className="space-y-1.5">
+          <p className="text-ui-sm font-medium text-foreground">User</p>
+          <SearchableSelect
+            variant="field"
+            value={userId ?? ''}
+            ariaLabel="Select a workspace user"
+            placeholder="Choose a user"
+            options={options}
+            onChange={(v) => setUserId(v as string)}
+          />
+          {candidates.length === 0 && (
+            <p className="text-ui-xs text-foreground-subtle">
+              No eligible workspace users — everyone is already a member.
+            </p>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-ui-sm font-medium text-foreground">Access Level</p>
+          <SearchableSelect
+            variant="field"
+            value={level}
+            ariaLabel="Access level"
+            options={ACCESS_OPTIONS as unknown as SelectOption[]}
+            onChange={(v) => setLevel(v as 'admin' | 'editor')}
+          />
+          <p className="text-ui-xs text-foreground-subtle">
+            {level === 'admin'
+              ? 'Admin has access to all teams in this project.'
+              : 'Editor access is scoped to the teams selected below.'}
+          </p>
+        </div>
+        {level === 'editor' && (
+          <div className="space-y-1.5">
+            <p className="text-ui-sm font-medium text-foreground">Teams</p>
+            <SearchableSelect
+              multiple
+              variant="field"
+              value={selectedTeamIds}
+              ariaLabel="Teams"
+              placeholder="No teams"
+              searchPlaceholder="Search teams"
+              options={teamOptions}
+              onChange={(v) => setSelectedTeamIds(v as string[])}
+            />
+            {selectedTeamIds.length === 0 && (
+              <p className="text-ui-xs text-warning">
+                Select at least one team — an Editor with no team can&apos;t act on any work in this
+                project yet.
+              </p>
+            )}
+          </div>
+        )}
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="outline" type="button" onClick={handleClose}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          disabled={!userId || addMember.isPending || addTeamMember.isPending}
+          onClick={handleAdd}
+        >
+          {(addMember.isPending || addTeamMember.isPending) && (
+            <Loader2 size={12} className="animate-spin" />
+          )}
+          Add to project
+        </Button>
+      </ModalFooter>
+    </AppModal>
   )
 }

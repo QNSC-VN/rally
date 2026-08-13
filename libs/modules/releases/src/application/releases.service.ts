@@ -242,7 +242,7 @@ export class ReleasesService {
       releaseNotes?: string;
     } = {},
   ): Promise<Release> {
-    await this.projectsService.getProject(actor.workspaceId, projectId);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, projectId);
 
     // Validate date range: releaseDate >= startDate
     if (opts.startDate && opts.releaseDate && opts.releaseDate < opts.startDate) {
@@ -318,6 +318,7 @@ export class ReleasesService {
   async updateRelease(actor: JwtPayload, id: string, input: UpdateReleaseInput): Promise<Release> {
     // Authorization (release:edit at this project) is enforced by the PolicyGuard.
     const release = await this.getRelease(actor.workspaceId, id);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, release.projectId);
 
     // Validate status transition
     if (input.status && input.status !== release.status) {
@@ -363,6 +364,7 @@ export class ReleasesService {
   async deleteRelease(actor: JwtPayload, id: string): Promise<void> {
     // Authorization (release:delete at this project) is enforced by the PolicyGuard.
     const release = await this.getRelease(actor.workspaceId, id);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, release.projectId);
     // Accepted releases cannot be deleted
     if (release.status === 'accepted') {
       throw new PreconditionFailedException(
@@ -403,6 +405,7 @@ export class ReleasesService {
 
   async shipRelease(actor: JwtPayload, id: string): Promise<Release> {
     const release = await this.getRelease(actor.workspaceId, id);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, release.projectId);
     await this.accessService.assertProjectPermission(
       actor,
       release.projectId,

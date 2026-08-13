@@ -174,6 +174,7 @@ const makeProjectsService = () => {
   const listProjectTeams = vi.fn().mockResolvedValue([]);
   return {
     getProject: vi.fn().mockResolvedValue({ id: 'proj-1', workspaceId: 'ws-1' }),
+    assertProjectWritable: vi.fn().mockResolvedValue(undefined),
     listStatuses: vi
       .fn()
       .mockResolvedValue([mockStatus('status-todo', true), mockStatus('status-done')]),

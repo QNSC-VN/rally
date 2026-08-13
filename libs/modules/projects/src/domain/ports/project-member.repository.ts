@@ -12,6 +12,10 @@ export interface IProjectMemberRepository {
   findMemberById(id: string): Promise<ProjectMember | null>;
   listByProject(projectId: string): Promise<ProjectMember[]>;
   addMember(input: AddProjectMemberInput, tx?: DbExecutor): Promise<ProjectMember>;
-  updateMember(id: string, input: UpdateProjectMemberInput): Promise<ProjectMember>;
-  removeMember(projectId: string, userId: string): Promise<void>;
+  updateMember(
+    id: string,
+    input: UpdateProjectMemberInput,
+    tx?: DbExecutor,
+  ): Promise<ProjectMember>;
+  removeMember(projectId: string, userId: string, actorId: string, tx?: DbExecutor): Promise<void>;
 }

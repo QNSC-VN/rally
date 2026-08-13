@@ -28,8 +28,8 @@ export const PORTFOLIO_STATES: PortfolioItemState[] = [
 /**
  * Preliminary estimate T-shirt sizes, in ascending order.
  *
- * The points/count each size maps to is a WORKSPACE setting resolved on the
- * server (`workspace_settings.preliminary_estimate_map`), so it is deliberately
+ * The points/count each size maps to is a per-project setting resolved on the
+ * server (`work.project_settings`, SRS §6.2), so it is deliberately
  * absent here — an operator can retune XS…XL without a deploy, and hardcoding a
  * copy would make the UI disagree with the Estimated Progress column.
  */

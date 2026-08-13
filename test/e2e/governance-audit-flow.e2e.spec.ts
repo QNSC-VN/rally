@@ -114,10 +114,19 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
       });
 
       // RBAC migration: creator is no longer auto-lead — explicitly add as admin.
-      const member = await projects.addProjectMember(admin.workspaceId, project.id, admin.sub);
-      await projects.updateProjectMember(admin.workspaceId, project.id, member.id, {
-        accessLevel: 'admin',
-      });
+      const member = await projects.addProjectMember(
+        admin.workspaceId,
+        project.id,
+        admin.sub,
+        admin.sub,
+      );
+      await projects.updateProjectMember(
+        admin.workspaceId,
+        project.id,
+        member.id,
+        { accessLevel: 'admin' },
+        admin.sub,
+      );
 
       await projects.updateProject(admin, project.id, { status: 'archived' });
 

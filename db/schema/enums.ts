@@ -293,8 +293,8 @@ export const portfolioItemStateEnum = pgEnum('portfolio_item_state', [
 
 // Top-down t-shirt sizing on a portfolio item (Rally's `PreliminaryEstimate`).
 //
-// The size→points/count MAPPING is NOT here: it is workspace configuration
-// (`workspace.workspace_settings.preliminary_estimate_map`), because the BA spec
+// The size→points/count MAPPING is NOT here: it is per-project configuration
+// (`work.project_settings`, SRS §6.2), because the BA spec
 // calls the mockup's XS=1/S=3/M=5/L=8/XL=13 table "temporary mockup data" and
 // defers the real values to Settings > Workspace > Project Management. Rally also
 // makes it a workspace-admin setting. Hard-coding it here would turn that later
@@ -448,8 +448,8 @@ export type PreliminaryEstimateMap = Record<PreliminaryEstimateSize, Preliminary
  *
  * The BA spec calls these values "temporary mockup data" and defers the real scale
  * to `Settings > Workspace > Project Management`; Rally makes the equivalent mapping
- * a workspace-admin setting. They are the DEFAULT for a new workspace row, and every
- * read must go through `workspace_settings.preliminary_estimate_map` so an operator's
+ * a workspace-admin setting. They are the DEFAULT for a new project row, and every
+ * read must go through `work.project_settings` (per-project, SRS §6.2) so an operator's
  * change is honoured. Do not import this constant to compute an estimate.
  */
 export const DEFAULT_PRELIMINARY_ESTIMATE_MAP: PreliminaryEstimateMap = {

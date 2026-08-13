@@ -15,7 +15,10 @@ import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { RequirePermission, AuthPolicy, AuthorizedInService } from '@modules/access';
-import { ProjectsService } from '../../application/projects.service';
+import {
+  ProjectsService,
+  type ProjectEstimationSettings,
+} from '../../application/projects.service';
 import {
   CreateProjectDto,
   UpdateProjectDto,
@@ -23,6 +26,8 @@ import {
   CreateLabelDto,
   UpdateLabelDto,
   UpdateProjectMemberDto,
+  ProjectEstimationSettingsDto,
+  UpdateProjectEstimationSettingsDto,
 } from './dto/project-request.dto';
 import {
   ProjectResponseDto,
@@ -131,6 +136,7 @@ function toProjectMemberDto(m: ProjectMember): ProjectMemberResponseDto {
     displayName: m.displayName ?? null,
     email: m.email ?? null,
     avatarUrl: m.avatarUrl ?? null,
+    teamCount: m.teamCount ?? 0,
   };
 }
 
@@ -312,6 +318,47 @@ export class ProjectsController {
     await this.projectsService.deleteProject(user.workspaceId, id);
   }
 
+  // ── Estimation Settings (SRS §6.2) ────────────────────────────────────────
+
+  @Get(':id/estimation-settings')
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
+  @AuthorizedInService(
+    'readable by anyone who can view the project — the scale already drives every progress bar',
+    'project-authz.e2e.spec.ts',
+  )
+  @ApiOperation({ summary: "Get the project's estimation settings (per-project scale, SRS §6.2)" })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ProjectEstimationSettingsDto })
+  @ApiCommonErrors(401, 404)
+  async getEstimationSettings(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ProjectEstimationSettings> {
+    return this.projectsService.getEstimationSettings(user.workspaceId, id);
+  }
+
+  @Patch(':id/estimation-settings')
+  // `workspace:edit` is workspace-tier and held only by the Workspace Admin — the BA
+  // scope for this setting — so no project scope is resolved by the guard. The service
+  // re-scopes the project id (and its workspace) itself, which is why a WA from another
+  // workspace still receives a 404 rather than cross-workspace write access.
+  @RequirePermission('workspace:edit')
+  @AuthorizedInService(
+    'workspace:edit proved WA; the service re-scopes the project id to its workspace',
+    'project-authz.e2e.spec.ts',
+  )
+  @ApiOperation({ summary: "Update the project's estimation settings (Workspace Admin only)" })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ProjectEstimationSettingsDto })
+  @ApiCommonErrors(400, 401, 403, 404, 422)
+  async updateEstimationSettings(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateProjectEstimationSettingsDto,
+  ): Promise<ProjectEstimationSettings> {
+    return this.projectsService.updateEstimationSettings(user, id, dto);
+  }
+
   // ── Workflow statuses ──────────────────────────────────────────────────────
 
   @Get(':id/statuses')
@@ -478,7 +525,7 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ProjectMemberResponseDto[]> {
-    const members = await this.projectsService.listProjectMembers(user.workspaceId, id);
+    const members = await this.projectsService.listProjectMembers(user.workspaceId, id, user.sub);
     return members.map(toProjectMemberDto);
   }
 
@@ -493,7 +540,13 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: { userId: string; accessLevel?: 'admin' | 'editor' },
   ): Promise<ProjectMemberResponseDto> {
-    const member = await this.projectsService.addProjectMember(user.workspaceId, id, dto.userId);
+    const member = await this.projectsService.addProjectMember(
+      user.workspaceId,
+      id,
+      dto.userId,
+      user.sub,
+      dto.accessLevel,
+    );
     return toProjectMemberDto(member);
   }
 
@@ -515,6 +568,7 @@ export class ProjectsController {
       id,
       memberId,
       dto,
+      user.sub,
     );
     return toProjectMemberDto(member);
   }
@@ -532,6 +586,6 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ): Promise<void> {
-    await this.projectsService.removeProjectMember(user.workspaceId, id, userId);
+    await this.projectsService.removeProjectMember(user.workspaceId, id, userId, user.sub);
   }
 }

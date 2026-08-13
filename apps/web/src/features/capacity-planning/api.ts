@@ -222,6 +222,9 @@ export function useForecastCapacity() {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as CapacityForecast
     },
+    // Forecast PERSISTS plan rows (availability/allocations) — the plan detail's
+    // team rows read ['capacity-plan', …] and went stale after a forecast (audit).
+    meta: { invalidates: ['capacity'] },
   })
 }
 

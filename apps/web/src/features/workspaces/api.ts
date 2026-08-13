@@ -119,18 +119,6 @@ export function useUpdateWorkspace(id: string | undefined) {
  */
 export type WorkspaceSettings = components['schemas']['WorkspaceSettingsResponseDto']
 
-/**
- * T-shirt size → points / item count.
- *
- * The GET returns it COMPLETE (stored overrides merged over the seeded default), so the client
- * edits what the estimates are actually computed with. The PATCH takes a partial — send only
- * the sizes that changed.
- */
-export type PreliminaryEstimateMap = WorkspaceSettings['preliminaryEstimateMap']
-
-/** The sizes the API enumerates. Kept explicit so the settings table can order them XS…XL. */
-export type PreliminaryEstimateSize = 'no_entry' | 'xs' | 's' | 'm' | 'l' | 'xl'
-
 export function useWorkspaceSettings(id: string | undefined) {
   return useQuery({
     queryKey: ['workspace-settings', id ?? ''],
@@ -148,12 +136,7 @@ export function useWorkspaceSettings(id: string | undefined) {
 
 export function useUpdateWorkspaceSettings(id: string | undefined) {
   return useMutation({
-    mutationFn: async (
-      body: Partial<Omit<WorkspaceSettings, 'preliminaryEstimateMap'>> & {
-        /** Partial by design — only the sizes being changed. The server merges. */
-        preliminaryEstimateMap?: Partial<PreliminaryEstimateMap>
-      },
-    ) => {
+    mutationFn: async (body: Partial<WorkspaceSettings>) => {
       const { data, error, response } = await apiClient.PATCH('/v1/workspaces/{id}/settings', {
         params: { path: { id: id! } },
         body: body as never,

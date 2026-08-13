@@ -175,7 +175,15 @@ describe('WorkspaceService', () => {
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         // Accepting an invitation now grants the invited role, so the permission cache has to be
         // dropped for that user — see `acceptInvitation`.
-        { provide: AccessService, useValue: { invalidateUser: vi.fn().mockResolvedValue(undefined) } },
+        {
+          provide: AccessService,
+          // findRole: null = "no role found" — the grant path proceeds. The tier-role
+          // refusal is a separate behavior (mocked per-test when covered).
+          useValue: {
+            invalidateUser: vi.fn().mockResolvedValue(undefined),
+            findRole: vi.fn().mockResolvedValue(null),
+          },
+        },
       ],
     }).compile();
 

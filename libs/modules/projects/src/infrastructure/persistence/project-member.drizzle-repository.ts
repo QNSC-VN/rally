@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { projectMembers, teamMembers, projectTeams } from '../../../../../../db/schema/work';
@@ -106,10 +106,52 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
         ...m,
         accessLevel: null as string | null,
       })) as unknown as ProjectMember[];
-    return [...explicit, ...teamOnly];
+
+    // Per-user team count, scoped to Teams LINKED to THIS project — the same
+    // scoping `AccessService.assertTeamScoped` uses to gate Editor writes
+    // (project_teams.projectId = this project, active on both sides). One
+    // grouped query regardless of member count (O(1) round trips, not one per
+    // member), merged into both member sets below by userId. This is what lets
+    // the roster flag an Editor who holds the access level but has zero teams
+    // to act in — a legal-but-useless grant, same shape as an unattached IAM
+    // policy — without a per-row query.
+    const teamCountRows = await this.db
+      .select({
+        userId: teamMembers.userId,
+        teamCount: sql<number>`COUNT(DISTINCT ${teamMembers.teamId})::int`,
+      })
+      .from(teamMembers)
+      .innerJoin(
+        projectTeams,
+        and(
+          eq(projectTeams.teamId, teamMembers.teamId),
+          eq(projectTeams.projectId, projectId),
+          eq(projectTeams.status, 'active'),
+        ),
+      )
+      .where(eq(teamMembers.status, 'active'))
+      .groupBy(teamMembers.userId);
+    const teamCountByUserId = new Map(teamCountRows.map((r) => [r.userId, r.teamCount]));
+
+    const withTeamCount = (m: ProjectMember): ProjectMember => ({
+      ...m,
+      teamCount: teamCountByUserId.get(m.userId) ?? 0,
+    });
+    return [...explicit.map(withTeamCount), ...teamOnly.map(withTeamCount)];
   }
 
   async addMember(input: AddProjectMemberInput, tx?: DbExecutor): Promise<ProjectMember> {
+    // `uq_project_member` is on (project_id, user_id) with no status qualifier, so
+    // re-adding a user previously removed from this project collides with their
+    // own `removed` row on a plain INSERT (raw unique-violation, surfaces as an
+    // unhandled 500 — `findMember`'s pre-check only looks at active rows, so it
+    // never sees this coming). Reactivate the row instead. The supplied
+    // `accessLevel` travels through BOTH the insert and the reactivation: no
+    // caller "follows with a PATCH" (the Add flows pass the level up front —
+    // service upsert + FE), so resetting to NULL here made every remove-then-add
+    // land as No Access regardless of what was picked. When no level is supplied,
+    // NULL remains the honest value (a stale level is never resurrected).
+    const level = input.accessLevel !== undefined ? input.accessLevel : null;
     const rows = await (tx ?? this.db)
       .insert(projectMembers)
       .values({
@@ -117,16 +159,30 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
         workspaceId: input.workspaceId,
         projectId: input.projectId,
         userId: input.userId,
+        accessLevel: level,
         status: 'active',
         joinedAt: new Date(),
         updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [projectMembers.projectId, projectMembers.userId],
+        set: {
+          status: 'active',
+          accessLevel: level,
+          joinedAt: new Date(),
+          updatedAt: new Date(),
+        },
       })
       .returning();
     return rows[0];
   }
 
-  async updateMember(id: string, input: UpdateProjectMemberInput): Promise<ProjectMember> {
-    const rows = await this.db
+  async updateMember(
+    id: string,
+    input: UpdateProjectMemberInput,
+    tx?: DbExecutor,
+  ): Promise<ProjectMember> {
+    const rows = await (tx ?? this.db)
       .update(projectMembers)
       .set({
         ...(input.accessLevel !== undefined && { accessLevel: input.accessLevel }),
@@ -138,10 +194,50 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
     return rows[0];
   }
 
-  async removeMember(projectId: string, userId: string): Promise<void> {
-    await this.db
+  async removeMember(
+    projectId: string,
+    userId: string,
+    actorId: string,
+    tx?: DbExecutor,
+  ): Promise<void> {
+    const db = tx ?? this.db;
+    await db
       .update(projectMembers)
       .set({ status: 'removed', updatedAt: new Date() })
       .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)));
+    // No Access means NO access — the FE confirm dialog promises "their Team memberships
+    // will be removed" on this exact action. Without this delete the rows survive, so
+    // re-adding the user later silently restores their old team scope (and an Editor's
+    // team-derived write boundary) with no re-assignment step and no trace.
+    await db.delete(teamMembers).where(
+      and(
+        eq(teamMembers.userId, userId),
+        inArray(
+          teamMembers.teamId,
+          this.db
+            .select({ teamId: projectTeams.teamId })
+            .from(projectTeams)
+            .where(and(eq(projectTeams.projectId, projectId), eq(projectTeams.status, 'active'))),
+        ),
+      ),
+    );
+    // Unassign their tasks in this project's teams, same rule removeTeamMember already
+    // enforces: Team Status folds in any user who still owns a task, so a No-Access
+    // member otherwise stays visible in Team Status / assignee cells indefinitely.
+    // Scoped by the project's actively-linked teams so tasks elsewhere are untouched.
+    await db.execute(sql`
+      UPDATE work.tasks t
+      SET assignee_id = NULL, updated_by = ${actorId}, updated_at = NOW()
+      WHERE t.assignee_id = ${userId}
+        AND t.deleted_at IS NULL
+        AND COALESCE(
+              t.team_id,
+              (SELECT wi.team_id FROM work.work_items wi WHERE wi.id = t.parent_id),
+              (SELECT it.team_id FROM work.iterations it WHERE it.id = t.iteration_id)
+            ) IN (
+              SELECT pt.team_id FROM work.project_teams pt
+              WHERE pt.project_id = ${projectId} AND pt.status = 'active'
+            )
+    `);
   }
 }

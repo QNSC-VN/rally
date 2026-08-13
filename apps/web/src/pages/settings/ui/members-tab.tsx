@@ -206,11 +206,11 @@ export function MembersTab() {
   const { user } = useAuthStore()
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const [showInviteModal, setShowInviteModal] = useState(false)
-  const [accessTarget, setAccessTarget] = useState<{
-    userId: string
-    displayName?: string | null
-    email?: string | null
-  } | null>(null)
+  // The full roster row (not just id/name/email): UserAccessModal's General tab
+  // edits Status, which needs the member's id/status/roleSlug too. Prop-drilled
+  // from the already-loaded roster rather than re-fetched, matching how other
+  // modals in this tree (EditProjectModal, TeamFormModal) receive a full entity.
+  const [accessTarget, setAccessTarget] = useState<WorkspaceMember | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all')
 
@@ -560,16 +560,10 @@ export function MembersTab() {
             {/* User-Centric Journey: View Project Access (SRS §5.1) */}
             <button
               type="button"
-              onClick={() =>
-                setAccessTarget({
-                  userId: m.userId,
-                  displayName: m.displayName,
-                  email: m.email,
-                })
-              }
+              onClick={() => setAccessTarget(m)}
               className="ml-auto shrink-0 rounded px-2 py-0.5 text-ui-xs text-primary hover:bg-primary-lighter"
             >
-              View Access
+              Manage Access
             </button>
           </div>
         )}
@@ -586,9 +580,7 @@ export function MembersTab() {
       {/* User-Centric Journey: per-user project access modal (SRS §5.1) */}
       {accessTarget && (
         <UserAccessModal
-          userId={accessTarget.userId}
-          displayName={accessTarget.displayName}
-          email={accessTarget.email}
+          member={accessTarget}
           workspaceId={workspaceId ?? ''}
           onClose={() => setAccessTarget(null)}
         />

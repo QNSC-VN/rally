@@ -103,11 +103,15 @@ describe('AccessService — scope-aware permission resolution', () => {
           useValue: {
             select: () => ({
               from: () => ({
-                // Phase 3: effectiveAssignments access_level query (no join).
+                // effectiveAssignments access_level query (now 1 join) and
+                // listReadableProjectIds (2 joins) — chainable; tests control
+                // `accessLevelRows` / `projectMemberRows`.
                 where: () => Promise.resolve(accessLevelRows),
-                // listReadableProjectIds (joins projects).
                 innerJoin: () => ({
-                  where: () => Promise.resolve(projectMemberRows),
+                  where: () => Promise.resolve(accessLevelRows),
+                  innerJoin: () => ({
+                    where: () => Promise.resolve(projectMemberRows),
+                  }),
                 }),
               }),
             }),
@@ -642,11 +646,15 @@ describe('AccessService — cached-permission invalidation', () => {
           useValue: {
             select: () => ({
               from: () => ({
-                // Phase 3: effectiveAssignments access_level query (no join).
+                // effectiveAssignments access_level query (now 1 join) and
+                // listReadableProjectIds (2 joins) — chainable; tests control
+                // `accessLevelRows` / `projectMemberRows`.
                 where: () => Promise.resolve(accessLevelRows),
-                // listReadableProjectIds (joins projects).
                 innerJoin: () => ({
-                  where: () => Promise.resolve(projectMemberRows),
+                  where: () => Promise.resolve(accessLevelRows),
+                  innerJoin: () => ({
+                    where: () => Promise.resolve(projectMemberRows),
+                  }),
                 }),
               }),
             }),
@@ -701,17 +709,20 @@ describe('AccessService — cached-permission invalidation', () => {
     expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
   });
 
-  it('DOES invalidate for a project-scoped assignment', async () => {
-    // The old token epoch skipped project scope, because project permissions were
-    // never in the token. The cache holds the assignment rows BOTH tiers read, so
-    // skipping it here would leave a project grant invisible for up to the TTL.
+  it('REFUSES a project-scoped assignment (scope retired with the access-level model)', async () => {
+    // Migration 0105 deleted scope_type='project' rows but the writer stayed, and a
+    // row minted here grants project-tier perms OUTSIDE project_members.access_level
+    // while getProjectAccessLevel doesn't recognize roleSlug 'project_member' — so
+    // assertTeamScoped silently bypasses for an "editor" granted this way. Refused
+    // loudly instead. (The old test asserted invalidation fired for the minted row;
+    // the row must not exist to invalidate.)
     const target = role('project_admin', ['project:edit']);
     roleRepo.findById.mockResolvedValue(target);
-    assignmentRepo.create.mockResolvedValue(assignment(target.id, 'project', 'proj-9'));
 
-    await service.assignRole(actor, USER, target.id, 'project', 'proj-9');
-
-    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
+    await expect(service.assignRole(actor, USER, target.id, 'project', 'proj-9')).rejects.toThrow(
+      'Project-scoped role assignments were retired',
+    );
+    expect(assignmentRepo.create).not.toHaveBeenCalled();
   });
 
   it("invalidates every holder when a custom role's permissions change", async () => {

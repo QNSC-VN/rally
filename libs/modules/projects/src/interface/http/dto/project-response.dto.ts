@@ -88,6 +88,13 @@ export const ProjectMemberResponseSchema = z.object({
   displayName: z.string().nullable(),
   email: z.string().nullable(),
   avatarUrl: z.string().nullable(),
+  teamCount: z
+    .number()
+    .int()
+    .min(0)
+    .describe(
+      'Active team_members rows for Teams linked to this project — same scoping as assertTeamScoped',
+    ),
 });
 
 export class ProjectMemberResponseDto extends createZodDto(ProjectMemberResponseSchema) {}

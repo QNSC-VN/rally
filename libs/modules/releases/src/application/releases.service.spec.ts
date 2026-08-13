@@ -77,6 +77,7 @@ const makeRepo = () => ({
 
 const makeProjects = () => ({
   getProject: vi.fn().mockResolvedValue({ id: 'proj-1' }),
+  assertProjectWritable: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeAccess = () => ({
@@ -203,7 +204,7 @@ describe('ReleasesService', () => {
     });
 
     it('validates project exists before creating', async () => {
-      projects.getProject.mockRejectedValue(new Error('PROJECT_NOT_FOUND'));
+      projects.assertProjectWritable.mockRejectedValue(new Error('PROJECT_NOT_FOUND'));
       await expect(service.createRelease(actor, 'bad', 'v2.0')).rejects.toThrow(
         'PROJECT_NOT_FOUND',
       );

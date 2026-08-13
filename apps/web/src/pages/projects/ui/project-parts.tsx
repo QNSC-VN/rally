@@ -9,7 +9,12 @@ import { DateField } from '@/shared/ui/date-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { notify, errorMessage } from '@/shared/lib/toast'
-import { useCreateProject, type Project } from '@/features/projects/api'
+import {
+  useCreateProject,
+  useUpdateProjectEstimationSettings,
+  type Project,
+  type ProjectEstimationSettings,
+} from '@/features/projects/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
 import {
   useWorkspaceTeams,
@@ -302,7 +307,7 @@ export function NewProjectModal({
 }) {
   const { t } = useTranslation('projects')
   const { user, hasPermission } = useAuthStore()
-  const isWA = hasPermission(PERMISSION.WORKSPACE_VIEW)
+  const isWA = hasPermission(PERMISSION.WORKSPACE_ALL)
   const [values, setValues] = useState<ProjectFormValues>({
     name: '',
     key: '',
@@ -319,6 +324,7 @@ export function NewProjectModal({
     hoursPerPoint: 8,
   })
   const { mutateAsync, isPending } = useCreateProject()
+  const { mutateAsync: saveEstimation } = useUpdateProjectEstimationSettings()
 
   const autoKey = (n: string) =>
     n
@@ -346,7 +352,7 @@ export function NewProjectModal({
       return
     }
     try {
-      await mutateAsync({
+      const created = await mutateAsync({
         workspaceId,
         name: values.name.trim(),
         key: trimmedKey,
@@ -357,6 +363,38 @@ export function NewProjectModal({
         teamIds: values.teamIds.length > 0 ? values.teamIds : undefined,
       })
       notify.success(t('create.created', { name: values.name }))
+
+      // Estimation settings are WA-admin only and OPTIONAL: work.project_settings defaults
+      // to the same 1/3/5/8/13 + 8 scale, so skip the call when a WA left them alone — the
+      // common path needs no row. Only a WA who chose different values persists them, and a
+      // failure here degrades rather than rolling back the create above (the project exists).
+      if (isWA) {
+        const estimation: ProjectEstimationSettings = {
+          xsPoints: values.xsPoints ?? 1,
+          sPoints: values.sPoints ?? 3,
+          mPoints: values.mPoints ?? 5,
+          lPoints: values.lPoints ?? 8,
+          xlPoints: values.xlPoints ?? 13,
+          hoursPerPoint: values.hoursPerPoint ?? 8,
+        }
+        const isDefault =
+          estimation.xsPoints === 1 &&
+          estimation.sPoints === 3 &&
+          estimation.mPoints === 5 &&
+          estimation.lPoints === 8 &&
+          estimation.xlPoints === 13 &&
+          estimation.hoursPerPoint === 8
+        if (!isDefault) {
+          try {
+            await saveEstimation({ id: created.id, input: estimation })
+          } catch {
+            notify.error(
+              'Estimation settings failed to save — the project was created with default sizing.',
+            )
+          }
+        }
+      }
+
       onClose()
     } catch (err) {
       const msg = errorMessage(err)

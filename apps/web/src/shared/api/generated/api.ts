@@ -630,6 +630,24 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/projects/{id}/estimation-settings': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get the project's estimation settings (per-project scale, SRS §6.2) */
+    get: operations['ProjectsController_getEstimationSettings']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update the project's estimation settings (Workspace Admin only) */
+    patch: operations['ProjectsController_updateEstimationSettings']
+    trace?: never
+  }
   '/v1/projects/{id}/statuses': {
     parameters: {
       query?: never
@@ -3049,12 +3067,6 @@ export interface components {
       timezone: string | null
       defaultLocale: string | null
       dateFormat: string | null
-      preliminaryEstimateMap: {
-        [key: string]: {
-          points: number
-          count: number
-        }
-      }
       /** Format: date-time */
       updatedAt: string
     }
@@ -3062,12 +3074,6 @@ export interface components {
       timezone?: string
       defaultLocale?: string
       dateFormat?: string
-      preliminaryEstimateMap?: {
-        [key: string]: {
-          points: number
-          count: number
-        }
-      }
     }
     AcceptInvitationDto: {
       token: string
@@ -3185,6 +3191,22 @@ export interface components {
         [key: string]: unknown
       }
     }
+    ProjectEstimationSettingsDto: {
+      xsPoints: number
+      sPoints: number
+      mPoints: number
+      lPoints: number
+      xlPoints: number
+      hoursPerPoint: number
+    }
+    UpdateProjectEstimationSettingsDto: {
+      xsPoints?: number
+      sPoints?: number
+      mPoints?: number
+      lPoints?: number
+      xlPoints?: number
+      hoursPerPoint?: number
+    }
     WorkflowStatusResponseDto: {
       /** Format: uuid */
       id: string
@@ -3247,6 +3269,8 @@ export interface components {
       displayName: string | null
       email: string | null
       avatarUrl: string | null
+      /** @description Active team_members rows for Teams linked to this project — same scoping as assertTeamScoped */
+      teamCount: number
     }
     UpdateProjectMemberDto: {
       /** @enum {string} */
@@ -7603,6 +7627,101 @@ export interface operations {
         content: {
           'application/json': components['schemas']['ProjectResponseDto']
         }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ProjectsController_getEstimationSettings: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ProjectEstimationSettingsDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ProjectsController_updateEstimationSettings: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateProjectEstimationSettingsDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ProjectEstimationSettingsDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {

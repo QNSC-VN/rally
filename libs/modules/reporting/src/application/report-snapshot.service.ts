@@ -219,7 +219,7 @@ export class ReportSnapshotService {
     localDate: string,
     now: Date,
   ): Promise<number> {
-    const map = await this.preliminaryEstimates.forWorkspace(release.workspaceId);
+    const map = await this.preliminaryEstimates.forProject(release.projectId);
     const [features, children] = await Promise.all([
       this.repo.getReleaseFeatures(
         release.workspaceId,

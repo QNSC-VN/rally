@@ -757,6 +757,41 @@
       "when": 1788160703005,
       "tag": "0106_project_estimation_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1788247103005,
+      "tag": "0107_backfill_project_estimation_from_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1788247103114,
+      "tag": "0108_drop_workspace_preliminary_estimate_map",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1788247103115,
+      "tag": "0109_remove_delivery_perms_from_project_member",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1788333603005,
+      "tag": "0110_editor_quality_team_status_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1788333703005,
+      "tag": "0111_drop_workspace_scoped_tier_assignments",
+      "breakpoints": true
     }
   ]
 }

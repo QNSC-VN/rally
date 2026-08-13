@@ -33,6 +33,10 @@ export interface TeamMember {
   userId: string;
   status: TeamMemberStatus;
   joinedAt: Date;
+  /** Resolved from identity.users at query time (repo LEFT join) — the roster renders them. */
+  displayName?: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface CreateTeamInput {

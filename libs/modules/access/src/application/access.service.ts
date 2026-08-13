@@ -21,8 +21,15 @@ import {
 } from '@shared-kernel';
 import type { JwtPayload, DrizzleDB } from '@platform';
 import { InjectDrizzle } from '@platform';
-import { and, eq } from 'drizzle-orm';
-import { projectMembers, projects, teamMembers, projectTeams } from '../../../../../db/schema/work';
+import { and, eq, isNotNull } from 'drizzle-orm';
+import {
+  projectMembers,
+  projects,
+  teamMembers,
+  projectTeams,
+  teams,
+} from '../../../../../db/schema/work';
+import { workspaceMembers } from '../../../../../db/schema/workspace';
 import { IRoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository';
 import {
   IRoleAssignmentRepository,
@@ -111,12 +118,24 @@ export class AccessService {
     // (safety net until Phase 10 deletes them); they overlap during the
     // transition, which is consistent and never over-grants because the Phase 1
     // backfill mapped slugs to the same permission sets.
+    // The workspace-member row gates the synthesis too: a suspended/removed
+    // company member must lose ALL project delivery access on their next request
+    // (§8), not just the workspace-granted baseline — gating only
+    // listEffectiveForUser left admin/editor levels fully live indefinitely.
     const accessRows = await this.db
       .select({
         projectId: projectMembers.projectId,
         accessLevel: projectMembers.accessLevel,
       })
       .from(projectMembers)
+      .innerJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.workspaceId, projectMembers.workspaceId),
+          eq(workspaceMembers.userId, projectMembers.userId),
+          eq(workspaceMembers.status, 'active'),
+        ),
+      )
       .where(
         and(
           eq(projectMembers.workspaceId, workspaceId),
@@ -175,6 +194,13 @@ export class AccessService {
 
   async listRoles(workspaceId: string): Promise<SystemRole[]> {
     return this.roleRepo.listForWorkspace(workspaceId);
+  }
+
+  /** One workspace-visible role by id — null when missing or another workspace's. */
+  async findRole(workspaceId: string, roleId: string): Promise<SystemRole | null> {
+    const role = await this.roleRepo.findById(roleId);
+    if (!role || (role.workspaceId !== null && role.workspaceId !== workspaceId)) return null;
+    return role;
   }
 
   /**
@@ -386,6 +412,18 @@ export class AccessService {
     scopeType: ScopeType,
     scopeId?: string,
   ): Promise<UserRoleAssignment> {
+    // Migration 0105 deleted scope_type='project' rows but this writer stayed, and a
+    // row minted here grants project-tier perms OUTSIDE the access_level model while
+    // getProjectAccessLevel doesn't recognize roleSlug 'project_member' — so
+    // assertTeamScoped silently bypasses for an "editor" granted this way. The tier
+    // roles are granted per-Project via project_members.access_level only.
+    if (scopeType === 'project') {
+      throw new ConflictException(
+        'PROJECT_SCOPE_RETIRED',
+        'Project-scoped role assignments were retired; grant per-Project access levels instead',
+      );
+    }
+
     // Validate role exists and is accessible for this workspace
     const role = await this.roleRepo.findById(roleId);
     if (!role || (role.workspaceId !== null && role.workspaceId !== actor.workspaceId)) {
@@ -425,7 +463,6 @@ export class AccessService {
           resourceId: created.id,
           workspaceId: actor.workspaceId,
           actor: { id: actor.sub },
-          ...(scopeType === 'project' && scopeId ? { projectId: scopeId } : {}),
           changes: { after: { userId, roleId, scopeType, scopeId: scopeId ?? null } },
         },
         tx,
@@ -527,10 +564,15 @@ export class AccessService {
     if (!teamId) return;
     const level = await this.getProjectAccessLevel(actor.workspaceId, actor.sub, projectId);
     if (level !== 'editor') return; // admin/WA bypass (All Teams)
-    const teams = await this.db
+    // Named `scopedTeams` — a bare `teams` would shadow the imported schema table.
+    const scopedTeams = await this.db
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
       .innerJoin(projectTeams, eq(projectTeams.teamId, teamMembers.teamId))
+      // The team's OWN lifecycle must gate too: an archived team is "not actionable
+      // planning demand" and must not stay writable through its Editors. Without the
+      // join, deactivating a team left its members' write scope fully live.
+      .innerJoin(teams, eq(teams.id, teamMembers.teamId))
       .where(
         and(
           eq(teamMembers.workspaceId, actor.workspaceId),
@@ -538,9 +580,10 @@ export class AccessService {
           eq(projectTeams.projectId, projectId),
           eq(teamMembers.status, 'active'),
           eq(projectTeams.status, 'active'),
+          eq(teams.status, 'active'),
         ),
       );
-    if (!teams.some((t) => t.teamId === teamId)) {
+    if (!scopedTeams.some((t) => t.teamId === teamId)) {
       throw new PermissionDeniedException(
         'TEAM_NOT_IN_SCOPE',
         'Editors can only modify work in their assigned teams',
@@ -739,15 +782,32 @@ export class AccessService {
       )
       .map((a) => a.scopeId as string);
 
+    // A membership row counts as readable ONLY with a real access level AND an
+    // active company row: a NULL level (team-derived union shape) or a suspended
+    // member listed the project in every picker while opening it 403'd — two
+    // readers, one row, different answers.
     const memberships = await this.db
       .select({ projectId: projectMembers.projectId })
       .from(projectMembers)
       .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+      .innerJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.workspaceId, projectMembers.workspaceId),
+          eq(workspaceMembers.userId, projectMembers.userId),
+          eq(workspaceMembers.status, 'active'),
+        ),
+      )
       .where(
         and(
           eq(projectMembers.workspaceId, workspaceId),
           eq(projectMembers.userId, userId),
           eq(projectMembers.status, 'active'),
+          // The "real access level" half of the comment above, as code: an explicit
+          // NULL-level row (legitimately created by addMember with no level) is not
+          // a grant — the synthesis denies it, so listing the project here put it in
+          // every picker while opening it 403'd.
+          isNotNull(projectMembers.accessLevel),
         ),
       );
 

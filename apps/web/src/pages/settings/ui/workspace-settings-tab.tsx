@@ -3,7 +3,6 @@ import { SettingsTabHeader } from './settings-tab-header'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 
-import { PreliminaryEstimateCard } from './preliminary-estimate-card'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useWorkspaces,
@@ -44,9 +43,6 @@ export function WorkspaceSettingsTab() {
   // their own. Empty string = "not set".
   const [timezone, setTimezone] = useState(settings?.timezone ?? '')
   const [locale, setLocale] = useState(settings?.defaultLocale ?? '')
-  // The COMPLETE effective map, as the GET returns it. Undefined until settings load, so the
-  // card only renders once there is something real to edit.
-  const [estimateMap, setEstimateMap] = useState(settings?.preliminaryEstimateMap)
 
   useResetOnIdChange(current?.id, () => {
     setName(current!.name)
@@ -55,7 +51,6 @@ export function WorkspaceSettingsTab() {
   useResetOnIdChange(settings ? workspaceId : undefined, () => {
     setTimezone(settings?.timezone ?? '')
     setLocale(settings?.defaultLocale ?? '')
-    setEstimateMap(settings?.preliminaryEstimateMap)
   })
 
   async function handleSave(e: React.FormEvent) {
@@ -67,11 +62,6 @@ export function WorkspaceSettingsTab() {
         updateSettings.mutateAsync({
           timezone: timezone || null,
           defaultLocale: locale || null,
-          // Only the sizes that actually changed. Sending all six would work — the server
-          // merges either way — but it would persist a copy of today's defaults as overrides,
-          // so a later change to the seeded scale would stop reaching this workspace. A
-          // minimal override set keeps the default meaningful.
-          ...(changedSizes ? { preliminaryEstimateMap: changedSizes } : {}),
         }),
       ])
       setWorkspace({
@@ -84,20 +74,6 @@ export function WorkspaceSettingsTab() {
       notify.fromError(err, t('workspace.saveFailed'))
     }
   }
-
-  // Diffed against what the server sent, so an untouched table sends nothing at all.
-  const changedSizes = (() => {
-    const before = settings?.preliminaryEstimateMap
-    if (!before || !estimateMap) return undefined
-    const diff = Object.fromEntries(
-      Object.entries(estimateMap).filter(
-        ([size, v]) =>
-          v.points !== before[size as keyof typeof before]?.points ||
-          v.count !== before[size as keyof typeof before]?.count,
-      ),
-    )
-    return Object.keys(diff).length > 0 ? diff : undefined
-  })()
 
   const saving = update.isPending || updateSettings.isPending
 
@@ -157,11 +133,6 @@ export function WorkspaceSettingsTab() {
                 </FormField>
               </CardBody>
             </Card>
-
-            {/* The denominator behind every Estimated Progress meter — see the card. */}
-            {estimateMap && (
-              <PreliminaryEstimateCard value={estimateMap} onChange={setEstimateMap} />
-            )}
 
             <div className="flex items-center gap-3 pt-1">
               <Button type="submit" disabled={saving || !name.trim()}>

@@ -57,10 +57,19 @@ describe('BA flows: Company → Project → Team foundation (real AppModule + se
       });
 
       // RBAC migration: creator is no longer auto-lead — explicitly add as admin.
-      const member = await projects.addProjectMember(actor.workspaceId, project.id, actor.sub);
-      await projects.updateProjectMember(actor.workspaceId, project.id, member.id, {
-        accessLevel: 'admin',
-      });
+      const member = await projects.addProjectMember(
+        actor.workspaceId,
+        project.id,
+        actor.sub,
+        actor.sub,
+      );
+      await projects.updateProjectMember(
+        actor.workspaceId,
+        project.id,
+        member.id,
+        { accessLevel: 'admin' },
+        actor.sub,
+      );
 
       // Archive is allowed for a project member (explicitly added above).
       const archived = await projects.updateProject(actor, project.id, { status: 'archived' });

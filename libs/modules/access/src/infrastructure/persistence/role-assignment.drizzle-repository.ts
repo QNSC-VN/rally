@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { userRoleAssignments, systemRoles } from '../../../../../../db/schema/access';
+import { workspaceMembers } from '../../../../../../db/schema/workspace';
 import type {
   UserRoleAssignment,
   AssignRoleInput,
@@ -73,6 +74,19 @@ export class RoleAssignmentDrizzleRepository implements IRoleAssignmentRepositor
       })
       .from(userRoleAssignments)
       .innerJoin(systemRoles, eq(userRoleAssignments.roleId, systemRoles.id))
+      // A suspended/removed workspace member must lose all access at resolution time,
+      // not at cache TTL or token expiry. Without this join the member row is never
+      // consulted, so "loses all workspace access" was false until the 5-min cache
+      // expired AND the assignment rows were separately cleaned up. The join makes the
+      // member row the gate: no active row → no effective permissions → next request 403s.
+      .innerJoin(
+        workspaceMembers,
+        and(
+          eq(workspaceMembers.workspaceId, userRoleAssignments.workspaceId),
+          eq(workspaceMembers.userId, userRoleAssignments.userId),
+          eq(workspaceMembers.status, 'active'),
+        ),
+      )
       .where(
         and(
           eq(userRoleAssignments.workspaceId, workspaceId),

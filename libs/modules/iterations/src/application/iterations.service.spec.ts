@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  DRIZZLE,
-  NotFoundException,
-  PreconditionFailedException,
-} from '@platform';
+import { DRIZZLE, NotFoundException, PreconditionFailedException } from '@platform';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { IterationsService } from './iterations.service';
@@ -52,6 +48,7 @@ describe('IterationsService', () => {
   };
   let projects: {
     getProject: ReturnType<typeof vi.fn>;
+    assertProjectWritable: ReturnType<typeof vi.fn>;
     listProjectTeams: ReturnType<typeof vi.fn>;
     assertTeamLinkedToProject: ReturnType<typeof vi.fn>;
   };
@@ -91,6 +88,7 @@ describe('IterationsService', () => {
     };
     projects = {
       getProject: vi.fn().mockResolvedValue({ id: 'proj-1' }),
+      assertProjectWritable: vi.fn().mockResolvedValue(undefined),
       listProjectTeams: vi.fn().mockResolvedValue([{ teamId: 'team-1', status: 'active' }]),
       assertTeamLinkedToProject: vi.fn(),
     };

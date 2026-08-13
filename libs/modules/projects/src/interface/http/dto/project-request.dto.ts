@@ -71,3 +71,29 @@ export const UpdateProjectMemberSchema = z.object({
 });
 
 export class UpdateProjectMemberDto extends createZodDto(UpdateProjectMemberSchema) {}
+
+// ── Estimation Settings (SRS §6.2) ───────────────────────────────────────────
+//
+// The per-PROJECT T-shirt → points scale + hours/point, stored in work.project_settings.
+// Write side is WA-admin only (the route carries `workspace:edit`); readable by anyone
+// who can view the project, because every progress bar and capacity figure already
+// derives from it via PreliminaryEstimateMapService.forProject(). The full schema is the
+// GET response (defaults filled when no row exists); the partial is the PATCH body, so
+// omitted fields keep their current value rather than resetting to the default.
+export const ProjectEstimationSettingsSchema = z.object({
+  xsPoints: z.number().int().min(1),
+  sPoints: z.number().int().min(1),
+  mPoints: z.number().int().min(1),
+  lPoints: z.number().int().min(1),
+  xlPoints: z.number().int().min(1),
+  // numeric(8,2), CHECK > 0 in migration 0106; the FE steps by 0.5 from 8, but the BE
+  // enforces the column's own rule, not the input's UX convenience.
+  hoursPerPoint: z.number().positive(),
+});
+
+export class ProjectEstimationSettingsDto extends createZodDto(ProjectEstimationSettingsSchema) {}
+
+export const UpdateProjectEstimationSettingsSchema = ProjectEstimationSettingsSchema.partial();
+export class UpdateProjectEstimationSettingsDto extends createZodDto(
+  UpdateProjectEstimationSettingsSchema,
+) {}

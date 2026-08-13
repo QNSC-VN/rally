@@ -5,7 +5,6 @@ import {
   KeyRound,
   Globe,
   Users,
-  UsersRound,
   FolderKanban,
   ShieldCheck,
   Plug,
@@ -20,11 +19,10 @@ import { EmptyState } from '@/shared/ui/empty-state'
 import { ProfileTab } from './ui/profile-tab'
 import { WorkspaceSettingsTab } from './ui/workspace-settings-tab'
 import { MembersTab } from './ui/members-tab'
-import { TeamsTab } from './ui/teams-tab'
 import { AuditLogTab } from './ui/audit-log-tab'
 // RolesTab removed — no custom roles under the R1 access-level model (RBAC migration).
 import { IntegrationsTab } from './ui/integrations-tab'
-import { ProjectsAccessTab } from './ui/projects-access-tab'
+import { WorkspaceProjectsPanel } from './ui/workspace-projects-panel'
 import { MyPermissionsTab } from './ui/my-permissions-tab'
 import { PermissionModelTab } from './ui/permission-model-tab'
 // NotificationsTab is intentionally NOT wired into the sidebar: Notification
@@ -71,12 +69,6 @@ const SIDEBAR: SettingsGroup[] = [
         label: 'nav.members',
         icon: Users,
         requires: PERMISSION.USERS_ASSIGN_ROLE,
-      },
-      {
-        key: 'teams',
-        label: 'nav.teams',
-        icon: UsersRound,
-        requires: PERMISSION.TEAMS_CREATE,
       },
       {
         key: 'projects-access',
@@ -134,14 +126,12 @@ export function SettingsPage() {
       <MyPermissionsTab />
     ) : activeTab === 'members' ? (
       <MembersTab />
-    ) : activeTab === 'teams' ? (
-      <TeamsTab />
     ) : activeTab === 'workspace' ? (
       <WorkspaceSettingsTab />
     ) : activeTab === 'audit' ? (
       <AuditLogTab />
     ) : activeTab === 'projects-access' ? (
-      <ProjectsAccessTab />
+      <WorkspaceProjectsPanel />
     ) : activeTab === 'permission-model' ? (
       <PermissionModelTab />
     ) : activeTab === 'integrations' ? (

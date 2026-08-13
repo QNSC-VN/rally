@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
-import { projectTeams, teams } from '../../../../../../db/schema/work';
+import { projectTeams, teams, teamMembers } from '../../../../../../db/schema/work';
 import type { ProjectTeamLink } from '../../domain/project.types';
 import { IProjectTeamRepository } from '../../domain/ports/project-team.repository';
 
@@ -37,6 +37,14 @@ export class ProjectTeamDrizzleRepository implements IProjectTeamRepository {
         unlinkedAt: projectTeams.unlinkedAt,
         name: teams.name,
         key: teams.key,
+        leadId: teams.leadId,
+        // Active-member count per team — the Teams tab's Members column and the
+        // tree/detail surfaces render it; without it every count read 0.
+        memberCount: sql<number>`(
+          select count(*)::int from ${teamMembers}
+          where ${teamMembers.teamId} = ${projectTeams.teamId}
+            and ${teamMembers.status} = 'active'
+        )`,
       })
       .from(projectTeams)
       .leftJoin(teams, eq(projectTeams.teamId, teams.id))
