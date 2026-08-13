@@ -25,6 +25,7 @@ import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
 import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
@@ -41,6 +42,11 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
   const updateAccess = useUpdateProjectAccess(projectId)
   const [removeTarget, setRemoveTarget] = useState<ProjectMember | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const filtered = members.filter((m) =>
+    `${m.displayName ?? ''} ${m.email ?? ''}`.toLowerCase().includes(query.toLowerCase()),
+  )
 
   function handleChange(member: ProjectMember, level: 'admin' | 'editor') {
     updateAccess.mutate(
@@ -75,22 +81,28 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
 
   return (
     <>
-      {isWA && (
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-ui-sm text-foreground-subtle">{members.length} project users</p>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search users…"
+          className="max-w-xs"
+          aria-label="Search project users"
+        />
+        {isWA && (
           <Button type="button" onClick={() => setAddOpen(true)}>
             <UserPlus size={14} /> Add existing user
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       {isLoading ? (
         <div className="flex items-center gap-2 py-4 text-ui-md text-foreground-subtle">
           <Loader2 size={14} className="animate-spin" /> Loading members…
         </div>
-      ) : members.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="rounded-lg border border-border-subtle px-4 py-8 text-center text-ui-md text-foreground-subtle">
-          No members in this project yet.
+          {query ? 'No users match your search.' : 'No members in this project yet.'}
         </div>
       ) : (
         <div className="rounded-lg border border-border-subtle">
@@ -100,7 +112,7 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
             <span className="w-28 text-center">Access Level</span>
             {isWA && <span className="w-8 text-center">Action</span>}
           </div>
-          {members.map((m) => (
+          {filtered.map((m) => (
             <div
               key={m.id}
               className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5 last:border-b-0"

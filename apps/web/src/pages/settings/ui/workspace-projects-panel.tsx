@@ -19,6 +19,7 @@ import {
   Archive,
   RotateCcw,
   Trash2,
+  Pencil,
 } from 'lucide-react'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -33,6 +34,7 @@ import {
   type Project,
 } from '@/features/projects/api'
 import { useProjectTeams } from '@/features/teams/api'
+import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { SettingsTabHeader } from './settings-tab-header'
 import { ProjectAccessList } from './projects-access-tab'
 import { ProjectTeamsTab } from './project-teams-tab'
@@ -42,7 +44,10 @@ import { Button } from '@/shared/ui/button'
 import { IconButton } from '@/shared/ui/icon-button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { Input } from '@/shared/ui/input'
+import { Textarea } from '@/shared/ui/textarea'
 import { FormField } from '@/shared/ui/form-field'
+import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
+import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 
 type TabKey = 'details' | 'users' | 'teams'
 const SIZES: Array<{
@@ -140,11 +145,12 @@ export function WorkspaceProjectsPanel() {
           {selected ? (
             <ProjectDetail project={selected} isWA={isWA} />
           ) : (
-            <div className="mx-auto max-w-3xl text-ui-sm text-foreground-subtle">
-              <p>
-                Select a project to manage its details, estimation settings, team access and teams.
-              </p>
-            </div>
+            <WorkspaceOverview
+              projects={projects}
+              onSelect={setSelectedId}
+              isWA={isWA}
+              onCreate={() => setCreateOpen(true)}
+            />
           )}
         </section>
       </div>
@@ -153,6 +159,148 @@ export function WorkspaceProjectsPanel() {
         <NewProjectModal workspaceId={workspaceId} onClose={() => setCreateOpen(false)} />
       )}
     </>
+  )
+}
+
+/** Workspace-node view: the project list (mockup's workspace overview). */
+function WorkspaceOverview({
+  projects,
+  onSelect,
+  isWA,
+  onCreate,
+}: {
+  projects: Project[]
+  onSelect: (id: string) => void
+  isWA: boolean
+  onCreate: () => void
+}) {
+  return (
+    <div className="mx-auto max-w-4xl">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-ui-lg font-semibold text-foreground">Projects</h2>
+        {isWA && (
+          <Button type="button" onClick={onCreate}>
+            <Plus size={14} /> Create project
+          </Button>
+        )}
+      </div>
+      {projects.length === 0 ? (
+        <div className="rounded-lg border border-border-subtle px-4 py-8 text-center text-ui-md text-foreground-subtle">
+          No projects yet.
+        </div>
+      ) : (
+        <div className="rounded-lg border border-border-subtle">
+          <div className="flex border-b border-border-subtle bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
+            <span className="w-20">Key</span>
+            <span className="flex-1">Project</span>
+            <span className="w-24">Status</span>
+            <span className="w-20 text-center">Teams</span>
+          </div>
+          {projects.map((p) => (
+            <div
+              key={p.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelect(p.id)}
+              onKeyDown={(e) => e.key === 'Enter' && onSelect(p.id)}
+              className="flex cursor-pointer items-center border-b border-border-subtle px-4 py-2.5 text-left last:border-b-0 hover:bg-surface-hover"
+            >
+              <span className="w-20 font-mono text-ui-xs text-foreground-subtle">{p.key}</span>
+              <span className="flex-1 truncate text-ui-sm font-medium text-foreground">
+                {p.name}
+              </span>
+              <span className="w-24 text-ui-xs text-foreground-subtle capitalize">{p.status}</span>
+              <span className="w-20 text-center text-ui-sm text-foreground-subtle">
+                {p.teamCount ?? 0}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Lean Edit modal for the core project identity fields (name/description/dates/lead).
+ *  Estimation lives on the Details tab; teams on the Teams tab — no duplication. */
+function EditProjectModal({ project, onClose }: { project: Project; onClose: () => void }) {
+  const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
+  const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  const update = useUpdateProject()
+  const [name, setName] = useState(project.name)
+  const [description, setDescription] = useState(project.description ?? '')
+  const [startDate, setStartDate] = useState(project.startDate ?? '')
+  const [endDate, setEndDate] = useState(project.endDate ?? '')
+  const [leadId, setLeadId] = useState<string | null>(project.leadId ?? null)
+
+  const leadOptions: SelectOption[] = wsMembers
+    .filter((m) => m.status === 'active' && m.roleSlug !== 'workspace_admin')
+    .map((m) => ({ value: m.userId, label: m.displayName ?? m.email ?? m.userId }))
+
+  function handleSave() {
+    update.mutate(
+      {
+        id: project.id,
+        input: {
+          name: name.trim(),
+          description: description.trim() || null,
+          startDate: startDate || null,
+          endDate: endDate || null,
+          leadId: leadId || null,
+        },
+      },
+      {
+        onSuccess: () => {
+          notify.success('Project updated')
+          onClose()
+        },
+        onError: (e) => notify.fromError(e, 'Failed to update project'),
+      },
+    )
+  }
+
+  return (
+    <AppModal open onClose={onClose} title={`Edit ${project.key}`} width={460}>
+      <ModalBody className="space-y-4">
+        <FormField label="Project name" required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+        </FormField>
+        <FormField label="Description">
+          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+        </FormField>
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Start date">
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </FormField>
+          <FormField label="End date">
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </FormField>
+        </div>
+        <FormField label="Project owner">
+          <SearchableSelect
+            variant="field"
+            value={leadId ?? ''}
+            ariaLabel="Project owner"
+            placeholder="Unassigned"
+            options={leadOptions}
+            onChange={(v) => setLeadId(v as string | null)}
+          />
+        </FormField>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="outline" type="button" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          disabled={name.trim().length < 2 || update.isPending}
+          onClick={handleSave}
+        >
+          {update.isPending && <Loader2 size={12} className="animate-spin" />}
+          Save
+        </Button>
+      </ModalFooter>
+    </AppModal>
   )
 }
 
@@ -221,6 +369,7 @@ function ProjectNode({
 function ProjectDetail({ project, isWA }: { project: Project; isWA: boolean }) {
   const [tab, setTab] = useState<TabKey>('details')
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const updateProject = useUpdateProject()
   const deleteProject = useDeleteProject()
   const tabs: Array<{ key: TabKey; label: string }> = [
@@ -262,6 +411,14 @@ function ProjectDetail({ project, isWA }: { project: Project; isWA: boolean }) {
         </div>
         {isWA && (
           <div className="flex gap-1">
+            <IconButton
+              size="sm"
+              aria-label="Edit project"
+              title="Edit"
+              onClick={() => setEditOpen(true)}
+            >
+              <Pencil size={14} />
+            </IconButton>
             {project.status === 'active' ? (
               <IconButton
                 size="sm"
@@ -314,6 +471,8 @@ function ProjectDetail({ project, isWA }: { project: Project; isWA: boolean }) {
       {tab === 'details' && <DetailsTab project={project} isWA={isWA} />}
       {tab === 'users' && <ProjectAccessList projectId={project.id} isWA={isWA} />}
       {tab === 'teams' && <ProjectTeamsTab projectId={project.id} isWA={isWA} />}
+
+      {editOpen && <EditProjectModal project={project} onClose={() => setEditOpen(false)} />}
 
       <ConfirmDialog
         open={deleteOpen}
