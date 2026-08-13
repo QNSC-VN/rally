@@ -145,10 +145,13 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
     // re-adding a user previously removed from this project collides with their
     // own `removed` row on a plain INSERT (raw unique-violation, surfaces as an
     // unhandled 500 — `findMember`'s pre-check only looks at active rows, so it
-    // never sees this coming). Reactivate the row instead. `accessLevel` resets to
-    // NULL on reactivation, same as a brand-new add: the caller always follows
-    // with a PATCH to set the level (see this repo's addMember docblock upstream),
-    // so a stale level from before removal is never silently resurrected.
+    // never sees this coming). Reactivate the row instead. The supplied
+    // `accessLevel` travels through BOTH the insert and the reactivation: no
+    // caller "follows with a PATCH" (the Add flows pass the level up front —
+    // service upsert + FE), so resetting to NULL here made every remove-then-add
+    // land as No Access regardless of what was picked. When no level is supplied,
+    // NULL remains the honest value (a stale level is never resurrected).
+    const level = input.accessLevel !== undefined ? input.accessLevel : null;
     const rows = await (tx ?? this.db)
       .insert(projectMembers)
       .values({
@@ -156,13 +159,19 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
         workspaceId: input.workspaceId,
         projectId: input.projectId,
         userId: input.userId,
+        accessLevel: level,
         status: 'active',
         joinedAt: new Date(),
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
         target: [projectMembers.projectId, projectMembers.userId],
-        set: { status: 'active', accessLevel: null, joinedAt: new Date(), updatedAt: new Date() },
+        set: {
+          status: 'active',
+          accessLevel: level,
+          joinedAt: new Date(),
+          updatedAt: new Date(),
+        },
       })
       .returning();
     return rows[0];

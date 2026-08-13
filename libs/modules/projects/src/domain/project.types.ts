@@ -167,6 +167,8 @@ export interface AddProjectMemberInput {
   workspaceId: string;
   projectId: string;
   userId: string;
+  /** Persisted up front on create AND on reactivation of a removed row. */
+  accessLevel?: 'admin' | 'editor';
 }
 
 export interface UpdateProjectMemberInput {
