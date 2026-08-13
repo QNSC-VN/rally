@@ -9,7 +9,7 @@
  * deactivated (history preserved), per SRS §488.
  */
 import { useState } from 'react'
-import { ArrowLeft, Loader2, Plus, Pencil, Archive, RotateCcw } from 'lucide-react'
+import { Loader2, Plus, Pencil, Archive, RotateCcw } from 'lucide-react'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useProjectTeams,
@@ -208,15 +208,11 @@ export function TeamDetail({
   team,
   workspaceId,
   isWA,
-  onBack,
-  backLabel = 'Back',
 }: {
   projectId: string
   team: Team
   workspaceId: string | undefined
   isWA: boolean
-  onBack: () => void
-  backLabel?: string
 }) {
   const { data: members = [], isLoading } = useTeamMembers(team.id)
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
@@ -228,9 +224,6 @@ export function TeamDetail({
   return (
     <div>
       <div className="mb-4 flex items-center gap-2">
-        <Button variant="ghost" type="button" onClick={onBack} aria-label={backLabel}>
-          <ArrowLeft size={14} /> {backLabel}
-        </Button>
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-ui-lg font-semibold text-foreground">{team.name}</h3>
           <p className="text-ui-xs text-foreground-subtle">{team.key}</p>

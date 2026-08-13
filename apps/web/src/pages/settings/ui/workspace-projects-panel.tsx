@@ -163,8 +163,6 @@ export function WorkspaceProjectsPanel() {
               team={selectedTeam.team}
               workspaceId={workspaceId}
               isWA={isWA}
-              onBack={() => setSelectedTeam(null)}
-              backLabel="Back"
             />
           ) : selected ? (
             <ProjectDetail
