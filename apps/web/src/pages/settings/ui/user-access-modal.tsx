@@ -17,8 +17,8 @@
  * Every mutation here commits on change — there is no draft/batch-review state,
  * matching the rest of this file and `project-teams-tab.tsx`.
  */
-import { useState } from 'react'
-import { Loader2, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Loader2, Plus, X } from 'lucide-react'
 import { useProjects } from '@/features/projects/api'
 import {
   useProjectMembers,
@@ -39,6 +39,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs'
 import { FormField } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { IconButton } from '@/shared/ui/icon-button'
+import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
@@ -76,6 +77,15 @@ export function UserAccessModal({
   const [tab, setTab] = useState<ModalTab>('general')
   const { data: projects = [], isLoading } = useProjects(workspaceId)
   const [removeProject, setRemoveProject] = useState<{ id: string; name: string } | null>(null)
+  /* Mockup parity: the roster lists only projects the user HAS access to; the
+   * rest surface through the "+ Add project access" picker. Membership is resolved
+   * by the same per-project probe each row already runs — the row reports back. */
+  const [membership, setMembership] = useState<Record<string, boolean>>({})
+  const reportMembership = (projectId: string, hasAccess: boolean) => {
+    setMembership((prev) =>
+      prev[projectId] === hasAccess ? prev : { ...prev, [projectId]: hasAccess },
+    )
+  }
 
   // ── General tab: Status (active/suspended) — same hook + confirm-before-
   // suspend behaviour as the Members grid's inline status cell (P4-SET-07).
@@ -165,17 +175,46 @@ export function UserAccessModal({
               </p>
             ) : (
               <div className="flex flex-col gap-3">
-                {projects.map((p) => (
-                  <UserProjectAccessRow
-                    key={p.id}
-                    projectId={p.id}
-                    projectKey={p.key}
-                    projectName={p.name}
+                {projects
+                  .filter((p) => membership[p.id] === true)
+                  .map((p) => (
+                    <UserProjectAccessRow
+                      key={p.id}
+                      projectId={p.id}
+                      projectKey={p.key}
+                      projectName={p.name}
+                      userId={member.userId}
+                      isWA={isWA}
+                      onMembership={reportMembership}
+                      onRemove={() => setRemoveProject({ id: p.id, name: `${p.key} · ${p.name}` })}
+                    />
+                  ))}
+                {/* Probes for not-yet-assigned projects: resolve membership (and
+                    re-report after an Add/Remove) without rendering a row. */}
+                {projects
+                  .filter((p) => membership[p.id] !== true)
+                  .map((p) => (
+                    <MembershipProbe
+                      key={p.id}
+                      projectId={p.id}
+                      userId={member.userId}
+                      onMembership={reportMembership}
+                    />
+                  ))}
+                {Object.keys(membership).length > 0 &&
+                  projects.every((p) => membership[p.id] !== true) && (
+                    <p className="py-2 text-center text-ui-sm text-foreground-subtle">
+                      No project access yet.
+                    </p>
+                  )}
+                {isWA && projects.some((p) => membership[p.id] === false) && (
+                  <AddProjectAccess
                     userId={member.userId}
-                    isWA={isWA}
-                    onRemove={() => setRemoveProject({ id: p.id, name: `${p.key} · ${p.name}` })}
+                    candidates={projects
+                      .filter((p) => membership[p.id] === false)
+                      .map((p) => ({ value: p.id, label: `${p.key} · ${p.name}` }))}
                   />
-                ))}
+                )}
               </div>
             )}
           </ModalBody>
@@ -273,6 +312,7 @@ function UserProjectAccessRow({
   projectName,
   userId,
   isWA,
+  onMembership,
   onRemove,
 }: {
   projectId: string
@@ -280,12 +320,22 @@ function UserProjectAccessRow({
   projectName: string
   userId: string
   isWA: boolean
+  onMembership: (projectId: string, hasAccess: boolean) => void
   onRemove: () => void
 }) {
-  const { data: members = [] } = useProjectMembers(projectId)
+  const { data: members = [], isLoading } = useProjectMembers(projectId)
   const me = members.find((m) => m.userId === userId)
   const updateAccess = useUpdateProjectAccess(projectId)
   const addMember = useAddProjectMember(projectId)
+  const reported = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (isLoading) return
+    const has = !!me && me.accessLevel !== null && me.status === 'active'
+    if (reported.current !== has) {
+      reported.current = has
+      onMembership(projectId, has)
+    }
+  }, [isLoading, me, projectId, onMembership])
 
   function handleChange(level: 'admin' | 'editor') {
     if (me) {
@@ -366,6 +416,101 @@ function UserProjectAccessRow({
           requireTeam={me?.accessLevel === 'editor'}
         />
       )}
+    </div>
+  )
+}
+
+/** Invisible membership probe for a not-yet-assigned project: reports whether
+ *  the user has access so the list and the Add picker stay truthful, without
+ *  rendering a row. Re-reports after the cache invalidation an Add fires. */
+function MembershipProbe({
+  projectId,
+  userId,
+  onMembership,
+}: {
+  projectId: string
+  userId: string
+  onMembership: (projectId: string, hasAccess: boolean) => void
+}) {
+  const { data: members = [], isLoading } = useProjectMembers(projectId)
+  useEffect(() => {
+    if (isLoading) return
+    const me = members.find((m) => m.userId === userId)
+    onMembership(projectId, !!me && me.accessLevel !== null && me.status === 'active')
+  }, [isLoading, members, projectId, userId, onMembership])
+  return null
+}
+
+/** "+ Add project access" — pick an unassigned project + level, assign in one POST. */
+function AddProjectAccess({ userId, candidates }: { userId: string; candidates: SelectOption[] }) {
+  const [open, setOpen] = useState(false)
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [level, setLevel] = useState<'admin' | 'editor'>('editor')
+  const [pending, setPending] = useState(false)
+
+  async function handleAdd() {
+    if (!projectId) return
+    setPending(true)
+    try {
+      const { error, response } = await apiClient.POST('/v1/projects/{id}/members', {
+        params: { path: { id: projectId! } },
+        body: { userId, accessLevel: level } as never,
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      notify.success('Project access added')
+      setProjectId(null)
+      setLevel('editor')
+      setOpen(false)
+    } catch (e) {
+      notify.fromError(e, 'Failed to add project access')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+        <Plus size={14} /> Add project access
+      </Button>
+    )
+  }
+  return (
+    <div className="space-y-3 rounded-lg border border-border-subtle p-4">
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Project" required>
+          <SearchableSelect
+            variant="field"
+            value={projectId ?? ''}
+            ariaLabel="Project to add"
+            placeholder="Select project"
+            options={candidates}
+            onChange={(v) => setProjectId(v as string)}
+          />
+        </FormField>
+        <FormField label="Access Level" required>
+          <SearchableSelect
+            variant="field"
+            value={level}
+            ariaLabel="Access level"
+            options={ACCESS_OPTIONS}
+            onChange={(v) => setLevel(v as 'admin' | 'editor')}
+          />
+        </FormField>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+        <Button type="button" disabled={!projectId || pending} onClick={handleAdd}>
+          {pending && <Loader2 size={12} className="animate-spin" />} Add
+        </Button>
+      </div>
+      <p className="text-ui-xs text-foreground-subtle">
+        {level === 'editor'
+          ? 'After adding, assign teams on the row below — an Editor needs at least one.'
+          : 'Admin automatically covers all teams in the project.'}
+      </p>
     </div>
   )
 }
