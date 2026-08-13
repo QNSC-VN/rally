@@ -244,7 +244,7 @@ export class MilestonesService {
       teamIds?: string[];
     } = {},
   ): Promise<Milestone> {
-    await this.projectsService.getProject(actor.workspaceId, projectId);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, projectId);
 
     // Tenant isolation: every linked project/team/release must live in this
     // workspace before we persist any link (defense in depth beyond RLS).
@@ -458,6 +458,7 @@ export class MilestonesService {
     input: UpdateMilestoneInput,
   ): Promise<Milestone> {
     const milestone = await this.getMilestone(actor.workspaceId, id);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
 
     // Validate status transition
     if (input.status && input.status !== milestone.status) {
@@ -626,7 +627,8 @@ export class MilestonesService {
   // ── Delete ────────────────────────────────────────────────────────────────
 
   async deleteMilestone(actor: JwtPayload, id: string): Promise<void> {
-    await this.getMilestone(actor.workspaceId, id);
+    const milestone = await this.getMilestone(actor.workspaceId, id);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
     await this.milestoneRepo.delete(id);
     this.logger.log({ milestoneId: id }, 'Milestone deleted');
   }

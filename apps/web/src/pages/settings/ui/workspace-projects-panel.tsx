@@ -370,6 +370,7 @@ function ProjectDetail({ project, isWA }: { project: Project; isWA: boolean }) {
   const [tab, setTab] = useState<TabKey>('details')
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
   const updateProject = useUpdateProject()
   const deleteProject = useDeleteProject()
   const tabs: Array<{ key: TabKey; label: string }> = [
@@ -424,7 +425,7 @@ function ProjectDetail({ project, isWA }: { project: Project; isWA: boolean }) {
                 size="sm"
                 aria-label="Archive project"
                 title="Archive"
-                onClick={() => setStatus('archived')}
+                onClick={() => setArchiveOpen(true)}
               >
                 <Archive size={14} />
               </IconButton>
@@ -473,6 +474,22 @@ function ProjectDetail({ project, isWA }: { project: Project; isWA: boolean }) {
       {tab === 'teams' && <ProjectTeamsTab projectId={project.id} isWA={isWA} />}
 
       {editOpen && <EditProjectModal project={project} onClose={() => setEditOpen(false)} />}
+
+      {/* Archive is a real state flip (read-only project, dropped from selectors) —
+          guarded like every other destructive action on this header. Restore stays
+          inline: it reverses the same flip and destroys nothing. */}
+      <ConfirmDialog
+        open={archiveOpen}
+        title="Archive project"
+        message={`Archive ${project.name}? It becomes read-only and is removed from active delivery selectors. Existing work and audit history are preserved.`}
+        confirmLabel="Archive project"
+        pending={updateProject.isPending}
+        onConfirm={() => {
+          setStatus('archived')
+          setArchiveOpen(false)
+        }}
+        onCancel={() => setArchiveOpen(false)}
+      />
 
       <ConfirmDialog
         open={deleteOpen}

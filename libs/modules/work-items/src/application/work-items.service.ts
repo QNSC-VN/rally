@@ -228,6 +228,22 @@ export class WorkItemsService {
   // ── Create ────────────────────────────────────────────────────────────────
 
   @Span('work-items.create')
+  /**
+   * An archived project is read-only end to end (PRJ-FR-010). The project record and
+   * key-gen were guarded, but its CONTENT stayed fully writable — archive then did
+   * nothing to stop edits inside the project. Every write path resolves the project
+   * anyway, so this check costs no extra query.
+   */
+  private async assertProjectWritable(workspaceId: string, projectId: string): Promise<void> {
+    const project = await this.projectsService.getProject(workspaceId, projectId);
+    if (project.status === 'archived') {
+      throw new PreconditionFailedException(
+        'PROJECT_ARCHIVED',
+        'This project is archived and read-only. Restore it to active before changing its content.',
+      );
+    }
+  }
+
   async createWorkItem(
     actor: JwtPayload,
     projectId: string,
@@ -235,7 +251,7 @@ export class WorkItemsService {
     title: string,
     opts: CreateWorkItemOpts = {},
   ): Promise<WorkItem> {
-    await this.projectsService.getProject(actor.workspaceId, projectId);
+    await this.assertProjectWritable(actor.workspaceId, projectId);
 
     // P1-15: parentId must belong to the same project
     if (opts.parentId) {
@@ -595,6 +611,7 @@ export class WorkItemsService {
     input: UpdateWorkItemInput,
   ): Promise<WorkItem> {
     const item = await this.getWorkItem(actor.workspaceId, id);
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
 
     // TASK-FR-012: a task's Work Product (parent) can be reassigned, but the new
     // parent must be a valid work product (US/DE, never a task) in the SAME
@@ -1073,6 +1090,7 @@ export class WorkItemsService {
     }
     // RBAC migration Phase 9: an Editor may only delete work in their assigned teams.
     await this.accessService.assertTeamScoped(actor, item.projectId, item.teamId);
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
     await this.workItemRepo.softDelete(id, actor.workspaceId);
     // Remove this item's F6 relations so no dangling links survive the delete
     // (the relations table has no FK/cascade to work_items).

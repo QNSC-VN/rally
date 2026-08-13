@@ -21,6 +21,16 @@ export interface ITeamRepository {
   // ── project links (project_teams, team side) ──────────────────────────────
   /** Active project ids this team is linked to. */
   listActiveProjectIds(teamId: string): Promise<string[]>;
+  /**
+   * Capacity plans that reference this team on any of the given (about-to-be-unlinked)
+   * projects — the team-side mirror of the project-side unlink guard. Non-empty means
+   * the unlink must be REFUSED, not silently orphan committed planning demand.
+   */
+  findBlockingCapacityPlans(
+    workspaceId: string,
+    teamId: string,
+    projectIds: string[],
+  ): Promise<Array<{ planKey: string }>>;
   /** How many of the given project ids exist in the workspace (existence check). */
   countProjectsInWorkspace(workspaceId: string, projectIds: string[]): Promise<number>;
   /** Reconcile the team's active project links to exactly `projectIds`. */

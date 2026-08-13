@@ -42,6 +42,12 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
     userId: string,
     tx?: DbExecutor,
   ): Promise<TeamMember> {
+    // `uq_team_member` is on (team_id, user_id) with no status qualifier, so a
+    // user who was previously removed and is being re-added collides with their
+    // own `removed` row on a plain INSERT (raw unique-violation, surfaces as an
+    // unhandled 500 — the caller's `findMember` pre-check only looks at active
+    // rows, so it never sees this coming). Reactivate the existing row instead,
+    // same idiom `setMembers`/`setTeamsForUser` already use below.
     const rows = await (tx ?? this.db)
       .insert(teamMembers)
       .values({
@@ -51,6 +57,10 @@ export class TeamMemberDrizzleRepository implements ITeamMemberRepository {
         userId,
         status: 'active',
         joinedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [teamMembers.teamId, teamMembers.userId],
+        set: { status: 'active', joinedAt: new Date() },
       })
       .returning();
     return rows[0];

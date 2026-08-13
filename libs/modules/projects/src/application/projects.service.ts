@@ -160,6 +160,22 @@ export class ProjectsService {
     return this.projectRepo.listHealthByWorkspace(actor.workspaceId, { limit });
   }
 
+  /**
+   * An archived project is read-only end to end (PRJ-FR-010): the project record and
+   * key-gen were guarded, but its CONTENT (work items, iterations, releases, milestones)
+   * stayed fully writable, so archiving stopped nothing inside the project. Shared by
+   * every content service's write path — also validates existence like getProject.
+   */
+  async assertProjectWritable(workspaceId: string, projectId: string): Promise<void> {
+    const project = await this.getProject(workspaceId, projectId);
+    if (project.status === 'archived') {
+      throw new PreconditionFailedException(
+        'PROJECT_ARCHIVED',
+        'This project is archived and read-only. Restore it to active before changing its content.',
+      );
+    }
+  }
+
   async createProject(actor: JwtPayload, input: CreateProjectRequest): Promise<Project> {
     const normalizedKey = input.key.toUpperCase().trim();
 
@@ -322,16 +338,27 @@ export class ProjectsService {
       );
     }
 
-    // G-6: archive or restore requires the actor to be a project member
+    // G-6: archive or restore requires the actor to be a project member — EXCEPT the
+    // Workspace Admin, who is company-level and deliberately excluded from project
+    // membership (§2). Without the bypass the only role allowed to click Archive got a
+    // 403 on a freshly-created project (createProject intentionally writes no
+    // project_members row for the WA).
     const isStatusChange =
       input.status === 'archived' || (project.status === 'archived' && input.status === 'active');
     if (isStatusChange) {
-      const membership = await this.projectMemberRepo.findMember(projectId, actor.sub);
-      if (!membership || membership.status !== 'active') {
-        throw new PermissionDeniedException(
-          'PROJECT_PERMISSION_DENIED',
-          'You must be an active project member to archive or restore this project',
-        );
+      const isWorkspaceAdmin = await this.access.hasPermission(
+        actor.workspaceId,
+        actor.sub,
+        'workspace:edit',
+      );
+      if (!isWorkspaceAdmin) {
+        const membership = await this.projectMemberRepo.findMember(projectId, actor.sub);
+        if (!membership || membership.status !== 'active') {
+          throw new PermissionDeniedException(
+            'PROJECT_PERMISSION_DENIED',
+            'You must be an active project member to archive or restore this project',
+          );
+        }
       }
     }
 
@@ -810,6 +837,7 @@ export class ProjectsService {
     workspaceId: string,
     projectId: string,
     userId: string,
+    actorId: string,
     accessLevel?: 'admin' | 'editor',
   ): Promise<ProjectMember> {
     await this.getProject(workspaceId, projectId);
@@ -827,14 +855,35 @@ export class ProjectsService {
       );
     }
 
-    const member = await this.projectMemberRepo.addMember({
-      id: uuidv7(),
-      workspaceId,
-      projectId,
-      userId,
-      // Persist the chosen level up front (the Add Existing User flow) rather than
-      // landing a NULL row the caller must immediately PATCH. Repo ignores undefined.
-      ...(accessLevel !== undefined && { accessLevel }),
+    const member = await this.uow.run(async (tx) => {
+      const created = await this.projectMemberRepo.addMember(
+        {
+          id: uuidv7(),
+          workspaceId,
+          projectId,
+          userId,
+          // Persist the chosen level up front (the Add Existing User flow) rather than
+          // landing a NULL row the caller must immediately PATCH. Repo ignores undefined.
+          ...(accessLevel !== undefined && { accessLevel }),
+        },
+        tx,
+      );
+      // Access grants are administrative events — a grant of Admin/Editor is at least
+      // as sensitive as the team-membership writes that ARE logged. Same tx as the
+      // mutation: the outbox row can never diverge from the grant it records.
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.PROJECT_MEMBER_ADDED,
+          resourceType: AUDIT_RESOURCE.PROJECT,
+          resourceId: projectId,
+          workspaceId,
+          actor: { id: actorId },
+          projectId,
+          changes: { after: { userId, accessLevel: accessLevel ?? null } },
+        },
+        tx,
+      );
+      return created;
     });
     // RBAC migration Phase 4: invalidate so the new access_level lands on the
     // user's next request, not the 5-min cache TTL.
@@ -848,6 +897,7 @@ export class ProjectsService {
     projectId: string,
     memberId: string,
     input: UpdateProjectMemberInput,
+    actorId: string,
   ): Promise<ProjectMember> {
     await this.getProject(workspaceId, projectId);
 
@@ -856,12 +906,39 @@ export class ProjectsService {
       throw new NotFoundException('PROJECT_MEMBER_NOT_FOUND', 'Project member not found');
     }
 
-    const updated = await this.projectMemberRepo.updateMember(memberId, input);
+    const updated = await this.uow.run(async (tx) => {
+      const next = await this.projectMemberRepo.updateMember(memberId, input, tx);
+      // Level changes (Admin ⇄ Editor) are the core RBAC administrative write — the
+      // Audit Log must show who granted what, when. Same tx as the mutation.
+      if (input.accessLevel !== undefined && input.accessLevel !== member.accessLevel) {
+        await this.audit.emit(
+          {
+            action: AUDIT_ACTION.PROJECT_MEMBER_UPDATED,
+            resourceType: AUDIT_RESOURCE.PROJECT,
+            resourceId: projectId,
+            workspaceId,
+            actor: { id: actorId },
+            projectId,
+            changes: {
+              before: { userId: member.userId, accessLevel: member.accessLevel },
+              after: { userId: member.userId, accessLevel: input.accessLevel },
+            },
+          },
+          tx,
+        );
+      }
+      return next;
+    });
     await this.access.invalidateUser(workspaceId, member.userId);
     return updated;
   }
 
-  async removeProjectMember(workspaceId: string, projectId: string, userId: string): Promise<void> {
+  async removeProjectMember(
+    workspaceId: string,
+    projectId: string,
+    userId: string,
+    actorId: string,
+  ): Promise<void> {
     await this.getProject(workspaceId, projectId);
 
     const existing = await this.projectMemberRepo.findMember(projectId, userId);
@@ -872,7 +949,23 @@ export class ProjectsService {
       );
     }
 
-    await this.projectMemberRepo.removeMember(projectId, userId);
+    await this.uow.run(async (tx) => {
+      // Also clears the user's team_members rows in this project's teams (repo does
+      // both) — same tx as the audit row below.
+      await this.projectMemberRepo.removeMember(projectId, userId, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.PROJECT_MEMBER_REMOVED,
+          resourceType: AUDIT_RESOURCE.PROJECT,
+          resourceId: projectId,
+          workspaceId,
+          actor: { id: actorId },
+          projectId,
+          changes: { before: { userId, accessLevel: existing.accessLevel } },
+        },
+        tx,
+      );
+    });
     // RBAC migration Phase 4: invalidate so the removal (No Access) lands on the
     // user's next request.
     await this.access.invalidateUser(workspaceId, userId);

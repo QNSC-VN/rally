@@ -19,9 +19,15 @@ import {
   useAddProjectMember,
   useUpdateProjectAccess,
   type Team,
+  type ProjectMember,
 } from '@/features/teams/api'
+import { apiClient } from '@/shared/api/http-client'
+import { apiErrorMessage } from '@/shared/api/api-error'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useProjects } from '@/features/projects/api'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
+import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
+import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
 import { Button } from '@/shared/ui/button'
@@ -177,7 +183,25 @@ function RestoreButton({ teamId, name }: { teamId: string; name: string }) {
   )
 }
 
-/** Create or edit a team. On create the team is linked to this project (projectIds). */
+/** Members of a project other than the tab's own (raw apiClient — the hooks are
+ *  single-project). Used by syncMemberAccess to cover every linked project. */
+async function fetchMembers(projectId: string): Promise<ProjectMember[]> {
+  const { data, error, response } = await apiClient.GET('/v1/projects/{id}/members', {
+    params: { path: { id: projectId } },
+  })
+  if (error) throw new Error(apiErrorMessage(error, response.status))
+  return (data as ProjectMember[]) ?? []
+}
+
+/**
+ * Create or edit a team. On create the team defaults to this project only
+ * (projectIds: [projectId]) but the WA can add more before submitting. On edit,
+ * the Linked Projects field defaults to the team's current project links
+ * (`team.projects`) and is included in the PATCH, so this is also the only
+ * project-scoped surface that can add/remove which projects a team belongs to
+ * — mirrors teams-tab.tsx's TeamProjectsCell, including its "keep >=1 project"
+ * guard (a team must always stay linked to at least one project).
+ */
 function TeamFormModal({
   projectId,
   workspaceId,
@@ -190,6 +214,7 @@ function TeamFormModal({
   onClose: () => void
 }) {
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  const { data: projects = [] } = useProjects(workspaceId)
   // Existing project members — only needed on create, to sync access for selected members.
   const { data: projectMembers = [] } = useProjectMembers(team ? undefined : projectId)
   const createTeam = useCreateTeam()
@@ -199,8 +224,14 @@ function TeamFormModal({
   const [name, setName] = useState(team?.name ?? '')
   const [key, setKey] = useState(team?.key ?? '')
   const [leadId, setLeadId] = useState<string | null>(team?.leadId ?? null)
-  const [memberUserIds, setMemberUserIds] = useState<string[]>([])
-  const [memberLevel, setMemberLevel] = useState<'admin' | 'editor'>('editor')
+  const [projectIds, setProjectIds] = useState<string[]>(
+    team ? (team.projects ?? []).map((p) => p.projectId) : [projectId],
+  )
+  // Per-user access map: presence of a userId = included; its value = the level that
+  // row gets. Replaces the old (memberUserIds[] + one shared memberLevel) shape, which
+  // could only add everyone at the SAME level — the mockup's Members & Access table lets
+  // Priya Nair land as Admin while everyone else stays Editor in the same action.
+  const [memberAccess, setMemberAccess] = useState<Record<string, 'admin' | 'editor'>>({})
 
   // Workspace Admin is company-level only — not a Team lead or member candidate (§2).
   const eligible = wsMembers.filter(
@@ -210,29 +241,84 @@ function TeamFormModal({
     value: m.userId,
     label: m.displayName ?? m.email ?? m.userId,
   }))
-  const memberOptions: SelectOption[] = leadOptions
+  const projectOptions: SelectOption[] = projects.map((p) => ({
+    value: p.id,
+    label: `${p.key} · ${p.name}`,
+  }))
   const levelOptions: SelectOption[] = [
     { value: 'admin', label: 'Admin' },
     { value: 'editor', label: 'Editor' },
   ]
 
-  const valid = name.trim().length >= 2 && /^[A-Z][A-Z0-9]{1,9}$/.test(key)
+  const valid = name.trim().length >= 2 && /^[A-Z][A-Z0-9]{1,9}$/.test(key) && projectIds.length > 0
 
-  /** P4-RBAC-010: setting up a team assigns each selected member their Project access. */
-  async function syncMemberAccess() {
-    for (const uid of memberUserIds) {
-      const existing = projectMembers.find((pm) => pm.userId === uid)
-      if (existing) {
-        await updateAccess.mutateAsync({ memberId: existing.id, accessLevel: memberLevel })
+  /** Toggling a row includes/excludes it. A newly-checked row defaults to its CURRENT
+   *  project access level (mockup: Priya Nair, already Admin, shows "Admin" once
+   *  checked) or 'editor' when it has none yet — never a blanket shared default. */
+  function toggleMemberRow(userId: string, currentLevel: 'admin' | 'editor' | null) {
+    setMemberAccess((prev) => {
+      const next = { ...prev }
+      if (userId in next) {
+        delete next[userId]
       } else {
-        await addProjectMember.mutateAsync({ userId: uid, accessLevel: memberLevel })
+        next[userId] = currentLevel ?? 'editor'
+      }
+      return next
+    })
+  }
+
+  function setMemberRowLevel(userId: string, level: 'admin' | 'editor') {
+    setMemberAccess((prev) => ({ ...prev, [userId]: level }))
+  }
+
+  /** P4-RBAC-010: setting up a team assigns each selected member their Project access —
+   *  each at ITS OWN level, per `memberAccess` — on EVERY project the team is linked to.
+   *  The roster implies membership in all linked projects; syncing only the tab's own
+   *  project left an Editor No Access on the others (finding #4). Other projects use
+   *  raw apiClient because the mutation hooks are bound to this tab's projectId. */
+  async function syncMemberAccess() {
+    for (const pid of projectIds) {
+      const list: ProjectMember[] =
+        pid === projectId ? projectMembers : ((await fetchMembers(pid)) ?? [])
+      for (const [uid, level] of Object.entries(memberAccess)) {
+        const existing = list.find((pm) => pm.userId === uid)
+        if (existing) {
+          if (existing.accessLevel === level) continue
+          if (pid === projectId) {
+            await updateAccess.mutateAsync({ memberId: existing.id, accessLevel: level })
+          } else {
+            const { error, response } = await apiClient.PATCH(
+              '/v1/projects/{id}/members/{memberId}',
+              {
+                params: { path: { id: pid, memberId: existing.id } },
+                body: { accessLevel: level },
+              },
+            )
+            if (error) throw new Error(apiErrorMessage(error, response.status))
+          }
+        } else if (pid === projectId) {
+          await addProjectMember.mutateAsync({ userId: uid, accessLevel: level })
+        } else {
+          const { error, response } = await apiClient.POST('/v1/projects/{id}/members', {
+            params: { path: { id: pid } },
+            body: { userId: uid, accessLevel: level } as never,
+          })
+          if (error) throw new Error(apiErrorMessage(error, response.status))
+        }
       }
     }
   }
 
   async function handleSave() {
     if (!valid) return
-    const base = { name: name.trim(), key, leadId: leadId ?? null }
+    // A team must keep >=1 linked project (API constraint, same as
+    // TeamProjectsCell's inline guard) — `valid` already covers this, but
+    // guard here too since it's the actual submit path.
+    if (projectIds.length === 0) {
+      notify.error('A team must stay linked to at least one project')
+      return
+    }
+    const base = { name: name.trim(), key, leadId: leadId ?? null, projectIds }
     if (team) {
       updateTeam.mutate(base, {
         onSuccess: () => {
@@ -247,8 +333,7 @@ function TeamFormModal({
       await createTeam.mutateAsync({
         workspaceId: workspaceId ?? '',
         ...base,
-        projectIds: [projectId],
-        memberUserIds,
+        memberUserIds: Object.keys(memberAccess),
       })
       await syncMemberAccess()
       notify.success('Team created')
@@ -290,6 +375,21 @@ function TeamFormModal({
             className="font-mono"
           />
         </FormField>
+        <FormField
+          label="Linked projects"
+          hint="A team must stay linked to at least one project."
+          required
+        >
+          <SearchableSelect
+            variant="field"
+            multiple
+            value={projectIds}
+            ariaLabel="Linked projects"
+            placeholder="Select projects"
+            options={projectOptions}
+            onChange={(v) => setProjectIds(v as string[])}
+          />
+        </FormField>
         <FormField label="Team lead">
           <SearchableSelect
             variant="field"
@@ -300,31 +400,75 @@ function TeamFormModal({
             onChange={(v) => setLeadId(v as string | null)}
           />
         </FormField>
-        {!team && memberOptions.length > 0 && (
-          <>
-            <FormField label="Members" hint="Added to the team; their Project access is set below.">
-              <SearchableSelect
-                variant="field"
-                multiple
-                value={memberUserIds}
-                ariaLabel="Team members"
-                placeholder="Select members"
-                options={memberOptions}
-                onChange={(v) => setMemberUserIds(v as string[])}
-              />
-            </FormField>
-            {memberUserIds.length > 0 && (
-              <FormField label="Access level for these members">
-                <SearchableSelect
-                  variant="field"
-                  value={memberLevel}
-                  ariaLabel="Access level"
-                  options={levelOptions}
-                  onChange={(v) => setMemberLevel(v as 'admin' | 'editor')}
-                />
-              </FormField>
-            )}
-          </>
+        {!team && eligible.length > 0 && (
+          <FormField
+            label={
+              <div className="flex items-center justify-between gap-2">
+                <span>Members & access</span>
+                <span className="text-ui-xs font-normal text-foreground-subtle">
+                  Admin joins All Teams; Editor joins this Team.
+                </span>
+              </div>
+            }
+          >
+            <div className="rounded-lg border border-border-subtle">
+              <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover px-3 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
+                <span className="w-5" />
+                <span className="flex-1">User</span>
+                <span className="w-20 text-center">Current</span>
+                <span className="w-32 text-center">New access</span>
+              </div>
+              <div className="max-h-56 overflow-y-auto">
+                {eligible.map((m) => {
+                  const currentLevel =
+                    projectMembers.find((pm) => pm.userId === m.userId)?.accessLevel ?? null
+                  const checked = m.userId in memberAccess
+                  const label = m.displayName ?? m.email ?? m.userId
+                  return (
+                    <div
+                      key={m.userId}
+                      className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 last:border-b-0"
+                    >
+                      <span className="flex w-5 justify-center">
+                        <SelectionCheckbox
+                          checked={checked}
+                          onChange={() => toggleMemberRow(m.userId, currentLevel)}
+                          ariaLabel={`Add ${label} to this team`}
+                        />
+                      </span>
+                      <span className="flex min-w-0 flex-1 items-center gap-2">
+                        <OwnerAvatar name={label} size={20} />
+                        <span className="truncate text-ui-sm text-foreground">{label}</span>
+                      </span>
+                      <span className="w-20 text-center text-ui-xs text-foreground-subtle">
+                        {currentLevel ? (
+                          <span className="capitalize">{currentLevel}</span>
+                        ) : (
+                          'No Access'
+                        )}
+                      </span>
+                      <span className="w-32">
+                        {checked ? (
+                          <SearchableSelect
+                            variant="field"
+                            dense
+                            value={memberAccess[m.userId]}
+                            ariaLabel={`Access level for ${label}`}
+                            options={levelOptions}
+                            onChange={(v) => setMemberRowLevel(m.userId, v as 'admin' | 'editor')}
+                          />
+                        ) : (
+                          <span className="block text-center text-ui-xs text-foreground-subtle opacity-60">
+                            Not added
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </FormField>
         )}
       </ModalBody>
       <ModalFooter>

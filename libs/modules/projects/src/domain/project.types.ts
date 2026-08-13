@@ -151,6 +151,15 @@ export interface ProjectMember {
   displayName?: string | null;
   email?: string | null;
   avatarUrl?: string | null;
+  /**
+   * Count of this user's ACTIVE `team_members` rows for Teams LINKED to this
+   * project (`project_teams` scoped to this projectId, active on both sides) —
+   * the same scoping `AccessService.assertTeamScoped` uses to gate Editor
+   * writes. Only `listByProject` computes this for real; other repository
+   * methods leave it undefined and the DTO mapper defaults to 0, matching how
+   * the other joined-from-users fields above are already handled.
+   */
+  teamCount?: number;
 }
 
 export interface AddProjectMemberInput {

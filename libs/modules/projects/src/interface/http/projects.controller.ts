@@ -136,6 +136,7 @@ function toProjectMemberDto(m: ProjectMember): ProjectMemberResponseDto {
     displayName: m.displayName ?? null,
     email: m.email ?? null,
     avatarUrl: m.avatarUrl ?? null,
+    teamCount: m.teamCount ?? 0,
   };
 }
 
@@ -543,6 +544,7 @@ export class ProjectsController {
       user.workspaceId,
       id,
       dto.userId,
+      user.sub,
       dto.accessLevel,
     );
     return toProjectMemberDto(member);
@@ -566,6 +568,7 @@ export class ProjectsController {
       id,
       memberId,
       dto,
+      user.sub,
     );
     return toProjectMemberDto(member);
   }
@@ -583,6 +586,6 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ): Promise<void> {
-    await this.projectsService.removeProjectMember(user.workspaceId, id, userId);
+    await this.projectsService.removeProjectMember(user.workspaceId, id, userId, user.sub);
   }
 }

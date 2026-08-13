@@ -29,6 +29,12 @@ export const AUDIT_ACTION = {
   PROJECT_CREATED: 'project.created',
   PROJECT_UPDATED: 'project.updated',
   PROJECT_ARCHIVED: 'project.archived',
+  // Per-project access grants are the most sensitive administrative write in the
+  // 3-level model — the identical team-membership action is fully logged, and access
+  // changes were the one mutation invisible in the Audit Log.
+  PROJECT_MEMBER_ADDED: 'project.member.added',
+  PROJECT_MEMBER_UPDATED: 'project.member.updated',
+  PROJECT_MEMBER_REMOVED: 'project.member.removed',
   // ── Teams ──
   TEAM_CREATED: 'team.created',
   TEAM_UPDATED: 'team.updated',

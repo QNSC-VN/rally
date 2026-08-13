@@ -432,16 +432,16 @@ describe('ProjectsService', () => {
       workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
       projectMemberRepo.findMember.mockResolvedValue(null);
       projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
-      await service.addProjectMember('ws-1', 'proj-1', 'user-2');
+      await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin');
       expect(projectMemberRepo.addMember).toHaveBeenCalled();
     });
 
     it('rejects a user who is not an active workspace member', async () => {
       projectRepo.findById.mockResolvedValue(mockProject());
       workspaceMemberRepo.findMember.mockResolvedValue(null);
-      await expect(service.addProjectMember('ws-1', 'proj-1', 'foreign-user')).rejects.toThrow(
-        PreconditionFailedException,
-      );
+      await expect(
+        service.addProjectMember('ws-1', 'proj-1', 'foreign-user', 'admin'),
+      ).rejects.toThrow(PreconditionFailedException);
       expect(projectMemberRepo.addMember).not.toHaveBeenCalled();
     });
 
@@ -451,10 +451,11 @@ describe('ProjectsService', () => {
       projectMemberRepo.findMember.mockResolvedValue(null);
       projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
 
-      await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'editor');
+      await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin', 'editor');
 
       expect(projectMemberRepo.addMember).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'user-2', accessLevel: 'editor' }),
+        expect.anything(),
       );
     });
 
@@ -464,10 +465,11 @@ describe('ProjectsService', () => {
       projectMemberRepo.findMember.mockResolvedValue(null);
       projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
 
-      await service.addProjectMember('ws-1', 'proj-1', 'user-2');
+      await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin');
 
       expect(projectMemberRepo.addMember).toHaveBeenCalledWith(
         expect.not.objectContaining({ accessLevel: expect.anything() }),
+        expect.anything(),
       );
     });
   });

@@ -335,6 +335,12 @@ export class WorkspaceService {
       );
       return next;
     });
+    // §8: company disable/removal takes effect on the user's next page refresh.
+    // Invalidate the cached permission resolution so a suspended/removed member's
+    // next request resolves zero permissions instead of waiting out the 5-min TTL.
+    if (input.status === 'suspended' || input.status === 'removed') {
+      await this.access.invalidateUser(workspaceId, member.userId);
+    }
     this.logger.log({ workspaceId, memberId, actorId }, 'Member updated');
     return updated;
   }
@@ -375,6 +381,9 @@ export class WorkspaceService {
         tx,
       );
     });
+    // §8: removal is effective on the next page refresh — drop the permission cache
+    // now so the very next request from the removed member resolves nothing.
+    await this.access.invalidateUser(workspaceId, userId);
     this.logger.log({ workspaceId, userId, actorId }, 'Member removed from workspace');
   }
 

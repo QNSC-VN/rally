@@ -3269,6 +3269,8 @@ export interface components {
       displayName: string | null
       email: string | null
       avatarUrl: string | null
+      /** @description Active team_members rows for Teams linked to this project — same scoping as assertTeamScoped */
+      teamCount: number
     }
     UpdateProjectMemberDto: {
       /** @enum {string} */

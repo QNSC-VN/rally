@@ -22,7 +22,13 @@ import {
 import type { JwtPayload, DrizzleDB } from '@platform';
 import { InjectDrizzle } from '@platform';
 import { and, eq } from 'drizzle-orm';
-import { projectMembers, projects, teamMembers, projectTeams } from '../../../../../db/schema/work';
+import {
+  projectMembers,
+  projects,
+  teamMembers,
+  projectTeams,
+  teams,
+} from '../../../../../db/schema/work';
 import { IRoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository';
 import {
   IRoleAssignmentRepository,
@@ -527,10 +533,15 @@ export class AccessService {
     if (!teamId) return;
     const level = await this.getProjectAccessLevel(actor.workspaceId, actor.sub, projectId);
     if (level !== 'editor') return; // admin/WA bypass (All Teams)
-    const teams = await this.db
+    // Named `scopedTeams` — a bare `teams` would shadow the imported schema table.
+    const scopedTeams = await this.db
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
       .innerJoin(projectTeams, eq(projectTeams.teamId, teamMembers.teamId))
+      // The team's OWN lifecycle must gate too: an archived team is "not actionable
+      // planning demand" and must not stay writable through its Editors. Without the
+      // join, deactivating a team left its members' write scope fully live.
+      .innerJoin(teams, eq(teams.id, teamMembers.teamId))
       .where(
         and(
           eq(teamMembers.workspaceId, actor.workspaceId),
@@ -538,9 +549,10 @@ export class AccessService {
           eq(projectTeams.projectId, projectId),
           eq(teamMembers.status, 'active'),
           eq(projectTeams.status, 'active'),
+          eq(teams.status, 'active'),
         ),
       );
-    if (!teams.some((t) => t.teamId === teamId)) {
+    if (!scopedTeams.some((t) => t.teamId === teamId)) {
       throw new PermissionDeniedException(
         'TEAM_NOT_IN_SCOPE',
         'Editors can only modify work in their assigned teams',

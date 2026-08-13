@@ -3,7 +3,14 @@ import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
-import { teams, teamMembers, projects, projectTeams } from '../../../../../../db/schema/work';
+import {
+  teams,
+  teamMembers,
+  projects,
+  projectTeams,
+  capacityPlans,
+  capacityPlanTeams,
+} from '../../../../../../db/schema/work';
 import type {
   Team,
   TeamWithStats,
@@ -118,6 +125,26 @@ export class TeamDrizzleRepository implements ITeamRepository {
       .from(projects)
       .where(and(eq(projects.workspaceId, workspaceId), inArray(projects.id, projectIds)));
     return rows[0]?.count ?? 0;
+  }
+
+  async findBlockingCapacityPlans(
+    workspaceId: string,
+    teamId: string,
+    projectIds: string[],
+  ): Promise<Array<{ planKey: string }>> {
+    if (projectIds.length === 0) return [];
+    return this.db
+      .select({ planKey: capacityPlans.planKey })
+      .from(capacityPlanTeams)
+      .innerJoin(capacityPlans, eq(capacityPlans.id, capacityPlanTeams.planId))
+      .where(
+        and(
+          eq(capacityPlanTeams.teamId, teamId),
+          eq(capacityPlans.workspaceId, workspaceId),
+          inArray(capacityPlans.projectId, projectIds),
+        ),
+      )
+      .limit(3);
   }
 
   async setProjectLinks(

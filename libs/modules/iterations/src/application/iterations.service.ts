@@ -120,7 +120,7 @@ export class IterationsService {
       plannedVelocity?: number;
     } = {},
   ): Promise<Iteration> {
-    await this.projectsService.getProject(actor.workspaceId, projectId);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, projectId);
 
     if (opts.teamId) {
       await this.projectsService.assertTeamLinkedToProject(
@@ -220,6 +220,7 @@ export class IterationsService {
     input: UpdateIterationInput,
   ): Promise<Iteration> {
     const current = await this.getIteration(actor.workspaceId, id);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, current.projectId);
 
     // Team must remain linked to the iteration's project.
     if (input.teamId) {
@@ -272,6 +273,7 @@ export class IterationsService {
 
   async deleteIteration(actor: JwtPayload, id: string): Promise<void> {
     const iteration = await this.getIteration(actor.workspaceId, id);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, iteration.projectId);
     if (iteration.state !== 'planning') {
       throw new PreconditionFailedException(
         'ITERATION_NOT_PLANNING',
