@@ -10,7 +10,16 @@
  * 3-level access (WA / Admin / Editor) — no Viewer.
  */
 import { useState } from 'react'
-import { Loader2, ChevronRight, FolderKanban, Users } from 'lucide-react'
+import {
+  Loader2,
+  ChevronRight,
+  FolderKanban,
+  Users,
+  Plus,
+  Archive,
+  RotateCcw,
+  Trash2,
+} from 'lucide-react'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { PERMISSION } from '@/shared/config/permissions'
@@ -18,14 +27,20 @@ import {
   useProjects,
   useProjectEstimationSettings,
   useUpdateProjectEstimationSettings,
+  useUpdateProject,
+  useDeleteProject,
   type ProjectEstimationSettings,
   type Project,
 } from '@/features/projects/api'
 import { useProjectTeams } from '@/features/teams/api'
 import { SettingsTabHeader } from './settings-tab-header'
 import { ProjectAccessList } from './projects-access-tab'
+import { ProjectTeamsTab } from './project-teams-tab'
+import { NewProjectModal } from '@/pages/projects/ui/project-parts'
 import { notify } from '@/shared/lib/toast'
 import { Button } from '@/shared/ui/button'
+import { IconButton } from '@/shared/ui/icon-button'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { Input } from '@/shared/ui/input'
 import { FormField } from '@/shared/ui/form-field'
 
@@ -49,6 +64,7 @@ export function WorkspaceProjectsPanel() {
   const { data: projects = [], isLoading } = useProjects(workspaceId)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [createOpen, setCreateOpen] = useState(false)
   const selected = projects.find((p) => p.id === selectedId) ?? null
 
   function toggle(id: string) {
@@ -70,6 +86,21 @@ export function WorkspaceProjectsPanel() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* ── Tree ── */}
         <aside className="w-72 shrink-0 overflow-y-auto border-r border-border-subtle bg-card px-2 py-3">
+          {isWA && (
+            <div className="mb-2 flex items-center justify-between px-2">
+              <span className="text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
+                Workspace
+              </span>
+              <IconButton
+                size="sm"
+                aria-label="Create project"
+                title="Create project"
+                onClick={() => setCreateOpen(true)}
+              >
+                <Plus size={13} />
+              </IconButton>
+            </div>
+          )}
           {/* Workspace root */}
           <button
             onClick={() => setSelectedId(null)}
@@ -117,6 +148,10 @@ export function WorkspaceProjectsPanel() {
           )}
         </section>
       </div>
+
+      {createOpen && workspaceId && (
+        <NewProjectModal workspaceId={workspaceId} onClose={() => setCreateOpen(false)} />
+      )}
     </>
   )
 }
@@ -185,20 +220,78 @@ function ProjectNode({
 
 function ProjectDetail({ project, isWA }: { project: Project; isWA: boolean }) {
   const [tab, setTab] = useState<TabKey>('details')
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const updateProject = useUpdateProject()
+  const deleteProject = useDeleteProject()
   const tabs: Array<{ key: TabKey; label: string }> = [
     { key: 'details', label: 'Details' },
     { key: 'users', label: 'Users & Permissions' },
     { key: 'teams', label: 'Teams' },
   ]
+
+  function setStatus(status: 'active' | 'archived') {
+    updateProject.mutate(
+      { id: project.id, input: { status } },
+      {
+        onSuccess: () =>
+          notify.success(status === 'archived' ? 'Project archived' : 'Project restored'),
+        onError: (e) => notify.fromError(e, 'Failed to update project'),
+      },
+    )
+  }
+
+  function confirmDelete() {
+    deleteProject.mutate(project.id, {
+      onSuccess: () => {
+        notify.success('Project deleted')
+        setDeleteOpen(false)
+      },
+      onError: (e) => notify.fromError(e, 'Failed to delete project'),
+    })
+  }
+
   return (
     <div className="mx-auto max-w-4xl">
-      {/* Header */}
-      <div className="mb-4 border-b border-border-subtle pb-3">
-        <h2 className="text-ui-lg font-semibold text-foreground">{project.name}</h2>
-        <p className="text-ui-xs text-foreground-subtle">
-          {project.key} · {project.status} · {project.teamCount ?? 0} teams
-        </p>
-        {/* Stage 4 will add Edit / Archive / Restore / Delete icon actions here. */}
+      {/* Header — destructive project lifecycle actions (Edit is the inline Details tab) */}
+      <div className="mb-4 flex items-start justify-between border-b border-border-subtle pb-3">
+        <div>
+          <h2 className="text-ui-lg font-semibold text-foreground">{project.name}</h2>
+          <p className="text-ui-xs text-foreground-subtle">
+            {project.key} · {project.status} · {project.teamCount ?? 0} teams
+          </p>
+        </div>
+        {isWA && (
+          <div className="flex gap-1">
+            {project.status === 'active' ? (
+              <IconButton
+                size="sm"
+                aria-label="Archive project"
+                title="Archive"
+                onClick={() => setStatus('archived')}
+              >
+                <Archive size={14} />
+              </IconButton>
+            ) : (
+              <IconButton
+                size="sm"
+                aria-label="Restore project"
+                title="Restore"
+                onClick={() => setStatus('active')}
+              >
+                <RotateCcw size={14} />
+              </IconButton>
+            )}
+            <IconButton
+              size="sm"
+              aria-label="Delete project"
+              title="Delete"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 size={14} />
+            </IconButton>
+          </div>
+        )}
       </div>
 
       {/* Tab strip */}
@@ -220,11 +313,18 @@ function ProjectDetail({ project, isWA }: { project: Project; isWA: boolean }) {
 
       {tab === 'details' && <DetailsTab project={project} isWA={isWA} />}
       {tab === 'users' && <ProjectAccessList projectId={project.id} isWA={isWA} />}
-      {tab === 'teams' && (
-        <div className="rounded-lg border border-border-subtle px-4 py-10 text-center text-ui-sm text-foreground-subtle">
-          Per-project team management lands in the next stage.
-        </div>
-      )}
+      {tab === 'teams' && <ProjectTeamsTab projectId={project.id} isWA={isWA} />}
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete project"
+        message={`Type ${project.key} to confirm permanent deletion.`}
+        confirmText={project.key}
+        confirmLabel="Delete project"
+        pending={deleteProject.isPending}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </div>
   )
 }
