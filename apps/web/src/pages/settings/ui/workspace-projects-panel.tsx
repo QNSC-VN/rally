@@ -167,7 +167,13 @@ export function WorkspaceProjectsPanel() {
               backLabel="Back"
             />
           ) : selected ? (
-            <ProjectDetail project={selected} isWA={isWA} />
+            <ProjectDetail
+              project={selected}
+              isWA={isWA}
+              onOpenTeam={(team) =>
+                setSelectedTeam({ projectId: selected.id, teamId: team.id, team })
+              }
+            />
           ) : (
             <WorkspaceOverview
               projects={projects}
@@ -398,7 +404,15 @@ function ProjectNode({
   )
 }
 
-function ProjectDetail({ project, isWA }: { project: Project; isWA: boolean }) {
+function ProjectDetail({
+  project,
+  isWA,
+  onOpenTeam,
+}: {
+  project: Project
+  isWA: boolean
+  onOpenTeam: (team: Team) => void
+}) {
   const [tab, setTab] = useState<TabKey>('details')
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -503,7 +517,9 @@ function ProjectDetail({ project, isWA }: { project: Project; isWA: boolean }) {
 
       {tab === 'details' && <DetailsTab project={project} isWA={isWA} />}
       {tab === 'users' && <ProjectAccessList projectId={project.id} isWA={isWA} />}
-      {tab === 'teams' && <ProjectTeamsTab projectId={project.id} isWA={isWA} />}
+      {tab === 'teams' && (
+        <ProjectTeamsTab projectId={project.id} isWA={isWA} onOpenTeam={onOpenTeam} />
+      )}
 
       {editOpen && <EditProjectModal project={project} onClose={() => setEditOpen(false)} />}
 
