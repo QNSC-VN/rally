@@ -87,7 +87,7 @@ export function ProjectsAccessTab() {
   )
 }
 
-function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA: boolean }) {
+export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA: boolean }) {
   const { data: members = [], isLoading } = useProjectMembers(projectId)
   const { data: teams = [] } = useProjectTeams(projectId)
   const updateAccess = useUpdateProjectAccess(projectId)

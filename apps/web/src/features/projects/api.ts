@@ -160,6 +160,28 @@ export function useUpdateProjectEstimationSettings() {
   })
 }
 
+/**
+ * Read a project's estimation scale (SRS §6.2). Returns the stored values or, when
+ * no row exists, the backend's default scale (1/3/5/8/13 + 8) — so the Details tab
+ * always shows the effective scale the progress bars compute with.
+ */
+export function useProjectEstimationSettings(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['project-estimation-settings', projectId ?? ''],
+    queryFn: async () => {
+      if (!projectId) return null
+      const { data, error, response } = await apiClient.GET(
+        '/v1/projects/{id}/estimation-settings',
+        { params: { path: { id: projectId } } },
+      )
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data as ProjectEstimationSettings
+    },
+    enabled: !!projectId,
+    staleTime: 30_000,
+  })
+}
+
 // ── Project Statuses ──────────────────────────────────────────────────────────
 
 export interface ProjectStatus {

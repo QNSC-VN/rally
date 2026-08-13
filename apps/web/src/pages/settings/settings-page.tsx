@@ -24,7 +24,7 @@ import { TeamsTab } from './ui/teams-tab'
 import { AuditLogTab } from './ui/audit-log-tab'
 // RolesTab removed — no custom roles under the R1 access-level model (RBAC migration).
 import { IntegrationsTab } from './ui/integrations-tab'
-import { ProjectsAccessTab } from './ui/projects-access-tab'
+import { WorkspaceProjectsPanel } from './ui/workspace-projects-panel'
 import { MyPermissionsTab } from './ui/my-permissions-tab'
 import { PermissionModelTab } from './ui/permission-model-tab'
 // NotificationsTab is intentionally NOT wired into the sidebar: Notification
@@ -141,7 +141,7 @@ export function SettingsPage() {
     ) : activeTab === 'audit' ? (
       <AuditLogTab />
     ) : activeTab === 'projects-access' ? (
-      <ProjectsAccessTab />
+      <WorkspaceProjectsPanel />
     ) : activeTab === 'permission-model' ? (
       <PermissionModelTab />
     ) : activeTab === 'integrations' ? (
