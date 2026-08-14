@@ -52,6 +52,8 @@ async function requireAuth() {
 // Each page is a separate chunk — only the shell is always loaded.
 import { lazy, Suspense } from 'react'
 import { PageSpinner } from '@/shared/ui/spinner'
+import { RequirePermission } from '@/features/access/ui/require-permission'
+import { navPermissionFor } from '@/shared/config/nav'
 
 function lazyPage<T extends Record<string, React.ComponentType>>(
   factory: () => Promise<T>,
@@ -62,6 +64,36 @@ function lazyPage<T extends Record<string, React.ComponentType>>(
     <Suspense fallback={<PageSpinner />}>
       <Lazy />
     </Suspense>
+  )
+}
+
+/**
+ * `lazyPage`, plus the permission the NAV gates the same path on.
+ *
+ * The code is looked up from `shared/config/nav.ts` by path rather than passed in, so this file
+ * cannot state a code at all — nav-hidden and route-open are then incapable of disagreeing, which
+ * was the whole defect: a bookmarked `/portfolio` rendered the page for a caller whose nav did not
+ * offer it, and the page's scoped query answered with nothing, so the grid read "this project has no
+ * Features". Phase 4 `02_Roles_Permissions/SRS.md:197` requires Access Denied there.
+ *
+ * `test/route-permission.contract.test.tsx` is what makes the pairing hold: it asserts every
+ * permission-carrying nav path routes through `guardedPage` with that same path literal, so a new
+ * surface added with plain `lazyPage`, or a mistyped path (which would silently resolve to
+ * `undefined` and gate nothing), fails there rather than in production.
+ *
+ * UX ONLY — `PolicyGuard` on the API is the authorization boundary and refuses independently. See
+ * `features/access/ui/require-permission.tsx` for why this is a component and not a `beforeLoad`.
+ */
+function guardedPage<T extends Record<string, React.ComponentType>>(
+  path: string,
+  factory: () => Promise<T>,
+  key: keyof T,
+) {
+  const Page = lazyPage(factory, key)
+  return () => (
+    <RequirePermission code={navPermissionFor(path)}>
+      <Page />
+    </RequirePermission>
   )
 }
 
@@ -143,7 +175,7 @@ const backlogRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/backlog',
   staticData: { breadcrumb: 'Backlog' },
-  component: lazyPage(() => import('@/pages/backlog/backlog-page'), 'BacklogPage'),
+  component: guardedPage('/backlog', () => import('@/pages/backlog/backlog-page'), 'BacklogPage'),
 })
 
 const workItemDetailRoute = createRoute({
@@ -165,14 +197,19 @@ const timeboxesRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/timeboxes',
   staticData: { breadcrumb: 'Timeboxes' },
-  component: lazyPage(() => import('@/pages/iterations/iterations-page'), 'IterationsPage'),
+  component: guardedPage(
+    '/timeboxes',
+    () => import('@/pages/iterations/iterations-page'),
+    'IterationsPage',
+  ),
 })
 
 const iterationStatusRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/iteration-status',
   staticData: { breadcrumb: 'Iteration Status', section: 'Track' },
-  component: lazyPage(
+  component: guardedPage(
+    '/iteration-status',
     () => import('@/pages/iteration-status/iteration-status-page'),
     'IterationStatusPage',
   ),
@@ -184,7 +221,11 @@ const releasesRoute = createRoute({
   // A TYPE mode of the Timeboxes screen, not its own top-level surface — the
   // mockup breadcrumb reads "… › Plan › Timeboxes" here (DEV-004).
   staticData: { breadcrumb: 'Timeboxes' },
-  component: lazyPage(() => import('@/pages/releases/releases-page'), 'ReleasesPage'),
+  component: guardedPage(
+    '/releases',
+    () => import('@/pages/releases/releases-page'),
+    'ReleasesPage',
+  ),
 })
 
 const releaseDetailRoute = createRoute({
@@ -204,7 +245,11 @@ const milestonesRoute = createRoute({
   path: '/milestones',
   // A TYPE mode of the Timeboxes screen (see /releases above).
   staticData: { breadcrumb: 'Timeboxes' },
-  component: lazyPage(() => import('@/pages/milestones/milestones-page'), 'MilestonesPage'),
+  component: guardedPage(
+    '/milestones',
+    () => import('@/pages/milestones/milestones-page'),
+    'MilestonesPage',
+  ),
 })
 
 const milestoneDetailRoute = createRoute({
@@ -229,14 +274,22 @@ const qualityDefectsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/quality/defects',
   staticData: { breadcrumb: 'Quality' },
-  component: lazyPage(() => import('@/pages/quality/quality-page'), 'QualityPage'),
+  component: guardedPage(
+    '/quality/defects',
+    () => import('@/pages/quality/quality-page'),
+    'QualityPage',
+  ),
 })
 
 const teamStatusRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/team-status',
   staticData: { breadcrumb: 'Team Status', section: 'Track' },
-  component: lazyPage(() => import('@/pages/team-status/team-status-page'), 'TeamStatusPage'),
+  component: guardedPage(
+    '/team-status',
+    () => import('@/pages/team-status/team-status-page'),
+    'TeamStatusPage',
+  ),
 })
 
 // Team Board was consolidated into the Iteration Status List/Board toggle — the
@@ -261,7 +314,11 @@ const portfolioRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/portfolio',
   staticData: { breadcrumb: 'Portfolio' },
-  component: lazyPage(() => import('@/pages/portfolio/portfolio-page'), 'PortfolioPage'),
+  component: guardedPage(
+    '/portfolio',
+    () => import('@/pages/portfolio/portfolio-page'),
+    'PortfolioPage',
+  ),
 })
 
 const portfolioDetailRoute = createRoute({
@@ -278,7 +335,8 @@ const capacityPlansRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/capacity-planning',
   staticData: { breadcrumb: 'Capacity Planning' },
-  component: lazyPage(
+  component: guardedPage(
+    '/capacity-planning',
     () => import('@/pages/capacity-planning/capacity-plans-page'),
     'CapacityPlansPage',
   ),
@@ -301,7 +359,8 @@ const releaseTrackingRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/release-tracking',
   staticData: { breadcrumb: 'Release Tracking' },
-  component: lazyPage(
+  component: guardedPage(
+    '/release-tracking',
     () => import('@/pages/release-tracking/release-tracking-page'),
     'ReleaseTrackingPage',
   ),
@@ -311,7 +370,7 @@ const reportsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/reports',
   staticData: { breadcrumb: 'Reports' },
-  component: lazyPage(() => import('@/pages/reports/reports-page'), 'ReportsPage'),
+  component: guardedPage('/reports', () => import('@/pages/reports/reports-page'), 'ReportsPage'),
 })
 
 // ── Not found ─────────────────────────────────────────────────────────────────

@@ -28,144 +28,14 @@ import { useProjectPermissions } from '@/features/access/api'
 import { ENV } from '@/shared/config/env'
 import { withCsrfHeader } from '@/shared/api/csrf'
 import { isFeatureEnabled } from '@/shared/config/feature-flags'
+// The nav table now lives in `shared/config` so the ROUTER reads the same rows this shell does.
+// Before that the pairing existed only here: the nav hid an item the caller lacked the code for and
+// the router checked nothing, so a bookmarked `/portfolio` rendered an empty grid for a project
+// Editor. See `shared/config/nav.ts` for the full note; do NOT copy a code back into this file.
+import { NAV_ITEMS, type NavItem } from '@/shared/config/nav'
 import { queryClient } from '@/shared/api/query-client'
 import { NotificationPopover } from '@/widgets/notification-popover/notification-popover'
 import { GlobalSearch } from './global-search'
-
-interface SubNavItem {
-  path: string
-  label: string
-  permission?: string
-  featureFlag?: string
-}
-
-interface NavItem {
-  path: string
-  label: string
-  /** Permission code required to see this nav item. Undefined = any authenticated user. */
-  permission?: string
-  /** Feature flag key. When false this feature is not yet built; shows as "coming soon". */
-  featureFlag?: string
-  children?: SubNavItem[]
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { path: '/', label: 'Home' },
-  {
-    path: '/backlog',
-    label: 'Plan',
-    featureFlag: 'feature.backlog',
-    permission: 'work_item:view',
-    children: [
-      {
-        path: '/backlog',
-        label: 'Backlog',
-        featureFlag: 'feature.backlog',
-        permission: 'work_item:view',
-      },
-      {
-        // Releases and Milestones are NOT separate Plan entries — they are TYPE
-        // modes inside this one Timeboxes screen, reached via its TYPE dropdown
-        // (TimeboxTypeSwitcher). Matches the BA mockup and DEV_HANDOFF.md
-        // ("Release management remains under Plan > Timeboxes"). Was gap DEV-004.
-        path: '/timeboxes',
-        label: 'Timeboxes',
-        featureFlag: 'feature.timeboxes',
-        // `timebox:view`, NOT `iteration:view`. §3.2 marks `Plan > Timeboxes` Hidden for
-        // an Editor, but every level holds `iteration:view` (Iteration Status, the Backlog
-        // filter and Team Status all read the iteration list), so gating on it rendered the
-        // entry for a level the BA hides — and its Releases/Milestones modes then 403'd.
-        permission: 'timebox:view',
-      },
-    ],
-  },
-  {
-    path: '/iteration-status',
-    label: 'Track',
-    featureFlag: 'feature.iteration-status',
-    permission: 'work_item:view',
-    children: [
-      {
-        path: '/iteration-status',
-        label: 'Iteration Status',
-        featureFlag: 'feature.iteration-status',
-        permission: 'work_item:view',
-      },
-      {
-        path: '/team-status',
-        label: 'Team Status',
-        featureFlag: 'feature.team-status',
-        permission: 'work_item:view',
-      },
-    ],
-  },
-  {
-    path: '/quality/defects',
-    label: 'Quality',
-    featureFlag: 'feature.quality',
-    permission: 'work_item:view',
-    children: [
-      {
-        path: '/quality/defects',
-        label: 'Defects',
-        featureFlag: 'feature.quality',
-        permission: 'work_item:view',
-      },
-    ],
-  },
-  {
-    path: '/portfolio',
-    label: 'Portfolio',
-    featureFlag: 'feature.portfolio',
-    permission: 'project:view',
-    // SoT §4: Portfolio is a dropdown. Through Phase 4 its only child was a
-    // "Release Planning" placeholder pointing at /portfolio; Phase 5 fills both
-    // surfaces in, so the placeholder becomes two real entries. Real Release
-    // MANAGEMENT still lives under Plan > Timeboxes > Releases — this dropdown is
-    // portfolio items and capacity.
-    //
-    // RALLY PARITY (corrects an earlier note in this file)
-    // Rally: has BOTH pages, and they are different products. "Capacity Planning"
-    // is its own page under Portfolio — "Select Portfolio, Capacity Planning" — with
-    // a plan object, a draft/published lifecycle and per-team allocations. "Release
-    // Planning" is a separate board under Planning (backlog column + release columns,
-    // drag a card to schedule); it has no plan object and no lifecycle.
-    // https://techdocs.broadcom.com/us/en/ca-enterprise-software/valueops/rally/rally-help/planning/capacity-planning-page/creating-a-capacity-plan/create-a-capacity-plan.html
-    // Our Capacity Planning maps to Rally's Capacity Planning, NOT to Release
-    // Planning. The previous note here claimed the opposite and was wrong; it sent a
-    // research pass down a false trail before being caught.
-    // Decided 2026-08-04. See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P5-CP-1
-    children: [
-      {
-        // "Portfolio Items", not "Portfolio": a child repeating its parent's label reads as a
-        // link back to the menu, and the page lists Epics and Features — items.
-        path: '/portfolio',
-        label: 'Portfolio Items',
-        featureFlag: 'feature.portfolio',
-        permission: 'portfolio:view',
-      },
-      {
-        path: '/capacity-planning',
-        label: 'Capacity Planning',
-        featureFlag: 'feature.portfolio',
-        permission: 'capacity:view',
-      },
-      {
-        // Third and LAST in the Portfolio menu (RT-AC-01), which is where the SRS puts it.
-        path: '/release-tracking',
-        label: 'Release Tracking',
-        featureFlag: 'feature.release-tracking',
-        permission: 'report:view',
-      },
-    ],
-  },
-  {
-    path: '/reports',
-    label: 'Reports',
-    featureFlag: 'feature.reports',
-    permission: 'report:view',
-  },
-]
 
 /**
  * A single row in the workspace-switcher "Projects & Teams" tree. The row can be

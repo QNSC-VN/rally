@@ -56,6 +56,17 @@ export const PERMISSION = {
   QUALITY_VIEW: 'quality:view',
   // Reports (Iteration Burndown / Velocity / Team Capacity) and Release Tracking.
   REPORT_VIEW: 'report:view',
+
+  // The three codes `shared/config/nav.ts` gates nav entries and their routes on. They were
+  // MISSING from this mirror while the nav table used the bare strings — the identical drift
+  // PROJECT_VIEW's comment above records being fixed once already, accumulated three more times.
+  // A bare string typechecks, so `'portfolio:veiw'` would gate nothing and read as a gate; with a
+  // constant it is a compile error. `WORK_ITEM_VIEW` is the delivery read every access level holds,
+  // so it gates the nav's presence rather than any privilege; the other two are the §3.2 admin
+  // surfaces (Portfolio Items, Capacity Planning) an Editor does not see.
+  WORK_ITEM_VIEW: 'work_item:view',
+  PORTFOLIO_VIEW: 'portfolio:view',
+  CAPACITY_VIEW: 'capacity:view',
 } as const
 
 export type Permission = (typeof PERMISSION)[keyof typeof PERMISSION]
