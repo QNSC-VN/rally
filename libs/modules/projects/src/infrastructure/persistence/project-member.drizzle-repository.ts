@@ -105,7 +105,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       })) as unknown as ProjectMember[];
 
     // Per-user team count, scoped to Teams LINKED to THIS project — the same
-    // scoping `AccessService.assertTeamScoped` uses to gate Editor writes
+    // scoping every delivery surface uses to slice by team
     // (project_teams.projectId = this project, active on both sides). One
     // grouped query regardless of member count (O(1) round trips, not one per
     // member), merged into both member sets below by userId. This is what lets

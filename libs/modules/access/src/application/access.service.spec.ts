@@ -93,7 +93,6 @@ const eff = (
 
 describe('AccessService — scope-aware permission resolution', () => {
   let service: AccessService;
-  let roleRepo: Mocked<IRoleRepository>;
   let assignmentRepo: Mocked<IRoleAssignmentRepository>;
   let projectAccessRepo: ReturnType<typeof makeProjectAccessRepo>;
   let uow: ReturnType<typeof makeUow>;
@@ -167,7 +166,6 @@ describe('AccessService — scope-aware permission resolution', () => {
     }).compile();
 
     service = module.get(AccessService);
-    roleRepo = module.get(ROLE_REPOSITORY);
     assignmentRepo = module.get(ROLE_ASSIGNMENT_REPOSITORY);
     cache = module.get(CacheService);
     // Default: the acting user is a workspace admin. Escalation checks now resolve
@@ -423,223 +421,14 @@ describe('AccessService — scope-aware permission resolution', () => {
     });
   });
 
-  describe('updateRolePermissions', () => {
-    // workspace_admin (workspace:*) — holds every code, so the no-escalation
-    // guard is satisfied and these tests exercise the rest of the method.
-    const actor = { sub: USER, workspaceId: WORKSPACE, permissions: ['workspace:*'] } as never;
-    const customRole = (overrides: Partial<SystemRole> = {}): SystemRole => ({
-      id: 'role-custom',
-      workspaceId: WORKSPACE,
-      name: 'Custom',
-      slug: 'custom',
-      description: null,
-      isSystem: false,
-      permissions: ['project:view'],
-      createdAt: new Date(),
-      ...overrides,
-    });
+  // `updateRolePermissions`, `createRole` and `deleteRole` had describe blocks here.
+  //
+  // All three methods are GONE (ruling 2026-08-14, AC-11): custom roles and the editable permission
+  // matrix are deleted, because `db/permissions.catalog.ts` is the single source of truth a custom
+  // matrix would fork, and custom-role CRUD plus workspace-scoped tier assignment together re-create
+  // the company-wide over-grant migration 0111 removed. The tests went with the methods rather than
+  // being pointed at a stub — a spec that passes against a no-op is worse than no spec.
 
-    it('rejects a permission the actor does not themselves hold (no escalation)', async () => {
-      roleRepo.findById.mockResolvedValue(customRole());
-      // Narrow what the ACTOR resolves to — a token-carried list would no longer
-      // matter, which is the point: escalation is judged on live grants.
-      assignmentRepo.listEffectiveForUser.mockResolvedValue([
-        eff(role('project_member', ['work_item:view']), 'workspace'),
-      ]);
-      const weakActor = { sub: USER, workspaceId: WORKSPACE } as never;
-      await expect(
-        service.updateRolePermissions(weakActor, 'role-custom', ['project:delete']),
-      ).rejects.toMatchObject({ code: 'ROLE_PERMISSION_ESCALATION' });
-      expect(roleRepo.updatePermissions).not.toHaveBeenCalled();
-    });
-
-    it('throws ROLE_NOT_FOUND when the role does not exist', async () => {
-      roleRepo.findById.mockResolvedValue(null);
-      await expect(
-        service.updateRolePermissions(actor, 'role-custom', ['project:edit']),
-      ).rejects.toMatchObject({ code: 'ROLE_NOT_FOUND' });
-      expect(roleRepo.updatePermissions).not.toHaveBeenCalled();
-    });
-
-    it('throws ROLE_NOT_FOUND when the role belongs to another workspace', async () => {
-      roleRepo.findById.mockResolvedValue(customRole({ workspaceId: 'ws-OTHER' }));
-      await expect(
-        service.updateRolePermissions(actor, 'role-custom', ['project:edit']),
-      ).rejects.toMatchObject({ code: 'ROLE_NOT_FOUND' });
-      expect(roleRepo.updatePermissions).not.toHaveBeenCalled();
-    });
-
-    it('throws ROLE_IMMUTABLE for built-in system roles', async () => {
-      roleRepo.findById.mockResolvedValue(customRole({ isSystem: true }));
-      await expect(
-        service.updateRolePermissions(actor, 'role-custom', ['project:edit']),
-      ).rejects.toMatchObject({ code: 'ROLE_IMMUTABLE' });
-      expect(roleRepo.updatePermissions).not.toHaveBeenCalled();
-    });
-
-    it('throws ROLE_IMMUTABLE for global (workspaceId=null) roles', async () => {
-      roleRepo.findById.mockResolvedValue(customRole({ workspaceId: null, isSystem: false }));
-      await expect(
-        service.updateRolePermissions(actor, 'role-custom', ['project:edit']),
-      ).rejects.toMatchObject({ code: 'ROLE_IMMUTABLE' });
-      expect(roleRepo.updatePermissions).not.toHaveBeenCalled();
-    });
-
-    it('dedupes + sorts the permission set and persists it for a custom role', async () => {
-      const existing = customRole();
-      roleRepo.findById.mockResolvedValue(existing);
-      roleRepo.updatePermissions.mockImplementation(async (id, permissions) => ({
-        ...existing,
-        id,
-        permissions,
-      }));
-
-      const result = await service.updateRolePermissions(actor, 'role-custom', [
-        'project:edit',
-        'project:view',
-        'project:edit',
-      ]);
-
-      expect(roleRepo.updatePermissions).toHaveBeenCalledWith(
-        'role-custom',
-        ['project:edit', 'project:view'],
-        expect.anything(),
-      );
-      expect(result.permissions).toEqual(['project:edit', 'project:view']);
-    });
-  });
-
-  describe('createRole', () => {
-    const admin = { sub: USER, workspaceId: WORKSPACE, permissions: ['workspace:*'] } as never;
-    const saved = (overrides: Partial<SystemRole> = {}): SystemRole => ({
-      id: 'role-new',
-      workspaceId: WORKSPACE,
-      name: 'QA Lead',
-      slug: 'qa_lead',
-      description: null,
-      isSystem: false,
-      permissions: ['quality:view'],
-      createdAt: new Date(),
-      ...overrides,
-    });
-
-    it('creates a workspace custom role with a derived, unique slug', async () => {
-      roleRepo.listForWorkspace.mockResolvedValue([]);
-      roleRepo.create.mockImplementation(async (input) =>
-        saved({ slug: input.slug, name: input.name, permissions: input.permissions }),
-      );
-
-      const role = await service.createRole(admin, {
-        name: 'QA Lead',
-        permissions: ['quality:view'],
-      });
-
-      expect(role.slug).toBe('qa_lead');
-      expect(role.isSystem).toBe(false);
-      expect(roleRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          workspaceId: WORKSPACE,
-          slug: 'qa_lead',
-          permissions: ['quality:view'],
-        }),
-        expect.anything(),
-      );
-    });
-
-    it('de-duplicates the slug against existing roles', async () => {
-      roleRepo.listForWorkspace.mockResolvedValue([saved({ slug: 'qa_lead' })]);
-      roleRepo.create.mockImplementation(async (input) => saved({ slug: input.slug }));
-      await service.createRole(admin, { name: 'QA Lead', permissions: [] });
-      expect(roleRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ slug: 'qa_lead_2' }),
-        expect.anything(),
-      );
-    });
-
-    it('rejects a wildcard permission', async () => {
-      await expect(
-        service.createRole(admin, { name: 'Super', permissions: ['workspace:*'] }),
-      ).rejects.toMatchObject({ code: 'ROLE_WILDCARD_FORBIDDEN' });
-      expect(roleRepo.create).not.toHaveBeenCalled();
-    });
-
-    it('rejects a permission the creator does not hold (no escalation)', async () => {
-      assignmentRepo.listEffectiveForUser.mockResolvedValue([
-        eff(role('project_member', ['work_item:view']), 'workspace'),
-      ]);
-      const weak = { sub: USER, workspaceId: WORKSPACE } as never;
-      await expect(
-        service.createRole(weak, { name: 'X', permissions: ['project:delete'] }),
-      ).rejects.toMatchObject({ code: 'ROLE_PERMISSION_ESCALATION' });
-      expect(roleRepo.create).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('deleteRole', () => {
-    const admin = { sub: USER, workspaceId: WORKSPACE, permissions: ['workspace:*'] } as never;
-    const custom = (overrides: Partial<SystemRole> = {}): SystemRole => ({
-      id: 'role-custom',
-      workspaceId: WORKSPACE,
-      name: 'Custom',
-      slug: 'custom',
-      description: null,
-      isSystem: false,
-      permissions: [],
-      createdAt: new Date(),
-      ...overrides,
-    });
-
-    it('deletes an unused custom role', async () => {
-      roleRepo.findById.mockResolvedValue(custom());
-      assignmentRepo.listUserIdsForRole.mockResolvedValue([]);
-      await service.deleteRole(admin, 'role-custom');
-      expect(roleRepo.delete).toHaveBeenCalledWith('role-custom', expect.anything());
-    });
-
-    it('blocks deleting a built-in system role', async () => {
-      roleRepo.findById.mockResolvedValue(custom({ isSystem: true }));
-      await expect(service.deleteRole(admin, 'role-custom')).rejects.toMatchObject({
-        code: 'ROLE_IMMUTABLE',
-      });
-      expect(roleRepo.delete).not.toHaveBeenCalled();
-    });
-
-    it('blocks deleting a canonical tier role even as an editable workspace copy', async () => {
-      // project_admin lives as an isSystem=false workspace copy, yet a tier role
-      // must never be deletable — only its permissions may be tuned.
-      roleRepo.findById.mockResolvedValue(custom({ slug: 'project_admin', isSystem: false }));
-      await expect(service.deleteRole(admin, 'role-custom')).rejects.toMatchObject({
-        code: 'ROLE_IMMUTABLE',
-      });
-      expect(roleRepo.delete).not.toHaveBeenCalled();
-    });
-
-    it('blocks deleting a role still assigned to users (409 ROLE_IN_USE)', async () => {
-      roleRepo.findById.mockResolvedValue(custom());
-      assignmentRepo.listUserIdsForRole.mockResolvedValue(['u1', 'u2']);
-      await expect(service.deleteRole(admin, 'role-custom')).rejects.toMatchObject({
-        code: 'ROLE_IN_USE',
-      });
-      expect(roleRepo.delete).not.toHaveBeenCalled();
-    });
-
-    it('throws ROLE_NOT_FOUND for another workspace’s role', async () => {
-      roleRepo.findById.mockResolvedValue(custom({ workspaceId: 'ws-OTHER' }));
-      await expect(service.deleteRole(admin, 'role-custom')).rejects.toMatchObject({
-        code: 'ROLE_NOT_FOUND',
-      });
-    });
-  });
-
-  /**
-   * The ONE per-Project grant writer. §5's closing sentence (AC-9) is that all three journeys —
-   * Users & Permissions, an invitation's initial access (§6.4) and team setup (P4-RBAC-010) —
-   * update the same source, and they can only do that if there is one writer to reach.
-   *
-   * These tests came from `projects.service.spec.ts` with the body they cover. They had to move:
-   * `ProjectsService.addProjectMember` is a thin delegate now and `AccessService` is a mock over
-   * there, so an assertion on the repository would be asserting on nothing.
-   */
   describe('grantProjectAccess — the one per-Project grant writer', () => {
     const grant = (o: Record<string, unknown> = {}) => ({
       workspaceId: WORKSPACE,
@@ -836,7 +625,7 @@ describe('AccessService — cached-permission invalidation', () => {
     sub: 'admin-1',
     workspaceId: WORKSPACE,
     permissions: ['workspace:*'],
-  } as unknown as Parameters<AccessService['assignRole']>[0];
+  } as unknown as Parameters<AccessService['assertProjectPermission']>[0];
 
   beforeEach(async () => {
     projectAccessRepo = makeProjectAccessRepo();
@@ -929,50 +718,6 @@ describe('AccessService — cached-permission invalidation', () => {
     expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
   });
 
-  it('invalidates the user when a workspace-scoped role is assigned', async () => {
-    const target = role('workspace_admin', ['workspace:*']);
-    roleRepo.findById.mockResolvedValue(target);
-    assignmentRepo.create.mockResolvedValue(assignment(target.id, 'workspace'));
-
-    await service.assignRole(actor, USER, target.id, 'workspace');
-
-    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
-  });
-
-  it('REFUSES a project-scoped assignment (scope retired with the access-level model)', async () => {
-    // Migration 0105 deleted scope_type='project' rows but the writer stayed, and a
-    // row minted here grants project-tier perms OUTSIDE project_members.access_level
-    // while getProjectAccessLevel doesn't recognize roleSlug 'project_member' — so
-    // assertTeamScoped silently bypasses for an "editor" granted this way. Refused
-    // loudly instead. (The old test asserted invalidation fired for the minted row;
-    // the row must not exist to invalidate.)
-    const target = role('project_admin', ['project:edit']);
-    roleRepo.findById.mockResolvedValue(target);
-
-    await expect(service.assignRole(actor, USER, target.id, 'project', 'proj-9')).rejects.toThrow(
-      'Project-scoped role assignments were retired',
-    );
-    expect(assignmentRepo.create).not.toHaveBeenCalled();
-  });
-
-  it("invalidates every holder when a custom role's permissions change", async () => {
-    const custom: SystemRole = {
-      ...role('release_manager', ['release:create']),
-      id: 'role-custom',
-      workspaceId: WORKSPACE,
-      isSystem: false,
-    };
-    roleRepo.findById.mockResolvedValue(custom);
-    roleRepo.updatePermissions.mockResolvedValue({ ...custom, permissions: ['release:view'] });
-    assignmentRepo.listUserIdsForRole.mockResolvedValue(['user-a', 'user-b']);
-
-    await service.updateRolePermissions(actor, custom.id, ['release:view']);
-
-    expect(assignmentRepo.listUserIdsForRole).toHaveBeenCalledWith(custom.id);
-    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:user-a`);
-    expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:user-b`);
-  });
-
   it('invalidates on elevation to workspace_admin', async () => {
     const admin = role('workspace_admin', ['workspace:*']);
     roleRepo.listForWorkspace.mockResolvedValue([admin]);
@@ -984,12 +729,25 @@ describe('AccessService — cached-permission invalidation', () => {
     expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:${USER}`);
   });
 
-  it('does not bump when a failed write throws before commit', async () => {
-    // No role → NotFoundException before the transaction. A bump here would force
-    // every holder of a nonexistent change to re-mint.
-    roleRepo.findById.mockResolvedValue(null);
+  it('does not invalidate when a failed write throws before commit', async () => {
+    // A grant for a project that does not exist throws before the transaction opens. Invalidating
+    // here would evict a live cache entry on behalf of a write that never happened.
+    //
+    // This used to assert the same property through `assignRole`, which is gone with custom roles
+    // (ruling 2026-08-14). `grantProjectAccess` is the surviving writer, so it is the one that has to
+    // hold the property.
+    projectAccessRepo.findLiveProject.mockResolvedValue(undefined);
 
-    await expect(service.assignRole(actor, USER, 'role-missing', 'workspace')).rejects.toThrow();
+    await expect(
+      service.grantProjectAccess({
+        workspaceId: WORKSPACE,
+        projectId: 'proj-missing',
+        userId: USER,
+        actorId: actor.sub,
+        accessLevel: 'editor',
+        onWorkspaceAdmin: 'refuse',
+      }),
+    ).rejects.toThrow();
 
     expect(cache.del).not.toHaveBeenCalled();
   });

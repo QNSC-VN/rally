@@ -23,19 +23,18 @@ import { ReleasesService } from '@modules/releases';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { capacityPlanTeams, capacityPlans, projectTeams, teams } from '@db/schema/work';
-import { users } from '@db/schema/identity';
-import { workspaceMembers } from '@db/schema/workspace';
 
+// `users`, `workspaceMembers`, `VIEWER_ID`, `viewerActor` and `AccessService` were imported for the
+// custom-role fixtures this spec used to build (a "read-only planner" holding `capacity:view` without
+// `capacity:manage`). Those are gone with the ruling; the Editor half of AC-010/AC-013 is asserted in
+// `test/capacity-access-gate.spec.ts`, which reads the route decorators the guard reads.
 import {
-  VIEWER_ID,
   WORKSPACE_ID,
   adminActor,
   bootRallyApp,
   makeActor,
   uniqueKey,
-  viewerActor,
 } from './support/flow-harness';
-import { AccessService } from '@modules/access';
 
 describe('capacity plans (e2e)', () => {
   let app: NestFastifyApplication;
@@ -69,28 +68,6 @@ describe('capacity plans (e2e)', () => {
 
     teamId = await newTeamInProject(projectAId);
   });
-
-  /**
-   * A real grant for a capacity READER: `capacity:view` and neither write code.
-   *
-   * The harness's `ensureViewerGrant` holds `project:view` + `work_item:view`, so that actor cannot
-   * reach the capacity routes at all — it would prove a guard, not the visibility rule. This is the
-   * state AC-013 is actually about: someone who may look at plans but not plan.
-   *
-   * Idempotent, because e2e rows are never cleaned up and every run shares the seeded workspace.
-   */
-  async function ensureCapacityReader(): Promise<void> {
-    const access = app.get(AccessService);
-    const name = 'E2E Capacity Reader';
-    const roles = await access.listRoles(WORKSPACE_ID);
-    const role =
-      roles.find((r) => r.name === name) ??
-      (await access.createRole(admin, { name, permissions: ['project:view', 'capacity:view'] }));
-
-    const assignments = await access.getUserAssignments(WORKSPACE_ID, VIEWER_ID);
-    if (assignments.some((a) => a.roleId === role.id && a.scopeType === 'workspace')) return;
-    await access.assignRole(admin, VIEWER_ID, role.id, 'workspace');
-  }
 
   /**
    * A team LINKED to a project, which is what `addTeam` now requires.
@@ -397,122 +374,61 @@ describe('capacity plans (e2e)', () => {
       expect(updated.plannedEndDate).toBeNull();
     });
   });
-  describe('draft visibility (AC-013) — a real reader grant', () => {
-    it('hides a DRAFT from a reader and shows it to a planner', async () => {
-      await ensureCapacityReader();
-      const reader = viewerActor();
+  /**
+   * Capacity access, as the BA actually specifies it.
+   *
+   * This block used to build a "read-only planner" from a CUSTOM ROLE holding
+   * `project:view` + `capacity:view` (+ `capacity:view_draft`) and assert it could open Drafts but not
+   * change them. That principal does not exist in the specified model, and the SRS is explicit on
+   * origin/main:
+   *
+   *   • `P5-CAP-AC-010` — "Workspace Admin manages all Projects; Admin manages assigned Projects;
+   *     Editor/No Access do NOT access Capacity Planning."
+   *   • `P5-CAP-AC-013` — N/A, "Viewer level removed; access model is now 3-level … Capacity Planning
+   *     is hidden from Editor and No Access."
+   *   • `P5-CAP-AC-012` — Capacity Planning "uses the fixed Phase 4 Project Access baseline and has NO
+   *     temporary editable Full/View permission row."
+   *
+   * So there is no read-only capacity tier to test, and the old fixture was pinning a shape the BA
+   * removed along with `Viewer`. It also depended on custom roles, which AC-11 forbids and which are
+   * now deleted — that dependency was the last one in this suite.
+   *
+   * What remains worth asserting is the real boundary: an Editor is refused outright, and an Admin
+   * manages. `capacity:view_draft` consequently has no holder that lacks `capacity:manage`, which makes
+   * it redundant — flagged for removal rather than removed here, because a permission code in live role
+   * arrays needs a migration, not a catalogue edit.
+   */
+  describe('capacity access is Admin/WA only (P5-CAP-AC-010/012/013)', () => {
+    // The Editor half of AC-010/AC-013 is NOT asserted here, on purpose.
+    //
+    // "Editor/No Access do not access Capacity Planning" is a ROUTE gate — `@RequirePermission`
+    // ('capacity:view' / 'capacity:manage') on `CapacityPlansController`. This spec calls the SERVICE,
+    // and `listPlans` deliberately FILTERS rather than refusing (it is what hides Drafts), so an Editor
+    // reaching it directly gets rows back and a refusal assertion here fails for the right reason:
+    // CLAUDE.md records twice that a spec calling a service directly cannot see a guard defect. I wrote
+    // that assertion first and it failed exactly that way.
+    //
+    // `test/capacity-access-gate.spec.ts` reads the decorator metadata the guard itself reads and
+    // applies the catalogue's Editor/Admin permission sets to it, which is the assertion that can.
+
+    it('shows both DRAFT and PUBLISHED plans to the managing Admin', async () => {
       const releaseId = await newRelease();
       const draft = await capacity.createPlan(admin, {
         projectId: projectAId,
         releaseId,
-        name: `Hidden ${uniqueKey()}`,
+        name: `Visible to admin ${uniqueKey()}`,
         unit: 'points',
       });
 
-      // The planner sees it…
-      const asPlanner = await capacity.listPlans(admin, projectAId);
-      expect(asPlanner.map((p) => p.id)).toContain(draft.id);
+      const withDraft = await capacity.listPlans(admin, projectAId);
+      expect(withDraft.map((pl) => pl.id)).toContain(draft.id);
+      await expect(capacity.getPlan(admin, draft.id)).resolves.toMatchObject({ status: 'draft' });
 
-      // …the reader does not, in the list or by id. NOT FOUND rather than 403: a 403 would confirm the
-      // plan exists, which is what hiding it is meant to avoid.
-      const asReader = await capacity.listPlans(reader, projectAId);
-      expect(asReader.map((p) => p.id)).not.toContain(draft.id);
-      await expect(capacity.getPlan(reader, draft.id)).rejects.toMatchObject({
-        code: 'CAPACITY_PLAN_NOT_FOUND',
+      await capacity.addTeam(admin, draft.id, teamId);
+      await capacity.publishPlan(admin, draft.id, { updateFields: false });
+      await expect(capacity.getPlan(admin, draft.id)).resolves.toMatchObject({
+        status: 'published',
       });
-    });
-
-    it('shows a DRAFT to a read-only PLANNER holding capacity:view_draft (AC-012)', async () => {
-      /**
-       * AC-012 and AC-013 pull apart here, and the permission split has to express both:
-       *
-       *   • AC-012 — a Project Admin set to `Read-only` still opens "Draft and Published plans"
-       *     while changing nothing;
-       *   • AC-013 — a Project Member does not see Drafts at all (the test above).
-       *
-       * Draft visibility was `capacity:manage || capacity:publish`, so a read-only Project Admin
-       * holds neither and was refused Drafts exactly as a Project Member is: AC-013 held, AC-012 did
-       * not, and no combination of the three existing codes could tell those roles apart.
-       * `capacity:view_draft` is the fourth code that can.
-       */
-      const access = app.get(AccessService);
-      const name = 'E2E Capacity Draft Reader';
-      const roles = await access.listRoles(WORKSPACE_ID);
-      const role =
-        roles.find((r) => r.name === name) ??
-        (await access.createRole(admin, {
-          name,
-          permissions: ['project:view', 'capacity:view', 'capacity:view_draft'],
-        }));
-
-      const readerId = randomUUID();
-      await db.insert(users).values({
-        id: readerId,
-        email: `capacity-draft-reader-${readerId.slice(0, 8)}@qnsc.dev`,
-        displayName: 'Read-only planner',
-      });
-      /**
-       * The workspace MEMBER row is load-bearing, not bookkeeping.
-       *
-       * `listEffectiveForUser` inner-joins `workspace.workspace_members` on `status = 'active'`, so a
-       * user who exists in `identity.users` but is not an active member of the workspace resolves NO
-       * assignments — the custom role above included. That is correct (a grant to someone outside the
-       * company must not authorize anything) and it is invisible here, because this test calls the
-       * SERVICE directly: the three published plans come back with no permission check at all, and
-       * only the DRAFT filter consults `capacity:view_draft`. So the missing row presented as
-       * "AC-012 is broken" rather than "this principal does not exist yet".
-       */
-      await db.insert(workspaceMembers).values({
-        workspaceId: WORKSPACE_ID,
-        userId: readerId,
-        status: 'active',
-      });
-      await access.assignRole(admin, readerId, role.id, 'workspace');
-      const draftReader = makeActor(readerId);
-
-      const releaseId = await newRelease();
-      const draft = await capacity.createPlan(admin, {
-        projectId: projectAId,
-        releaseId,
-        name: `Visible draft ${uniqueKey()}`,
-        unit: 'points',
-      });
-
-      // SEES the draft, in the list and by id…
-      const listed = await capacity.listPlans(draftReader, projectAId);
-      expect(listed.map((p) => p.id)).toContain(draft.id);
-      await expect(capacity.getPlan(draftReader, draft.id)).resolves.toMatchObject({
-        id: draft.id,
-      });
-
-      // …and changes nothing. Every write still needs `capacity:manage` or `capacity:publish`.
-      await expect(
-        capacity.updatePlan(draftReader, draft.id, { name: 'Renamed by a reader' }),
-      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
-      await expect(
-        capacity.publishPlan(draftReader, draft.id, { updateFields: false }),
-      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
-    });
-
-    it('shows a PUBLISHED plan to the same reader', async () => {
-      // The same actor, the same project — only the plan's status differs, which is the whole rule.
-      await ensureCapacityReader();
-      const reader = viewerActor();
-      const releaseId = await newRelease();
-      const plan = await capacity.createPlan(admin, {
-        projectId: projectAId,
-        releaseId,
-        name: `Visible ${uniqueKey()}`,
-        unit: 'points',
-      });
-      // A never-published plan with no teams and no items cannot publish (`CAPACITY_PLAN_EMPTY`), so
-      // give it a team — the minimum that makes publishing a real act rather than a no-op.
-      await capacity.addTeam(admin, plan.id, teamId);
-      await capacity.publishPlan(admin, plan.id, { updateFields: false });
-
-      const asReader = await capacity.listPlans(reader, projectAId);
-      expect(asReader.map((p) => p.id)).toContain(plan.id);
-      await expect(capacity.getPlan(reader, plan.id)).resolves.toMatchObject({ id: plan.id });
     });
   });
 

@@ -1,21 +1,18 @@
 import type { SystemRole } from '../access.types';
-import type { DbExecutor } from '@platform';
 
 export const ROLE_REPOSITORY = Symbol('ROLE_REPOSITORY');
 
-/** A new workspace-owned custom role (never a built-in). */
-export interface NewCustomRole {
-  workspaceId: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  permissions: string[];
-}
-
+/**
+ * READ-ONLY by ruling (2026-08-14). `create`, `updatePermissions` and `delete` were removed with
+ * custom-role CRUD — AC-11 makes the Permission Model read-only, and `db/permissions.catalog.ts`
+ * is the single source of truth a per-workspace editable matrix would fork. See the Roles section
+ * of `AccessService` for the full reasoning; do not re-add a writer here.
+ *
+ * The role rows themselves are still WRITTEN, by `db/seeds/reference.ts` and
+ * `db/seeds/bootstrap.ts` — the catalogue reaching a workspace is a deploy-time concern, not a
+ * request-time one.
+ */
 export interface IRoleRepository {
   findById(id: string): Promise<SystemRole | null>;
   listForWorkspace(workspaceId: string): Promise<SystemRole[]>;
-  updatePermissions(id: string, permissions: string[], tx?: DbExecutor): Promise<SystemRole>;
-  create(input: NewCustomRole, tx?: DbExecutor): Promise<SystemRole>;
-  delete(id: string, tx?: DbExecutor): Promise<void>;
 }

@@ -1,29 +1,10 @@
 import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
-import { PERMISSION } from '@shared-kernel';
-import { scopeTypeEnum } from '../../../../../../../db/schema/enums';
 
-export const AssignRoleSchema = z.object({
-  userId: z.string().uuid(),
-  roleId: z.string().uuid(),
-  scopeType: z.enum(scopeTypeEnum.enumValues),
-  scopeId: z.string().uuid().optional(),
-});
-export class AssignRoleDto extends createZodDto(AssignRoleSchema) {}
-
-/** Body for editing a custom role's permission set (workspace admin only). */
-export const UpdateRolePermissionsSchema = z.object({
-  permissions: z.array(z.nativeEnum(PERMISSION)).max(100),
-});
-export class UpdateRolePermissionsDto extends createZodDto(UpdateRolePermissionsSchema) {}
-
-/** Body for creating a workspace-owned custom role (workspace admin only). */
-export const CreateRoleSchema = z.object({
-  name: z.string().trim().min(1).max(100),
-  description: z.string().trim().max(500).nullish(),
-  permissions: z.array(z.nativeEnum(PERMISSION)).max(100).default([]),
-});
-export class CreateRoleDto extends createZodDto(CreateRoleSchema) {}
+// `AssignRoleSchema`, `UpdateRolePermissionsSchema` and `CreateRoleSchema` are GONE with the routes
+// that carried them (ruling 2026-08-14, AC-11: no editable permission matrix, no custom roles). Their
+// only consumers were `POST /roles`, `PATCH /roles/:roleId/permissions` and `POST /role-assignments`.
+// Deleted rather than left exported — an unused request schema is an invitation to re-add the route.
 
 /** Body for project-scoped role assignment — scope is fixed to the URL project. */
 export const AssignProjectRoleSchema = z.object({

@@ -595,12 +595,22 @@ Three references into a capacity plan are now REFUSALS rather than silent repair
   an unlinked or archived team could still be added to a plan — recreating exactly what migration
   0085 was written to clean up.
 
-**`capacity:view_draft` is the fourth capacity code, and it exists because the BA's matrix needs
-it.** AC-012 keeps a read-only Project Admin "opening Draft and Published plans"; AC-013 hides
-Drafts from a Project Member. Visibility was `capacity:manage || capacity:publish`, which satisfied
-AC-013 and broke AC-012 — a read-only Project Admin holds neither write code. Granted to Project
-Admin and NOT to Project Member; the write grants still imply it. Backfilled by migration 0094 (see
-below for why a backfill is required at all).
+**`capacity:view_draft` is the fourth capacity code, and it is now REDUNDANT — the requirement it
+existed for is gone.** It was added because AC-012 was read as keeping a read-only Project Admin
+"opening Draft and Published plans", which `capacity:manage || capacity:publish` could not express.
+That reading is STALE: on `product-docs` `origin/main`, `P5-CAP-AC-012` says Capacity Planning "uses the
+fixed Phase 4 Project Access baseline and has **no temporary editable Full/View permission row**",
+`P5-CAP-AC-010` says "Editor/No Access do not access Capacity Planning", and `P5-CAP-AC-013` is marked
+N/A with "Viewer level removed". So there is no read-only planner, and every role holding
+`capacity:view_draft` (`workspace_admin`, `project_admin`) also holds `capacity:manage` — the code
+cannot distinguish anyone. It is still granted and still read, deliberately: retiring a permission that
+sits in live role arrays needs a migration, not a catalogue edit, and the BA has been asked to confirm
+no future read-only planner is intended. Backfilled by migration 0094.
+
+**The lesson worth more than the fact:** this note asserted an AC that the BA had since changed, and two
+e2e tests were built on it — constructing a read-only planner from a CUSTOM ROLE, pinning a shape the
+SRS had deleted. Read `product-docs` `origin/main` rather than a summary of it before building on an AC;
+the local checkout is a gap-audit branch and lags where the BA authors.
 
 ## An invitation binds to an ADDRESS, and grants a real role
 
@@ -687,15 +697,29 @@ sight. The audit and its sourced Rally research are in
   `isProjectAccessLevel`, never an inline comparison.
 
   Sourced evidence: `product-docs/projects/mini-rally/09_Gap_Audit/research/RALLY_PERMISSIONS_MODEL.md`.
-- **Team-scoped Editor is KEPT, against real Rally.** The BA scopes an Editor's writes to their
-  assigned Teams (§2.2, §3.2 "in assigned Teams"). Rally has **no `Team` object and no team
-  authorization scope** at all — `POST /user/<OID>/teammemberships/add` takes **project** refs, and
-  "Team Member" is a presentational checkbox beside the Permission field with auto-promotion to
-  Editor. Our own research file concluded "do not build a team scope". Kept anyway, because the BA
-  models Teams as first-class and every delivery surface already slices by them. Enforced by
-  `AccessService.assertTeamScoped`. **Known incomplete:** it covers a minority of Editor-reachable
-  writes and no reads, and a team-agnostic item (`teamId === null`) passes through by design. Treat
-  extending it as finishing this ruling, not as new scope.
+- **Team-scoped Editor is DROPPED as an authorization scope** (ruling 2026-08-14, reversing the
+  earlier "KEPT" ruling of the same day — recorded rather than deleted, because the next person to read
+  the BA's §2.2 will reach for it again). The BA scopes an Editor's writes to their assigned Teams
+  (§2.2, §3.2 "in assigned Teams"), and Rally has **no `Team` object and no team authorization scope**
+  at all — `POST /user/<OID>/teammemberships/add` takes **project** refs, and "Team Member" is a
+  presentational checkbox with auto-promotion to Editor. Our own research file said "do not build a
+  team scope"; it was kept anyway because the BA models Teams as first-class.
+
+  **What reversed it was our own schema, not Rally's docs.** A team scope can only restrict rows that
+  CARRY a team, and `portfolio_items.team_id` and `work_items.team_id` are both nullable and mostly
+  unset (195 of 206 local iterations name no team). `assertTeamScoped` therefore admitted every
+  `teamId === null` row *by design* — so the boundary admitted the ordinary case, which makes it a
+  filter with a security-sounding name rather than a control. It covered 3 of ~14 Editor-reachable
+  writes and **no reads**: the worst available state, because it reads as a boundary in review and is
+  not one. Finishing it honestly would have required making `team_id` MANDATORY on every
+  Editor-writable row — a data-model change across portfolio, work items and iterations, plus
+  team-scoped read models on every list, report and picker.
+
+  So Teams stay exactly what they already are: **delivery-model data, and a display filter.** Team
+  membership, `team_members`, Team Status, Team Capacity and every report's team scoping are untouched
+  — and note `RBE-06` now grants `editor` from a team roster row, which IS Rally's model arrived at from
+  the other direction. **Do not re-add a team authorization scope without a fresh ruling, and if one is
+  ever wanted, mandatory `team_id` is its precondition, not an optimisation.**
 - **A per-Project `Admin` has NO structural authority**, following the BA over Rally. §3.1 marks
   every structural row Hidden for Admin — create/edit/archive/restore/delete Project, create/edit/
   deactivate/restore Team, assign Project access and Team membership — and gives it Read-only on
@@ -723,6 +747,21 @@ global anchor and hid the fault everywhere it was tested. Migration 0092 backfil
 So: **a new permission needs a backfill migration**, not just a catalogue entry. Force it only
 when the permission is genuinely new (nobody can have revoked what never existed); a permission
 that already shipped must be merged, not forced, or the migration undoes someone's decision.
+
+**Custom roles and the editable permission matrix are DELETED** (ruling 2026-08-14). AC-11 makes the
+Permission Model read-only with no editable matrix, and three things agreed: the editing UI was already
+dead code (`RoleEditorDialog` unreferenced, `role-capabilities.ts` with no live consumer), the catalogue
+above is the single source of truth so a customisable matrix forks it, and — the deciding reason —
+custom-role CRUD plus workspace-scoped tier-role assignment together re-create exactly the company-wide
+over-grant migration 0111 removed. The READ-ONLY Permission Model tab stays; it is an AC-11 requirement,
+not a leftover.
+
+**The removal is deliberately sequenced, because deleting a role a user HOLDS revokes their access:**
+(1) remove the editing routes and dead UI — a contract change with no data risk; (2) a **dry-run report**
+of every custom role, everyone holding one, and every workspace-scoped tier assignment (the
+`pnpm db:backfill:accepted-date` shape: report, never guess); (3) only then a migration that removes
+them, converting any real assignment to its per-project equivalent. Step 3 is gated on reading step 2's
+output against a real database — do not collapse the three into one change.
 
 ## Seeds: what a DEPLOYED database is allowed to contain
 

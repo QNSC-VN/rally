@@ -93,9 +93,7 @@ export const ProjectMemberResponseSchema = z.object({
     .number()
     .int()
     .min(0)
-    .describe(
-      'Active team_members rows for Teams linked to this project — same scoping as assertTeamScoped',
-    ),
+    .describe('Active team_members rows for Teams linked to this project'),
 });
 
 export class ProjectMemberResponseDto extends createZodDto(ProjectMemberResponseSchema) {}

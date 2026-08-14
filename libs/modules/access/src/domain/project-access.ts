@@ -27,7 +27,7 @@ export interface ProjectAccessGrant {
  *
  * SRS §2.2 ("Admin always receives `All Teams`; individual Team selection is not shown"), §5.1
  * and §5.2 all state it, and it is why an Admin needs no `team_members` row at all:
- * {@link AccessService.assertTeamScoped} skips team scoping for Admin, so All Teams is the
+ * An Admin covers every team by definition, so All Teams is the
  * ABSENCE of a scope rather than a set of rows some surface has to write.
  *
  * The backend mirror of `grantsAllTeams` in `apps/web/src/shared/config/access-levels.ts`. The

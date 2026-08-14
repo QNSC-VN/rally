@@ -710,7 +710,7 @@ export interface MilestoneArtifactScope {
  *     the BA specified.
  *   • team — when the Milestone selects Team scope, an artifact must be on one of those Teams.
  *     A team-agnostic item (`teamId === null`) is OUT of a team scope, not exempt from it:
- *     unlike `AccessService.assertTeamScoped`, which asks whether the ACTOR may write, this
+ *     unlike an actor-side authorization check, which asks whether the CALLER may write, this
  *     asks whether the WORK is inside a declared scope, and "no team" is not one of them.
  *
  * The prose is deliberately direction-neutral: one message has to read correctly whether the

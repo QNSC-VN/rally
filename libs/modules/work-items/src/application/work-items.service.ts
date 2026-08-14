@@ -331,8 +331,11 @@ export class WorkItemsService {
       foundInReleaseId: opts.foundInReleaseId ?? null,
       memberIds: [opts.assigneeId, opts.reporterId, opts.devOwnerId],
     });
-    // RBAC migration Phase 9: an Editor may only create work in their assigned teams.
-    await this.accessService.assertTeamScoped(actor, projectId, opts.teamId ?? null);
+    // An `AccessService.assertTeamScoped` call sat here (and on update and delete). Team scope was
+    // deleted as an authorization boundary by ruling — see that method's former home in
+    // `access.service.ts` for the reasoning. `assertAssignmentScope` above still validates that the
+    // team, iteration and release BELONG to this project; what is gone is the separate question of
+    // whether the ACTOR is on the team.
 
     // Rank is assigned INSIDE the transaction below, under a per-scope advisory
     // lock — see the `create` call. It used to be computed here, on the pool
@@ -747,8 +750,9 @@ export class WorkItemsService {
     }
 
     const effectiveTeamId = input.teamId !== undefined ? input.teamId : item.teamId;
-    // RBAC migration Phase 9: an Editor may only edit work in their assigned teams.
-    await this.accessService.assertTeamScoped(actor, item.projectId, effectiveTeamId);
+    // The `assertTeamScoped` call that sat here is gone (ruling, 2026-08-14 — see its former home in
+    // `access.service.ts`). `effectiveTeamId` is still needed below: it is what
+    // `assertIterationAssignable` validates the iteration against.
     /**
      * A TEAM change revalidates the iteration the item already sits in.
      *
@@ -1092,8 +1096,7 @@ export class WorkItemsService {
         'Defects cannot be deleted. Resolve the defect by setting its state to Closed or Closed Declined.',
       );
     }
-    // RBAC migration Phase 9: an Editor may only delete work in their assigned teams.
-    await this.accessService.assertTeamScoped(actor, item.projectId, item.teamId);
+    // An `assertTeamScoped` call sat here too, and is gone by the same ruling (2026-08-14).
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     await this.workItemRepo.softDelete(id, actor.workspaceId);
     // Remove this item's F6 relations so no dangling links survive the delete

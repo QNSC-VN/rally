@@ -82,7 +82,7 @@ export class TeamService {
    *
    * THE LEVEL IS RESOLVED, NEVER LITERAL. {@link teamRosterAccessLevel} is the rule and it lives in
    * the access module beside the checks that consume it:
-   *   * `admin` is the one level a roster row must never IMPLY. `assertTeamScoped` scopes only
+   *   * `admin` is the one level a roster row must never IMPLY. team membership was only ever scoped for
    *     `editor`, and `grantsAllTeams` means an Admin needs no `team_members` row at all — so
    *     implying Admin would turn one team's membership into authority over every team in the
    *     project, the opposite of what a team assignment says.

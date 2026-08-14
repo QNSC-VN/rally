@@ -1,26 +1,14 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  Param,
-  ParseUUIDPipe,
-  Patch,
-  Post,
-} from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors } from '@platform';
 import type { JwtPayload } from '@platform';
 import { CurrentUser } from '@platform';
 import { AccessService } from '../../application/access.service';
 import { AuthPolicy, RequirePermission } from './policy.guard';
-import { AssignRoleDto, CreateRoleDto, UpdateRolePermissionsDto } from './dto/access-request.dto';
 import {
   RoleResponseDto,
   RoleAssignmentResponseDto,
   ProjectPermissionsResponseDto,
-  PermissionCatalogResponseDto,
 } from './dto/access-response.dto';
 import type { SystemRole, UserRoleAssignment } from '../../domain/access.types';
 import { SelfScoped, SharedRead } from './policy.guard';
@@ -69,62 +57,26 @@ export class AccessController {
     return roles.map(toRoleDto);
   }
 
-  @Get('permissions')
-  @RequirePermission('roles:view')
-  @ApiOperation({
-    summary: 'List assignable permissions with their scope tier (workspace admin only)',
-  })
-  @ApiResponse({ status: 200, type: PermissionCatalogResponseDto })
-  @ApiCommonErrors(401, 403)
-  getPermissionCatalog(): PermissionCatalogResponseDto {
-    return { permissions: this.accessService.getPermissionCatalog() };
-  }
-
-  @Post('roles')
-  @RequirePermission('roles:edit')
-  @ApiOperation({ summary: 'Create a workspace custom role (workspace admin only)' })
-  @ApiResponse({ status: 201, type: RoleResponseDto })
-  @ApiCommonErrors(400, 401, 403, 409, 422)
-  async createRole(
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: CreateRoleDto,
-  ): Promise<RoleResponseDto> {
-    const role = await this.accessService.createRole(user, {
-      name: dto.name,
-      description: dto.description ?? null,
-      permissions: dto.permissions,
-    });
-    return toRoleDto(role);
-  }
-
-  @Patch('roles/:roleId/permissions')
-  @RequirePermission('roles:edit')
-  @ApiOperation({ summary: 'Replace a custom role\u2019s permission set (workspace admin only)' })
-  @ApiParam({ name: 'roleId', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, type: RoleResponseDto })
-  @ApiCommonErrors(400, 401, 403, 404, 409, 422)
-  async updateRolePermissions(
-    @CurrentUser() user: JwtPayload,
-    @Param('roleId', ParseUUIDPipe) roleId: string,
-    @Body() dto: UpdateRolePermissionsDto,
-  ): Promise<RoleResponseDto> {
-    const role = await this.accessService.updateRolePermissions(user, roleId, dto.permissions);
-    return toRoleDto(role);
-  }
-
-  @Delete('roles/:roleId')
-  @RequirePermission('roles:edit')
-  @HttpCode(204)
-  @ApiOperation({ summary: 'Delete a workspace custom role (workspace admin only)' })
-  @ApiParam({ name: 'roleId', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 204, description: 'Role deleted' })
-  @ApiCommonErrors(401, 403, 404, 409)
-  async deleteRole(
-    @CurrentUser() user: JwtPayload,
-    @Param('roleId', ParseUUIDPipe) roleId: string,
-  ): Promise<void> {
-    await this.accessService.deleteRole(user, roleId);
-  }
+  // ── Custom roles are GONE (ruling 2026-08-14) ───────────────────────────────
+  //
+  // `POST /roles`, `PATCH /roles/:roleId/permissions`, `DELETE /roles/:roleId`,
+  // `POST /role-assignments` and `GET /permissions` are removed. AC-11 makes the Permission Model
+  // read-only with no editable matrix, `db/permissions.catalog.ts` is the single source of truth a
+  // custom matrix would fork, and — the deciding reason — custom-role CRUD plus WORKSPACE-scoped
+  // tier-role assignment together re-create exactly the company-wide over-grant migration 0111
+  // removed. The editing UI was already dead code (`RoleEditorDialog` unreferenced), so nothing
+  // reachable called these.
+  //
+  // What deliberately STAYS:
+  //   • `GET /roles` — workspace reference data every member sees in pickers.
+  //   • `GET /users/:userId/role-assignments` — a read, and the read-only Permission Model needs it.
+  //   • `DELETE /role-assignments/:id` — REVOKING an existing workspace-scoped assignment must remain
+  //     possible after creating one stops being possible. Losing the ability to undo a grant you can
+  //     no longer make is the wrong direction to fail in, and the removal migration (still gated on
+  //     the dry-run report) needs this path to exist.
+  //
+  // The read-only Permission Model tab renders from the FE catalogue mirror, not from `GET
+  // /permissions`, so removing that route does not touch it.
 
   // ── Role assignments ───────────────────────────────────────────────────────
 
@@ -140,25 +92,6 @@ export class AccessController {
   ): Promise<RoleAssignmentResponseDto[]> {
     const assignments = await this.accessService.getUserAssignments(user.workspaceId, userId);
     return assignments.map(toAssignmentDto);
-  }
-
-  @Post('role-assignments')
-  @RequirePermission('users:assign_role')
-  @ApiOperation({ summary: 'Assign a role to a user (workspace admin only)' })
-  @ApiResponse({ status: 201, type: RoleAssignmentResponseDto })
-  @ApiCommonErrors(400, 401, 403, 404, 409, 422)
-  async assignRole(
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: AssignRoleDto,
-  ): Promise<RoleAssignmentResponseDto> {
-    const assignment = await this.accessService.assignRole(
-      user,
-      dto.userId,
-      dto.roleId,
-      dto.scopeType,
-      dto.scopeId,
-    );
-    return toAssignmentDto(assignment);
   }
 
   @Delete('role-assignments/:id')

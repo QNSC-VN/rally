@@ -446,7 +446,9 @@ export class IterationsService {
      *     `derived-invariants.e2e.spec.ts` was written to pin.
      *   • ACTIVITY. The items' Revision History showed nothing at all, though their iteration had
      *     changed. A value that moves with no entry is unauditable.
-     *   • `assertTeamScoped`, so an Editor's team boundary applied here too.
+     *   • the Editor team check that used to sit on that path. (Team scope was dropped as an
+     *     authorization boundary by ruling on 2026-08-14 — see CLAUDE.md — so this line is history
+     *     now, kept because it is part of why this method routes through `updateWorkItem` at all.)
      *
      * Per item rather than in bulk, and that trade is deliberate: an iteration holds tens of
      * stories, not thousands, and correctness on a membership change is worth more than one

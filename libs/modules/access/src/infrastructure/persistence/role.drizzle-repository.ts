@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { eq, or, isNull } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
-import type { DrizzleDB, DbExecutor } from '@platform';
+import type { DrizzleDB } from '@platform';
 import { systemRoles } from '../../../../../../db/schema/access';
 import type { SystemRole } from '../../domain/access.types';
-import { IRoleRepository, type NewCustomRole } from '../../domain/ports/role.repository';
+import { IRoleRepository } from '../../domain/ports/role.repository';
 
 @Injectable()
 export class RoleDrizzleRepository implements IRoleRepository {
@@ -17,11 +17,12 @@ export class RoleDrizzleRepository implements IRoleRepository {
 
   async listForWorkspace(workspaceId: string): Promise<SystemRole[]> {
     // Global template roles (workspaceId IS NULL) + this workspace's own roles.
-    // A workspace may own an EDITABLE copy of a tier role that shares a slug with
-    // the global template — collapse by slug, always preferring the workspace
-    // copy so the admin sees (and edits) the row that actually governs the
-    // workspace. Slugs unique to the global set (e.g. workspace_admin, which has
-    // no per-workspace copy) fall through unchanged.
+    // A workspace owns a copy of each tier role that shares a slug with the global template
+    // (`db/seeds/bootstrap.ts` upserts them) — collapse by slug, always preferring the workspace
+    // copy, because that is the row that actually governs the workspace. Slugs unique to the
+    // global set (e.g. workspace_admin, which has no per-workspace copy) fall through unchanged.
+    // Nothing at REQUEST time can create or edit a row here any more: custom-role CRUD was
+    // deleted by ruling (2026-08-14), so the only writers are the deploy-time seeds.
     const rows = await this.db
       .select()
       .from(systemRoles)
@@ -33,34 +34,6 @@ export class RoleDrizzleRepository implements IRoleRepository {
       if (!existing || row.workspaceId === workspaceId) bySlug.set(row.slug, row);
     }
     return [...bySlug.values()].map((r) => this.toRole(r));
-  }
-
-  async updatePermissions(id: string, permissions: string[], tx?: DbExecutor): Promise<SystemRole> {
-    const rows = await (tx ?? this.db)
-      .update(systemRoles)
-      .set({ permissions })
-      .where(eq(systemRoles.id, id))
-      .returning();
-    return this.toRole(rows[0]);
-  }
-
-  async create(input: NewCustomRole, tx?: DbExecutor): Promise<SystemRole> {
-    const rows = await (tx ?? this.db)
-      .insert(systemRoles)
-      .values({
-        workspaceId: input.workspaceId,
-        name: input.name,
-        slug: input.slug,
-        description: input.description,
-        isSystem: false,
-        permissions: input.permissions,
-      })
-      .returning();
-    return this.toRole(rows[0]);
-  }
-
-  async delete(id: string, tx?: DbExecutor): Promise<void> {
-    await (tx ?? this.db).delete(systemRoles).where(eq(systemRoles.id, id));
   }
 
   private toRole(row: typeof systemRoles.$inferSelect): SystemRole {

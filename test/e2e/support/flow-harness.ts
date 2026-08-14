@@ -46,7 +46,6 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import type { JwtPayload } from '@platform';
-import { AccessService } from '@modules/access';
 import type { ProjectAccessLevel } from '@shared-kernel';
 import { ProjectsService } from '@modules/projects';
 import { PlatformModule } from '@platform';
@@ -181,36 +180,24 @@ export const adminActor = (): JwtPayload => makeActor(ADMIN_USER_ID, ['workspace
  */
 export const viewerActor = (): JwtPayload => makeActor(VIEWER_ID);
 
-/** Slug of the workspace-owned custom role that backs {@link viewerActor}. */
-const VIEWER_ROLE_NAME = 'E2E Read Only';
-
 /**
- * Give {@link viewerActor} a REAL read-only grant: a workspace-owned custom role
- * holding `project:view` + `work_item:view` and nothing else, assigned at
- * workspace scope. Idempotent, so every spec can call it and repeated runs
- * against the same seeded database stay clean.
+ * Give {@link viewerActor} a REAL read-only grant: per-Project `editor` on the seeded project.
  *
- * `project_viewer` was removed in the Phase 4.2 reconciliation (#183), and no
- * canonical role is read-only — a custom role is the supported way to express one,
- * so this exercises the real mechanism rather than a fixture shortcut.
+ * `ACCESS_LEVEL_PERMISSIONS.editor` is EXACTLY `project:view` + `work_item:view` and six other
+ * delivery codes, which is what this principal has always been used for — a caller with genuine
+ * access to the project but none of the codes any spec here puts under test.
+ *
+ * It used to create a workspace-owned CUSTOM ROLE holding those two codes and assign it at workspace
+ * scope. Custom roles were deleted by ruling (2026-08-14, AC-11), and that fixture was itself the
+ * anti-pattern the ruling targets: a workspace-scoped grant of project-tier codes across every
+ * project, which is what migration 0111 removed. Going through `grantProjectAccess` also exercises the
+ * real permission-cache invalidation, so a spec asserting a grant is visible on the NEXT request is
+ * testing the invalidation rather than a TTL expiry.
+ *
+ * Idempotent (the underlying write upserts), so every spec can call it in `beforeAll`.
  */
 export async function ensureViewerGrant(app: INestApplication): Promise<void> {
-  const access = app.get(AccessService);
-  const admin = adminActor();
-
-  const roles = await access.listRoles(WORKSPACE_ID);
-  const existing = roles.find((r) => r.name === VIEWER_ROLE_NAME);
-  const role =
-    existing ??
-    (await access.createRole(admin, {
-      name: VIEWER_ROLE_NAME,
-      permissions: ['project:view', 'work_item:view'],
-    }));
-
-  const assignments = await access.getUserAssignments(WORKSPACE_ID, VIEWER_ID);
-  if (assignments.some((a) => a.roleId === role.id && a.scopeType === 'workspace')) return;
-
-  await access.assignRole(admin, VIEWER_ID, role.id, 'workspace');
+  await grantProjectAccess(app, VIEWER_ID, SEEDED.nxp.projectId, 'editor');
 }
 
 /**

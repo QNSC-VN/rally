@@ -110,11 +110,10 @@ const WORKSPACE_ROOTS: readonly QueryKey[] = [
   ['workspace-invitations'],
   ['system-roles'],
 ]
-const ACCESS_ROOTS: readonly QueryKey[] = [
-  ['my-project-permissions'],
-  ['permission-catalog'],
-  ['role-catalog'],
-]
+// `permission-catalog` is gone with `GET /v1/access/permissions`: custom roles and the editable
+// permission matrix were deleted by ruling (2026-08-14, AC-11), and the READ-ONLY Permission Model tab
+// renders from the frontend catalogue mirror rather than from the API, so nothing fetches that key.
+const ACCESS_ROOTS: readonly QueryKey[] = [['my-project-permissions'], ['role-catalog']]
 
 /** De-duplicate roots so a shared root (e.g. `iteration-status`) fires once. */
 function dedup(roots: readonly QueryKey[]): QueryKey[] {
