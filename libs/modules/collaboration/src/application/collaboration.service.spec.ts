@@ -4,6 +4,7 @@ import { PreconditionFailedException } from '@platform';
 import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
 import { PortfolioItemsService } from '@modules/portfolio';
+import { ProjectsService } from '@modules/projects';
 import { CollaborationService } from './collaboration.service';
 import { COMMENT_REPOSITORY } from '../domain/ports/comment.repository';
 import type { Comment } from '../domain/collaboration.types';
@@ -64,6 +65,13 @@ const makeAccessService = () => ({
   assertProjectPermission: vi.fn().mockResolvedValue(undefined),
 });
 
+// The ONE home of PRJ-FR-010. Resolves by default; the block about it rejects deliberately.
+const makeProjectsService = () => ({
+  assertProjectWritable: vi
+    .fn()
+    .mockResolvedValue({ id: 'proj-9', workspaceId: 'ws-1', status: 'active' }),
+});
+
 const WORK_ITEM_REF = { entityType: 'work_item' as const, entityId: 'wi-1' };
 const PORTFOLIO_REF = { entityType: 'portfolio_item' as const, entityId: 'pi-1' };
 
@@ -73,12 +81,14 @@ describe('CollaborationService — project-scoped comment writes', () => {
   let workItemsService: ReturnType<typeof makeWorkItemsService>;
   let portfolioItemsService: ReturnType<typeof makePortfolioItemsService>;
   let accessService: ReturnType<typeof makeAccessService>;
+  let projectsService: ReturnType<typeof makeProjectsService>;
 
   beforeEach(async () => {
     commentRepo = makeCommentRepo();
     workItemsService = makeWorkItemsService();
     portfolioItemsService = makePortfolioItemsService();
     accessService = makeAccessService();
+    projectsService = makeProjectsService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -87,6 +97,7 @@ describe('CollaborationService — project-scoped comment writes', () => {
         { provide: WorkItemsService, useValue: workItemsService },
         { provide: PortfolioItemsService, useValue: portfolioItemsService },
         { provide: AccessService, useValue: accessService },
+        { provide: ProjectsService, useValue: projectsService },
       ],
     }).compile();
 
@@ -168,6 +179,60 @@ describe('CollaborationService — project-scoped comment writes', () => {
         'work_item:edit',
       );
       expect(commentRepo.softDelete).toHaveBeenCalledWith('c-1');
+    });
+  });
+
+  /**
+   * PRJ-03. None of the three comment writes carried the archived-project rule (PRJ-FR-010), so an
+   * archived project's Discussion tab stayed fully writable — and a new comment still notified
+   * watchers and @mentions, which means archiving did not even stop the mail.
+   *
+   * `createComment` reaches the rule through `subjectProjectId`, the same resolve
+   * `assertCanCollaborate` uses, so create cannot end up scoped differently from the edit and
+   * delete of the row it produces. Both entity types are covered because both write the same
+   * `collaboration.comments` rows.
+   */
+  describe('an archived project refuses comment writes (PRJ-FR-010)', () => {
+    beforeEach(() => {
+      projectsService.assertProjectWritable.mockRejectedValue(
+        new PreconditionFailedException('PROJECT_ARCHIVED', 'archived'),
+      );
+    });
+
+    it('refuses a new comment on a work item', async () => {
+      await expect(service.createComment(mockActor, WORK_ITEM_REF, 'hi')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(commentRepo.create).not.toHaveBeenCalled();
+      expect(workItemsService.notifyCommentAdded).not.toHaveBeenCalled();
+    });
+
+    it('refuses a new comment on a portfolio item, resolved from the Feature', async () => {
+      await expect(service.createComment(mockActor, PORTFOLIO_REF, 'hi')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(portfolioItemsService.getItem).toHaveBeenCalledWith(mockActor, 'pi-1');
+      expect(commentRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses an edit', async () => {
+      commentRepo.findById.mockResolvedValue(mockComment());
+      await expect(service.updateComment(mockActor, 'c-1', 'edited')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(commentRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses a delete', async () => {
+      commentRepo.findById.mockResolvedValue(mockComment());
+      await expect(service.deleteComment(mockActor, 'c-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(commentRepo.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('still LISTS the thread — archived is read-only, not invisible', async () => {
+      await expect(service.listComments(mockActor, WORK_ITEM_REF)).resolves.toEqual([]);
     });
   });
 });

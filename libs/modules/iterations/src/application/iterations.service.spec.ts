@@ -370,4 +370,49 @@ describe('IterationsService', () => {
       );
     });
   });
+
+  /**
+   * PRJ-03. Commit and Accept were the only two writes in this service that skipped
+   * `assertProjectWritable` — create, update, delete and rollover all carried it, which is exactly
+   * the shape a call-site convention decays into.
+   *
+   * Committing matters more than it looks: `SnapshotCronService.findActiveIterations` selects on
+   * `state = 'committed'` and nothing else, so committing an archived project's sprint also starts
+   * the hourly Burndown job writing new `iteration_daily_snapshots` rows for it.
+   */
+  describe('an archived project refuses the two state transitions (PRJ-FR-010)', () => {
+    beforeEach(() => {
+      projects.assertProjectWritable.mockRejectedValue(
+        new PreconditionFailedException('PROJECT_ARCHIVED', 'archived'),
+      );
+    });
+
+    it('refuses a commit', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'planning' }));
+      await expect(service.commitIteration(actor, 'it-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses an accept', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
+      dbSelectResult = [{ total: 3, allAccepted: true }];
+      await expect(service.acceptIteration(actor, 'it-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('still LISTS its iterations — archived is read-only, not invisible', async () => {
+      repo.listByProject.mockResolvedValue({
+        data: [mockIteration()],
+        pageInfo: { nextCursor: null, hasNextPage: false, limit: 25 },
+      });
+      repo.taskEstimatesByIteration.mockResolvedValue(new Map());
+      await expect(
+        service.listIterations(actor, 'proj-1', {}, { limit: 25, cursor: null }),
+      ).resolves.toMatchObject({ data: [expect.objectContaining({ id: 'it-1' })] });
+    });
+  });
 });

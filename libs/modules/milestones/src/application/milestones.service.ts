@@ -531,6 +531,11 @@ export class MilestonesService {
     workItemIds: string[],
   ): Promise<string[]> {
     const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    // PRJ-FR-010. `createMilestone`, `updateMilestone` and `deleteMilestone` carried this rule and
+    // the four replace-SET writes below did not, so an archived project's milestones kept their
+    // artifacts, projects, teams and releases fully editable — and the release set additionally
+    // rewrites the milestone's own target window (FR-011/012).
+    await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
     const uniqueIds = [...new Set(workItemIds)];
     if (uniqueIds.length > 0) {
       const rows = await this.db
@@ -581,6 +586,17 @@ export class MilestonesService {
   ): Promise<void> {
     for (const milestoneId of [...new Set(milestoneIds)]) {
       const milestone = await this.requireMilestone(workspaceId, milestoneId);
+      /**
+       * The archived-project rule is checked from this side too, and it has to be.
+       *
+       * `milestone_artifacts` has two write paths and the whole point of this method is that they
+       * cannot answer differently — the docblock below records what happened the last time one of
+       * them enforced less than the other. `setMilestoneArtifacts` refuses an archived project, so
+       * without this a caller could add the same row from `PUT /work-items/:id/milestones` instead:
+       * the work item's own project is checked by `WorkItemsService`, but the MILESTONE's may be a
+       * different one (its scope spans `milestone_projects`), and that one would go unchecked.
+       */
+      await this.projectsService.assertProjectWritable(workspaceId, milestone.projectId);
       assertArtifactsInMilestoneScope(milestone, candidates);
     }
   }
@@ -595,7 +611,8 @@ export class MilestonesService {
     milestoneId: string,
     projectIds: string[],
   ): Promise<string[]> {
-    await this.getMilestone(actor.workspaceId, milestoneId);
+    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
     await this.assertLinksInWorkspace(actor.workspaceId, { projectIds });
     await this.milestoneRepo.setProjectLinks(milestoneId, projectIds);
     return this.milestoneRepo.getProjectIds(milestoneId);
@@ -611,7 +628,8 @@ export class MilestonesService {
     milestoneId: string,
     teamIds: string[],
   ): Promise<string[]> {
-    await this.getMilestone(actor.workspaceId, milestoneId);
+    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
     await this.assertLinksInWorkspace(actor.workspaceId, { teamIds });
     await this.milestoneRepo.setTeamLinks(milestoneId, teamIds);
     return this.milestoneRepo.getTeamIds(milestoneId);
@@ -627,7 +645,8 @@ export class MilestonesService {
     milestoneId: string,
     releaseIds: string[],
   ): Promise<string[]> {
-    await this.getMilestone(actor.workspaceId, milestoneId);
+    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
     await this.assertLinksInWorkspace(actor.workspaceId, { releaseIds });
     await this.milestoneRepo.setReleaseLinks(milestoneId, releaseIds);
     // Target dates are derived from the linked releases (SRS FR-011/012), so

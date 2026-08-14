@@ -207,8 +207,13 @@ export class IterationsService {
   }
 
   /**
-   * Load an iteration for a read. Project-scoped iteration:view is enforced by
+   * Load an iteration for a read. Project-scoped `timebox:view` is enforced by
    * the PolicyGuard at the route (resource-resolved from :id); this just loads.
+   *
+   * `timebox:view`, NOT `iteration:view`: §3.2 hides the `Plan > Timeboxes` SURFACE from an Editor
+   * while giving it view-and-update on `Track > Iteration Status`, and one code cannot serve both.
+   * `iteration:view` stays with the Editor because the iteration LIST feeds Iteration Status, Backlog,
+   * Team Status and Quality; only this detail read and its activity tab moved.
    */
   async getIterationForView(actor: JwtPayload, id: string): Promise<Iteration> {
     return this.getIteration(actor.workspaceId, id);
@@ -303,6 +308,11 @@ export class IterationsService {
 
   async commitIteration(actor: JwtPayload, id: string): Promise<Iteration> {
     const iteration = await this.getIteration(actor.workspaceId, id);
+    // The two state transitions were the only writes in this service that skipped the
+    // archived-project rule (PRJ-FR-010), so an archived project's sprint could still be
+    // committed — which also starts the hourly Burndown snapshot writing new rows for it
+    // (`findActiveIterations` selects on `state = 'committed'`).
+    await this.projectsService.assertProjectWritable(actor.workspaceId, iteration.projectId);
 
     if (iteration.state !== 'planning') {
       throw new PreconditionFailedException(
@@ -332,6 +342,10 @@ export class IterationsService {
   async acceptIteration(actor: JwtPayload, id: string): Promise<Iteration> {
     const workspaceId = actor.workspaceId;
     const iteration = await this.getIteration(workspaceId, id);
+    // See `commitIteration`: both transitions carry the archived-project rule now. Accept is not
+    // an undo of anything — it advances the iteration and stamps `completedAt` — so it is an
+    // ordinary content write (PRJ-FR-010).
+    await this.projectsService.assertProjectWritable(workspaceId, iteration.projectId);
 
     if (iteration.state !== 'committed') {
       throw new PreconditionFailedException(

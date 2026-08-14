@@ -20,6 +20,7 @@ import {
   type EstimateTier,
   resolveEstimate,
 } from '@modules/portfolio';
+import { ProjectsService } from '@modules/projects';
 import { projectTeams, releases, teamMembers, teams } from '../../../../../db/schema/work';
 import {
   FORECAST_HISTORY_DAYS,
@@ -243,6 +244,8 @@ export class CapacityPlansService {
     private readonly access: AccessService,
     private readonly estimateMaps: PreliminaryEstimateMapService,
     private readonly portfolioItems: PortfolioItemsService,
+    // Owns `assertProjectWritable` — the archived-project rule (PRJ-FR-010). See `requireDraft`.
+    private readonly projects: ProjectsService,
   ) {}
 
   /**
@@ -307,6 +310,9 @@ export class CapacityPlansService {
     input: Omit<CreateCapacityPlanInput, 'workspaceId' | 'planKey'>,
   ): Promise<CapacityPlanView> {
     await this.access.assertProjectPermission(actor, input.projectId, 'capacity:manage');
+    // Not routed through `requireDraft` — there is no plan yet — so the archived-project rule
+    // is called here directly (PRJ-FR-010).
+    await this.projects.assertProjectWritable(actor.workspaceId, input.projectId);
     await this.assertReleaseInProject(actor.workspaceId, input.projectId, input.releaseId);
 
     // Checked before inserting so the caller gets a named conflict rather than a raw
@@ -368,6 +374,16 @@ export class CapacityPlansService {
       throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
     }
     await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:manage');
+    /**
+     * Guarded, even though this is the one write a PUBLISHED state does not block.
+     *
+     * The two conditions are unrelated: `requireDraft` is skipped because Rally lets a planner
+     * delete a published plan, not because deleting is exempt from the project's read-only rule.
+     * A plan is the project's planning artefact, so destroying it is a content change (PRJ-FR-010),
+     * and nothing needs it deleted in order to restore the project — restoring is a
+     * `PATCH /projects/:id` with `status: 'active'` and takes no preconditions.
+     */
+    await this.projects.assertProjectWritable(actor.workspaceId, plan.projectId);
     await this.repo.delete(id, actor.workspaceId);
   }
 
@@ -608,6 +624,15 @@ export class CapacityPlansService {
     const plan = await this.repo.findById(id, actor.workspaceId);
     if (!plan) throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
     await this.access.assertProjectPermission(actor, plan.projectId, 'capacity:publish');
+    /**
+     * Guarded, and it is worth saying why this is NOT an "undo" that has to stay open.
+     *
+     * Revert unpublishes so the plan can be EDITED again, and Rally is explicit that it rolls back
+     * nothing — "No changes are made to the field values in the portfolio items". So it does not
+     * undo the writes a publish made, and on an archived project the editing it exists to unlock is
+     * refused anyway. Restoring the project is the one action that reopens all of this.
+     */
+    await this.projects.assertProjectWritable(actor.workspaceId, plan.projectId);
 
     if (plan.status !== 'published') {
       throw new PreconditionFailedException(
@@ -1749,17 +1774,34 @@ export class CapacityPlansService {
   // ── Guards ────────────────────────────────────────────────────────────────
 
   /**
-   * Load the plan and refuse if it is published.
+   * Load the plan and refuse if it is published, or if its PROJECT is archived.
    *
    * A published plan has written Release and planned dates onto Features, so editing it
    * in place would leave those writes describing a plan that no longer exists. Reverting
    * to draft is the supported route and arrives with the publish slice — until then
    * nothing can reach `published`, so this guard is proven by an e2e that inserts one
    * directly rather than by the UI.
+   *
+   * The archived-project check (PRJ-03 / PRJ-FR-010, "Archived Projects are read-only
+   * regardless of access level") is HERE rather than repeated on eleven methods because
+   * every plan write already funnels through this one load — so a write added later is
+   * guarded by construction, which is the property that stopped holding when the rule was
+   * a call-site convention. `ProjectsService.assertProjectWritable` is the only
+   * implementation of it; nothing in this module re-states it.
+   *
+   * This module had NO archived-project check at all, and the worst consequence was
+   * `publishPlan` → `applyPlanToFeature`: it wrote `releaseId`, `plannedStartDate` and
+   * `plannedEndDate` onto an archived project's `portfolio_items` inside a transaction, so
+   * archiving a project stopped nothing on the one path that mutates another aggregate's rows.
+   *
+   * `createPlan`, `deletePlan` and `revertPlan` do not come through here (they take no draft
+   * precondition) and call the guard themselves. `forecastTeamCapacity` deliberately does not:
+   * it computes a number and writes nothing, and a read is never guarded.
    */
   private async requireDraft(actor: JwtPayload, id: string): Promise<CapacityPlan> {
     const plan = await this.repo.findById(id, actor.workspaceId);
     if (!plan) throw new NotFoundException('CAPACITY_PLAN_NOT_FOUND', 'Capacity plan not found');
+    await this.projects.assertProjectWritable(actor.workspaceId, plan.projectId);
     if (plan.status !== 'draft') {
       throw new PreconditionFailedException(
         'CAPACITY_PLAN_NOT_DRAFT',

@@ -6,6 +6,7 @@ import { TEAM_STATUS_REPOSITORY } from '../domain/ports/team-status.repository';
 import { IterationsService } from '@modules/iterations';
 import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
+import { ProjectsService } from '@modules/projects';
 import type { RawTeamStatusTaskRow } from '../domain/team-status.types';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -90,6 +91,13 @@ const makeAccessService = () => ({
   assertProjectPermission: vi.fn().mockResolvedValue(undefined),
 });
 
+const makeProjectsService = () => ({
+  // The ONE home of PRJ-FR-010. Resolves by default; the block about it rejects deliberately.
+  assertProjectWritable: vi
+    .fn()
+    .mockResolvedValue({ id: 'proj-1', workspaceId: 'ws-1', status: 'active' }),
+});
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('TeamStatusService', () => {
@@ -98,12 +106,14 @@ describe('TeamStatusService', () => {
   let iterations: ReturnType<typeof makeIterationsService>;
   let workItems: ReturnType<typeof makeWorkItemsService>;
   let access: ReturnType<typeof makeAccessService>;
+  let projects: ReturnType<typeof makeProjectsService>;
 
   beforeEach(async () => {
     repo = makeRepo();
     iterations = makeIterationsService();
     workItems = makeWorkItemsService();
     access = makeAccessService();
+    projects = makeProjectsService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -112,6 +122,7 @@ describe('TeamStatusService', () => {
         { provide: IterationsService, useValue: iterations },
         { provide: WorkItemsService, useValue: workItems },
         { provide: AccessService, useValue: access },
+        { provide: ProjectsService, useValue: projects },
       ],
     }).compile();
 
@@ -514,6 +525,66 @@ describe('TeamStatusService', () => {
       const result = await service.updateTask(actor, 'task-1', { state: 'Completed' });
       // Should NOT throw — the re-read is best-effort.
       expect(result.workProduct).toBeUndefined();
+    });
+  });
+
+  /**
+   * PRJ-03. `updateCapacity` is the one write on this service that does not go through
+   * `WorkItemsService`, so it was the one that escaped the archived-project rule (PRJ-FR-010):
+   * `member_capacity` could still be edited for an archived project's iteration, and that number is
+   * the denominator both Team Status and Team Capacity render.
+   *
+   * `updateTask` needs no guard of its own and deliberately has none — it writes through
+   * `WorkItemsService.updateWorkItem`, which carries the rule. The second test pins that, so the
+   * two surfaces stay one population rather than acquiring a second copy of the check.
+   */
+  describe('an archived project refuses capacity edits (PRJ-FR-010)', () => {
+    beforeEach(() => {
+      projects.assertProjectWritable.mockRejectedValue(
+        new PreconditionFailedException('PROJECT_ARCHIVED', 'archived'),
+      );
+    });
+
+    it('refuses a member capacity edit', async () => {
+      await expect(
+        service.updateCapacity(actor, {
+          projectId: 'proj-1',
+          teamId: 'team-a',
+          iterationId: 'it-1',
+          userId: 'user-alice',
+          capacityHours: 40,
+        }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(repo.upsertCapacity).not.toHaveBeenCalled();
+    });
+
+    it('refuses BEFORE the capacityHours validation, so the guard cannot be probed', async () => {
+      await expect(
+        service.updateCapacity(actor, {
+          projectId: 'proj-1',
+          teamId: 'team-a',
+          iterationId: 'it-1',
+          userId: 'user-alice',
+          capacityHours: -5,
+        }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+    });
+
+    it('leaves the task edit to WorkItemsService, which owns the rule', async () => {
+      // No second copy of the check here. The task write is refused because the work-items service
+      // refuses it — this asserts the delegation, not a duplicate guard.
+      workItems.updateWorkItem.mockRejectedValue(
+        new PreconditionFailedException('PROJECT_ARCHIVED', 'archived'),
+      );
+      await expect(service.updateTask(actor, 'task-1', { title: 'Renamed' })).rejects.toMatchObject(
+        { code: 'PROJECT_ARCHIVED' },
+      );
+    });
+
+    it('still RENDERS the board — archived is read-only, not invisible', async () => {
+      repo.getTaskRows.mockResolvedValue([makeRawRow()]);
+      const board = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
+      expect(board.projectId).toBe('proj-1');
     });
   });
 });

@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PreconditionFailedException, ValidationException, type JwtPayload } from '@platform';
 import { IterationsService } from '@modules/iterations';
 import { WorkItemsService, type UpdateWorkItemInput } from '@modules/work-items';
+import { ProjectsService } from '@modules/projects';
 import {
   ITeamStatusRepository,
   TEAM_STATUS_REPOSITORY,
@@ -42,6 +43,9 @@ export class TeamStatusService {
     private readonly repo: ITeamStatusRepository,
     private readonly iterationsService: IterationsService,
     private readonly workItemsService: WorkItemsService,
+    // For `assertProjectWritable` in `updateCapacity`. `updateTask` needs nothing here: it writes
+    // through `WorkItemsService.updateWorkItem`, which already carries the rule.
+    private readonly projectsService: ProjectsService,
   ) {}
 
   /**
@@ -104,9 +108,9 @@ export class TeamStatusService {
     const memberIds = [...memberInfo.keys()];
     const capacities =
       memberIds.length > 0
-        // `rosterTeamId`, the same key the roster and `upsertCapacity` use — so the number shown is
-        // the number an edit will write.
-        ? await this.repo.getCapacities(iterationId, memberIds, rosterTeamId)
+        ? // `rosterTeamId`, the same key the roster and `upsertCapacity` use — so the number shown is
+          // the number an edit will write.
+          await this.repo.getCapacities(iterationId, memberIds, rosterTeamId)
         : new Map<string, number>();
 
     // One group per member (empty task list when they have none), plus an
@@ -170,6 +174,12 @@ export class TeamStatusService {
     input: UpdateCapacityInput,
   ): Promise<{ userId: string; capacityHours: number }> {
     // team_status:edit on input.projectId is enforced by the PolicyGuard.
+    //
+    // The archived-project rule is not (PRJ-FR-010). This is the one write on this service that
+    // does not go through `WorkItemsService`, so it was the one that escaped: `member_capacity` is
+    // planning data for an iteration in this project, and it is the denominator Team Status and
+    // Team Capacity both render — see the note in CLAUDE.md on the two being one population.
+    await this.projectsService.assertProjectWritable(actor.workspaceId, input.projectId);
     if (input.capacityHours < 0) {
       throw new ValidationException('TEAM_STATUS_INVALID_CAPACITY', 'capacityHours must be >= 0');
     }
