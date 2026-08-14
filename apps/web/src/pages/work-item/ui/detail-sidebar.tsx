@@ -345,16 +345,25 @@ export function DetailSidebar({
           />
         )}
 
-        {/* Story: Feature (parent link) */}
-        {item.type === 'story' && item.parentId && (
-          <RelatedItemField
-            label={t('sidebar.feature')}
-            target={parentItem}
-            emptyText={t('sidebar.loading')}
-            onOpen={openItem}
-          />
-        )}
+        {/*
+          A Story's Feature pill USED TO BE HERE, reading `item.parentId` under the label
+          `sidebar.feature`. Deleted rather than relabelled, because the state it rendered cannot
+          exist and the label could never be true:
 
+            • `parent_id` is a WORK ITEM link. Since migration 0072 `feature` is not a
+              `work_item_type` at all — a Feature is a portfolio item, and portfolio membership
+              travels via `feature_id`, which the editable field further down owns. So this pill
+              labelled whatever work item happened to be the parent as "Feature".
+            • Only tasks and defects may carry a parent. `WorkItemsService` refuses one on a story
+              at CREATE (`Only defects and tasks can have a parent work item`) and again at UPDATE,
+              and `test/e2e/work-item-hierarchy-relations-flow.e2e.spec.ts` pins both directions.
+              `item.type === 'story' && item.parentId` was therefore unreachable through any write
+              the app has.
+
+          Dead branches that name a real domain concept are worse than absent ones: this one read as
+          evidence that a Story's Feature lives in `parent_id`, which is exactly the confusion
+          migration 0072 removed.
+        */}
         {/* Defect: Parent Story (editable dropdown, or read-only pill) */}
         {isDefect &&
           (disabled ? (
