@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
-import { NAV_PERMISSIONS } from '@/shared/config/nav'
+import { NAV_ITEMS, NAV_PERMISSIONS } from '@/shared/config/nav'
 
 /**
  * "The nav and the router gate on the same code" — the contract.
@@ -197,11 +197,26 @@ describe('route ↔ nav permission contract', () => {
         'work_item:view',
       )
     }
-    // `/projects/$projectKey` stays out, and not for §198's reason: `/projects` carries no nav
-    // permission either, so there is no surface code to fold onto the record. The router may not
-    // invent one — the assertion above forbids a literal — so gating that pair needs a nav row.
-    expect(NAV_PERMISSIONS.has('/projects')).toBe(false)
-    expect(NAV_PERMISSIONS.has('/projects/$projectKey')).toBe(false)
+    // `/projects/$projectKey` was ALSO excluded once, and this assertion recorded the exclusion — but
+    // its reason was never about the record: the list surface `/projects` carried no code, so there
+    // was nothing to fold, and the router may not invent one (the assertion above forbids a literal).
+    // That was a gap in the MAP, not a rule about records, so it is resolved rather than deleted:
+    // `NON_NAV_SURFACES` gives the list its own `project:view` — §3.1:67 "View `Workspaces &
+    // Projects`" is Hidden only for No Access — and the record folds onto it like the five above.
+    // Kept as an assertion because the fold is silent when it fails: drop either table entry and both
+    // paths leave the map AND the requirement together, unguarded, with nothing else to notice.
+    expect(NAV_PERMISSIONS.get('/projects')).toBe('project:view')
+    expect(NAV_PERMISSIONS.get('/projects/$projectKey')).toBe('project:view')
+  })
+
+  it('a NON-NAV surface is in the map without being a nav row', () => {
+    // The property that made the fix legal. `/projects` must gate the route and must NOT appear in
+    // the bar — `NAV_ITEMS` is what `app-shell.tsx` renders, so a permission entry added there would
+    // ship a nav item the BA's nav does not have. Asserted on both sides, because putting the code in
+    // the obvious place would satisfy the guard and fail the design silently.
+    const navPaths = NAV_ITEMS.flatMap((i) => [i.path, ...(i.children ?? []).map((c) => c.path)])
+    expect(navPaths).not.toContain('/projects')
+    expect(NAV_PERMISSIONS.has('/projects')).toBe(true)
   })
 })
 

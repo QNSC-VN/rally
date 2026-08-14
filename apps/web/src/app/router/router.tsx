@@ -149,18 +149,30 @@ const homeRoute = createRoute({
   component: lazyPage(() => import('@/pages/home/home-page'), 'HomePage'),
 })
 
+// `Manage Projects` is not a top-nav row — it opens from the workspace switcher — so its code comes
+// from `NON_NAV_SURFACES` rather than a nav entry. §3.1:67 ("View `Workspaces & Projects`") is Hidden
+// only for No Access, so `project:view` is the code, and the pair below is the whole reason it needed
+// one: a record route folds onto its list surface, and this list had nothing to fold.
 const projectsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/projects',
   staticData: { breadcrumb: 'Manage Projects' },
-  component: lazyPage(() => import('@/pages/projects/projects-page'), 'ProjectsPage'),
+  component: guardedPage(
+    '/projects',
+    () => import('@/pages/projects/projects-page'),
+    'ProjectsPage',
+  ),
 })
 
 const projectDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/projects/$projectKey',
   staticData: { breadcrumb: 'Project Detail' },
-  component: lazyPage(() => import('@/pages/projects/projects-detail-page'), 'ProjectDetailPage'),
+  component: guardedPage(
+    '/projects/$projectKey',
+    () => import('@/pages/projects/projects-detail-page'),
+    'ProjectDetailPage',
+  ),
 })
 
 const settingsRoute = createRoute({

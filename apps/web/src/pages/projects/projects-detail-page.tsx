@@ -52,8 +52,17 @@ export function ProjectDetailPage() {
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId ?? ''
 
-  const { data: projects = [], isLoading, isError } = useProjects(workspaceId || undefined)
-  const project = projects.find((p) => p.key === projectKey)
+  // The record is resolved out of the LIST — there is no `GET /projects/by-key` — so this page
+  // inherits the list's paging. `isLoadingMore` is therefore load-bearing here and not a nicety: with
+  // the drain, a project on page 2 is genuinely absent from `rows` for one round trip, and the
+  // not-found branch below would have claimed it does not exist. See `useProjects`.
+  const projectsQuery = useProjects(workspaceId || undefined)
+  const projectsRes = listResource(projectsQuery)
+  const project = projectsRes.rows.find((p) => p.key === projectKey)
+  // Waits on the remaining pages only while the record is still MISSING: found on page 1, it renders
+  // at once, so the drain costs nothing in the ordinary case.
+  const isLoading = projectsRes.isLoading || (!project && projectsQuery.isLoadingMore)
+  const isError = projectsRes.isError
   const update = useUpdateProject()
 
   const { can } = useProjectPermissions(project?.id)

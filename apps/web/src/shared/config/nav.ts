@@ -1,6 +1,10 @@
 /**
  * The top-nav table — and, derived from the SAME rows, the path → permission map the ROUTER gates on.
  *
+ * Two small tables extend the derivation without duplicating a code: {@link NAV_PATH_ALIASES} for a
+ * path that is another entry into a nav surface, and {@link NON_NAV_SURFACES} for a surface the nav
+ * does not offer at all. Both resolve to a code stated exactly once.
+ *
  * The defect this file exists to close
  * ------------------------------------
  * The nav hid an item the caller lacked the permission for (`navItemState` in
@@ -205,12 +209,14 @@ export const NAV_ITEMS: NavItem[] = [
  * HOLDS the surface code but whose target record lives in a project they cannot read. Only the server
  * can answer that, after loading the row, and the page's own error state is what reports it.
  *
- * NOT HERE: `/projects/$projectKey`. Its own list surface `/projects` carries no nav permission
- * either (Manage Projects is not a nav row), so there is no surface code to fold onto it — and the
- * router is not allowed to invent one. Gating that pair needs a nav row or a BA read, not an alias.
+ * `/projects/$projectKey` used to be excluded here for a DIFFERENT reason, and that reason was
+ * upstream rather than about the record: its own list surface `/projects` carried no code, so there
+ * was nothing to fold. Giving that surface its own entry in {@link NON_NAV_SURFACES} fixed the
+ * cause, and the record then folds onto it exactly like the five above.
  *
  * Keep this table SMALL. An entry here is a claim that two paths are one surface; anything that is
- * genuinely its own surface belongs in the nav table with its own code.
+ * genuinely its own surface belongs in the nav table — or, when the nav does not offer it at all, in
+ * {@link NON_NAV_SURFACES} — with its own code.
  */
 const NAV_PATH_ALIASES: Record<string, string> = {
   '/releases': '/timeboxes',
@@ -227,6 +233,41 @@ const NAV_PATH_ALIASES: Record<string, string> = {
   // those four ever gate on different codes this entry stops being well defined and must be revisited
   // rather than re-pointed.
   '/item/$itemKey': '/backlog',
+  // `Manage Projects` and its record. The list is a surface of its own (see NON_NAV_SURFACES), so
+  // this entry is the ordinary record-onto-list fold, not a claim about the nav.
+  '/projects/$projectKey': '/projects',
+}
+
+/**
+ * Surfaces the top nav does not offer, which are nonetheless their OWN surface with their own code.
+ *
+ * WHY NOT A NAV ROW. `NAV_ITEMS` is READ by `app-shell.tsx` to render the bar, so it is not usable as
+ * a permission registry: a tenth row for `Manage Projects` would put an entry on screen that the BA's
+ * nav does not have. The screen is reached from the workspace switcher instead. WHY NOT AN ALIAS: an
+ * alias asserts two paths are ONE surface, and `/projects` is not another way into any nav screen —
+ * it is the Projects list. Both properties the map defends survive: the code is still written down
+ * once, and `router.tsx` still states none.
+ *
+ * `/projects` → `project:view`, from Phase 4 `02_Roles_Permissions/SRS.md:67`:
+ * "| View `Workspaces & Projects` | All Projects | Assigned Project, all Teams | Assigned Project and
+ * assigned Teams | Hidden |" — the row is visible to all three access levels and Hidden only for No
+ * Access.
+ *
+ * WHAT THIS BUYS, AND WHAT IT DOES NOT. Every per-project access level holds `project:view` — it is
+ * the code that answers "may this user see this project at all" — so the guard denies exactly one
+ * principal: a NO ACCESS one, for whom the absence of an active `project_members` row resolves the
+ * code to absent. That reader is real and Hidden is the right answer for them. It is NOT a boundary
+ * between Admin and Editor, and it does not scope the list's ROWS — `listReadableProjectIds` on the
+ * server does that, per project. The larger gain is upstream: with the list surface carrying a code,
+ * `/projects/$projectKey` can fold onto it like every other record route, which is the only thing
+ * that kept the pair unguarded.
+ *
+ * Keep this table SMALL, for the alias table's reason. `/settings`, `/notifications` and `/403` are
+ * deliberately absent: they are self-scoped surfaces whose API routes are authentication-only, so
+ * there is no code to gate them on and inventing one would gate a reader out of their own account.
+ */
+const NON_NAV_SURFACES: Record<string, string> = {
+  '/projects': PERMISSION.PROJECT_VIEW,
 }
 
 export const NAV_PERMISSIONS: ReadonlyMap<string, string> = (() => {
@@ -236,6 +277,11 @@ export const NAV_PERMISSIONS: ReadonlyMap<string, string> = (() => {
     for (const child of item.children ?? []) {
       if (child.permission) map.set(child.path, child.permission)
     }
+  }
+  // Non-nav surfaces fold in SECOND — before the aliases, so a record route can alias onto one, and
+  // never over a nav row: a path in both tables is a mistake, and the row that is on screen wins.
+  for (const [path, code] of Object.entries(NON_NAV_SURFACES)) {
+    if (!map.has(path)) map.set(path, code)
   }
   // Aliases fold in LAST and never overwrite: a real nav row always describes its own surface.
   for (const [alias, surface] of Object.entries(NAV_PATH_ALIASES)) {

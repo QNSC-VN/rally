@@ -7,6 +7,7 @@ import { BRAND } from '@/shared/config/brand'
 import { BulkBarButton } from '@/shared/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { EmptyState } from '@/shared/ui/empty-state'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { Button } from '@/shared/ui/button'
@@ -17,6 +18,8 @@ import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { useDataTable, SelectableTable } from '@/shared/ui/table'
 import { useRowSelection, type RowSelection } from '@/shared/lib/hooks/use-row-selection'
+import { listResource } from '@/shared/lib/query/resource'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -35,7 +38,11 @@ export function ProjectsPage() {
   const { user: currentUser, hasPermission } = useAuthStore()
   const isWorkspaceAdmin = hasPermission(PERMISSION.WORKSPACE_ALL)
 
-  const { data: projects = [], isLoading } = useProjects(workspaceId)
+  // Bound to its own const before `listResource` — the React Compiler stops trusting a component
+  // whose hook result is a plain function's argument (see `resource.ts`), and `pnpm lint` fails on it.
+  const projectsQuery = useProjects(workspaceId)
+  const projectsRes = listResource(projectsQuery)
+  const projects = projectsRes.rows
   const { data: wsMembers = [] } = useWorkspaceMemberOptions(workspaceId)
   const update = useUpdateProject()
 
@@ -127,6 +134,18 @@ export function ProjectsPage() {
     linkedTeams: projects.reduce((sum, p) => sum + (p.teamCount ?? 0), 0),
   }
 
+  /**
+   * A tile is a MEASUREMENT over the whole set, so it may only print while the whole set is here.
+   *
+   * Two ways it would otherwise lie, and neither looks broken: a failed load leaves `rows` empty and
+   * every tile reads `0` ("this workspace has no projects"), and the drain lands page by page, so a
+   * count taken mid-drain is the first N rows presented as the total — the same silent truncation
+   * `limit: 100` used to ship, now transient instead of permanent. `EMPTY_VALUE` ('--') is this app's
+   * answer for a number it does not have.
+   */
+  const counted = !projectsRes.isError && !projectsRes.isLoading && !projectsQuery.isLoadingMore
+  const metric = (n: number) => (counted ? n : EMPTY_VALUE)
+
   const cellCtx: ProjectCtx = {
     currentUserId: currentUser?.id,
     currentUserName: currentUser?.displayName,
@@ -159,7 +178,7 @@ export function ProjectsPage() {
         <div>
           <h1 className="text-ui-xl font-semibold text-foreground">{t('title')}</h1>
           <p className="text-ui-sm text-foreground-subtle">
-            {workspace?.workspaceName ?? t('subtitle.workspace')} · {activeCount}{' '}
+            {workspace?.workspaceName ?? t('subtitle.workspace')} · {metric(activeCount)}{' '}
             {activeCount === 1 ? t('subtitle.oneActive') : t('subtitle.manyActive')}
           </p>
         </div>
@@ -167,15 +186,19 @@ export function ProjectsPage() {
 
       {/* Summary metric strip (KPI) */}
       <MetricStrip>
-        <MetricCard label={t('metrics.total')} value={stats.total} minWidth={80} />
+        <MetricCard label={t('metrics.total')} value={metric(stats.total)} minWidth={80} />
         <MetricCard
           label={t('metrics.active')}
-          value={stats.active}
+          value={metric(stats.active)}
           valueColor={BRAND.primaryLight}
           minWidth={80}
         />
-        <MetricCard label={t('metrics.archived')} value={stats.archived} minWidth={90} />
-        <MetricCard label={t('metrics.linkedTeams')} value={stats.linkedTeams} minWidth={110} />
+        <MetricCard label={t('metrics.archived')} value={metric(stats.archived)} minWidth={90} />
+        <MetricCard
+          label={t('metrics.linkedTeams')}
+          value={metric(stats.linkedTeams)}
+          minWidth={110}
+        />
       </MetricStrip>
 
       {/* Shared toolbar — search / New Project / Filters / Show Fields (same as
@@ -200,10 +223,14 @@ export function ProjectsPage() {
         selection={selection}
         headerProps={table.headerProps}
         padClassName="gap-2 px-3"
-        loading={isLoading}
+        loading={projectsRes.isLoading}
         skeleton={{ rows: 8, cols: PROJECT_COLUMNS.length }}
         empty={
-          filtered.length === 0 ? (
+          // `error` before `empty`: an unfiltered grid whose request failed used to render
+          // "No projects match these filters", a fact about the FILTER for a fact about the network.
+          projectsRes.isError ? (
+            <LoadErrorState error={projectsRes.error} title={t('detail.loadError')} />
+          ) : filtered.length === 0 ? (
             <EmptyState
               icon={
                 <FolderKanban
