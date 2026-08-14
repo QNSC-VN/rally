@@ -6,19 +6,22 @@
  * path alias, so importing the catalogue would pull server code into the browser bundle. The backend
  * is the source of truth; this is a view of it.
  *
- * One list, because there were two. `projects-access-tab.tsx` and `user-access-modal.tsx` each
- * declared their own `ACCESS_OPTIONS` and each cast to a local `'admin' | 'editor'`, so restoring
- * `viewer` meant finding six casts and two arrays — and the BA's §5 requirement that all three
- * access journeys "update the same Project access and Team membership source" is hard to honour
- * while the vocabulary itself is duplicated.
+ * One list, because there were three. `projects-access-tab.tsx`, `user-access-modal.tsx` and
+ * `project-teams-tab.tsx` each declared their own option array and cast to a local union, so one
+ * change to the level set meant hunting nine casts and three arrays. Adding then removing a level in
+ * the same week made that concrete.
+ *
+ * TWO levels, and `No Access` is not one of them: it is the ABSENCE of a `project_members` row (BA
+ * §2.2, "implicit — no `project_members` row"), reached through the Remove action and never chosen
+ * from a dropdown. Real Rally does have a Viewer level; that divergence is deliberate and explained
+ * in `db/permissions.catalog.ts`.
  */
-export const ACCESS_LEVELS = ['admin', 'editor', 'viewer'] as const
+export const ACCESS_LEVELS = ['admin', 'editor'] as const
 
 export type AccessLevel = (typeof ACCESS_LEVELS)[number]
 
 /**
- * Label and one-line meaning per level, in the order a picker should offer them: most authority
- * first, so the read-only option is not the default a hurried admin lands on.
+ * Label and one-line meaning per level, most authority first.
  *
  * The descriptions are the SRS §2.2 wording, kept here rather than in each picker so the two entry
  * points cannot describe the same level differently.
@@ -37,11 +40,6 @@ export const ACCESS_LEVEL_OPTIONS: ReadonlyArray<{
     value: 'editor',
     label: 'Editor',
     description: 'Creates and edits delivery work in the teams they are assigned to.',
-  },
-  {
-    value: 'viewer',
-    label: 'Viewer',
-    description: 'Read-only. Sees the project and its work items and can change nothing.',
   },
 ]
 
@@ -63,16 +61,15 @@ export function requiresTeamSelection(level: AccessLevel | null | undefined): bo
 }
 
 /**
- * The levels a TEAM member can hold — Admin or Editor, never Viewer.
+ * The levels a TEAM member can hold — SRS §5.3: "Only Admin and Editor are Team-member choices."
  *
- * SRS §5.3 on the team-creation journey: "Only Admin and Editor are Team-member choices." Rally
- * agrees from the other direction — "If downgraded to viewer, team member status is automatically
- * removed" — because team membership is what an Editor's write scope is measured against, and a
- * Viewer has no writes to scope.
- *
- * A separate constant rather than a filter at each call site, so the exclusion is a stated rule with
- * a reason attached instead of a narrower union someone widens to match `AccessLevel` for
- * consistency.
+ * Identical to {@link ACCESS_LEVELS} today, because those are the only two levels. Kept as its own
+ * name rather than collapsed into it, for the same reason §5.3 states the rule separately: the two
+ * sets answer different questions, and they HAVE diverged — while a `viewer` level existed this
+ * excluded it, since team membership is what an Editor's write scope is measured against and a
+ * read-only holder has no writes to scope. Rally agrees from the other direction ("If downgraded to
+ * viewer, team member status is automatically removed"). If a third level returns, this is where the
+ * exclusion goes.
  */
 export const TEAM_MEMBER_ACCESS_LEVELS = ['admin', 'editor'] as const
 

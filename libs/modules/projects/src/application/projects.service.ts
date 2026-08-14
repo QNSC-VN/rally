@@ -852,9 +852,11 @@ export class ProjectsService {
      * Editor Hidden. The route can only carry `project:view`, which every level holds, so the
      * LEVEL check has to live here.
      *
-     * Written as an allow-list, not `!== 'editor'`. The deny-list form was already wrong once: it
-     * named the single level that existed to be refused, so restoring `viewer` — which is strictly
-     * below Editor and must certainly not read the roster — would have silently admitted it.
+     * Written as an allow-list, not `!== 'editor'`. The deny-list form names the levels to REFUSE, so
+     * every level added later is admitted by default — which is the wrong default for a screen §3.1
+     * hides from all but two principals. That is not hypothetical: a third level was added and removed
+     * again within one week (migrations 0113, 0115), and under the deny-list form it would have been
+     * able to read this roster the whole time.
      * Workspace Admin resolves NO level (its authority is the workspace-wide grant, not a
      * `project_members` row), and a principal with no access at all cannot reach this method
      * because the route's `project:view` gate refuses them first — so `null` is WA here, and it is

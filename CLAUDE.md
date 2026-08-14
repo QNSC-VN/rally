@@ -594,18 +594,27 @@ Three rulings made on 2026-08-14, after an eight-slice audit cross-checked the c
 sight. The audit and its sourced Rally research are in
 `product-docs/projects/mini-rally/09_Gap_Audit/`.
 
-- **`Viewer` is RESTORED, against the BA's removal.** The BA deleted the level on 2026-08-14
-  (`55e7dbb`, "remove viewer, no access permission"), leaving Workspace Admin + per-Project
-  Admin/Editor. Real Rally's `ProjectPermission.Role` is No Access / Viewer / Editor / Project
-  Admin, and its Viewer is load-bearing five ways: the documented answer to "make this user
-  read-only", the **provisioning default** ("A newly created user will have Workspace User and
-  Project Viewer permissions"), one of four Quick Filter Toggles on the admin permission grid, the
-  demotion target in the team-membership state machine, and a full-licence consumer whose only
-  purpose is access control. Without it a read-only stakeholder or auditor is either invisible or a
-  full Editor. So the model is FOUR levels: `admin` | `editor` | `viewer`, plus implicit No Access
-  when no active `project_members` row exists. `viewer`'s permission set is written out rather than
-  derived — deriving "every code ending in `:view`" would silently absorb admin-only view codes like
-  `report:view`, which is the exact over-grant the level exists to prevent.
+- **There is NO `Viewer` level, and Rally disagrees.** The BA removed it (`product-docs` `55e7dbb`,
+  2026-08-14). It was restored by architect ruling the same day and **removed again on the BA's
+  instruction** — migrations 0113 then 0115. The model is Workspace Admin plus per-Project `admin` or
+  `editor`, with **No Access implicit** when no active `project_members` row exists; `No Access` is
+  never a stored value or a dropdown choice, only the absence of a row reached through `Remove`.
+
+  Recorded because it will come up again, and because the next person to read Broadcom's docs will
+  reach for it. Real Rally's `ProjectPermission.Role` is No Access / Viewer / Editor / Project Admin,
+  and its Viewer is load-bearing five ways: the documented answer to "make this user read-only", the
+  **provisioning default** for a new user, one of four Quick Filter Toggles on the admin permission
+  grid, the demotion target in the team-membership state machine, and a full-licence consumer whose
+  only purpose is access control. So with `admin`/`editor`/absent alone, a read-only stakeholder or
+  auditor is either invisible or a full Editor — the two configurations Rally customers most often
+  need to avoid. If that becomes a real problem it needs a **new ruling**, not a quiet re-add: the
+  CHECK constraint, `ACCESS_LEVEL_PERMISSIONS`, the DTO enums, the SPA's `access-levels.ts` mirror and
+  the generated client all have to move together, and the last attempt showed what happens when one of
+  them lags — `AccessService` filtered its synthesized assignments on a hand-written
+  `'admin' | 'editor'` pair in two places, so a granted row read as No Access. Use
+  `isProjectAccessLevel`, never an inline comparison.
+
+  Sourced evidence: `product-docs/projects/mini-rally/09_Gap_Audit/research/RALLY_PERMISSIONS_MODEL.md`.
 - **Team-scoped Editor is KEPT, against real Rally.** The BA scopes an Editor's writes to their
   assigned Teams (§2.2, §3.2 "in assigned Teams"). Rally has **no `Team` object and no team
   authorization scope** at all — `POST /user/<OID>/teammemberships/add` takes **project** refs, and

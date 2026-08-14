@@ -419,62 +419,45 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
  *          management".
  * editor = team-scoped delivery contributor. Writes are additionally narrowed to the Teams the
  *          user is assigned to (`AccessService.assertTeamScoped`).
- * viewer = read-only. Sees the Project and its delivery data and can mutate none of it.
  *
- * WHY `viewer` EXISTS, given the BA removed it (product-docs `55e7dbb`, 2026-08-14).
- * -------------------------------------------------------------------------------
- * Restored by architect ruling on 2026-08-14, against that removal and in line with the product
- * being cloned. Real Rally's `ProjectPermission.Role` is No Access / Viewer / Editor / Project
- * Admin, and Viewer is load-bearing there in five independent ways: it is the documented answer to
- * "make this user read-only", it is the PROVISIONING DEFAULT ("A newly created user will have
- * Workspace User and Project Viewer permissions"), it is one of four Quick Filter Toggles on the
- * admin permission grid, it is the demotion target in the team-membership state machine, and it
- * consumes a full licence — so access control is the only reason it exists at all. With
- * admin/editor/absent only, a read-only stakeholder or auditor is either invisible or a full
- * Editor, which are the two configurations Rally customers most often need to avoid.
+ * THERE IS NO `viewer`, AND THAT IS A DECISION, NOT AN OMISSION.
+ * ------------------------------------------------------------
+ * The BA removed the level (`product-docs` `55e7dbb`, 2026-08-14). It was restored by architect
+ * ruling the same day and REMOVED AGAIN on the BA's instruction — migrations 0113 then 0115. The
+ * three-level model is the BA's and it stands.
  *
- * Recorded in `docs/DIVERGENCE.md`. Sourced research:
- * `product-docs/projects/mini-rally/09_Gap_Audit/research/RALLY_PERMISSIONS_MODEL.md`.
+ * The disagreement is recorded because it will come up again, and because the next person to read
+ * Rally's docs will reach for it. Real Rally's `ProjectPermission.Role` is No Access / Viewer /
+ * Editor / Project Admin, and its Viewer is load-bearing five ways: the documented answer to "make
+ * this user read-only", the PROVISIONING DEFAULT for a new user, one of four Quick Filter Toggles on
+ * the admin permission grid, the demotion target in the team-membership state machine, and a
+ * full-licence consumer whose only purpose is access control. So with `admin`/`editor`/absent alone,
+ * a read-only stakeholder or auditor is either invisible or a full Editor. If that turns out to be a
+ * problem in practice, the fix is a new ruling — not a quiet re-add, because the CHECK constraint,
+ * this map, the DTO enums, the SPA's mirror and the generated client all have to move together.
  *
- * `admin`/`editor` DERIVE from the tier sets above so they cannot drift from them. `viewer` is
- * spelled out instead of derived, because it is not any tier's set: it is the read-only PROJECTION
- * of `editor`, and deriving it by filtering for codes ending in `:view` would silently pick up
- * every future view code — including admin-only ones like `report:view` — which is exactly the
- * over-grant the level exists to prevent.
+ * Sourced evidence: `09_Gap_Audit/research/RALLY_PERMISSIONS_MODEL.md`. Divergence recorded in
+ * `CLAUDE.md` → "Declared divergences from the BA, in the access model".
+ *
+ * Both levels DERIVE from the tier sets above so they cannot drift from them.
  */
-export const PROJECT_ACCESS_LEVEL = ['admin', 'editor', 'viewer'] as const;
+export const PROJECT_ACCESS_LEVEL = ['admin', 'editor'] as const;
 export type ProjectAccessLevel = (typeof PROJECT_ACCESS_LEVEL)[number];
 
 export const ACCESS_LEVEL_PERMISSIONS: Record<ProjectAccessLevel, readonly Permission[]> = {
   admin: ROLE_PERMISSIONS[SYSTEM_ROLE.PROJECT_ADMIN],
   editor: ROLE_PERMISSIONS[SYSTEM_ROLE.PROJECT_MEMBER],
-  viewer: [
-    PERMISSION.PROJECT_VIEW,
-    PERMISSION.WORK_ITEM_VIEW,
-    PERMISSION.ITERATION_VIEW,
-    PERMISSION.QUALITY_VIEW,
-    PERMISSION.TEAM_STATUS_VIEW,
-    // Exactly the Editor's view codes, and that is the rule: Viewer ⊂ Editor, pinned by
-    // `permissions.spec.ts`. A read-only level that could see something an Editor cannot would be an
-    // escalation dressed as a restriction.
-    //
-    // So NOT here, all for the same reason — §3.2 marks them Hidden for Editor:
-    // `release:view` and `milestone:view` (Releases and Milestones are Admin/WA surfaces), and
-    // `report:view`, `portfolio:view`, `capacity:view` (Reports, Portfolio Items, Capacity
-    // Planning). The first two were in this list until the subset test rejected them, which is
-    // worth recording: "Rally's Viewer sees the project and all work items within it" reads like a
-    // licence to add every view code, and the BA's own matrix is narrower than that sentence.
-  ],
 };
 
 /**
  * Is this value one of the per-Project access levels?
  *
- * A guard rather than an inline comparison, because the inline form is how `viewer` went missing:
- * `AccessService` filtered its synthesized assignments with `x === 'admin' || x === 'editor'` in two
- * places, so adding a level to the constant above would have left both silently ignoring it — a row
- * that reads as No Access, which is the failure direction nobody notices until someone cannot see a
- * project they were granted.
+ * A guard rather than an inline comparison, and worth keeping even though the set is two values
+ * again. `AccessService` filtered its synthesized assignments with `x === 'admin' || x === 'editor'`
+ * in two places, so ADDING a level left both silently ignoring it — a granted row that reads as No
+ * Access, which is the failure direction nobody notices until someone cannot see a project they were
+ * given. That is exactly what happened when a third level was briefly added, and the guard is what
+ * makes the next attempt safe.
  */
 export function isProjectAccessLevel(value: unknown): value is ProjectAccessLevel {
   return typeof value === 'string' && (PROJECT_ACCESS_LEVEL as readonly string[]).includes(value);

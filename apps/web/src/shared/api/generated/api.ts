@@ -3259,7 +3259,7 @@ export interface components {
       projectId: string
       /** Format: uuid */
       userId: string
-      accessLevel: ('admin' | 'editor' | 'viewer') | null
+      accessLevel: ('admin' | 'editor') | null
       /** @enum {string} */
       status: 'active' | 'removed'
       /** Format: date-time */
@@ -3274,7 +3274,7 @@ export interface components {
     }
     UpdateProjectMemberDto: {
       /** @enum {string} */
-      accessLevel?: 'admin' | 'editor' | 'viewer'
+      accessLevel?: 'admin' | 'editor'
       /** @enum {string} */
       status?: 'active' | 'removed'
     }

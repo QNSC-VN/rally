@@ -182,10 +182,7 @@ describe('project-scoped routes: authorization over HTTP (e2e)', () => {
    * next fixture reset, so granting a shared fixture user a level changes what later specs see. That
    * exact mistake made `read-scoping.e2e.spec.ts` pass while asserting the opposite of the contract.
    */
-  async function principalAt(
-    level: 'admin' | 'editor' | 'viewer',
-    projectId: string,
-  ): Promise<string> {
+  async function principalAt(level: 'admin' | 'editor', projectId: string): Promise<string> {
     const claims: EntraClaims = {
       oid: `authz-${level}-${randomUUID()}`,
       email: `authz-${level}-${randomUUID().slice(0, 8)}@qnsc.vn`,
@@ -401,52 +398,6 @@ describe('project-scoped routes: authorization over HTTP (e2e)', () => {
     expect(response.statusCode, response.body).toBe(200);
   });
 
-  // ── Viewer: reads everything in the project, writes nothing ──────────────
-
-  it('serves every project-scoped read to a VIEWER', async () => {
-    /**
-     * The level restored by architect ruling on 2026-08-14, against the BA's removal and in line
-     * with real Rally, whose Viewer is "Access to view the project and all work items within the
-     * project" and is the provisioning default for a new user. See the divergence note in CLAUDE.md.
-     *
-     * If the synthesis in `effectiveAssignments` ever stops recognising the level — it filtered on a
-     * hand-written `'admin' | 'editor'` pair before this — a viewer row resolves to nothing and
-     * reads as No Access. These 200s are what catch that.
-     */
-    const viewer = await principalAt('viewer', NXP);
-    for (const url of projectScopedReads(NXP)) {
-      expect((await get(url, viewer)).statusCode, `${url} must be allowed`).toBe(200);
-    }
-  });
-
-  it('refuses a VIEWER every write, and the user roster', async () => {
-    const viewer = await principalAt('viewer', NXP);
-
-    // Read-only means the delivery writes too, not just the structural ones.
-    const created = await app.inject({
-      method: 'POST',
-      url: '/work-items',
-      headers: { authorization: `Bearer ${viewer}` },
-      payload: { projectId: NXP, type: 'story', title: 'Viewer must not create this' },
-    });
-    expect(created.statusCode, created.body).toBe(403);
-
-    for (const spec of structuralWrites(NXP)) {
-      expect((await send(spec, viewer)).statusCode, `${spec.method} ${spec.url}`).toBe(403);
-    }
-
-    // §3.1 gives "View Project Users & Permissions" to WA and Admin only.
-    expect((await get(`/projects/${NXP}/members`, viewer)).statusCode).toBe(403);
-  });
-
-  it('keeps a VIEWER out of a project they hold nothing on', async () => {
-    const viewer = await principalAt('viewer', NXP);
-    for (const url of projectScopedReads(PAY)) {
-      const response = await get(url, viewer);
-      expect([403, 404], `${url} → ${response.statusCode}`).toContain(response.statusCode);
-    }
-  });
-
   // ── Admin is a DELIVERY admin, not a structural one ──────────────────────
 
   it('refuses a per-Project ADMIN every structural write', async () => {
@@ -474,7 +425,7 @@ describe('project-scoped routes: authorization over HTTP (e2e)', () => {
   });
 
   it('still serves the project roster to a per-Project ADMIN', async () => {
-    // The Read-only half of the same §3.1 row: Admin sees the roster, Editor and Viewer do not.
+    // The Read-only half of the same §3.1 row: Admin sees the roster, Editor does not.
     const admin = await principalAt('admin', NXP);
     expect((await get(`/projects/${NXP}/members`, admin)).statusCode).toBe(200);
 
