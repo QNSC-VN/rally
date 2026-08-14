@@ -113,21 +113,11 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
         name: 'Audited Project',
       });
 
-      // RBAC migration: creator is no longer auto-lead — explicitly add as admin.
-      const member = await projects.addProjectMember(
-        admin.workspaceId,
-        project.id,
-        admin.sub,
-        admin.sub,
-      );
-      await projects.updateProjectMember(
-        admin.workspaceId,
-        project.id,
-        member.id,
-        { accessLevel: 'admin' },
-        admin.sub,
-      );
-
+      // No project_members row for the actor, deliberately. §2.1: a Workspace Admin is not added
+      // as a Project user, and `addProjectMember` now REFUSES one — its authority for archiving is
+      // the workspace-wide `workspace:edit` grant `updateProject` actually checks. The block that
+      // used to add and promote it here dated from "creator is no longer auto-lead" and granted
+      // nothing this assertion needs.
       await projects.updateProject(admin, project.id, { status: 'archived' });
 
       const rows = await outboxRows('project.archived', project.id);

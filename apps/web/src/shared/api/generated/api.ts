@@ -1292,6 +1292,132 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/milestones': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List milestones for a project */
+    get: operations['MilestonesController_listMilestones']
+    put?: never
+    /** Create a milestone */
+    post: operations['MilestonesController_createMilestone']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/milestones/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get milestone details */
+    get: operations['MilestonesController_getMilestone']
+    put?: never
+    post?: never
+    /** Delete a milestone */
+    delete: operations['MilestonesController_deleteMilestone']
+    options?: never
+    head?: never
+    /** Update milestone details */
+    patch: operations['MilestonesController_updateMilestone']
+    trace?: never
+  }
+  '/v1/milestones/{id}/activity': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List the revision history of a milestone */
+    get: operations['MilestonesController_getActivity']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/milestones/{id}/artifacts': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List milestone artifacts (US/DE work items) */
+    get: operations['MilestonesController_listMilestoneArtifacts']
+    /** Set milestone artifacts (replace all) */
+    put: operations['MilestonesController_setMilestoneArtifacts']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/milestones/{id}/projects': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List linked projects for a milestone */
+    get: operations['MilestonesController_listMilestoneProjects']
+    /** Set linked projects for a milestone (replace all) */
+    put: operations['MilestonesController_setMilestoneProjects']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/milestones/{id}/teams': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List linked teams for a milestone */
+    get: operations['MilestonesController_listMilestoneTeams']
+    /** Set linked teams for a milestone (replace all) */
+    put: operations['MilestonesController_setMilestoneTeams']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/milestones/{id}/releases': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List linked releases for a milestone */
+    get: operations['MilestonesController_listMilestoneReleases']
+    /** Set linked releases for a milestone (replace all) */
+    put: operations['MilestonesController_setMilestoneReleases']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/iterations': {
     parameters: {
       query?: never
@@ -2218,132 +2344,6 @@ export interface paths {
     patch: operations['TeamStatusController_updateTask']
     trace?: never
   }
-  '/v1/milestones': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List milestones for a project */
-    get: operations['MilestonesController_listMilestones']
-    put?: never
-    /** Create a milestone */
-    post: operations['MilestonesController_createMilestone']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/milestones/{id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get milestone details */
-    get: operations['MilestonesController_getMilestone']
-    put?: never
-    post?: never
-    /** Delete a milestone */
-    delete: operations['MilestonesController_deleteMilestone']
-    options?: never
-    head?: never
-    /** Update milestone details */
-    patch: operations['MilestonesController_updateMilestone']
-    trace?: never
-  }
-  '/v1/milestones/{id}/activity': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List the revision history of a milestone */
-    get: operations['MilestonesController_getActivity']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/milestones/{id}/artifacts': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List milestone artifacts (US/DE work items) */
-    get: operations['MilestonesController_listMilestoneArtifacts']
-    /** Set milestone artifacts (replace all) */
-    put: operations['MilestonesController_setMilestoneArtifacts']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/milestones/{id}/projects': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List linked projects for a milestone */
-    get: operations['MilestonesController_listMilestoneProjects']
-    /** Set linked projects for a milestone (replace all) */
-    put: operations['MilestonesController_setMilestoneProjects']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/milestones/{id}/teams': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List linked teams for a milestone */
-    get: operations['MilestonesController_listMilestoneTeams']
-    /** Set linked teams for a milestone (replace all) */
-    put: operations['MilestonesController_setMilestoneTeams']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/milestones/{id}/releases': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List linked releases for a milestone */
-    get: operations['MilestonesController_listMilestoneReleases']
-    /** Set linked releases for a milestone (replace all) */
-    put: operations['MilestonesController_setMilestoneReleases']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/v1/capacity-plans': {
     parameters: {
       query?: never
@@ -3136,6 +3136,14 @@ export interface components {
       startDate?: string
       endDate?: string
       teamIds?: string[]
+      estimationSettings?: {
+        xsPoints: number
+        sPoints: number
+        mPoints: number
+        lPoints: number
+        xlPoints: number
+        hoursPerPoint: number
+      }
     }
     ActivityPageDto: {
       data: {
@@ -3578,6 +3586,117 @@ export interface components {
        * @description Presigned S3 GET URL — expires in 15 minutes
        */
       downloadUrl: string
+    }
+    MilestoneListItemDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      milestoneKey: string | null
+      name: string
+      description: string | null
+      notes: string | null
+      /** @enum {string} */
+      status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      ownerId: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetStartDate: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetEndDate: string | null
+      releaseIds: string[]
+      projectIds?: string[]
+      teamIds?: string[]
+      /** @description Work-item completion across linked releases */
+      progress?: {
+        totalItems: number
+        completedItems: number
+        totalPoints: number
+        completedPoints: number
+        progressPercent: number | null
+      }
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+    }
+    CreateMilestoneDto: {
+      /** Format: uuid */
+      projectId: string
+      name: string
+      description?: string
+      notes?: string
+      /** @enum {string} */
+      status?: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      /** Format: uuid */
+      ownerId?: string
+      /** Format: date */
+      targetStartDate?: string
+      /** Format: date */
+      targetEndDate?: string
+      releaseIds: string[]
+      projectIds?: string[]
+      teamIds?: string[]
+    }
+    MilestoneResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      projectId: string
+      milestoneKey: string | null
+      name: string
+      description: string | null
+      notes: string | null
+      /** @enum {string} */
+      status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      ownerId: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetStartDate: string | null
+      /** @description YYYY-MM-DD, manually set or derived from linked releases */
+      targetEndDate: string | null
+      releaseIds: string[]
+      projectIds?: string[]
+      teamIds?: string[]
+      /** @description Work-item completion across linked releases */
+      progress?: {
+        totalItems: number
+        completedItems: number
+        totalPoints: number
+        completedPoints: number
+        progressPercent: number | null
+      }
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+    }
+    UpdateMilestoneDto: {
+      name?: string
+      description?: string | null
+      notes?: string | null
+      /** @enum {string} */
+      status?: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
+      ownerId?: string | null
+      targetStartDate?: string | null
+      targetEndDate?: string | null
+      releaseIds?: string[]
+      projectIds?: string[]
+      teamIds?: string[]
+    }
+    SetMilestoneArtifactsDto: {
+      workItemIds: string[]
+    }
+    SetMilestoneProjectsDto: {
+      projectIds: string[]
+    }
+    SetMilestoneTeamsDto: {
+      teamIds: string[]
+    }
+    SetMilestoneReleasesDto: {
+      releaseIds: string[]
     }
     IterationResponseDto: {
       /** Format: uuid */
@@ -4457,117 +4576,6 @@ export interface components {
       actualHours?: number | null
       assigneeId?: string | null
     }
-    MilestoneListItemDto: {
-      /** Format: uuid */
-      id: string
-      /** Format: uuid */
-      workspaceId: string
-      /** Format: uuid */
-      projectId: string
-      milestoneKey: string | null
-      name: string
-      description: string | null
-      notes: string | null
-      /** @enum {string} */
-      status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
-      ownerId: string | null
-      /** @description YYYY-MM-DD, manually set or derived from linked releases */
-      targetStartDate: string | null
-      /** @description YYYY-MM-DD, manually set or derived from linked releases */
-      targetEndDate: string | null
-      releaseIds: string[]
-      projectIds?: string[]
-      teamIds?: string[]
-      /** @description Work-item completion across linked releases */
-      progress?: {
-        totalItems: number
-        completedItems: number
-        totalPoints: number
-        completedPoints: number
-        progressPercent: number | null
-      }
-      /** Format: date-time */
-      createdAt: string
-      /** Format: date-time */
-      updatedAt: string
-    }
-    CreateMilestoneDto: {
-      /** Format: uuid */
-      projectId: string
-      name: string
-      description?: string
-      notes?: string
-      /** @enum {string} */
-      status?: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
-      /** Format: uuid */
-      ownerId?: string
-      /** Format: date */
-      targetStartDate?: string
-      /** Format: date */
-      targetEndDate?: string
-      releaseIds: string[]
-      projectIds?: string[]
-      teamIds?: string[]
-    }
-    MilestoneResponseDto: {
-      /** Format: uuid */
-      id: string
-      /** Format: uuid */
-      workspaceId: string
-      /** Format: uuid */
-      projectId: string
-      milestoneKey: string | null
-      name: string
-      description: string | null
-      notes: string | null
-      /** @enum {string} */
-      status: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
-      ownerId: string | null
-      /** @description YYYY-MM-DD, manually set or derived from linked releases */
-      targetStartDate: string | null
-      /** @description YYYY-MM-DD, manually set or derived from linked releases */
-      targetEndDate: string | null
-      releaseIds: string[]
-      projectIds?: string[]
-      teamIds?: string[]
-      /** @description Work-item completion across linked releases */
-      progress?: {
-        totalItems: number
-        completedItems: number
-        totalPoints: number
-        completedPoints: number
-        progressPercent: number | null
-      }
-      /** Format: date-time */
-      createdAt: string
-      /** Format: date-time */
-      updatedAt: string
-    }
-    UpdateMilestoneDto: {
-      name?: string
-      description?: string | null
-      notes?: string | null
-      /** @enum {string} */
-      status?: 'planned' | 'at_risk' | 'met' | 'missed' | 'cancelled' | 'completed'
-      ownerId?: string | null
-      targetStartDate?: string | null
-      targetEndDate?: string | null
-      releaseIds?: string[]
-      projectIds?: string[]
-      teamIds?: string[]
-    }
-    SetMilestoneArtifactsDto: {
-      workItemIds: string[]
-    }
-    SetMilestoneProjectsDto: {
-      projectIds: string[]
-    }
-    SetMilestoneTeamsDto: {
-      teamIds: string[]
-    }
-    SetMilestoneReleasesDto: {
-      releaseIds: string[]
-    }
     CapacityPlanResponseDto: {
       /** Format: uuid */
       id: string
@@ -4958,10 +4966,10 @@ export interface components {
         portfolioItemId: string
         itemKey: string
         /**
-         * @description unallocated: no team, so no plan to inherit. release_span_mismatch: the plan window reaches outside its release, so the dates are written but not the Release. archived: the Feature is not actionable demand. other_release: the Feature already belongs to a different release (§226 allows the allocation; publish must not move it).
+         * @description unallocated: no team, so no plan to inherit. no_window: the plan states no planned start/end, so nothing was written — a publish does not write emptiness, and with no window AC-019 refuses the Release field too. release_span_mismatch: the plan window reaches outside its release, so the dates are written but not the Release. archived: the Feature is not actionable demand. other_release: the Feature already belongs to a different release (§226 allows the allocation; publish must not move it).
          * @enum {string}
          */
-        reason: 'unallocated' | 'release_span_mismatch' | 'archived' | 'other_release'
+        reason: 'unallocated' | 'no_window' | 'release_span_mismatch' | 'archived' | 'other_release'
       }[]
     }
     RevertResultResponseDto: {
@@ -10030,6 +10038,639 @@ export interface operations {
       }
     }
   }
+  MilestonesController_listMilestones: {
+    parameters: {
+      query: {
+        limit?: number
+        cursor?: string
+        sort?: string
+        projectId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['MilestoneListItemDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
+              total?: number
+            }
+          }
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_createMilestone: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateMilestoneDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MilestoneResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_getMilestone: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MilestoneResponseDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_deleteMilestone: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Milestone deleted */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_updateMilestone: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateMilestoneDto']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MilestoneResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_getActivity: {
+    parameters: {
+      query?: {
+        page?: number
+        pageSize?: number
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ActivityPageDto']
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_listMilestoneArtifacts: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Array of work item IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_setMilestoneArtifacts: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SetMilestoneArtifactsDto']
+      }
+    }
+    responses: {
+      /** @description Updated artifact IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_listMilestoneProjects: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Array of project IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_setMilestoneProjects: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SetMilestoneProjectsDto']
+      }
+    }
+    responses: {
+      /** @description Updated project IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_listMilestoneTeams: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Array of team IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_setMilestoneTeams: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SetMilestoneTeamsDto']
+      }
+    }
+    responses: {
+      /** @description Updated team IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_listMilestoneReleases: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Array of release IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_setMilestoneReleases: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SetMilestoneReleasesDto']
+      }
+    }
+    responses: {
+      /** @description Updated release IDs */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   IterationsController_listIterations: {
     parameters: {
       query: {
@@ -13018,639 +13659,6 @@ export interface operations {
     }
     responses: {
       /** @description Updated task */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_listMilestones: {
-    parameters: {
-      query: {
-        limit?: number
-        cursor?: string
-        sort?: string
-        projectId: string
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Paginated list */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': {
-            data?: components['schemas']['MilestoneListItemDto'][]
-            pageInfo?: {
-              /** @description Opaque cursor token for the next page */
-              nextCursor: string | null
-              hasNextPage: boolean
-              /** @description Number of items returned per page */
-              limit: number
-              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
-              total?: number
-            }
-          }
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_createMilestone: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateMilestoneDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['MilestoneResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_getMilestone: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['MilestoneResponseDto']
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_deleteMilestone: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Milestone deleted */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_updateMilestone: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateMilestoneDto']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['MilestoneResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_getActivity: {
-    parameters: {
-      query?: {
-        page?: number
-        pageSize?: number
-      }
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ActivityPageDto']
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_listMilestoneArtifacts: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Array of work item IDs */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_setMilestoneArtifacts: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SetMilestoneArtifactsDto']
-      }
-    }
-    responses: {
-      /** @description Updated artifact IDs */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_listMilestoneProjects: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Array of project IDs */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_setMilestoneProjects: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SetMilestoneProjectsDto']
-      }
-    }
-    responses: {
-      /** @description Updated project IDs */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_listMilestoneTeams: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Array of team IDs */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_setMilestoneTeams: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SetMilestoneTeamsDto']
-      }
-    }
-    responses: {
-      /** @description Updated team IDs */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_listMilestoneReleases: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Array of release IDs */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  MilestonesController_setMilestoneReleases: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SetMilestoneReleasesDto']
-      }
-    }
-    responses: {
-      /** @description Updated release IDs */
       200: {
         headers: {
           [name: string]: unknown

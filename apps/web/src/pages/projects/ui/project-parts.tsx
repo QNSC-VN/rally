@@ -11,7 +11,6 @@ import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { notify, errorMessage } from '@/shared/lib/toast'
 import {
   useCreateProject,
-  useUpdateProjectEstimationSettings,
   type Project,
   type ProjectEstimationSettings,
 } from '@/features/projects/api'
@@ -324,7 +323,6 @@ export function NewProjectModal({
     hoursPerPoint: 8,
   })
   const { mutateAsync, isPending } = useCreateProject()
-  const { mutateAsync: saveEstimation } = useUpdateProjectEstimationSettings()
 
   const autoKey = (n: string) =>
     n
@@ -352,7 +350,32 @@ export function NewProjectModal({
       return
     }
     try {
-      const created = await mutateAsync({
+      /**
+       * ONE request. §4.2 lists the estimate scale among the required Create Project fields, and
+       * it now travels in the create body — the API writes `work.project_settings` inside the
+       * same transaction as the project.
+       *
+       * What was here before: a second, best-effort `PATCH :id/estimation-settings` that was
+       * SKIPPED whenever the six values still equalled the defaults (so the common path wrote no
+       * settings row at all) and, when it did run, caught its own failure and toasted — leaving a
+       * project created with a scale the Workspace Admin did not choose and no way to tell from
+       * the server which of the two writes had happened.
+       *
+       * Sent unconditionally, defaults included, and only gated on `isWA` because the form only
+       * renders those fields for a Workspace Admin. That gate is belt-and-braces: `project:create`
+       * is a `workspace_admin`-only code, so a non-WA never reaches this submit at all.
+       */
+      const estimationSettings: ProjectEstimationSettings | undefined = isWA
+        ? {
+            xsPoints: values.xsPoints ?? 1,
+            sPoints: values.sPoints ?? 3,
+            mPoints: values.mPoints ?? 5,
+            lPoints: values.lPoints ?? 8,
+            xlPoints: values.xlPoints ?? 13,
+            hoursPerPoint: values.hoursPerPoint ?? 8,
+          }
+        : undefined
+      await mutateAsync({
         workspaceId,
         name: values.name.trim(),
         key: trimmedKey,
@@ -361,39 +384,9 @@ export function NewProjectModal({
         startDate: values.startDate || undefined,
         endDate: values.endDate || undefined,
         teamIds: values.teamIds.length > 0 ? values.teamIds : undefined,
+        estimationSettings,
       })
       notify.success(t('create.created', { name: values.name }))
-
-      // Estimation settings are WA-admin only and OPTIONAL: work.project_settings defaults
-      // to the same 1/3/5/8/13 + 8 scale, so skip the call when a WA left them alone — the
-      // common path needs no row. Only a WA who chose different values persists them, and a
-      // failure here degrades rather than rolling back the create above (the project exists).
-      if (isWA) {
-        const estimation: ProjectEstimationSettings = {
-          xsPoints: values.xsPoints ?? 1,
-          sPoints: values.sPoints ?? 3,
-          mPoints: values.mPoints ?? 5,
-          lPoints: values.lPoints ?? 8,
-          xlPoints: values.xlPoints ?? 13,
-          hoursPerPoint: values.hoursPerPoint ?? 8,
-        }
-        const isDefault =
-          estimation.xsPoints === 1 &&
-          estimation.sPoints === 3 &&
-          estimation.mPoints === 5 &&
-          estimation.lPoints === 8 &&
-          estimation.xlPoints === 13 &&
-          estimation.hoursPerPoint === 8
-        if (!isDefault) {
-          try {
-            await saveEstimation({ id: created.id, input: estimation })
-          } catch {
-            notify.error(
-              'Estimation settings failed to save — the project was created with default sizing.',
-            )
-          }
-        }
-      }
 
       onClose()
     } catch (err) {

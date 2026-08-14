@@ -10,6 +10,7 @@ import type {
   UpdateProjectMemberInput,
 } from '../../domain/project.types';
 import { IProjectMemberRepository } from '../../domain/ports/project-member.repository';
+import { selectWorkspaceAdminUserIds } from './workspace-admin-ids';
 
 @Injectable()
 export class ProjectMemberDrizzleRepository implements IProjectMemberRepository {
@@ -138,6 +139,11 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       teamCount: teamCountByUserId.get(m.userId) ?? 0,
     });
     return [...explicit.map(withTeamCount), ...teamOnly.map(withTeamCount)];
+  }
+
+  /** §2.1 — see `selectWorkspaceAdminUserIds` for why this is one shared query. */
+  async listWorkspaceAdminUserIds(workspaceId: string): Promise<string[]> {
+    return selectWorkspaceAdminUserIds(this.db, workspaceId);
   }
 
   async addMember(input: AddProjectMemberInput, tx?: DbExecutor): Promise<ProjectMember> {

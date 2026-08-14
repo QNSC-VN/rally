@@ -208,6 +208,9 @@ export class ProjectsController {
       startDate: dto.startDate,
       endDate: dto.endDate,
       teamIds: dto.teamIds,
+      // §4.2 makes the estimate scale part of Create Project. It used to arrive via a second,
+      // best-effort PATCH; the service now writes the row in the create transaction.
+      estimationSettings: dto.estimationSettings,
     });
     return toProjectDto(project);
   }
@@ -329,7 +332,9 @@ export class ProjectsController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
-    await this.projectsService.deleteProject(user.workspaceId, id);
+    // The actor, not just their workspace: §8 makes the delete an audited administrative
+    // event and an audit row with no actor is not an audit row.
+    await this.projectsService.deleteProject(user, id);
   }
 
   // ── Estimation Settings (SRS §6.2) ────────────────────────────────────────

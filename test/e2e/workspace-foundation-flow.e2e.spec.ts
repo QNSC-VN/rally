@@ -56,22 +56,10 @@ describe('BA flows: Company → Project → Team foundation (real AppModule + se
         name: 'Lifecycle Project',
       });
 
-      // RBAC migration: creator is no longer auto-lead — explicitly add as admin.
-      const member = await projects.addProjectMember(
-        actor.workspaceId,
-        project.id,
-        actor.sub,
-        actor.sub,
-      );
-      await projects.updateProjectMember(
-        actor.workspaceId,
-        project.id,
-        member.id,
-        { accessLevel: 'admin' },
-        actor.sub,
-      );
-
-      // Archive is allowed for a project member (explicitly added above).
+      // No project_members row for the actor, deliberately. §2.1: a Workspace Admin is not added
+      // as a Project user, and `addProjectMember` now REFUSES one. Archive/restore is gated on
+      // `workspace:edit`, which the WA holds workspace-wide — so the block that used to add and
+      // promote a membership row here granted nothing this test needs.
       const archived = await projects.updateProject(actor, project.id, { status: 'archived' });
       expect(archived.status).toBe('archived');
 

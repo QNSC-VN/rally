@@ -46,6 +46,7 @@ import type {
   CreateWorkflowStatusInput,
   CreateWorkflowTransitionInput,
   UpdateProjectMemberInput,
+  ProjectEstimationSettings,
 } from '../domain/project.types';
 import type { ProjectAccessLevel } from '@shared-kernel';
 import { AccessService } from '@modules/access';
@@ -55,26 +56,24 @@ import type { WorkItemType } from '../domain/ports/project.repository';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
 import { PROJECT_ACTIVITY_CONFIG } from './project-activity-diff';
 
-/**
- * Per-project T-shirt → points scale + hours/point (SRS §6.2), persisted in
- * `work.project_settings`. The application-layer shape; the HTTP DTO in
- * `project-request.dto.ts` mirrors it for the wire + codegen.
- */
-export interface ProjectEstimationSettings {
-  xsPoints: number;
-  sPoints: number;
-  mPoints: number;
-  lPoints: number;
-  xlPoints: number;
-  hoursPerPoint: number;
-}
+// Declared in the domain because `CreateProjectRequest` carries it; re-exported here because
+// the controller and other modules import it from the service.
+export type { ProjectEstimationSettings };
 
 /**
- * Fallback when a project has no `project_settings` row yet. Mirrors the column
- * DEFAULTs in migration 0106 AND the points in `DEFAULT_PRELIMINARY_ESTIMATE_MAP` —
- * a project is usable before a WA sets a scale, and the three must stay in step or
- * "M" means a different number on the settings form, the progress bar and the
- * capacity plan.
+ * The values a project starts with, and the read-side fallback.
+ *
+ * Mirrors the column DEFAULTs in migration 0106 AND the points in
+ * `DEFAULT_PRELIMINARY_ESTIMATE_MAP` — the three must stay in step or "M" means a different
+ * number on the settings form, the progress bar and the capacity plan.
+ *
+ * Since migration 0117 every project HAS a `project_settings` row: `createProject` writes one
+ * in its own transaction, and a trigger writes one for the raw-SQL writers that bypass the
+ * service (`db/seeds/**` inserts `work.projects` directly, the same reason
+ * `trg_task_iteration_from_parent` and `timebox_group_id` are triggers). The fallback in
+ * `getEstimationSettings` therefore stops being load-bearing, but it stays: it is what the
+ * method's contract promises, and a read must not 500 on a row a future writer has not created
+ * yet.
  */
 const DEFAULT_PROJECT_ESTIMATION_SETTINGS: ProjectEstimationSettings = {
   xsPoints: 1,
@@ -179,8 +178,16 @@ export class ProjectsService {
    * key-gen were guarded, but its CONTENT (work items, iterations, releases, milestones)
    * stayed fully writable, so archiving stopped nothing inside the project. Shared by
    * every content service's write path — also validates existence like getProject.
+   *
+   * It RETURNS the project so a caller that needs the row does not fetch it twice; the
+   * alternative was `getProject` followed by this method, which is two identical queries and
+   * the reason the projects module's own writes went unguarded for as long as they did.
+   *
+   * The one deliberate exception is `updateProject`, which has to admit `status: 'active'` —
+   * restoring is the only write an archived project accepts. Everything else in this class
+   * routes through here.
    */
-  async assertProjectWritable(workspaceId: string, projectId: string): Promise<void> {
+  async assertProjectWritable(workspaceId: string, projectId: string): Promise<Project> {
     const project = await this.getProject(workspaceId, projectId);
     if (project.status === 'archived') {
       throw new PreconditionFailedException(
@@ -188,6 +195,7 @@ export class ProjectsService {
         'This project is archived and read-only. Restore it to active before changing its content.',
       );
     }
+    return project;
   }
 
   async createProject(actor: JwtPayload, input: CreateProjectRequest): Promise<Project> {
@@ -239,9 +247,17 @@ export class ProjectsService {
 
     const projectId = uuidv7();
 
+    // The scale to persist: the caller's values, or the documented defaults. Resolved BEFORE
+    // the transaction so the row written is a complete, explicit set of six numbers rather
+    // than six column DEFAULTs a later reader has to know about.
+    const estimation: ProjectEstimationSettings = {
+      ...DEFAULT_PROJECT_ESTIMATION_SETTINGS,
+      ...input.estimationSettings,
+    };
+
     // PRJ-FR-003: create the project and seed its counter, owner membership,
-    // default workflow statuses and team links in ONE transaction. A partial
-    // failure here would otherwise leave a project with no statuses or no owner —
+    // default workflow statuses, estimation settings and team links in ONE transaction. A
+    // partial failure here would otherwise leave a project with no statuses or no owner —
     // an unusable state.
     const project = await this.uow.run(async (tx) => {
       const created = await this.projectRepo.create(
@@ -280,6 +296,48 @@ export class ProjectsService {
         );
       }
 
+      /**
+       * §4.2/§6.2: the Estimation Settings are CREATE fields, so the row is written here — in
+       * the same transaction as the project — and not by a follow-up request.
+       *
+       * What this replaces: the SPA POSTed the project, then fired a best-effort
+       * `PATCH :id/estimation-settings` which it SKIPPED whenever the six values still equalled
+       * the defaults and merely toasted on failure. So the common path wrote no
+       * `work.project_settings` row at all, a required setting was optional in practice, and a
+       * project could exist with none for every later reader to fall back around. One
+       * transaction, one write path.
+       *
+       * `onConflictDoUpdate` rather than a plain insert because migration 0117's trigger has
+       * already inserted a DEFAULTS row for this project by the time this statement runs (it
+       * fires on the `work.projects` insert above, inside this transaction). The trigger is the
+       * floor for writers that never reach this service; this statement is what applies the
+       * caller's choice on top.
+       */
+      await tx
+        .insert(projectSettings)
+        .values({
+          workspaceId: actor.workspaceId,
+          projectId,
+          xsPoints: estimation.xsPoints,
+          sPoints: estimation.sPoints,
+          mPoints: estimation.mPoints,
+          lPoints: estimation.lPoints,
+          xlPoints: estimation.xlPoints,
+          hoursPerPoint: String(estimation.hoursPerPoint),
+        })
+        .onConflictDoUpdate({
+          target: projectSettings.projectId,
+          set: {
+            xsPoints: estimation.xsPoints,
+            sPoints: estimation.sPoints,
+            mPoints: estimation.mPoints,
+            lPoints: estimation.lPoints,
+            xlPoints: estimation.xlPoints,
+            hoursPerPoint: String(estimation.hoursPerPoint),
+            updatedAt: new Date(),
+          },
+        });
+
       for (const teamId of teamIds) {
         await this.projectTeamRepo.linkTeam(uuidv7(), actor.workspaceId, projectId, teamId, tx);
       }
@@ -299,6 +357,8 @@ export class ProjectsService {
               leadId: resolvedLeadId,
               startDate: input.startDate ?? null,
               teamIds,
+              // Part of the create now, so part of what the create is audited as.
+              estimationSettings: estimation,
             },
           },
         },
@@ -387,12 +447,23 @@ export class ProjectsService {
     }
 
     const isArchiving = project.status !== 'archived' && input.status === 'archived';
+    /**
+     * §8 makes archive AND restore administrative audit events, and restore was landing as
+     * `project.updated` — indistinguishable in the Audit Log from a rename, on the one write
+     * that brings a read-only project back into use. It is a distinct action, so it gets the
+     * distinct code rather than a second row alongside the update one.
+     */
+    const isRestoring = project.status === 'archived' && input.status === 'active';
 
     const after = await this.uow.run(async (tx) => {
       const updated = await this.projectRepo.update(projectId, input, actor.workspaceId, tx);
       await this.audit.emit(
         {
-          action: isArchiving ? AUDIT_ACTION.PROJECT_ARCHIVED : AUDIT_ACTION.PROJECT_UPDATED,
+          action: isArchiving
+            ? AUDIT_ACTION.PROJECT_ARCHIVED
+            : isRestoring
+              ? AUDIT_ACTION.PROJECT_RESTORED
+              : AUDIT_ACTION.PROJECT_UPDATED,
           resourceType: AUDIT_RESOURCE.PROJECT,
           resourceId: projectId,
           workspaceId: actor.workspaceId,
@@ -418,10 +489,38 @@ export class ProjectsService {
     return after;
   }
 
-  async deleteProject(workspaceId: string, projectId: string): Promise<void> {
-    await this.getProject(workspaceId, projectId);
-    await this.projectRepo.softDelete(projectId, workspaceId);
-    this.logger.log({ projectId }, 'Project soft-deleted');
+  /**
+   * Soft-delete, audited.
+   *
+   * §8 makes deleting a project an administrative audit event and `project.deleted` did not
+   * exist as an action at all — so the most destructive write in this module was the one
+   * mutation the Audit Log could not show, on a record that is only recoverable by clearing
+   * `deleted_at` in SQL. The emit is INSIDE the transaction with the delete, like every other
+   * emit here: `AuditProducer.emit` writes the transactional outbox, so sharing the
+   * transaction is what makes it impossible for the row and the event to disagree.
+   *
+   * Takes the actor rather than a bare workspace id because an audit entry with no actor is
+   * not an audit entry — `changes.before` carries the deleted project so the trail records
+   * WHAT was deleted, not just that something was.
+   */
+  async deleteProject(actor: JwtPayload, projectId: string): Promise<void> {
+    const project = await this.getProject(actor.workspaceId, projectId);
+    await this.uow.run(async (tx) => {
+      await this.projectRepo.softDelete(projectId, actor.workspaceId, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.PROJECT_DELETED,
+          resourceType: AUDIT_RESOURCE.PROJECT,
+          resourceId: projectId,
+          workspaceId: actor.workspaceId,
+          actor: { id: actor.sub },
+          projectId,
+          changes: { before: project },
+        },
+        tx,
+      );
+    });
+    this.logger.log({ projectId, actorId: actor.sub }, 'Project soft-deleted');
   }
 
   // ── Estimation Settings (SRS §6.2) ────────────────────────────────────────
@@ -469,9 +568,10 @@ export class ProjectsService {
     projectId: string,
     input: Partial<ProjectEstimationSettings>,
   ): Promise<ProjectEstimationSettings> {
-    // Resolves existence + workspace scope (404 on miss/cross-workspace) and carries
-    // workspaceId into the upsert row.
-    const project = await this.getProject(actor.workspaceId, projectId);
+    // Resolves existence + workspace scope (404 on miss/cross-workspace), refuses an archived
+    // project (PRJ-FR-010) and carries workspaceId into the upsert row — one query for all
+    // three, which is why the guard returns the row.
+    const project = await this.assertProjectWritable(actor.workspaceId, projectId);
     const before = await this.getEstimationSettings(actor.workspaceId, projectId);
     const after = { ...before, ...input };
 
@@ -585,14 +685,11 @@ export class ProjectsService {
     projectId: string,
     type: WorkItemType,
   ): Promise<string> {
-    const project = await this.getProject(workspaceId, projectId);
-    // PRJ-FR-010: archived projects are read-only; block new work item creation
-    if (project.status === 'archived') {
-      throw new PreconditionFailedException(
-        'PROJECT_ARCHIVED',
-        'Cannot create work items in an archived project.',
-      );
-    }
+    // PRJ-FR-010: archived projects are read-only; block new work item creation. This was an
+    // inline copy of `assertProjectWritable`'s body — a second home for one rule, and the
+    // reason `projectId` is fetched here at all. It now calls the guard, so the rule has one
+    // implementation and one message across the module.
+    await this.assertProjectWritable(workspaceId, projectId);
     const prefix = ProjectsService.TYPE_PREFIX[type];
     // Rally FormattedID: the sequence is per-(workspace, type), so US-42 is unique
     // across the whole workspace (not per project). projectId is still used above
@@ -603,13 +700,27 @@ export class ProjectsService {
   }
 
   // ── Workflow status mutations ──────────────────────────────────────────────
+  //
+  // Every mutation below opens with `assertProjectWritable`, not `getProject`.
+  //
+  // "Archived Projects are read-only regardless of access level" (PRJ-FR-010) held in four
+  // modules and in NONE of this one's own writes — workflow statuses, transitions, labels,
+  // team links and the estimation scale were all editable on an archived project by anyone
+  // holding `project:edit`, and the guard enforcing the rule everywhere else is a sibling
+  // method in this very class. The reads (`listStatuses`, `listLabels`, `listProjectTeams`, …)
+  // deliberately keep `getProject`: archived means read-only, not invisible.
+  //
+  // The deliberate exceptions are the three Project MEMBER writes further down. Revoking
+  // someone's access to an archived project must stay possible — refusing it would make
+  // archiving a one-way door that freezes a stale access list — and access is not the project's
+  // content. Each carries its own note.
 
   async createStatus(
     workspaceId: string,
     projectId: string,
     input: Omit<CreateWorkflowStatusInput, 'id' | 'workspaceId' | 'projectId'>,
   ): Promise<WorkflowStatus> {
-    await this.getProject(workspaceId, projectId);
+    await this.assertProjectWritable(workspaceId, projectId);
     const statuses = await this.statusRepo.listByProject(projectId);
     return this.statusRepo.create({
       id: uuidv7(),
@@ -624,7 +735,7 @@ export class ProjectsService {
   }
 
   async deleteStatus(workspaceId: string, projectId: string, statusId: string): Promise<void> {
-    await this.getProject(workspaceId, projectId);
+    await this.assertProjectWritable(workspaceId, projectId);
     const status = await this.statusRepo.findById(statusId);
     if (!status || status.projectId !== projectId) {
       throw new NotFoundException('WORKFLOW_STATUS_NOT_FOUND', 'Workflow status not found');
@@ -637,7 +748,7 @@ export class ProjectsService {
     projectId: string,
     orderedIds: string[],
   ): Promise<void> {
-    await this.getProject(workspaceId, projectId);
+    await this.assertProjectWritable(workspaceId, projectId);
     await this.statusRepo.updatePositions(projectId, orderedIds);
   }
 
@@ -648,7 +759,7 @@ export class ProjectsService {
     projectId: string,
     input: Omit<CreateWorkflowTransitionInput, 'id' | 'workspaceId' | 'projectId'>,
   ): Promise<WorkflowTransition> {
-    await this.getProject(workspaceId, projectId);
+    await this.assertProjectWritable(workspaceId, projectId);
     // Both endpoints must be statuses of THIS project (mirrors deleteStatus's
     // project-scope check) so a transition can never reference a status from
     // another project/workspace. `fromStatusId` is nullable — null means "from
@@ -684,7 +795,7 @@ export class ProjectsService {
     projectId: string,
     transitionId: string,
   ): Promise<void> {
-    await this.getProject(workspaceId, projectId);
+    await this.assertProjectWritable(workspaceId, projectId);
     const transition = await this.statusRepo.findTransitionById(transitionId);
     if (!transition || transition.projectId !== projectId) {
       throw new NotFoundException('WORKFLOW_STATUS_NOT_FOUND', 'Workflow transition not found');
@@ -705,7 +816,7 @@ export class ProjectsService {
     name: string,
     color?: string,
   ): Promise<Label> {
-    await this.getProject(workspaceId, projectId);
+    await this.assertProjectWritable(workspaceId, projectId);
     return this.labelRepo.create({ id: uuidv7(), workspaceId, projectId, name, color });
   }
 
@@ -715,7 +826,7 @@ export class ProjectsService {
     labelId: string,
     input: { name?: string; color?: string },
   ): Promise<Label> {
-    await this.getProject(workspaceId, projectId);
+    await this.assertProjectWritable(workspaceId, projectId);
     const label = await this.labelRepo.findById(labelId);
     if (!label || label.projectId !== projectId || label.workspaceId !== workspaceId) {
       throw new NotFoundException('LABEL_NOT_FOUND', 'Label not found');
@@ -724,7 +835,7 @@ export class ProjectsService {
   }
 
   async deleteLabel(workspaceId: string, projectId: string, labelId: string): Promise<void> {
-    await this.getProject(workspaceId, projectId);
+    await this.assertProjectWritable(workspaceId, projectId);
     const label = await this.labelRepo.findById(labelId);
     if (!label || label.projectId !== projectId || label.workspaceId !== workspaceId) {
       throw new NotFoundException('LABEL_NOT_FOUND', 'Label not found');
@@ -764,7 +875,7 @@ export class ProjectsService {
   }
 
   async linkTeam(workspaceId: string, projectId: string, teamId: string): Promise<ProjectTeamLink> {
-    await this.getProject(workspaceId, projectId);
+    await this.assertProjectWritable(workspaceId, projectId);
 
     // The team must belong to the same workspace (mirrors the create-project
     // team validation) — prevents linking a team from another workspace/tenant.
@@ -790,7 +901,7 @@ export class ProjectsService {
   }
 
   async unlinkTeam(workspaceId: string, projectId: string, teamId: string): Promise<void> {
-    await this.getProject(workspaceId, projectId);
+    await this.assertProjectWritable(workspaceId, projectId);
 
     const existing = await this.projectTeamRepo.findLink(projectId, teamId);
     if (!existing) {
@@ -841,6 +952,31 @@ export class ProjectsService {
 
   // ── Project Members ───────────────────────────────────────────────────────
 
+  /**
+   * The users whose project authority IS the workspace-wide grant, so §2.1 keeps them out of
+   * the roster and out of the candidate list.
+   *
+   * AC-8 / §2.1: "a Workspace Admin is not added as a Project user or Team member." Nothing
+   * anti-joined them anywhere — `db/seeds/demo.ts` writes the row and migration 0104 promoted
+   * it to `access_level = 'admin'` — so a WA was listed as a project member on every project in
+   * the workspace, and offerable again as one.
+   *
+   * ONE named home, read by the roster AND by `addProjectMember`, because a rule enforced in two
+   * places is a rule that eventually disagrees with itself: hiding the row on read while the POST
+   * still creates it would leave an INVISIBLE grant. That is not theoretical — a
+   * `project_members` row is what `AccessService.effectiveAssignments` synthesizes a
+   * project-scoped grant from, so a WA's row is dormant only for as long as they are a WA. Demote
+   * them and it becomes live Project Admin on that project, with nothing on screen to say so.
+   * Migration 0118 clears the rows that already exist for the same reason.
+   *
+   * `getProjectAccessLevel` is untouched by this: it resolves from `effectiveAssignments`, and
+   * `null` still means "Workspace Admin, or No Access" exactly as its callers assume — removing
+   * the row makes that MORE true for a WA, not less.
+   */
+  private async workspaceAdminIds(workspaceId: string): Promise<Set<string>> {
+    return new Set(await this.projectMemberRepo.listWorkspaceAdminUserIds(workspaceId));
+  }
+
   async listProjectMembers(
     workspaceId: string,
     projectId: string,
@@ -869,7 +1005,12 @@ export class ProjectsService {
         'Only a Workspace Admin or a Project Admin can view the project user roster',
       );
     }
-    return this.projectMemberRepo.listByProject(projectId);
+    // §2.1 — filtered here rather than in the repository so the explicit rows AND the
+    // team-derived ones go through the same test; a WA who is also on a linked team would
+    // otherwise reappear through the second branch.
+    const admins = await this.workspaceAdminIds(workspaceId);
+    const members = await this.projectMemberRepo.listByProject(projectId);
+    return members.filter((m) => !admins.has(m.userId));
   }
 
   async addProjectMember(
@@ -879,12 +1020,33 @@ export class ProjectsService {
     actorId: string,
     accessLevel?: ProjectAccessLevel,
   ): Promise<ProjectMember> {
+    // `getProject`, not `assertProjectWritable`: access is not the project's content. See the
+    // note on the workflow-status mutations for why the three member writes stay open on an
+    // archived project.
     await this.getProject(workspaceId, projectId);
 
     // A project member must first be an active member of the owning workspace —
     // same rule enforced for a project's lead (PRJ-FR-006) and a work item's
     // assignee (P1-15). Prevents adding a user from another workspace/tenant.
     await this.assertWorkspaceMember(workspaceId, userId);
+
+    /**
+     * §2.1 — a Workspace Admin cannot be added as a Project user. REFUSED, not silently
+     * dropped: the caller asked for a grant, and a POST that answers 201 while writing nothing
+     * is how a UI comes to show a member who is not there.
+     *
+     * Enforced here because the SPA's own candidate filter (`roleSlug !== 'workspace_admin'`)
+     * is a client-side courtesy, not a rule — and because `listProjectMembers` now hides these
+     * rows, so a row created through this path would be an invisible grant rather than a
+     * visible mistake. See `workspaceAdminIds` for the whole reasoning; it is the same set,
+     * deliberately.
+     */
+    if ((await this.workspaceAdminIds(workspaceId)).has(userId)) {
+      throw new PreconditionFailedException(
+        'PROJECT_MEMBER_IS_WORKSPACE_ADMIN',
+        'A Workspace Admin already has access to every project and cannot be added as a project user',
+      );
+    }
 
     const existing = await this.projectMemberRepo.findMember(projectId, userId);
     if (existing) {
@@ -964,6 +1126,7 @@ export class ProjectsService {
     input: UpdateProjectMemberInput,
     actorId: string,
   ): Promise<ProjectMember> {
+    // Deliberately not `assertProjectWritable` — see `addProjectMember`.
     await this.getProject(workspaceId, projectId);
 
     const member = await this.projectMemberRepo.findMemberById(memberId);
@@ -1004,6 +1167,8 @@ export class ProjectsService {
     userId: string,
     actorId: string,
   ): Promise<void> {
+    // Deliberately not `assertProjectWritable`: REVOKING access must stay possible on an
+    // archived project — see `addProjectMember`.
     await this.getProject(workspaceId, projectId);
 
     const existing = await this.projectMemberRepo.findMember(projectId, userId);
