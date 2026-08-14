@@ -24,6 +24,7 @@ import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { capacityPlanTeams, capacityPlans, projectTeams, teams } from '@db/schema/work';
 import { users } from '@db/schema/identity';
+import { workspaceMembers } from '@db/schema/workspace';
 
 import {
   VIEWER_ID,
@@ -449,6 +450,22 @@ describe('capacity plans (e2e)', () => {
         id: readerId,
         email: `capacity-draft-reader-${readerId.slice(0, 8)}@qnsc.dev`,
         displayName: 'Read-only planner',
+      });
+      /**
+       * The workspace MEMBER row is load-bearing, not bookkeeping.
+       *
+       * `listEffectiveForUser` inner-joins `workspace.workspace_members` on `status = 'active'`, so a
+       * user who exists in `identity.users` but is not an active member of the workspace resolves NO
+       * assignments — the custom role above included. That is correct (a grant to someone outside the
+       * company must not authorize anything) and it is invisible here, because this test calls the
+       * SERVICE directly: the three published plans come back with no permission check at all, and
+       * only the DRAFT filter consults `capacity:view_draft`. So the missing row presented as
+       * "AC-012 is broken" rather than "this principal does not exist yet".
+       */
+      await db.insert(workspaceMembers).values({
+        workspaceId: WORKSPACE_ID,
+        userId: readerId,
+        status: 'active',
       });
       await access.assignRole(admin, readerId, role.id, 'workspace');
       const draftReader = makeActor(readerId);

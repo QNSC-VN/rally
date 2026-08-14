@@ -419,6 +419,28 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     // Backlog shows only story + defect (tasks live under their parent item).
     conditions.push(inArray(workItems.type, ['story', 'defect']));
 
+    /**
+     * …and only UNSCHEDULED ones. This is the rule that defines the screen, and it was missing.
+     *
+     * `RECONCILED_SOURCE_OF_TRUTH.md:42`: "Plan > Backlog shows only Story/Defect items whose
+     * Iteration is `Unscheduled`. Assigning a Story/Defect to an Iteration removes it from Backlog
+     * and makes it visible in that Iteration's execution/status views; moving it back to
+     * `Unscheduled` returns it to Backlog." Rally says the same: "Once the item is scheduled into a
+     * release or iteration, it is removed from the Backlog page."
+     *
+     * ITERATION ONLY, deliberately — not release. Rally's sentence names both; the reconciled BA
+     * layer names only the iteration, and it is the newer and more specific decision, so a Story
+     * targeted at a Release but not yet pulled into a sprint stays in the Backlog. That is also the
+     * behaviour the screen needs: a release is a months-long container, and hiding everything
+     * assigned to one would empty the Backlog long before the work is planned.
+     *
+     * Because this is unconditional, the `iterationId` FILTER can no longer mean anything here — a
+     * value would contradict it and the absence of one is now the only possible state. The filter
+     * was removed from the Backlog toolbar for that reason; `buildFilters` still honours
+     * `iterationId` for `listWorkItems`, which is a different, unrestricted list.
+     */
+    conditions.push(isNull(workItems.iterationId));
+
     // Keyset ("seek") pagination keyed on the ACTIVE sort column, with the row
     // id as a stable unique tie-breaker. This keeps paging correct for every
     // sort — non-unique columns (title/type/priority), the nullable

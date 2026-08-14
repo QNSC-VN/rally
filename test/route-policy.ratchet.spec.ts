@@ -77,6 +77,8 @@ const MAX_AUTHZ_GAPS = 1;
 
 const ROOT = join(__dirname, '..');
 const HTTP_METHOD = /^\s*@(Get|Post|Patch|Put|Delete)\(/;
+const AUTHORIZED_IN_SERVICE = '@AuthorizedInService(';
+const SPEC_NAME = /\.(?:spec|e2e)\.ts$/;
 const DECORATOR = /^\s*@\w+\(/;
 const HANDLER = /^\s*(?:async\s+)?[\w[\]'"]+\s*\(/;
 /**
@@ -97,13 +99,7 @@ interface Route {
 }
 
 function scanRoutes(): { all: Route[]; unpoliced: Route[] } {
-  const files = execFileSync(
-    'git',
-    ['ls-files', 'libs/**/*.controller.ts', 'apps/**/*.controller.ts'],
-    { cwd: ROOT, encoding: 'utf8' },
-  )
-    .split('\n')
-    .filter(Boolean);
+  const files = controllerFiles();
 
   const all: Route[] = [];
   const unpoliced: Route[] = [];
@@ -143,6 +139,64 @@ function scanRoutes(): { all: Route[]; unpoliced: Route[] } {
   return { all, unpoliced };
 }
 
+/** Every controller file, once — three checks below need the same list. */
+function controllerFiles(): string[] {
+  return execFileSync('git', ['ls-files', 'libs/**/*.controller.ts', 'apps/**/*.controller.ts'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean);
+}
+
+interface Citation {
+  file: string;
+  line: number;
+  pinnedBy: string;
+}
+
+/**
+ * The `pinnedBy` argument of every `@AuthorizedInService(reason, pinnedBy)`.
+ *
+ * Paren-balanced rather than a single regex because the call is routinely wrapped over four
+ * lines by the formatter, and a line-oriented match sees only the fragment. The pinned spec is
+ * the LAST string literal inside the call — `reason` is prose and may itself contain a comma,
+ * a colon or brackets (one reason mentions `[]` and `null`), so position, not shape, is what
+ * identifies it.
+ */
+function scanServiceAuthzCitations(): Citation[] {
+  const citations: Citation[] = [];
+
+  for (const file of controllerFiles()) {
+    const source = readFileSync(join(ROOT, file), 'utf8');
+
+    for (let at = source.indexOf(AUTHORIZED_IN_SERVICE); at !== -1;) {
+      let depth = 0;
+      let end = at + AUTHORIZED_IN_SERVICE.length - 1;
+      for (; end < source.length; end++) {
+        if (source[end] === '(') depth++;
+        else if (source[end] === ')' && --depth === 0) break;
+      }
+
+      const args = source.slice(at + AUTHORIZED_IN_SERVICE.length, end);
+      const literals = [...args.matchAll(/'([^']*)'|"([^"]*)"/g)].map((m) => m[1] ?? m[2]);
+      const pinnedBy = literals.at(-1);
+      if (pinnedBy !== undefined) {
+        citations.push({
+          file,
+          // Count newlines rather than tracking them: this runs once per citation, not per line.
+          line: source.slice(0, at).split('\n').length,
+          pinnedBy,
+        });
+      }
+
+      at = source.indexOf(AUTHORIZED_IN_SERVICE, end);
+    }
+  }
+
+  return citations;
+}
+
 function report(routes: Route[]): string {
   const byFile = new Map<string, string[]>();
   for (const r of routes) {
@@ -178,15 +232,84 @@ describe('route-policy ratchet (only ever decreases)', () => {
     expect(unpoliced.length).toBeLessThanOrEqual(MAX_UNPOLICED_ROUTES);
   });
 
-  it(`declared authorization gaps <= ${MAX_AUTHZ_GAPS}`, () => {
-    const gaps: string[] = [];
-    const files = execFileSync(
+  /**
+   * Every spec named by `@AuthorizedInService(reason, pinnedBy)` must EXIST.
+   *
+   * `@AuthorizedInService` is the one mode that moves the authorization decision somewhere a
+   * reviewer cannot see from the route, and `pinnedBy` is the whole compensating control — the
+   * decorator's own docblock calls it "the test asserting BOTH directions", and the boot audit
+   * accepts the route because of it. Nothing checked that the named file was real.
+   *
+   * It was not. Twelve routes across three controllers cited `project-authz.e2e.spec.ts`,
+   * including `GET /projects` (the cross-project list whose ONLY authorization is
+   * `listReadableProjectIds`) and `GET /projects/:id/estimation-settings`. That file has never
+   * existed in this repository. So a dozen routes carried a citation as their proof, the boot
+   * audit passed, this ratchet passed, and the claim was unfalsifiable — which is how the two
+   * P0 access defects of 2026-08-14 survived: the control that was supposed to catch them was
+   * itself unverified.
+   *
+   * Matched by suffix as well as full path, because a citation is conventionally the bare
+   * filename. That is deliberately permissive: the property worth enforcing is "a reviewer can
+   * find this file", not a path convention.
+   */
+  it('every spec named by @AuthorizedInService exists', () => {
+    const citations = scanServiceAuthzCitations();
+
+    expect(
+      citations.length,
+      'Found no @AuthorizedInService citations at all — the scanner is broken, not the ' +
+        'controllers. Do not delete this check.',
+    ).toBeGreaterThan(0);
+
+    // `--others --exclude-standard` as well as the index, so a spec being written right now counts.
+    // Tracked-only would fail on the author's machine and pass in CI after the commit, which
+    // teaches exactly the wrong lesson: that the citation is a formality satisfied by `git add`.
+    // Ignored files are still excluded — a citation must point somewhere a reviewer can read.
+    const present = execFileSync(
       'git',
-      ['ls-files', 'libs/**/*.controller.ts', 'apps/**/*.controller.ts'],
+      ['ls-files', '--cached', '--others', '--exclude-standard'],
       { cwd: ROOT, encoding: 'utf8' },
     )
       .split('\n')
       .filter(Boolean);
+
+    const missing = citations.filter(
+      (c) => !present.some((p) => p === c.pinnedBy || p.endsWith(`/${c.pinnedBy}`)),
+    );
+
+    expect(
+      missing.length,
+      `${missing.length} route(s) name a pinning spec that does not exist:\n` +
+        missing.map((c) => `  ${c.file}:${c.line} → ${c.pinnedBy}`).join('\n') +
+        `\n\n@AuthorizedInService moves the authorization decision into the service, and ` +
+        `pinnedBy is the only thing that proves anyone checked it. A citation to a file that ` +
+        `does not exist is worse than no citation: it reads as evidence. Write the spec, or ` +
+        `re-point the citation at the spec that really covers the route.`,
+    ).toBe(0);
+  });
+
+  /**
+   * A `pinnedBy` must also name a TEST file, not a source file or a markdown note.
+   *
+   * Cheap to get wrong in the direction that matters: pointing at the service being defended
+   * ("authorized in `projects.service.ts`") satisfies the existence check above while proving
+   * nothing at all.
+   */
+  it('every @AuthorizedInService citation names a test file', () => {
+    const notTests = scanServiceAuthzCitations().filter((c) => !SPEC_NAME.test(c.pinnedBy));
+
+    expect(
+      notTests.length,
+      `${notTests.length} citation(s) do not name a *.spec.ts / *.e2e.ts file:\n` +
+        notTests.map((c) => `  ${c.file}:${c.line} → ${c.pinnedBy}`).join('\n') +
+        `\n\npinnedBy must be the TEST that asserts both directions. A source file or a doc ` +
+        `cannot fail when the behaviour regresses.`,
+    ).toBe(0);
+  });
+
+  it(`declared authorization gaps <= ${MAX_AUTHZ_GAPS}`, () => {
+    const gaps: string[] = [];
+    const files = controllerFiles();
 
     for (const file of files) {
       readFileSync(join(ROOT, file), 'utf8')

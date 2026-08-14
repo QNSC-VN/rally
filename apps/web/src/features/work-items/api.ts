@@ -403,6 +403,40 @@ export function useUpdateAnyWorkItem() {
   })
 }
 
+/**
+ * Header search: work items in the ACTIVE project matching a free-text term.
+ *
+ * Backs `SHELL-FR-009` ("Global search entry opens a search overlay/page"), which shipped as an
+ * input bound to nothing at all — `searchQuery` appeared at exactly two lines in `app-shell.tsx`,
+ * the `useState` and the `value`, with no submit handler, no navigation and no query. Typing and
+ * Enter both did nothing, on every screen.
+ *
+ * PROJECT-SCOPED, not workspace-wide, and that is a real limitation rather than an oversight. The
+ * only cross-project resolver is `GET /work-items/by-key`, which needs an EXACT key; free-text
+ * search exists solely as `GET /work-items?projectId=&q=`, whose `q` covers `item_key`, `title` and
+ * the `search_vector` FTS column server-side. A workspace-wide search needs an endpoint that does
+ * not exist, so the header searches the project you are in and the placeholder says so. Note it
+ * deliberately uses the unrestricted list and NOT `/work-items/backlog`, which is unscheduled work
+ * only — searching from the header must find a story that is already in a sprint.
+ */
+export function useWorkItemSearch(projectId: string | undefined, term: string, limit = 8) {
+  const q = term.trim()
+  return useQuery({
+    queryKey: [...workItemKeys.all, 'search', projectId ?? '', q, limit] as const,
+    queryFn: async () => {
+      const { data, error, response } = await apiClient.GET('/v1/work-items', {
+        params: { query: { projectId: projectId!, q, limit } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as { data?: WorkItem[] } | undefined)?.data ?? []
+    },
+    // Two characters minimum: a single letter matches most of the project and costs a round trip per
+    // keystroke to say so.
+    enabled: !!projectId && q.length >= 2,
+    staleTime: 15_000,
+  })
+}
+
 // ── Legacy hooks (used by home page) ─────────────────────────────────────────
 
 export interface ListWorkItemsParams {

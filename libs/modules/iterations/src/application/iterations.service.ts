@@ -9,6 +9,7 @@ import {
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
 import { ProjectsService } from '@modules/projects';
+import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
 import { workItems } from '../../../../../db/schema/work';
 import { acceptedScheduleStatesSql } from '../../../../../db/schema/enums';
@@ -37,6 +38,7 @@ export class IterationsService {
     @InjectDrizzle() private readonly db: DrizzleDB,
     private readonly projectsService: ProjectsService,
     private readonly accessService: AccessService,
+    private readonly workItemsService: WorkItemsService,
   ) {}
 
   // ── Revision History (activity log) ─────────────────────────────────────────
@@ -280,8 +282,21 @@ export class IterationsService {
         'Only iterations in the Planning state can be deleted',
       );
     }
+    /**
+     * Deleting the row UNSCHEDULES its work; it does not orphan it and it does not cascade.
+     *
+     * `work_items.iteration_id` and `work.tasks.iteration_id` carry `ON DELETE SET NULL` as of
+     * migration 0114, so the items survive and become unscheduled in the same statement as this
+     * DELETE. That is Rally's documented behaviour — "If you delete an iteration that stories and
+     * defects are scheduled in, they will all be updated to unscheduled" — and it is enforced in the
+     * database rather than here because `db/seeds/**` and raw SQL write those tables directly.
+     *
+     * Before 0114 neither column had a key and this method was exactly the two lines below, so every
+     * scheduled item was left pointing at a row that no longer existed. The 2026-08-04 audit called
+     * it the highest-value fix it found.
+     */
     await this.iterationRepo.delete(id);
-    this.logger.log({ iterationId: id }, 'Iteration deleted');
+    this.logger.log({ iterationId: id }, 'Iteration deleted; its work items are now unscheduled');
   }
 
   // ── Commit (planning → committed) ───────────────────────────────────────────
@@ -385,6 +400,8 @@ export class IterationsService {
   ): Promise<{ movedCount: number }> {
     const workspaceId = actor.workspaceId;
     const iteration = await this.getIteration(workspaceId, id);
+    // An archived project is read-only end to end, and rollover is a write on its work items.
+    await this.projectsService.assertProjectWritable(workspaceId, iteration.projectId);
 
     if (opts.moveToIterationId) {
       const target = await this.getIteration(workspaceId, opts.moveToIterationId);
@@ -396,9 +413,36 @@ export class IterationsService {
       }
     }
 
-    const moved = await this.db
-      .update(workItems)
-      .set({ iterationId: opts.moveToIterationId ?? null, updatedAt: new Date() })
+    /**
+     * SELECT the ids, then move each through `WorkItemsService.updateWorkItem`.
+     *
+     * This used to be a single `db.update(workItems)`, which is faster and wrong. It wrote the
+     * column directly and so skipped every rule the ordinary iteration-assignment path applies —
+     * the same rules this repo has fixed one at a time elsewhere:
+     *
+     *   • `assertIterationAssignable` / `ITERATION_TEAM_MISMATCH`. Nothing keeps
+     *     `work_items.team_id` and its iteration's team in step by itself, so a bulk move could
+     *     park Team Beta's story inside Team Alpha's sprint — exactly the state the update path
+     *     refuses one item at a time.
+     *   • Iteration AUTO-ACCEPT. CLAUDE.md: "Iteration auto-accept is a condition over
+     *     MEMBERSHIP … Every membership write now re-evaluates BOTH affected iterations (the one
+     *     left and the one joined)." Rollover is a membership write on up to two iterations and
+     *     re-evaluated neither, so moving the last unfinished story out left the source iteration
+     *     Committed while its tile read ACCEPTED 100% — the precise defect
+     *     `derived-invariants.e2e.spec.ts` was written to pin.
+     *   • ACTIVITY. The items' Revision History showed nothing at all, though their iteration had
+     *     changed. A value that moves with no entry is unauditable.
+     *   • `assertTeamScoped`, so an Editor's team boundary applied here too.
+     *
+     * Per item rather than in bulk, and that trade is deliberate: an iteration holds tens of
+     * stories, not thousands, and correctness on a membership change is worth more than one
+     * round trip. `updateWorkItem` opens its own transaction per item, so a mid-way failure leaves
+     * the already-moved items moved — reported honestly in `movedCount` rather than rolled back
+     * silently.
+     */
+    const unfinished = await this.db
+      .select({ id: workItems.id })
+      .from(workItems)
       .where(
         and(
           eq(workItems.iterationId, id),
@@ -407,18 +451,25 @@ export class IterationsService {
           isNull(workItems.deletedAt),
           sql`${workItems.scheduleState} not in (${acceptedScheduleStatesSql()})`,
         ),
-      )
-      .returning({ id: workItems.id });
+      );
+
+    let movedCount = 0;
+    for (const row of unfinished) {
+      await this.workItemsService.updateWorkItem(actor, row.id, {
+        iterationId: opts.moveToIterationId ?? null,
+      });
+      movedCount += 1;
+    }
 
     this.logger.log(
       {
         iterationId: id,
         moveToIterationId: opts.moveToIterationId ?? null,
-        movedCount: moved.length,
+        movedCount,
       },
       'Iteration unfinished items rolled over',
     );
-    return { movedCount: moved.length };
+    return { movedCount };
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────

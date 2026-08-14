@@ -268,7 +268,20 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
 
   // ── E2E-007: Create an item directly in Iteration Status ────────────────────
   describe('E2E-007 create directly in iteration status', () => {
-    it('creates a story in the iteration (also visible in the backlog, no duplicate)', async () => {
+    it('creates a story in the iteration, NOT in the backlog, and returns it when unscheduled', async () => {
+      /**
+       * The Backlog is unscheduled work only: "Plan > Backlog shows only Story/Defect items whose
+       * Iteration is `Unscheduled`. Assigning a Story/Defect to an Iteration removes it from Backlog
+       * … moving it back to `Unscheduled` returns it to Backlog"
+       * (`RECONCILED_SOURCE_OF_TRUTH.md:42`).
+       *
+       * This test previously asserted the opposite — "also visible in the backlog" — because the
+       * `iteration_id IS NULL` predicate that defines the screen was missing from `listBacklog`, so
+       * the Backlog showed everything and an item could be in both places at once. The intent behind
+       * it ("single source of truth", no duplicates) is kept and strengthened: the item is in exactly
+       * one of the two lists at any moment, and the round trip is asserted in both directions rather
+       * than only the way that happened to pass.
+       */
       const project = await projects.createProject(actor, {
         key: uniqueKey(),
         name: 'Direct Iteration',
@@ -284,9 +297,18 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
       const status = await iterationStatus.getStatus(actor, iteration.id, NO_IS_FILTERS, ALL);
       expect(status.items.data.some((i) => i.id === workItemId)).toBe(true);
 
-      // …and exactly once in the project backlog (single source of truth).
-      const backlog = await workItems.listBacklog(actor, project.id, NO_WI_FILTERS, ALL);
-      expect(backlog.data.filter((w) => w.id === workItemId)).toHaveLength(1);
+      // …and therefore NOT in the backlog, which is the unscheduled list.
+      const scheduled = await workItems.listBacklog(actor, project.id, NO_WI_FILTERS, ALL);
+      expect(scheduled.data.filter((w) => w.id === workItemId)).toHaveLength(0);
+
+      // Moving it back to Unscheduled returns it — exactly once.
+      await workItems.updateWorkItem(actor, workItemId, { iterationId: null });
+      const unscheduled = await workItems.listBacklog(actor, project.id, NO_WI_FILTERS, ALL);
+      expect(unscheduled.data.filter((w) => w.id === workItemId)).toHaveLength(1);
+
+      // And it has left the iteration, so it is never in both.
+      const after = await iterationStatus.getStatus(actor, iteration.id, NO_IS_FILTERS, ALL);
+      expect(after.items.data.some((i) => i.id === workItemId)).toBe(false);
     });
 
     it('rejects a task created directly in an iteration (stories/defects only)', async () => {

@@ -397,8 +397,15 @@ export class ReleasesService {
       );
     }
 
+    /**
+     * As with an iteration: `work_items.release_id` and `portfolio_items.release_id` carry
+     * `ON DELETE SET NULL` (migration 0114), so the work is unscheduled in the same statement rather
+     * than left pointing at a missing row. `work_items.found_in_release_id` already behaved this way.
+     * The capacity-plan reference above is the one link that REFUSES instead, because a plan's release
+     * is immutable and a null there is unrepairable.
+     */
     await this.releaseRepo.delete(id);
-    this.logger.log({ releaseId: id }, 'Release deleted');
+    this.logger.log({ releaseId: id }, 'Release deleted; its work items are now unscheduled');
   }
 
   // ── Get Detail (includes task rollup) ─────────────────────────────────────

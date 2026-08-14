@@ -47,6 +47,7 @@ import type {
   CreateWorkflowTransitionInput,
   UpdateProjectMemberInput,
 } from '../domain/project.types';
+import type { ProjectAccessLevel } from '@shared-kernel';
 import { AccessService } from '@modules/access';
 import { DEFAULT_WORKFLOW_STATUSES } from '../domain/project.constants';
 import type { Label } from '../domain/label.types';
@@ -155,9 +156,22 @@ export class ProjectsService {
     return this.projectRepo.listByWorkspaceWithStats(actor.workspaceId, args, readable);
   }
 
-  /** Home "Project Health" widget — bounded, attention-sorted per-project rollup. */
+  /**
+   * Home "Project Health" widget — bounded, attention-sorted per-project rollup.
+   *
+   * Scoped by the same `listReadableProjectIds` fact as `listProjects`, which its route decorator
+   * already claimed and the code did not do: the widget read the whole workspace, so a principal
+   * with access to no project still received every project's key, name, lead, active sprint,
+   * open-defect and blocked counts and progress. A rollup is not less sensitive than the list it
+   * rolls up.
+   */
   async listProjectHealth(actor: JwtPayload, limit: number): Promise<ProjectHealth[]> {
-    return this.projectRepo.listHealthByWorkspace(actor.workspaceId, { limit });
+    const readable = await this.access.listReadableProjectIds(
+      actor.workspaceId,
+      actor.sub,
+      'project:view',
+    );
+    return this.projectRepo.listHealthByWorkspace(actor.workspaceId, { limit }, readable);
   }
 
   /**
@@ -833,15 +847,26 @@ export class ProjectsService {
     actorId: string,
   ): Promise<ProjectMember[]> {
     await this.getProject(workspaceId, projectId);
-    // §4: "View Project Users & Permissions — Editor: No." The route only carries
-    // project:view (which the Editor holds), so the level check lives here. WA has no
-    // access_level row — the workspace-wide grant is what authorizes it; the same
-    // resolution an Editor's write scoping uses.
+    /**
+     * SRS §3.1 "View Project `Users & Permissions`": Workspace Admin Edit, Admin Read-only,
+     * Editor Hidden. The route can only carry `project:view`, which every level holds, so the
+     * LEVEL check has to live here.
+     *
+     * Written as an allow-list, not `!== 'editor'`. The deny-list form names the levels to REFUSE, so
+     * every level added later is admitted by default — which is the wrong default for a screen §3.1
+     * hides from all but two principals. That is not hypothetical: a third level was added and removed
+     * again within one week (migrations 0113, 0115), and under the deny-list form it would have been
+     * able to read this roster the whole time.
+     * Workspace Admin resolves NO level (its authority is the workspace-wide grant, not a
+     * `project_members` row), and a principal with no access at all cannot reach this method
+     * because the route's `project:view` gate refuses them first — so `null` is WA here, and it is
+     * allowed.
+     */
     const level = await this.access.getProjectAccessLevel(workspaceId, actorId, projectId);
-    if (level === 'editor') {
+    if (level !== null && level !== 'admin') {
       throw new PermissionDeniedException(
         'PROJECT_PERMISSION_DENIED',
-        'Editors cannot view the project user roster',
+        'Only a Workspace Admin or a Project Admin can view the project user roster',
       );
     }
     return this.projectMemberRepo.listByProject(projectId);
@@ -852,7 +877,7 @@ export class ProjectsService {
     projectId: string,
     userId: string,
     actorId: string,
-    accessLevel?: 'admin' | 'editor',
+    accessLevel?: ProjectAccessLevel,
   ): Promise<ProjectMember> {
     await this.getProject(workspaceId, projectId);
 

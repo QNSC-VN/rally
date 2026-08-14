@@ -37,7 +37,10 @@ import { AuthService, EntraTokenVerifier, type EntraClaims } from '@qnsc-vn/iden
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AccessService } from '@modules/access';
 import type { JwtPayload } from '@platform';
+import { ACCESS_LEVEL_PERMISSIONS } from '@shared-kernel';
 import { AppModule } from '../../apps/api/src/app.module';
+import { SEED_PROJECTS } from '../../db/seeds/constants';
+import { grantProjectAccess } from './support/flow-harness';
 
 const TENANT = process.env['ENTRA_TENANT_ID'] ?? 'dev-tenant';
 const DOMAIN = (process.env['SSO_ALLOWED_EMAIL_DOMAINS'] ?? 'qnsc.vn').split(',')[0].trim();
@@ -167,33 +170,32 @@ describe('Permission changes take effect on the next request (real AppModule)', 
     // because project permissions were never in the token — they were resolved per
     // request, uncached, on every check. They now share the same cached read, so
     // this asserts the invalidation covers the project tier as well.
+    //
+    // Granted through `addProjectMember`, not `assignRole(..., 'project', ...)`: the latter now
+    // throws `PROJECT_SCOPE_RETIRED` because per-Project tier access is carried on
+    // `work.project_members.access_level`. A REAL project id is required for the same reason — the
+    // write path validates the project exists, where a `scope_type='project'` row accepted any
+    // uuid. That makes the assertion stronger, not weaker: the cache invalidation being tested is
+    // the one on the production grant path.
     const { token } = await loginFreshUser();
-    const projectId = randomUUID();
+    const projectId = SEED_PROJECTS[0].id;
 
     const before = await access.getProjectPermissions(token.sub, token.contextId!, projectId);
 
-    const roles = await access.listRoles(token.contextId!);
-    const projectRole = roles.find((r) => r.slug === 'project_admin');
-    expect(projectRole).toBeDefined();
-    await access.assignRole(
-      actorFor(token.contextId!),
-      token.sub,
-      projectRole!.id,
-      'project',
-      projectId,
-    );
+    await grantProjectAccess(app, token.sub, projectId, 'admin');
 
-    // Asserted as a delta rather than a hardcoded code: the JIT baseline already
-    // carries the common project-member codes, so naming one would only prove the
-    // seed's contents. What matters is that the new grant is visible AT ONCE — no
-    // token refresh, no TTL wait — and that the baseline survived the union.
+    // Asserted as a delta rather than a hardcoded code: naming one would only prove the
+    // catalogue's contents. What matters is that the new grant is visible AT ONCE — no token
+    // refresh, no TTL wait — and that whatever baseline existed survived the union.
     const after = await access.getProjectPermissions(token.sub, token.contextId!, projectId);
     const added = after.filter((code) => !before.includes(code));
 
     expect(added.length).toBeGreaterThan(0);
     expect(after).toEqual(expect.arrayContaining(before));
     expect(added).toEqual(
-      expect.arrayContaining(projectRole!.permissions.filter((code) => !before.includes(code))),
+      expect.arrayContaining(
+        [...ACCESS_LEVEL_PERMISSIONS.admin].filter((code) => !before.includes(code)),
+      ),
     );
   });
 });

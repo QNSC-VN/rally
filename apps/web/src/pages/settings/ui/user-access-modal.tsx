@@ -45,11 +45,11 @@ import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { notify } from '@/shared/lib/toast'
-
-const ACCESS_OPTIONS: SelectOption[] = [
-  { value: 'admin', label: 'Admin' },
-  { value: 'editor', label: 'Editor' },
-]
+import {
+  accessSelectOptions,
+  requiresTeamSelection,
+  type AccessLevel,
+} from '@/shared/config/access-levels'
 
 // "Remove Access" is a permanent status='removed' transition (SRS §6.3: an
 // inline status value, not a row action button) — same three values, same
@@ -346,7 +346,7 @@ function UserProjectAccessRow({
     }
   }, [isLoading, me, projectId, onMembership])
 
-  function handleChange(level: 'admin' | 'editor') {
+  function handleChange(level: AccessLevel) {
     // me.id is a project_members id ONLY for explicit rows. A NULL access_level
     // row is team-derived (its id is a team_members id!) or a pre-fix row whose
     // id may predate the union — PATCHing either 404s. POST upserts: the BE sets
@@ -411,8 +411,8 @@ function UserProjectAccessRow({
             value={me?.accessLevel ?? ''}
             ariaLabel={`Access level for ${projectName}`}
             placeholder="No Access"
-            options={ACCESS_OPTIONS}
-            onChange={(v) => handleChange(v as 'admin' | 'editor')}
+            options={accessSelectOptions}
+            onChange={(v) => handleChange(v as AccessLevel)}
           />
         ) : (
           <span className="text-ui-sm text-foreground-subtle capitalize">
@@ -426,7 +426,7 @@ function UserProjectAccessRow({
           projectId={projectId}
           projectName={projectName}
           userId={userId}
-          requireTeam={me?.accessLevel === 'editor'}
+          requireTeam={requiresTeamSelection(me?.accessLevel)}
         />
       )}
     </div>
@@ -458,7 +458,7 @@ function MembershipProbe({
 function AddProjectAccess({ userId, candidates }: { userId: string; candidates: SelectOption[] }) {
   const [open, setOpen] = useState(false)
   const [projectId, setProjectId] = useState<string | null>(null)
-  const [level, setLevel] = useState<'admin' | 'editor'>('editor')
+  const [level, setLevel] = useState<AccessLevel>('editor')
   const [teamIds, setTeamIds] = useState<string[]>([])
   const [pending, setPending] = useState(false)
   // Raw apiClient carries no `meta.invalidates` — without this the member caches
@@ -473,7 +473,7 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
 
   async function handleAdd() {
     if (!projectId) return
-    if (level === 'editor' && teamIds.length === 0) return
+    if (requiresTeamSelection(level) && teamIds.length === 0) return
     setPending(true)
     try {
       const { error, response } = await apiClient.POST('/v1/projects/{id}/members', {
@@ -484,7 +484,7 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
       // creates one) — no 409 fallback needed.
       if (error) throw new Error(apiErrorMessage(error, response.status))
       // Editor lands WITH teams (mockup: team selection inside the Add form).
-      if (level === 'editor') {
+      if (requiresTeamSelection(level)) {
         for (const teamId of teamIds) {
           await addTeamMember.mutateAsync({ teamId, userId })
         }
@@ -530,12 +530,12 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
             variant="field"
             value={level}
             ariaLabel="Access level"
-            options={ACCESS_OPTIONS}
-            onChange={(v) => setLevel(v as 'admin' | 'editor')}
+            options={accessSelectOptions}
+            onChange={(v) => setLevel(v as AccessLevel)}
           />
         </FormField>
       </div>
-      {level === 'editor' && projectId && teamOptions.length > 0 && (
+      {requiresTeamSelection(level) && projectId && teamOptions.length > 0 && (
         <FormField label="Teams" hint="An Editor needs at least one team." required>
           <SearchableSelect
             multiple

@@ -408,21 +408,38 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
 };
 
 /**
- * Per-Project ACCESS LEVELS (RBAC migration — see
- * docs/superpowers/plans/rbac-migration.md). Replace the retiring
- * PROJECT_ADMIN / PROJECT_MEMBER tier roles. Carried on
- * work.project_members.access_level; no active row = No Access.
+ * Per-Project ACCESS LEVELS. Carried on `work.project_members.access_level`; no active row = No
+ * Access, which is the only level with no name because it is the absence of a grant.
  *
- * The model has THREE levels total: workspace_admin + per-Project admin/editor.
- * There is no 'viewer' level and no named 'No Access' level — No Access is
- * simply the absence of an active project_members row.
+ * admin  = full delivery administration in one Project. NOT structural authority: creating,
+ *          renaming, archiving or deleting a Project, linking Teams to it and assigning access
+ *          are Workspace Admin's alone (SRS §3.1 marks every one of those rows Hidden for Admin).
+ *          Project CONFIGURATION that shapes delivery — labels, workflow statuses and transitions
+ *          — stays here, because §3.1's own summary is that "`Admin` is powerful for delivery
+ *          management".
+ * editor = team-scoped delivery contributor. Writes are additionally narrowed to the Teams the
+ *          user is assigned to (`AccessService.assertTeamScoped`).
  *
- * admin  = full delivery administration in one Project (today's PROJECT_ADMIN set).
- * editor = team-scoped delivery contributor (today's PROJECT_MEMBER set; team
- *          scoping enforced in Phase 9).
+ * THERE IS NO `viewer`, AND THAT IS A DECISION, NOT AN OMISSION.
+ * ------------------------------------------------------------
+ * The BA removed the level (`product-docs` `55e7dbb`, 2026-08-14). It was restored by architect
+ * ruling the same day and REMOVED AGAIN on the BA's instruction — migrations 0113 then 0115. The
+ * three-level model is the BA's and it stands.
  *
- * admin/editor DERIVE from the existing tier sets so they stay in lockstep until
- * the Phase 10 contract retires the tiers — no duplication to drift.
+ * The disagreement is recorded because it will come up again, and because the next person to read
+ * Rally's docs will reach for it. Real Rally's `ProjectPermission.Role` is No Access / Viewer /
+ * Editor / Project Admin, and its Viewer is load-bearing five ways: the documented answer to "make
+ * this user read-only", the PROVISIONING DEFAULT for a new user, one of four Quick Filter Toggles on
+ * the admin permission grid, the demotion target in the team-membership state machine, and a
+ * full-licence consumer whose only purpose is access control. So with `admin`/`editor`/absent alone,
+ * a read-only stakeholder or auditor is either invisible or a full Editor. If that turns out to be a
+ * problem in practice, the fix is a new ruling — not a quiet re-add, because the CHECK constraint,
+ * this map, the DTO enums, the SPA's mirror and the generated client all have to move together.
+ *
+ * Sourced evidence: `09_Gap_Audit/research/RALLY_PERMISSIONS_MODEL.md`. Divergence recorded in
+ * `CLAUDE.md` → "Declared divergences from the BA, in the access model".
+ *
+ * Both levels DERIVE from the tier sets above so they cannot drift from them.
  */
 export const PROJECT_ACCESS_LEVEL = ['admin', 'editor'] as const;
 export type ProjectAccessLevel = (typeof PROJECT_ACCESS_LEVEL)[number];
@@ -431,6 +448,20 @@ export const ACCESS_LEVEL_PERMISSIONS: Record<ProjectAccessLevel, readonly Permi
   admin: ROLE_PERMISSIONS[SYSTEM_ROLE.PROJECT_ADMIN],
   editor: ROLE_PERMISSIONS[SYSTEM_ROLE.PROJECT_MEMBER],
 };
+
+/**
+ * Is this value one of the per-Project access levels?
+ *
+ * A guard rather than an inline comparison, and worth keeping even though the set is two values
+ * again. `AccessService` filtered its synthesized assignments with `x === 'admin' || x === 'editor'`
+ * in two places, so ADDING a level left both silently ignoring it — a granted row that reads as No
+ * Access, which is the failure direction nobody notices until someone cannot see a project they were
+ * given. That is exactly what happened when a third level was briefly added, and the guard is what
+ * makes the next attempt safe.
+ */
+export function isProjectAccessLevel(value: unknown): value is ProjectAccessLevel {
+  return typeof value === 'string' && (PROJECT_ACCESS_LEVEL as readonly string[]).includes(value);
+}
 
 /** Human-readable role names for the seed / admin UI. */
 export const ROLE_NAMES: Record<SystemRoleSlug, string> = {

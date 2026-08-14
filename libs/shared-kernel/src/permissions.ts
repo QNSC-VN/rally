@@ -18,6 +18,7 @@ export {
   permissionGrants,
   isProjectTierPermission,
   PROJECT_ACCESS_LEVEL,
+  isProjectAccessLevel,
   ACCESS_LEVEL_PERMISSIONS,
   type Permission,
   type WorkspacePermission,

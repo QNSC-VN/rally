@@ -2,7 +2,7 @@ import { test } from '@playwright/test'
 import { loginAndSelectProject, settle, expect } from './helpers'
 
 test.describe('P2.1 Backlog Enhancement', () => {
-  test('shows owner/release/iteration filters', async ({ page }) => {
+  test('shows owner and release filters, and no iteration filter', async ({ page }) => {
     await loginAndSelectProject(page)
     await page.goto('/backlog')
     await settle(page)
@@ -12,7 +12,11 @@ test.describe('P2.1 Backlog Enhancement', () => {
     await page.getByRole('button', { name: /Filters/ }).click()
     await expect(page.getByLabel('Filter by owner')).toBeVisible()
     await expect(page.getByLabel('Filter by release')).toBeVisible()
-    await expect(page.getByLabel('Filter by iteration')).toBeVisible()
+    // No iteration filter, deliberately: the Backlog is unscheduled work only, so every row's
+    // Iteration is `Unscheduled` and there is nothing for the control to narrow
+    // (`RECONCILED_SOURCE_OF_TRUTH.md:42`). A Release filter still means something — an item can be
+    // targeted at a release without being pulled into a sprint.
+    await expect(page.getByLabel('Filter by iteration')).toHaveCount(0)
   })
 
   test('inline-edits a work item schedule state and it persists', async ({ page }) => {
@@ -68,35 +72,34 @@ test.describe('P2.1 Backlog Enhancement', () => {
     await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
   })
 
-  test('shows an ACCEPTED iteration’s name, not a dash', async ({ page }) => {
+  test('excludes a story that is scheduled into an iteration', async ({ page }) => {
     /**
-     * Merged from `backlog-accepted-iteration.e2e.ts`, which built its own accepted iteration through
-     * the UI on every run — create iteration, pick dates from the calendar popover, set state via the
-     * shared select, then create a work item into it — roughly twenty interactions to reach one
-     * assertion, and every run left another iteration behind.
+     * The rule that defines this screen: "Plan > Backlog shows only Story/Defect items whose
+     * Iteration is `Unscheduled`" (`RECONCILED_SOURCE_OF_TRUTH.md:42`), which Rally states as "Once
+     * the item is scheduled into a release or iteration, it is removed from the Backlog page".
      *
-     * The fixture now carries it: `Sprint 25.12` is seeded `accepted` and holds `US-3`. The rule is
-     * unchanged — the Backlog resolves an iteration's NAME regardless of its state, where it once
-     * showed `—` for anything not currently active.
+     * This test used to assert the opposite side of the same fixture — that the Backlog rendered
+     * `Sprint 25.12` as US-3's iteration NAME rather than a dash. That rule was real, but it can no
+     * longer apply here: a scheduled story is not on this page at all, so the Backlog never shows an
+     * iteration name. The name-resolution behaviour still matters on Iteration Status and on the item
+     * detail, where it is covered.
+     *
+     * The seeded fixture is what makes this cheap: `Sprint 25.12` holds `US-3`, so a scheduled story
+     * exists without this test creating one — and searching for it must find nothing.
      */
     await loginAndSelectProject(page)
     await page.goto('/backlog', { waitUntil: 'domcontentloaded' })
     await settle(page)
 
-    // Filter to the seeded story: the Backlog pages at 25 and the row would otherwise be off-page.
     await page.getByRole('searchbox', { name: /Search backlog/i }).fill('Retire the legacy eslint')
     await settle(page, 600)
 
-    const row = page.locator('div.group.flex').filter({ hasText: 'Retire the legacy eslint' })
-    await expect(row).toContainText('Sprint 25.12')
-
-    // Survives a reload, so the name came from the server rather than an optimistic cache.
-    await page.reload({ waitUntil: 'domcontentloaded' })
-    await settle(page)
-    await page.getByRole('searchbox', { name: /Search backlog/i }).fill('Retire the legacy eslint')
-    await settle(page, 600)
+    // Server-side search over the unscheduled set: the scheduled story is absent, not merely
+    // off-page. Asserted through the empty state as well as the row count, so a silently broken
+    // search cannot pass this by returning nothing for the wrong reason.
     await expect(
       page.locator('div.group.flex').filter({ hasText: 'Retire the legacy eslint' }),
-    ).toContainText('Sprint 25.12')
+    ).toHaveCount(0)
+    await expect(page.getByText(/No backlog items match your filters/i)).toBeVisible()
   })
 })

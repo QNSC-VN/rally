@@ -575,7 +575,7 @@ export interface paths {
     delete: operations['ProjectsController_deleteProject']
     options?: never
     head?: never
-    /** Update project */
+    /** Update project (Workspace Admin only) */
     patch: operations['ProjectsController_updateProject']
     trace?: never
   }
@@ -728,7 +728,7 @@ export interface paths {
     /** List teams linked to a project */
     get: operations['ProjectsController_listProjectTeams']
     put?: never
-    /** Link a team to a project */
+    /** Link a team to a project (Workspace Admin only) */
     post: operations['ProjectsController_linkTeam']
     delete?: never
     options?: never
@@ -746,7 +746,7 @@ export interface paths {
     get?: never
     put?: never
     post?: never
-    /** Unlink a team from a project */
+    /** Unlink a team from a project (Workspace Admin only) */
     delete: operations['ProjectsController_unlinkTeam']
     options?: never
     head?: never

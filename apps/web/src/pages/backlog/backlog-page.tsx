@@ -84,16 +84,11 @@ export function BacklogPage() {
   const [filterPriority, setFilterPriority] = useState('')
   const [filterOwner, setFilterOwner] = useState('')
   const [filterRelease, setFilterRelease] = useState('')
-  const [filterIteration, setFilterIteration] = useState('')
+  // No Iteration filter: the Backlog is unscheduled items only, so every row's Iteration is
+  // `Unscheduled` and there is nothing left to narrow. See the note in `listBacklog`.
   // "none yet" vs "no match" are different facts; one branch used to always blame filters.
   const emptyKey =
-    search ||
-    filterType ||
-    filterState ||
-    filterPriority ||
-    filterOwner ||
-    filterRelease ||
-    filterIteration
+    search || filterType || filterState || filterPriority || filterOwner || filterRelease
       ? 'empty.noMatch'
       : 'empty.none'
   const [pageSize, setPageSize] = useState<number>(25)
@@ -165,7 +160,6 @@ export function BacklogPage() {
     filterState,
     filterOwner,
     filterRelease,
-    filterIteration,
     pageSize,
     projectId,
     sortCol,
@@ -178,7 +172,6 @@ export function BacklogPage() {
     priority: filterPriority || undefined,
     assigneeId: filterOwner || undefined,
     releaseId: filterRelease || undefined,
-    iterationId: filterIteration || undefined,
     teamId: team?.teamId || undefined,
     q: search || undefined,
     sort: sortCol ? `${sortCol}:${sortDir}` : undefined,
@@ -301,11 +294,8 @@ export function BacklogPage() {
         setFilterOwner={setFilterOwner}
         filterRelease={filterRelease}
         setFilterRelease={setFilterRelease}
-        filterIteration={filterIteration}
-        setFilterIteration={setFilterIteration}
         members={members}
         releases={releases}
-        iterations={iterationOptions}
         canCreate={canCreate}
         onCreate={() => setShowCreate(true)}
         columns={BACKLOG_COLUMNS}
@@ -357,7 +347,6 @@ export function BacklogPage() {
                     priority: filterPriority || undefined,
                     assigneeId: filterOwner || undefined,
                     releaseId: filterRelease || undefined,
-                    iterationId: filterIteration || undefined,
                     teamId: team?.teamId || undefined,
                     q: search || undefined,
                   }}
@@ -476,11 +465,8 @@ interface BacklogToolbarProps {
   setFilterOwner: (v: string) => void
   filterRelease: string
   setFilterRelease: (v: string) => void
-  filterIteration: string
-  setFilterIteration: (v: string) => void
   members: Array<{ userId: string; displayName?: string; email?: string }>
   releases: Array<{ id: string; name: string }>
-  iterations: Array<{ id: string; name: string }>
   canCreate: boolean
   onCreate: () => void
   columns: ColumnDef<ColumnKey>[]
@@ -503,11 +489,8 @@ function BacklogToolbar({
   setFilterOwner,
   filterRelease,
   setFilterRelease,
-  filterIteration,
-  setFilterIteration,
   members,
   releases,
-  iterations,
   canCreate,
   onCreate,
   columns,
@@ -523,7 +506,7 @@ function BacklogToolbar({
     (filterPriority ? 1 : 0) +
     (filterOwner ? 1 : 0) +
     (filterRelease ? 1 : 0) +
-    (filterIteration ? 1 : 0)
+    0
 
   return (
     <PageToolbar
@@ -617,21 +600,6 @@ function BacklogToolbar({
             {releases.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
-              </option>
-            ))}
-          </InlineSelect>
-
-          {/* Iteration filter (P2-BL-06) */}
-          <InlineSelect
-            value={filterIteration}
-            onChange={(e) => setFilterIteration(e.target.value)}
-            aria-label="Filter by iteration"
-            className="w-auto"
-          >
-            <option value="">{t('filters.allIterations')}</option>
-            {iterations.map((it) => (
-              <option key={it.id} value={it.id}>
-                {it.name}
               </option>
             ))}
           </InlineSelect>

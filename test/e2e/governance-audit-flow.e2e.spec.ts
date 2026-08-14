@@ -261,13 +261,51 @@ describe('BA flows: audit projection relay — real fetchBatch/processRow/markSe
   const outboxById = async (id: string) =>
     (await db.select().from(outboxEvents).where(eq(outboxEvents.id, id)))[0];
 
+  /**
+   * Relay until OUR row has been picked up, or give up after a bounded number of passes.
+   *
+   * `fetchBatch` takes the 50 oldest pending rows (`AbstractOutboxRelay.batchSize`), so a single
+   * `relay()` only projects this test's row if fewer than 50 pending rows are older than it. Alone
+   * that always held; in a full-suite run it does not, because every workspace, project, team and
+   * access write in the other 47 files emits an outbox row. This test failed intermittently for
+   * exactly that reason and passed whenever run on its own — a batch-position dependency, not a
+   * projection defect.
+   *
+   * Draining rather than truncating the backlog: those rows belong to other specs' assertions, and
+   * this file's subject is the projection mechanics, not who is at the front of the queue.
+   */
+  async function relayUntil(
+    id: string,
+    done: (row: Awaited<ReturnType<typeof outboxById>>) => boolean,
+    what: string,
+    maxPasses = 20,
+  ): Promise<void> {
+    for (let pass = 0; pass < maxPasses; pass++) {
+      await relay.relay();
+      if (done(await outboxById(id))) return;
+    }
+    throw new Error(
+      `Outbox row ${id} was not ${what} after ${maxPasses} relay passes ` +
+        `(~${maxPasses * 50} rows). Either the relay is not draining, or the pending backlog is ` +
+        `larger than this bound.`,
+    );
+  }
+
+  /** Picked up at all — projected or failed, but no longer waiting behind other rows. */
+  const relayUntilPicked = (id: string) =>
+    relayUntil(id, (row) => row?.status !== 'pending', 'picked up');
+
+  /** Picked up and ATTEMPTED, for the failure path — a starved row also reads as `pending`. */
+  const relayUntilAttempted = (id: string) =>
+    relayUntil(id, (row) => (row?.attempts ?? 0) > 0, 'attempted');
+
   const auditFor = async (sourceEventId: string) =>
     db.select().from(auditLogs).where(eq(auditLogs.sourceEventId, sourceEventId));
 
   it('projects a pending event into audit_logs and marks the row published', async () => {
     const row = await enqueue();
 
-    await relay.relay();
+    await relayUntilPicked(row.id);
 
     const after = await outboxById(row.id);
     expect(after?.status).toBe('published');
@@ -287,9 +325,11 @@ describe('BA flows: audit projection relay — real fetchBatch/processRow/markSe
   it('is idempotent: reprojecting the same event does not duplicate the audit row', async () => {
     const row = await enqueue();
 
-    await relay.relay();
+    await relayUntilPicked(row.id);
     // Migration 0102 does exactly this to rebuild history, so the second pass has to
-    // be a no-op rather than a second row.
+    // be a no-op rather than a second row. One plain `relay()` is enough for the second pass: the
+    // drain above cleared everything older, and the reset restores this row's original createdAt,
+    // so it is now at the front of the queue.
     await db
       .update(outboxEvents)
       .set({ status: 'pending', publishedAt: null })
@@ -306,7 +346,9 @@ describe('BA flows: audit projection relay — real fetchBatch/processRow/markSe
     // rather than a stubbed one.
     const row = await enqueue({ aggregateType: 'x'.repeat(60) });
 
-    await relay.relay();
+    // Waits for an ATTEMPT, not for the status to change: this row is expected to stay `pending`, so
+    // "still pending" cannot distinguish a correctly-retried row from one that never got picked up.
+    await relayUntilAttempted(row.id);
 
     const after = await outboxById(row.id);
     // NOT 'published'. Routed through AuditService.record(), which catches and logs

@@ -44,6 +44,7 @@ import {
   adminActor,
   bootRallyApp,
   bootRallyWorkerRelays,
+  grantProjectAccess,
   uniqueKey,
 } from './support/flow-harness';
 
@@ -232,8 +233,23 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
         name: 'FR-019 Project',
       });
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Mention gating');
-      // DEVELOPER_ID holds a workspace-scoped role → access to every project.
-      // A fresh uuid has no role assignment → no access, must be filtered out.
+
+      /**
+       * The mentioned-with-access principal needs a grant ON THIS PROJECT.
+       *
+       * This used to rest on "DEVELOPER_ID holds a workspace-scoped role → access to every project",
+       * which was the legacy over-grant migration 0111 deletes and the seed used to re-create. With
+       * it gone, dev has access to NXP and nothing else, so on a project created by this very test
+       * they are correctly filtered — and the assertion below turned into a false failure that read
+       * as "FR-019 drops people it should keep".
+       *
+       * Granted here rather than reaching for a user who already has broad access, because that is
+       * what the rule is about: FR-019 keeps a mentioned user who can reach the item and drops one
+       * who cannot. The project is created by this test, so the grant cannot leak into another spec.
+       */
+      await grantProjectAccess(app, DEVELOPER_ID, project.id, 'editor');
+
+      // A fresh uuid has no membership and no grant → no access, must be filtered out.
       const outsider = randomUUID();
 
       await workItems.notifyCommentAdded(admin, story.id, [DEVELOPER_ID, outsider]);

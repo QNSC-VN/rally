@@ -629,7 +629,17 @@ export class MilestonesService {
   async deleteMilestone(actor: JwtPayload, id: string): Promise<void> {
     const milestone = await this.getMilestone(actor.workspaceId, id);
     await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
+    /**
+     * The ASSOCIATIONS go, the artifacts stay — Rally: deleting a milestone "removes the association
+     * from each work item… The work item itself is not deleted."
+     *
+     * `MilestoneDrizzleRepository.delete` does that itself, clearing all four junction tables before
+     * deleting the row. Migration 0114 additionally gives each of them `ON DELETE CASCADE`, which is
+     * a backstop rather than the mechanism: it covers the writers that bypass the repository
+     * (`db/seeds/**`, raw SQL), and it closes a real gap in the repository, where those four deletes
+     * and the milestone delete are five statements with no transaction around them.
+     */
     await this.milestoneRepo.delete(id);
-    this.logger.log({ milestoneId: id }, 'Milestone deleted');
+    this.logger.log({ milestoneId: id }, 'Milestone deleted; its artifact links are removed');
   }
 }

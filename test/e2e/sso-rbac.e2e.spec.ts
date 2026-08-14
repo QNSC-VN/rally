@@ -125,10 +125,12 @@ describe('SSO login → RBAC/PBAC (real AppModule + seeded DB)', () => {
 
     // The store is the single source of authority, so assert against it directly.
     const resolved = await access.getUserRoleAndPermissions(token.sub, token.contextId!);
-    // RBAC migration: ensureDefaultRole is a no-op — JIT user gets zero project
-    // access until WA grants one. The resolved role is empty (baseline workspace:view).
+    // RBAC migration: ensureDefaultRole is a no-op — a JIT user gets zero project access until
+    // WA grants one, and zero WORKSPACE-tier permission with it. The baseline used to floor at
+    // `workspace:view`; that floor gated Workspace Settings and the SCM inventory, so it is gone
+    // (see `AccessService.getUserRoleAndPermissions` and `project-authz.e2e.spec.ts`).
     expect(resolved.role).toBe('');
-    expect(resolved.permissions.length).toBeGreaterThan(0);
+    expect(resolved.permissions).toEqual([]);
 
     // A plain member is NOT a workspace admin.
     expect(resolved.permissions).not.toContain(WORKSPACE_ALL);

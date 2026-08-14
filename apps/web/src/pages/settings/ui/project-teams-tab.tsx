@@ -32,6 +32,11 @@ import { Input } from '@/shared/ui/input'
 import { FormField } from '@/shared/ui/form-field'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { notify } from '@/shared/lib/toast'
+import {
+  teamMemberAccessOptions,
+  type AccessLevel,
+  type TeamMemberAccessLevel,
+} from '@/shared/config/access-levels'
 
 export function ProjectTeamsTab({
   projectId,
@@ -349,7 +354,12 @@ function TeamFormModal({
   // row gets. Replaces the old (memberUserIds[] + one shared memberLevel) shape, which
   // could only add everyone at the SAME level — the mockup's Members & Access table lets
   // Priya Nair land as Admin while everyone else stays Editor in the same action.
-  const [memberAccess, setMemberAccess] = useState<Record<string, 'admin' | 'editor'>>({})
+  /**
+   * Team members are Admin or Editor only — never Viewer (SRS §5.3, and Rally removes team
+   * membership on demotion to viewer). Deliberately NOT `AccessLevel`: see
+   * `TEAM_MEMBER_ACCESS_LEVELS`.
+   */
+  const [memberAccess, setMemberAccess] = useState<Record<string, TeamMemberAccessLevel>>({})
 
   // Workspace Admin is company-level only — not a Team lead or member candidate (§2).
   const eligible = wsMembers.filter(
@@ -359,29 +369,30 @@ function TeamFormModal({
     value: m.userId,
     label: m.displayName ?? m.email ?? m.userId,
   }))
-  const levelOptions: SelectOption[] = [
-    { value: 'admin', label: 'Admin' },
-    { value: 'editor', label: 'Editor' },
-  ]
-
   const valid = name.trim().length >= 2 && /^[A-Z][A-Z0-9]{1,9}$/.test(key)
 
   /** Toggling a row includes/excludes it. A newly-checked row defaults to its CURRENT
    *  project access level (mockup: Priya Nair, already Admin, shows "Admin" once
    *  checked) or 'editor' when it has none yet — never a blanket shared default. */
-  function toggleMemberRow(userId: string, currentLevel: 'admin' | 'editor' | null) {
+  function toggleMemberRow(userId: string, currentLevel: AccessLevel | null) {
     setMemberAccess((prev) => {
       const next = { ...prev }
       if (userId in next) {
         delete next[userId]
       } else {
-        next[userId] = currentLevel ?? 'editor'
+        // A Viewer joining a team is PROMOTED to Editor, not carried across as a Viewer. Team
+        // membership only means anything for someone who can write — it is the boundary an Editor's
+        // writes are measured against — so "read-only team member" is not a state worth having.
+        // Rally does the same from the same premise: its Team Member checkbox auto-promotes to
+        // Editor, and demoting to Viewer removes team membership. §5.3 states the rule as "only
+        // Admin and Editor are Team-member choices".
+        next[userId] = currentLevel === 'admin' ? 'admin' : 'editor'
       }
       return next
     })
   }
 
-  function setMemberRowLevel(userId: string, level: 'admin' | 'editor') {
+  function setMemberRowLevel(userId: string, level: TeamMemberAccessLevel) {
     setMemberAccess((prev) => ({ ...prev, [userId]: level }))
   }
 
@@ -535,8 +546,10 @@ function TeamFormModal({
                             dense
                             value={memberAccess[m.userId]}
                             ariaLabel={`Access level for ${label}`}
-                            options={levelOptions}
-                            onChange={(v) => setMemberRowLevel(m.userId, v as 'admin' | 'editor')}
+                            options={teamMemberAccessOptions}
+                            onChange={(v) =>
+                              setMemberRowLevel(m.userId, v as TeamMemberAccessLevel)
+                            }
                           />
                         ) : (
                           <span className="block text-center text-ui-xs text-foreground-subtle opacity-60">

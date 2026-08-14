@@ -23,6 +23,11 @@ export const PERMISSION = {
   AUDIT_VIEW: 'audit:view',
   SCM_MANAGE: 'scm:manage',
 
+  // Held by every per-Project access level, so it is the code that answers "may this user see
+  // this project at all" — the gate for a surface §3.1 shows to Admin and Editor and varies only
+  // by scope. It was missing from this mirror while `app-shell.tsx` gated the Portfolio nav on the
+  // bare string `'project:view'`, which typechecks and drifts silently.
+  PROJECT_VIEW: 'project:view',
   PROJECT_EDIT: 'project:edit',
   PROJECT_MANAGE_MEMBERS: 'project:manage_members',
 

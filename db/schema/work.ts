@@ -130,8 +130,19 @@ export const workItems = workSchema.table(
     reporterId: uuid('reporter_id'),
     parentId: uuid('parent_id'),
     teamId: uuid('team_id'),
-    iterationId: uuid('iteration_id'),
-    releaseId: uuid('release_id'),
+    /**
+     * Scheduling links, both `ON DELETE SET NULL` (migration 0114).
+     *
+     * Deleting a timebox UNSCHEDULES its work rather than orphaning it — Rally: "If you delete an
+     * iteration that stories and defects are scheduled in, they will all be updated to unscheduled."
+     * Neither column had a key until 0114, and the three delete services are bare `repo.delete(id)`,
+     * so every scheduled item was left pointing at a row that no longer existed.
+     *
+     * The rule lives here rather than in the services because `db/seeds/**` and raw SQL write this
+     * table directly — the same reason `trg_sync_accepted_date` and `timebox_group_id` are triggers.
+     */
+    iterationId: uuid('iteration_id').references(() => iterations.id, { onDelete: 'set null' }),
+    releaseId: uuid('release_id').references(() => releases.id, { onDelete: 'set null' }),
     // Link to a portfolio item of type 'feature' (P5.1). Nullable — most work items
     // belong to no Feature, and the Backlog must keep working unchanged.
     //
@@ -537,7 +548,9 @@ export const portfolioItems = workSchema.table(
     teamId: uuid('team_id'),
     // Feature only — Rally likewise allows Release on the lowest portfolio level
     // only, to schedule a feature into a roadmap timeframe.
-    releaseId: uuid('release_id'),
+    // Feature only, and `ON DELETE SET NULL` (migration 0114): deleting a Release unschedules the
+    // Features planned into it rather than leaving them pointing at a missing row.
+    releaseId: uuid('release_id').references(() => releases.id, { onDelete: 'set null' }),
     ownerId: uuid('owner_id'),
     // Both nullable dates. Rally allows a portfolio item with no planned dates (it
     // simply drops off the timeline), and health is only computable once they exist.
@@ -1116,7 +1129,16 @@ export const tasks = workSchema.table(
     state: taskStateEnum('state').notNull().default('defined'),
     assigneeId: uuid('assignee_id'),
     teamId: uuid('team_id'),
-    iterationId: uuid('iteration_id'),
+    /**
+     * A maintained MIRROR of the parent's iteration (`trg_task_iteration_from_parent`), with its own
+     * `ON DELETE SET NULL` key as of migration 0114.
+     *
+     * Both, deliberately. `trg_cascade_iteration_to_tasks` follows a parent whose iteration changes,
+     * and the FK on `work_items.iteration_id` produces exactly that change — but a task written
+     * directly by a seed, or one whose parent link is broken, is only covered by having the key here.
+     * The two converge: the trigger re-derives from the parent, which is NULL by then.
+     */
+    iterationId: uuid('iteration_id').references(() => iterations.id, { onDelete: 'set null' }),
     estimateHours: numeric('estimate_hours', { precision: 8, scale: 2 }),
     todoHours: numeric('todo_hours', { precision: 8, scale: 2 }),
     actualHours: numeric('actual_hours', { precision: 8, scale: 2 }),
@@ -1172,7 +1194,13 @@ export const milestones = workSchema.table(
 export const milestoneReleases = workSchema.table(
   'milestone_releases',
   {
-    milestoneId: uuid('milestone_id').notNull(),
+    // `ON DELETE CASCADE` (migration 0114). CASCADE and not SET NULL because this column is part of
+    // the primary key: the row IS the association, so an association to no milestone cannot exist.
+    // Deleting a milestone "removes the association from each work item… The work item itself is not
+    // deleted" — the link goes, the artifact stays.
+    milestoneId: uuid('milestone_id')
+      .notNull()
+      .references(() => milestones.id, { onDelete: 'cascade' }),
     releaseId: uuid('release_id').notNull(),
     linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1187,7 +1215,13 @@ export const milestoneReleases = workSchema.table(
 export const milestoneProjects = workSchema.table(
   'milestone_projects',
   {
-    milestoneId: uuid('milestone_id').notNull(),
+    // `ON DELETE CASCADE` (migration 0114). CASCADE and not SET NULL because this column is part of
+    // the primary key: the row IS the association, so an association to no milestone cannot exist.
+    // Deleting a milestone "removes the association from each work item… The work item itself is not
+    // deleted" — the link goes, the artifact stays.
+    milestoneId: uuid('milestone_id')
+      .notNull()
+      .references(() => milestones.id, { onDelete: 'cascade' }),
     projectId: uuid('project_id').notNull(),
     linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1202,7 +1236,13 @@ export const milestoneProjects = workSchema.table(
 export const milestoneTeams = workSchema.table(
   'milestone_teams',
   {
-    milestoneId: uuid('milestone_id').notNull(),
+    // `ON DELETE CASCADE` (migration 0114). CASCADE and not SET NULL because this column is part of
+    // the primary key: the row IS the association, so an association to no milestone cannot exist.
+    // Deleting a milestone "removes the association from each work item… The work item itself is not
+    // deleted" — the link goes, the artifact stays.
+    milestoneId: uuid('milestone_id')
+      .notNull()
+      .references(() => milestones.id, { onDelete: 'cascade' }),
     teamId: uuid('team_id').notNull(),
     linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1230,7 +1270,13 @@ export const milestoneTeams = workSchema.table(
 export const milestoneArtifacts = workSchema.table(
   'milestone_artifacts',
   {
-    milestoneId: uuid('milestone_id').notNull(),
+    // `ON DELETE CASCADE` (migration 0114). CASCADE and not SET NULL because this column is part of
+    // the primary key: the row IS the association, so an association to no milestone cannot exist.
+    // Deleting a milestone "removes the association from each work item… The work item itself is not
+    // deleted" — the link goes, the artifact stays.
+    milestoneId: uuid('milestone_id')
+      .notNull()
+      .references(() => milestones.id, { onDelete: 'cascade' }),
     entityType: entityRefTypeEnum('entity_type').notNull(),
     entityId: uuid('entity_id').notNull(),
     assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),

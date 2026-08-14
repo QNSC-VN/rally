@@ -23,6 +23,7 @@ import {
   adminActor,
   bootRallyApp,
   ensureViewerGrant,
+  grantProjectAccess,
   makeActor,
   uniqueKey,
   viewerActor,
@@ -190,8 +191,19 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
       const project = await projects.createProject(admin, { key: uniqueKey(), name: 'Matrix' });
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Matrix target');
 
-      // DEVELOPER_ID is a seeded workspace-scoped project_member; its token is
-      // deliberately empty so the guard MUST resolve the role from the DB.
+      /**
+       * DEVELOPER_ID as an EDITOR of this project, granted explicitly.
+       *
+       * It used to be "a seeded workspace-scoped project_member", i.e. the legacy over-grant that
+       * gave one role row write access to every project in the workspace. Migration 0111 deletes
+       * those rows and the seed no longer re-creates them, so on a project this test creates dev now
+       * holds nothing — and the `allow(...)` lines below failed as PROJECT_PERMISSION_DENIED.
+       *
+       * The grant is what the matrix is actually about: `editor` carries full work-item CRUD and
+       * neither `release:create` nor `iteration:create`, which is the exact split asserted below.
+       * The token stays deliberately empty so the guard must resolve it from the database.
+       */
+      await grantProjectAccess(app, DEVELOPER_ID, project.id, 'editor');
       const member = makeActor(DEVELOPER_ID, []);
 
       const P = WorkItemPolicyProbe.prototype;
@@ -212,8 +224,8 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
       await allow(P.releaseCreate, admin, byProject);
       await allow(P.iterationCreate, admin, byProject);
 
-      // project_member — full work-item CRUD (incl. delete), but NOT release or
-      // iteration management (per the Phase 4.2 reconciliation).
+      // editor — full work-item CRUD (incl. delete), but NOT release or iteration management
+      // (per the Phase 4.2 reconciliation, now carried by ACCESS_LEVEL_PERMISSIONS.editor).
       await allow(P.view, member, byId);
       await allow(P.create, member, bodyProject);
       await allow(P.edit, member, byId);

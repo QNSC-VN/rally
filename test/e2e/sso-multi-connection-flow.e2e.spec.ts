@@ -203,9 +203,10 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
     expect(token.authMethod).toBe('sso');
     expect(token.contextId).toBe(WORKSPACE_ID);
     const resolved = await access.getUserRoleAndPermissions(token.sub, WORKSPACE_ID);
-    // RBAC migration: ensureDefaultRole is a no-op — JIT user gets zero project
-    // access until WA grants one. The resolved role is empty (baseline workspace:view).
+    // RBAC migration: ensureDefaultRole is a no-op — a JIT user gets zero project access until WA
+    // grants one, and no workspace-tier permission either (the `workspace:view` floor is gone).
     expect(resolved.role).toBe('');
+    expect(resolved.permissions).toEqual([]);
   });
 
   it('denies login through a disabled connection (instant cutoff)', async () => {

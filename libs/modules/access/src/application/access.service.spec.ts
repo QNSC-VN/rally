@@ -274,15 +274,17 @@ describe('AccessService — scope-aware permission resolution', () => {
   });
 
   describe('getUserRoleAndPermissions (workspace baseline)', () => {
-    it('falls back to a minimal baseline (empty role) when the user has no assignments', async () => {
+    it('grants NO workspace-tier permission when the user has no assignments', async () => {
       assignmentRepo.listEffectiveForUser.mockResolvedValue([]);
       const result = await service.getUserRoleAndPermissions(USER, WORKSPACE);
-      // RBAC migration Phase 4: a user with no assignment gets the minimal
-      // baseline (workspace shell only). Project delivery access is NO Access
-      // until Workspace Admin grants a per-Project access_level — project:view
-      // is no longer in the empty baseline.
+      // No workspace/global assignment means no workspace-tier permission at all. This
+      // returned `['workspace:view']` as a "minimal shell baseline" until migration 0111
+      // deleted the workspace-scoped tier assignments and put every normal user in this
+      // branch — at which point the floor handed the whole company a code that gates
+      // Workspace Settings and the SCM inventory. Delivery access is per-Project, and
+      // `getProjectPermissions` unions this baseline, so an empty one takes nothing away.
       expect(result.role).toBe('');
-      expect(result.permissions).toEqual(['workspace:view']);
+      expect(result.permissions).toEqual([]);
     });
 
     it('unions permissions across multiple baseline (workspace + global) roles', async () => {

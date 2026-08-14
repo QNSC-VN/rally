@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { permissionGrants } from './permissions';
 import {
+  ACCESS_LEVEL_PERMISSIONS,
   PERMISSION,
   PERMISSION_TIER,
+  PROJECT_ACCESS_LEVEL,
+  isProjectAccessLevel,
   isProjectTierPermission,
   type Permission,
 } from '../../../db/permissions.catalog';
@@ -79,5 +82,43 @@ describe('PERMISSION_TIER (workspace vs project scope)', () => {
     // minting a project (no instance yet) and workspace admin are NOT.
     expect(isProjectTierPermission(PERMISSION.PROJECT_CREATE)).toBe(false);
     expect(isProjectTierPermission(PERMISSION.USERS_ASSIGN_ROLE)).toBe(false);
+  });
+});
+
+describe('per-Project access levels', () => {
+  it('has a permission set for every level, and no level without one', () => {
+    // Guards the shape both ways: a level added to the constant without a set would resolve
+    // `undefined` and spread into an empty permission array, i.e. silently No Access.
+    expect(Object.keys(ACCESS_LEVEL_PERMISSIONS).sort()).toEqual([...PROJECT_ACCESS_LEVEL].sort());
+  });
+
+  it('is exactly admin and editor — no viewer', () => {
+    /**
+     * The BA's three-level model: Workspace Admin plus per-Project `admin` or `editor`, with No
+     * Access implicit when no row exists. A `viewer` level was added by ruling and removed again on
+     * the BA's instruction (migrations 0113 then 0115), so this asserts the DECISION rather than
+     * merely the current contents — a re-add has to change this line and argue for it.
+     *
+     * Real Rally does have Viewer, and the reasons are in `permissions.catalog.ts`. That is a known
+     * divergence, not a gap to close quietly.
+     */
+    expect([...PROJECT_ACCESS_LEVEL]).toEqual(['admin', 'editor']);
+  });
+
+  it('recognises exactly the catalogued levels', () => {
+    for (const level of PROJECT_ACCESS_LEVEL) expect(isProjectAccessLevel(level)).toBe(true);
+    // The values a `project_members` row can otherwise hold, and the shapes a bad cast produces.
+    for (const other of [null, undefined, '', 'workspace_admin', 'project_admin', 'ADMIN', 3])
+      expect(isProjectAccessLevel(other)).toBe(false);
+  });
+
+  it('gives Admin no permission an Editor lacks unless it is deliberate', () => {
+    // Admin ⊇ Editor. The tiers derive from ROLE_PERMISSIONS, so this catches a hand-edit that
+    // removes a code from Admin while leaving it with Editor — which would make "promote to Admin"
+    // a partial DEMOTION, the least expected outcome of an access change.
+    const admin = new Set<string>(ACCESS_LEVEL_PERMISSIONS.admin);
+    for (const code of ACCESS_LEVEL_PERMISSIONS.editor) {
+      expect(admin.has(code), `editor holds ${code} but admin does not`).toBe(true);
+    }
   });
 });
