@@ -211,6 +211,108 @@ describe('IterationsService', () => {
     });
   });
 
+  /**
+   * P23-03, first half — the state machine against the BA's own state rules.
+   *
+   * The guard allowed exactly `planning → committed` and `committed → accepted` and refused the
+   * other four with `ITERATION_INVALID_STATE_TRANSITION`. The P2 Iterations SRS (product-docs
+   * `origin/main`) permits all six: §1 "User can manually change Iteration State at any time when
+   * permitted", §10.1 "Iteration state remains user-editable according to permission" / "No
+   * Iteration state locks scope by itself", and — the deciding sentence — §10.1 "If an item later
+   * moves out of `Accepted`, system should not force a reverse status change; user manages Iteration
+   * status manually", which is a manual reverse this code made unreachable.
+   *
+   * Both directions are asserted on purpose: a spec that only proves the refusals passes just as
+   * well when the machine is over-tightened.
+   */
+  describe('the iteration state machine (BA §10.1: manual, at any time)', () => {
+    const gateSatisfied = () => {
+      dbSelectResult = [{ total: 2, allAccepted: true }];
+    };
+
+    it('planning → committed (the manual scope commitment, P2-IT-FR-023)', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'planning' }));
+      await expect(
+        service.updateIteration(actor, 'it-1', { state: 'committed' }),
+      ).resolves.toMatchObject({ state: 'committed' });
+    });
+
+    it('planning → accepted — the AUTO rule already performs this pair', async () => {
+      // `autoAcceptIterationIfComplete` selects `state IN ('planning','committed')`, so refusing it
+      // manually made the user less capable than a convenience behaviour that "does not remove
+      // manual status control" (§10.1).
+      repo.findById.mockResolvedValue(mockIteration({ state: 'planning' }));
+      gateSatisfied();
+      await expect(
+        service.updateIteration(actor, 'it-1', { state: 'accepted' }),
+      ).resolves.toMatchObject({ state: 'accepted' });
+    });
+
+    it('committed → accepted', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
+      gateSatisfied();
+      await expect(
+        service.updateIteration(actor, 'it-1', { state: 'accepted' }),
+      ).resolves.toMatchObject({ state: 'accepted' });
+    });
+
+    it('committed → planning (un-commit — no state locks scope by itself)', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
+      await expect(
+        service.updateIteration(actor, 'it-1', { state: 'planning' }),
+      ).resolves.toMatchObject({ state: 'planning' });
+    });
+
+    it('accepted → committed, and CLEARS the acceptance stamp', async () => {
+      repo.findById.mockResolvedValue(
+        mockIteration({ state: 'accepted', completedAt: new Date('2024-06-14') }),
+      );
+      const updated = await service.updateIteration(actor, 'it-1', { state: 'committed' });
+      expect(updated.state).toBe('committed');
+      expect(repo.update).toHaveBeenCalledWith('it-1', { state: 'committed', completedAt: null });
+    });
+
+    it('accepted → planning', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'accepted' }));
+      await expect(
+        service.updateIteration(actor, 'it-1', { state: 'planning' }),
+      ).resolves.toMatchObject({ state: 'planning' });
+    });
+
+    it('still CONTENT-gates the accept — loosening the machine did not open the gate', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'planning' }));
+      dbSelectResult = [{ total: 3, allAccepted: false }];
+      await expect(
+        service.updateIteration(actor, 'it-1', { state: 'accepted' }),
+      ).rejects.toMatchObject({ code: 'ITERATION_NOT_ALL_ACCEPTED' });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('resending the current state writes nothing (a PATCH of the whole form is a no-op)', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
+      await expect(
+        service.updateIteration(actor, 'it-1', { state: 'committed' }),
+      ).resolves.toMatchObject({ state: 'committed' });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('is ONE home, so the commit ROUTE answers a pair the same way the PATCH does', async () => {
+      // `POST /:id/commit` demanded `planning` while the PATCH classified the same pair as a
+      // reopen — two routes, one pair, two answers. Both now go through `applyStateChange`.
+      repo.findById.mockResolvedValue(mockIteration({ state: 'accepted' }));
+      await expect(service.commitIteration(actor, 'it-1')).resolves.toMatchObject({
+        state: 'committed',
+      });
+    });
+
+    it('refuses a no-op on the commit route rather than reporting a change', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
+      await expect(service.commitIteration(actor, 'it-1')).rejects.toMatchObject({
+        code: 'ITERATION_INVALID_STATE_TRANSITION',
+      });
+    });
+  });
+
   describe('rolloverUnfinished', () => {
     it('rejects a carry-over target from a different project', async () => {
       repo.findById
@@ -303,6 +405,31 @@ describe('IterationsService', () => {
         }),
       ).rejects.toBeInstanceOf(PreconditionFailedException);
     });
+
+    /**
+     * P23-03, second half. `state` went straight to the repository, so the machine could be
+     * bypassed at BIRTH: an iteration created `accepted` is the one state the rule that owns
+     * acceptance can never produce (§10.1 — "an empty Iteration must not auto-accept"), and nothing
+     * would ever correct it, because `autoAcceptIterationIfComplete` only moves INTO `accepted`.
+     */
+    it('REFUSES creating an iteration already accepted — the machine has no back door', async () => {
+      await expect(
+        service.createIteration(actor, 'proj-1', 'X', { state: 'accepted' }),
+      ).rejects.toMatchObject({ code: 'ITERATION_EMPTY' });
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it('still allows the two states a create may legally start in', async () => {
+      // Planning is the default (P2-IT-FR-023) and committing early is legal — the Phase 6
+      // snapshot job depends on `state = 'committed'` being reachable from the start.
+      await expect(
+        service.createIteration(actor, 'proj-1', 'A', { state: 'planning' }),
+      ).resolves.toMatchObject({ state: 'planning' });
+      await expect(
+        service.createIteration(actor, 'proj-1', 'B', { state: 'committed' }),
+      ).resolves.toMatchObject({ state: 'committed' });
+      expect(repo.create).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('getIteration', () => {
@@ -327,11 +454,22 @@ describe('IterationsService', () => {
   });
 
   describe('acceptIteration', () => {
-    it('rejects accepting an iteration that is not committed', async () => {
+    it('accepts a PLANNING iteration whose items are all accepted', async () => {
+      // Was `ITERATION_NOT_COMMITTED`. The BA never made `committed` a precondition of acceptance,
+      // and `autoAcceptIterationIfComplete` accepts a planning iteration by itself — so the route
+      // refused what the system does unprompted. The content gate below is the real precondition.
       repo.findById.mockResolvedValue(mockIteration({ state: 'planning' }));
-      await expect(service.acceptIteration(actor, 'it-1')).rejects.toBeInstanceOf(
-        PreconditionFailedException,
-      );
+      dbSelectResult = [{ total: 2, allAccepted: true }];
+      await expect(service.acceptIteration(actor, 'it-1')).resolves.toMatchObject({
+        state: 'accepted',
+      });
+    });
+
+    it('refuses to accept an already-accepted iteration', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'accepted' }));
+      await expect(service.acceptIteration(actor, 'it-1')).rejects.toMatchObject({
+        code: 'ITERATION_INVALID_STATE_TRANSITION',
+      });
     });
 
     it('rejects accepting an iteration with no assigned Story/Defect (ITERATION_EMPTY)', async () => {
@@ -368,6 +506,29 @@ describe('IterationsService', () => {
       await expect(service.deleteIteration(actor, 'it-1')).rejects.toBeInstanceOf(
         PreconditionFailedException,
       );
+    });
+
+    it('deletes a planning iteration that never recorded history', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'planning' }));
+      dbSelectResult = [{ total: 0 }];
+      await expect(service.deleteIteration(actor, 'it-1')).resolves.toBeUndefined();
+      expect(repo.delete).toHaveBeenCalledWith('it-1');
+    });
+
+    /**
+     * `fk_ids_iteration` is ON DELETE CASCADE and the snapshot cron only ever writes TODAY, so a
+     * delete destroys days that cannot be measured again. Migration 0093 relied on a coincidence —
+     * a delete needs `planning`, only a `committed` iteration is snapshotted — and its own comment
+     * says "unreachable today is not an invariant". Allowing the manual reverse spends that
+     * coincidence, so the rule is stated here instead.
+     */
+    it('refuses to delete a REOPENED iteration that already recorded Burndown history', async () => {
+      repo.findById.mockResolvedValue(mockIteration({ state: 'planning' }));
+      dbSelectResult = [{ total: 9 }];
+      await expect(service.deleteIteration(actor, 'it-1')).rejects.toMatchObject({
+        code: 'ITERATION_HAS_REPORT_HISTORY',
+      });
+      expect(repo.delete).not.toHaveBeenCalled();
     });
   });
 

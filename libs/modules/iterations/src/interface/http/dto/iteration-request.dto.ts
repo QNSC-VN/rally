@@ -34,6 +34,13 @@ export const CreateIterationSchema = z.object({
   goal: z.string().max(2000).optional(),
   theme: z.string().max(20000).optional(),
   notes: z.string().max(20000).optional(),
+  /**
+   * Defaults to `planning` when omitted (P2-IT-FR-023). `committed` is legal at birth — committing
+   * early is — but `accepted` is REFUSED by `IterationsService.createIteration`
+   * (`ITERATION_EMPTY`): acceptance is a condition over membership and a new iteration has none.
+   * The enum stays whole here because it is the shared `iterations.state` enum and the refusal
+   * carries the reason in its message; see `domain/iteration-state.ts`.
+   */
   state: z.enum(iterationStateEnum.enumValues).optional(),
   startDate: ISO_DATE.optional(),
   endDate: ISO_DATE.optional(),

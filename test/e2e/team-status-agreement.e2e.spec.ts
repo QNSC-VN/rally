@@ -147,8 +147,13 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
      * The Team Status edit path used to set `todoHours` to the new estimate whenever the caller had not
      * sent one. That defined the field before `WorkItemsService` saw it, bypassing the once-only gate
      * (`item.todoHours === null`) — so the copy happened on EVERY estimate edit, re-inflating a
-     * completed task's auto-zeroed To Do and moving the Iteration Status total with it. The screen's
-     * own UI comment already said editing Estimate "does NOT touch To Do".
+     * completed task's auto-zeroed To Do and moving the Iteration Status total with it.
+     *
+     * Driven through `WorkItemsService` now, because Team Status no longer edits hours at all: the SRS
+     * makes Estimate/ToDo/Actuals reads on that screen (§9.3 patches `title`/`state`; §11's editable
+     * columns are Capacity, Task Name, Task State), and the Task Dashboard — Work Item Detail › Tasks
+     * tab, FR-038 — is the surface that writes them, through this path. The RULE is unchanged and this
+     * is where it lives, which is the whole reason removing the Team Status branch is safe.
      */
     const story = await items.createWorkItem(
       actor,
@@ -162,7 +167,7 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
       todoHours: '2',
     });
 
-    await teamStatus.updateTask(actor, task.id, { estimateHours: 9 });
+    await items.updateWorkItem(actor, task.id, { estimateHours: '9' });
 
     const rows = await db.execute<{ estimate_hours: string; todo_hours: string }>(
       sql`select estimate_hours, todo_hours from work.tasks where id = ${task.id}::uuid`,
@@ -174,7 +179,8 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
 
   it('still copies the FIRST estimate to To Do, once', async () => {
     // Removing the auto-sync must not remove the real rule: the first Estimate copies to To Do while
-    // To Do is still null (RECONCILED_SOURCE_OF_TRUTH), and that rule lives in the service.
+    // To Do is still null (RECONCILED_SOURCE_OF_TRUTH), and that rule lives in `WorkItemsService` —
+    // the path the Task Dashboard writes through, and the one every hours edit now takes.
     const story = await items.createWorkItem(
       actor,
       SEEDED.nxp.projectId,
@@ -187,7 +193,7 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
       sql`update work.tasks set estimate_hours = null, todo_hours = null where id = ${task.id}::uuid`,
     );
 
-    await teamStatus.updateTask(actor, task.id, { estimateHours: 7 });
+    await items.updateWorkItem(actor, task.id, { estimateHours: '7' });
 
     const rows = await db.execute<{ todo_hours: string }>(
       sql`select todo_hours from work.tasks where id = ${task.id}::uuid`,

@@ -212,7 +212,21 @@ export class TeamStatusService {
 
   /**
    * Update a task from Team Status (P3-TS-FR-019 … P3-TS-FR-023).
-   * Accepts partial patch for title and/or state.
+   *
+   * Task Name and Task State, and NOTHING else — SRS §9.3 ("Accept partial patch for `title`
+   * and/or `state`") and §11, whose editable columns for this surface are Capacity, Task Name and
+   * Task State. Estimate / ToDo / Actuals / Owner are reads here (FR-026, FR-027) and are edited on
+   * the Task Dashboard, which writes through `WorkItemsService` directly.
+   *
+   * That is also what retires this method's own trap, worth keeping in view because the rule it
+   * bypassed still exists: an `estimateHours` branch here used to set `todoHours` whenever the
+   * caller had not, which DEFINED the field before `WorkItemsService` saw it and so bypassed the
+   * once-only copy gate (`input.todoHours === undefined && item.todoHours === null`). The copy then
+   * happened on every estimate edit instead of the first, re-inflating a completed task's
+   * auto-zeroed To Do and moving the Iteration Status total, the Tasks-tab total and the next
+   * Burndown snapshot with it. The gate lives in `WorkItemsService` — the three hour fields are
+   * independent — and any surface that edits Estimate must send it alone.
+   *
    * Parent roll-up (P3-TS-05) is owned by WorkItemsService.updateWorkItem, which
    * auto-completes the parent US/DE ONLY when every child task is completed; this
    * method never force-completes the parent. It re-reads the parent afterwards so
@@ -248,35 +262,6 @@ export class TeamStatusService {
         Completed: 'completed',
       };
       updateInput.scheduleState = stateMap[input.state] as 'defined' | 'in_progress' | 'completed';
-    }
-    if (input.estimateHours !== undefined) {
-      updateInput.estimateHours =
-        input.estimateHours === null ? null : input.estimateHours.toFixed(2);
-      /**
-       * Estimate is sent ALONE. There is no auto-sync here.
-       *
-       * This used to set `todoHours` to the new estimate whenever the caller had not sent one — which
-       * defined `input.todoHours` before `WorkItemsService` saw it, and so bypassed the once-only gate
-       * (`input.todoHours === undefined && item.todoHours === null`) entirely. The copy then happened
-       * on EVERY estimate edit rather than the first, re-inflating a completed task's auto-zeroed To
-       * Do and moving the Iteration Status To Do total, the Tasks-tab total and the next Burndown
-       * snapshot with it.
-       *
-       * The rule is one rule, and it lives in the service: the first Estimate copies to To Do once,
-       * while To Do is still null (RECONCILED_SOURCE_OF_TRUTH: three independent hour fields). The
-       * other two edit surfaces — Iteration Status and the Work Item Tasks tab — already send
-       * `estimateHours` alone and behave correctly; this screen was the outlier, and its own UI comment
-       * ("editing it does NOT touch To Do") described the behaviour it did not have.
-       */
-    }
-    if (input.todoHours !== undefined) {
-      updateInput.todoHours = input.todoHours === null ? null : input.todoHours.toFixed(2);
-    }
-    if (input.actualHours !== undefined) {
-      updateInput.actualHours = input.actualHours === null ? null : input.actualHours.toFixed(2);
-    }
-    if (input.assigneeId !== undefined) {
-      updateInput.assigneeId = input.assigneeId;
     }
 
     const updated = await this.workItemsService.updateWorkItem(actor, taskId, updateInput);

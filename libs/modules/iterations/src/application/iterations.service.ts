@@ -11,9 +11,14 @@ import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platfor
 import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
-import { workItems } from '../../../../../db/schema/work';
+import { workItems, iterationDailySnapshots } from '../../../../../db/schema/work';
 import { acceptedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IIterationRepository, ITERATION_REPOSITORY } from '../domain/ports/iteration.repository';
+import {
+  classifyIterationStateChange,
+  isCreatableIterationState,
+  type IterationStateChange,
+} from '../domain/iteration-state';
 import {
   ActivityLogger,
   type ActivityChange,
@@ -23,10 +28,18 @@ import {
 import { diffIteration } from './iteration-activity-diff';
 import type {
   Iteration,
+  IterationState,
   IterationOption,
   IterationFilters,
   UpdateIterationInput,
 } from '../domain/iteration.types';
+
+/** One revision-log action per state change, so the Timeboxes history names what happened. */
+const STATE_CHANGE_ACTION: Record<IterationStateChange, string> = {
+  commit: 'iteration.committed',
+  accept: 'iteration.accepted',
+  reopen: 'iteration.reopened',
+};
 
 @Injectable()
 export class IterationsService {
@@ -132,6 +145,27 @@ export class IterationsService {
       );
     }
     this.assertDateRange(opts.startDate, opts.endDate);
+
+    /**
+     * The state machine cannot be bypassed at BIRTH.
+     *
+     * `state` was passed straight through, so `POST /iterations` with `state: 'accepted'` created a
+     * row in the one state the rule that owns acceptance can never produce: acceptance is a
+     * condition over MEMBERSHIP (§10.1 — "Auto-accept requires at least one assigned Story/Defect
+     * item; an empty Iteration must not auto-accept") and a new iteration has no members. Nothing
+     * would have corrected it either, because `autoAcceptIterationIfComplete` only ever moves
+     * `planning|committed → accepted`. It also skipped the accept-gate every other path pays, so
+     * Velocity would count a sprint nobody worked and `deleteIteration` would refuse to remove it.
+     *
+     * The code is the accept-gate's own `ITERATION_EMPTY`, deliberately: this is that rule, seen
+     * from the create path, and the frontend should branch on it the same way.
+     */
+    if (opts.state !== undefined && !isCreatableIterationState(opts.state)) {
+      throw new PreconditionFailedException(
+        'ITERATION_EMPTY',
+        'Cannot create an iteration in the Accepted state — an iteration can only be accepted once it has assigned Story or Defect items and every one of them is accepted',
+      );
+    }
 
     // iterationKey reservation reads MAX(existing) + 1 (not atomic under
     // concurrent creates) and iterations can be hard-deleted, so a collision
@@ -243,22 +277,22 @@ export class IterationsService {
     const endDate = input.endDate !== undefined ? input.endDate : current.endDate;
     this.assertDateRange(startDate ?? undefined, endDate ?? undefined);
 
-    // State is a lifecycle transition, not a free-form field. Route it through
-    // the SAME gated actions as commit/accept so PATCH cannot bypass the F1 rule
-    // (e.g. set state='accepted' while items are still open). Forward transitions
-    // only; no reverse-force (BA F1).
+    /**
+     * State is a lifecycle change, not a free-form field, so it goes through `applyStateChange` —
+     * the SAME home `POST /:id/commit` and `POST /:id/accept` use, which is what stops a PATCH from
+     * bypassing the accept-gate (`state: 'accepted'` while items are still open).
+     *
+     * It used to allow exactly two pairs — `planning → committed` and `committed → accepted` — and
+     * refuse the other four. That is stricter than the BA in both directions that matter: §10.1
+     * settles a reverse with "user manages Iteration status manually", so an iteration the auto rule
+     * accepted could never be reopened when one of its items was; and the AUTO path already
+     * performs `planning → accepted` (`autoAcceptIterationIfComplete` selects
+     * `state IN ('planning','committed')`), so the manual path was less capable than the convenience
+     * behaviour that "does not remove manual status control". See `domain/iteration-state.ts`.
+     */
     let stateResult: Iteration | undefined;
     if (input.state !== undefined && input.state !== current.state) {
-      if (current.state === 'planning' && input.state === 'committed') {
-        stateResult = await this.commitIteration(actor, id);
-      } else if (current.state === 'committed' && input.state === 'accepted') {
-        stateResult = await this.acceptIteration(actor, id);
-      } else {
-        throw new PreconditionFailedException(
-          'ITERATION_INVALID_STATE_TRANSITION',
-          `Invalid iteration state transition: ${current.state} → ${input.state}`,
-        );
-      }
+      stateResult = await this.applyStateChange(actor, current, input.state);
     }
 
     // Apply the remaining (non-state) field updates, if any.
@@ -288,6 +322,36 @@ export class IterationsService {
       );
     }
     /**
+     * FROZEN report history is never deletable — the rule is now STATED, not coincidental.
+     *
+     * `fk_ids_iteration` is `ON DELETE CASCADE` (migration 0093) because "history describes an
+     * iteration", and that history cannot be recreated: the snapshot cron only ever writes TODAY,
+     * so a deleted day is gone for good (see CLAUDE.md, "Time-series history cannot be backfilled,
+     * ever"). 0093's own note says orphan snapshots were "unreachable through the API today"
+     * because a delete needs `planning` while only a `committed` iteration is snapshotted — and
+     * then adds: "unreachable today is not an invariant, it is a coincidence of two unrelated
+     * rules." Allowing the manual reverse transitions §10.1 requires spends that coincidence: a
+     * snapshotted iteration can now legally re-enter `planning`. This guard is what pays for it.
+     *
+     * It cannot refuse anything that used to be allowed: before the reverse existed, no `planning`
+     * iteration had ever been committed, so none had snapshots.
+     */
+    const [history] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(iterationDailySnapshots)
+      .where(
+        and(
+          eq(iterationDailySnapshots.iterationId, id),
+          eq(iterationDailySnapshots.workspaceId, iteration.workspaceId),
+        ),
+      );
+    if (Number(history?.total ?? 0) > 0) {
+      throw new PreconditionFailedException(
+        'ITERATION_HAS_REPORT_HISTORY',
+        'This iteration has recorded Burndown history, which cannot be recreated once deleted',
+      );
+    }
+    /**
      * Deleting the row UNSCHEDULES its work; it does not orphan it and it does not cascade.
      *
      * `work_items.iteration_id` and `work.tasks.iteration_id` carry `ON DELETE SET NULL` as of
@@ -304,56 +368,88 @@ export class IterationsService {
     this.logger.log({ iterationId: id }, 'Iteration deleted; its work items are now unscheduled');
   }
 
-  // ── Commit (planning → committed) ───────────────────────────────────────────
+  // ── Commit ─────────────────────────────────────────────────────────────────
 
+  /** `POST /:id/commit` — the explicit scope commitment (P2-IT-FR-023). */
   async commitIteration(actor: JwtPayload, id: string): Promise<Iteration> {
     const iteration = await this.getIteration(actor.workspaceId, id);
-    // The two state transitions were the only writes in this service that skipped the
-    // archived-project rule (PRJ-FR-010), so an archived project's sprint could still be
-    // committed — which also starts the hourly Burndown snapshot writing new rows for it
-    // (`findActiveIterations` selects on `state = 'committed'`).
-    await this.projectsService.assertProjectWritable(actor.workspaceId, iteration.projectId);
-
-    if (iteration.state !== 'planning') {
-      throw new PreconditionFailedException(
-        'ITERATION_NOT_PLANNING',
-        'Iteration is not in the Planning state',
-      );
-    }
-
-    const updated = await this.iterationRepo.update(id, { state: 'committed' });
-    this.logger.log({ iterationId: id }, 'Iteration committed');
-    await this.appendActivity([
-      this.buildActivity(updated, actor.sub, 'iteration.committed', {
-        field: 'state',
-        old: 'planning',
-        new: 'committed',
-      }),
-    ]);
-    return updated;
+    return this.applyStateChange(actor, iteration, 'committed');
   }
 
-  // ── Accept (committed → accepted) ───────────────────────────────────────────
+  // ── Accept ─────────────────────────────────────────────────────────────────
   // BA F1: manual-first. An iteration can be accepted ONLY when it has at least
   // one assigned Story/Defect and EVERY assigned Story/Defect is in an accepted
   // state. Accept does NOT move unfinished items — use rolloverUnfinished() for
   // that, as a separate, explicit action.
 
+  /** `POST /:id/accept` — content-gated by `assertAcceptable`, from planning or committed. */
   async acceptIteration(actor: JwtPayload, id: string): Promise<Iteration> {
-    const workspaceId = actor.workspaceId;
-    const iteration = await this.getIteration(workspaceId, id);
-    // See `commitIteration`: both transitions carry the archived-project rule now. Accept is not
-    // an undo of anything — it advances the iteration and stamps `completedAt` — so it is an
-    // ordinary content write (PRJ-FR-010).
-    await this.projectsService.assertProjectWritable(workspaceId, iteration.projectId);
+    const iteration = await this.getIteration(actor.workspaceId, id);
+    return this.applyStateChange(actor, iteration, 'accepted');
+  }
 
-    if (iteration.state !== 'committed') {
+  // ── The one home for a state change ─────────────────────────────────────────
+
+  /**
+   * Every write that moves `iterations.state` lands here — `PATCH /:id`, `POST /:id/commit` and
+   * `POST /:id/accept` — so the three routes cannot answer the same `from → to` pair differently.
+   * They used to: the PATCH allowed two pairs and refused four, `commit` demanded `planning` and
+   * `accept` demanded `committed`, which between them made the manual reverse §10.1 hands to the
+   * user unreachable on every surface. `domain/iteration-state.ts` carries the BA quotes.
+   *
+   * The archived-project rule (PRJ-FR-010) is asserted here rather than at each call site: state
+   * changes were the two writes in this service that once skipped it, which is exactly what a
+   * call-site convention decays into. Committing matters more than it looks —
+   * `SnapshotCronService.findActiveIterations` selects on `state = 'committed'` and nothing else, so
+   * a commit also starts the hourly Burndown job writing rows for that iteration.
+   */
+  private async applyStateChange(
+    actor: JwtPayload,
+    iteration: Iteration,
+    target: IterationState,
+  ): Promise<Iteration> {
+    const from = iteration.state;
+    await this.projectsService.assertProjectWritable(actor.workspaceId, iteration.projectId);
+
+    // A no-op is refused rather than reported as a change: `POST /:id/commit` on a committed
+    // iteration did nothing before either, and a route that answers 200 to a request that moved
+    // nothing is how a UI comes to show a state the database does not hold. (`updateIteration`
+    // filters this out first — a PATCH that resends the current state is genuinely a no-op.)
+    if (from === target) {
       throw new PreconditionFailedException(
-        'ITERATION_NOT_COMMITTED',
-        'Only a committed iteration can be accepted',
+        'ITERATION_INVALID_STATE_TRANSITION',
+        `Iteration is already ${target}`,
       );
     }
 
+    const change = classifyIterationStateChange(from, target);
+    if (change === 'accept') await this.assertAcceptable(actor.workspaceId, iteration.id);
+
+    const updated = await this.iterationRepo.update(iteration.id, {
+      state: target,
+      // `completedAt` is the ACCEPTANCE stamp, so it is written on an accept and cleared on any
+      // move out of `accepted`. A reopened iteration carrying an accepted-at timestamp is the
+      // "invisible state" smell CLAUDE.md warns about — a row whose two columns disagree, where
+      // nothing on screen would show it.
+      completedAt: change === 'accept' ? new Date() : null,
+    });
+    this.logger.log({ iterationId: iteration.id, from, to: target }, `Iteration ${change}`);
+    await this.appendActivity([
+      this.buildActivity(updated, actor.sub, STATE_CHANGE_ACTION[change], {
+        field: 'state',
+        old: from,
+        new: target,
+      }),
+    ]);
+    return updated;
+  }
+
+  /**
+   * The accept-gate (BA F1 / §10.1): at least one assigned Story/Defect, and every one of them
+   * accepted. This is the same predicate `autoAcceptIterationIfComplete` applies, and the same D1
+   * acceptance set `rolloverUnfinished` moves out — the three must never diverge.
+   */
+  private async assertAcceptable(workspaceId: string, id: string): Promise<void> {
     const [agg] = await this.db
       .select({
         total: sql<number>`count(*)::int`,
@@ -381,20 +477,6 @@ export class IterationsService {
         'All assigned Story and Defect items must be Accepted before the iteration can be accepted',
       );
     }
-
-    const updated = await this.iterationRepo.update(id, {
-      state: 'accepted',
-      completedAt: new Date(),
-    });
-    this.logger.log({ iterationId: id }, 'Iteration accepted');
-    await this.appendActivity([
-      this.buildActivity(updated, actor.sub, 'iteration.accepted', {
-        field: 'state',
-        old: 'committed',
-        new: 'accepted',
-      }),
-    ]);
-    return updated;
   }
 
   // ── Rollover — move unfinished items out (explicit, separate from accept) ────

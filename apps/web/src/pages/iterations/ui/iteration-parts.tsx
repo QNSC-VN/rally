@@ -180,7 +180,21 @@ export function CreateIterationModal({
             variant="field"
             ariaLabel={t('create.stateLabel')}
             value={state}
-            options={(['planning', 'committed', 'accepted'] as IterationState[]).map((s) => ({
+            /**
+             * `accepted` is deliberately NOT offered at CREATE.
+             *
+             * Acceptance is a condition over MEMBERSHIP — §10.1: "Auto-accept requires at least one
+             * assigned Story/Defect item; an empty Iteration must not auto-accept" — and a new
+             * iteration has none, so this is the one state no rule can produce. The server now
+             * refuses it (412 `ITERATION_EMPTY`), and offering an option that always fails is worse
+             * than not offering it.
+             *
+             * Committing early stays available, because it is legal and the Burndown snapshot job
+             * depends on it. The DETAIL panel's State select keeps all three: from there every
+             * transition the BA allows is reachable, including the reverses (§10.1 "user manages
+             * Iteration status manually").
+             */
+            options={(['planning', 'committed'] as IterationState[]).map((s) => ({
               value: s,
               label: ITERATION_STATE_STYLE[s].label,
             }))}

@@ -109,14 +109,36 @@ describe('task routes resolve a task id (e2e)', () => {
   it('edits a task through the Team Status route too', async () => {
     // `PATCH /team-status/tasks/:taskId` carries the same decorator against a task id, so it was
     // dead for the same reason — and Team Status is the surface whose whole purpose is editing them.
+    //
+    // The payload is a STATE change, not `actualHours`: Team Status edits Task Name and Task State
+    // only (SRS §9.3/§11 — hours and Owner are read-only there and are edited on the Task
+    // Dashboard). This assertion is about the route reaching a task id at all, so any field the
+    // surface actually owns proves it.
     const response = await app.inject({
       method: 'PATCH',
       url: `/team-status/tasks/${taskId}`,
       headers: { authorization: `Bearer ${token}` },
-      payload: { actualHours: 2 },
+      payload: { state: 'In-Progress' },
     });
     expect(response.statusCode, response.body).toBe(200);
   });
+
+  it('REFUSES an hours or Owner patch on the Team Status route (SRS §9.3)', () =>
+    Promise.all(
+      [{ estimateHours: 3 }, { todoHours: 1 }, { actualHours: 2 }, { assigneeId: null }].map(
+        async (payload) => {
+          // A silent strip would answer 200 and discard the write, which is worse than a refusal:
+          // the grid would show the typed value until its next refetch.
+          const response = await app.inject({
+            method: 'PATCH',
+            url: `/team-status/tasks/${taskId}`,
+            headers: { authorization: `Bearer ${token}` },
+            payload,
+          });
+          expect(response.statusCode, response.body).toBe(400);
+        },
+      ),
+    ));
 
   it('records the edit in the task Revision History', async () => {
     // The history tab was not empty because nothing was logged — it was empty because the read 404'd.

@@ -247,7 +247,9 @@ export class IterationsController {
   @Delete(':id')
   @RequirePermission('iteration:delete', { resource: 'iteration', from: 'param', field: 'id' })
   @HttpCode(204)
-  @ApiOperation({ summary: 'Delete a planning-state iteration' })
+  @ApiOperation({
+    summary: 'Delete a planning-state iteration that has no recorded Burndown history',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Iteration deleted' })
   @ApiCommonErrors(400, 401, 403, 404)
@@ -260,7 +262,7 @@ export class IterationsController {
 
   @Post(':id/commit')
   @RequirePermission('iteration:edit', { resource: 'iteration', from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'Commit an iteration (planning → committed)' })
+  @ApiOperation({ summary: 'Commit an iteration (→ committed)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: IterationResponseDto })
   @ApiCommonErrors(400, 401, 403, 404, 409)
@@ -276,7 +278,7 @@ export class IterationsController {
   @RequirePermission('iteration:edit', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({
     summary:
-      'Accept an iteration (committed → accepted). Requires ≥1 assigned Story/Defect and all of them accepted.',
+      'Accept an iteration (→ accepted). Requires ≥1 assigned Story/Defect and all of them accepted.',
   })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(400, 401, 403, 404, 422)

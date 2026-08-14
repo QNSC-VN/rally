@@ -175,6 +175,11 @@ export const ErrorCodes = {
   ITERATION_EMPTY: 'ITERATION_EMPTY',
   ITERATION_NOT_ALL_ACCEPTED: 'ITERATION_NOT_ALL_ACCEPTED',
   ITERATION_INVALID_STATE_TRANSITION: 'ITERATION_INVALID_STATE_TRANSITION',
+  /**
+   * A delete would CASCADE the iteration's frozen Burndown history away, and the snapshot cron
+   * only ever writes TODAY — so those days cannot be measured again.
+   */
+  ITERATION_HAS_REPORT_HISTORY: 'ITERATION_HAS_REPORT_HISTORY',
 
   // Release
   RELEASE_NOT_FOUND: 'RELEASE_NOT_FOUND',

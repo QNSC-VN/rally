@@ -8,6 +8,7 @@ import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
 import { ProjectsService } from '@modules/projects';
 import type { RawTeamStatusTaskRow } from '../domain/team-status.types';
+import { UpdateTeamTaskSchema } from '../interface/http/dto/team-status-request.dto';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -403,6 +404,54 @@ describe('TeamStatusService', () => {
   });
 
   // ── updateTask ───────────────────────────────────────────────────────────
+
+  /**
+   * P23-14. Team Status let a user edit four fields the SRS marks read-only on this surface —
+   * Estimate, ToDo, Actuals and Owner. §9.3 accepts "`title` and/or `state`"; §11's editable columns
+   * are Capacity, Task Name and Task State; FR-026/FR-027 SHOW the hours and DISPLAY the owner. They
+   * stay editable on the Task Dashboard (FR-038), which writes through `PATCH /work-items/:id`.
+   *
+   * Both halves are asserted: the wire contract refuses them (a silent strip would 200 and discard),
+   * and the payload handed to `WorkItemsService` carries nothing else. The second matters because it
+   * is the write that must not re-acquire an `estimateHours` branch — the one that used to define
+   * `todoHours` for the caller and so bypassed the once-only copy gate.
+   */
+  describe('the four read-only fields (SRS §9.3 / §11)', () => {
+    it.each(['estimateHours', 'todoHours', 'actualHours', 'assigneeId'])(
+      'refuses a %s patch on the wire rather than silently dropping it',
+      (field) => {
+        const parsed = UpdateTeamTaskSchema.safeParse({
+          [field]: field === 'assigneeId' ? '00000000-0000-0000-0000-000000000001' : 3,
+        });
+        expect(parsed.success).toBe(false);
+      },
+    );
+
+    it('accepts the two fields the surface owns', () => {
+      expect(UpdateTeamTaskSchema.safeParse({ title: 'DEV - wire SSO' }).success).toBe(true);
+      expect(UpdateTeamTaskSchema.safeParse({ state: 'Completed' }).success).toBe(true);
+    });
+
+    it('hands WorkItemsService the title and state ONLY', async () => {
+      workItems.updateWorkItem.mockResolvedValue({
+        id: 'task-1',
+        itemKey: 'PROJ-10',
+        title: 'DEV - wire SSO',
+        scheduleState: 'in_progress',
+        parentId: null,
+      });
+
+      await service.updateTask(actor, 'task-1', {
+        title: 'DEV - wire SSO',
+        state: 'In-Progress',
+      });
+
+      expect(workItems.updateWorkItem).toHaveBeenCalledWith(actor, 'task-1', {
+        title: 'DEV - wire SSO',
+        scheduleState: 'in_progress',
+      });
+    });
+  });
 
   describe('updateTask', () => {
     it('rejects empty title after trimming', async () => {

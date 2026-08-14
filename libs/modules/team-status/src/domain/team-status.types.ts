@@ -104,13 +104,14 @@ export interface UpdateCapacityInput {
 }
 
 /** Input for updating a task from Team Status. */
+/**
+ * Team Status writes Task Name and Task State only (SRS §9.3, §11). Hours and Owner are read-only
+ * on this surface and are edited from the Task Dashboard through `WorkItemsService`; passing one
+ * here is a compile error rather than a silently-dropped field. See `UpdateTeamTaskSchema`.
+ */
 export interface UpdateTaskFromTeamStatusInput {
   title?: string;
   state?: TeamTaskState;
-  estimateHours?: number | null;
-  todoHours?: number | null;
-  actualHours?: number | null;
-  assigneeId?: string | null;
 }
 
 /** Raw DB row shape for task-level query (internal). */
