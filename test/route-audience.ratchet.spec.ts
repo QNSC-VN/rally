@@ -167,6 +167,17 @@ const STRUCTURAL_WORKSPACE_ADMIN_ROUTES = new Set([
  */
 const AUDIENCE: Record<string, Audience> = {
   // ── AccessController ──
+  /**
+   * The role catalogue, with every role's full `permissions` array. Workspace Admin, because
+   * `roles:view` is workspace-tier and only that tier holds it — and because the only surface still
+   * reading this route is the Audit Log tab, which is `audit:view`, the same tier.
+   *
+   * It used to be `@SharedRead`, i.e. readable by any authenticated caller including one with no
+   * assignments at all, and it appeared in `READ_AUDIENCE_GAPS` below for exactly that reason. The
+   * entry is gone because the gap is: see the route's own docblock for why the "every member sees it
+   * in a picker" justification stopped being true when custom roles were deleted.
+   */
+  'AccessController.listRoles': 'workspace-admin',
   'AccessController.getUserAssignments': 'workspace-admin',
   'AccessController.revokeRole': 'workspace-admin',
 
@@ -957,20 +968,17 @@ const READ_AUDIENCE_EXCEPTIONS: Record<string, string> = {
  * LIVE DEFECTS in this dimension, declared so they are counted rather than rediscovered. Same
  * `@AuthzGap` shape as `KNOWN_REFERENCE_FEED_GAPS`, and asserted as an exact set for the same reason.
  *
- * Three are live and outside this change's reach — they need `libs/modules/{access,iterations}` and
- * a decision about a route with no consumer. The fourth, `PortfolioItemsController.listItems`, is
- * CLOSED and says so in its own note: the key is still computed by this sweep, so the entry has to
- * stay even though the defect does not.
+ * TWO are live: `WorkspaceController.listMembers` (no code, no scope, and no consumer — the fix is
+ * probably deletion) and `IterationsController.listIterations` (the timebox RECORD on a feed an
+ * Editor must be able to read, which needs a reference projection and six call sites). A third,
+ * `PortfolioItemsController.listItems`, is CLOSED and says so in its own note: the key is still
+ * computed by this sweep, so the entry has to stay even though the defect does not.
+ *
+ * `AccessController.listRoles` was here and is GONE, which is the other way an entry leaves: the
+ * route took a real gate (`roles:view`), so the sweep now classifies it by AUDIENCE and this file
+ * fails if a closed gap is still declared. Deleting the entry is the required half of that fix.
  */
 const READ_AUDIENCE_GAPS: Record<string, string> = {
-  /**
-   * `GET /roles` returns every role's full `permissions` array to ANY authenticated caller: no
-   * `@RequirePermission`, mode `shared-read`. §3.1 makes `View Permission Model` a per-Project row
-   * (`project:edit`), and AC-11 makes the surface read-only — read-only is not the same as public.
-   * Its only consumer is `pages/settings/model/use-system-roles.ts`, an admin surface.
-   */
-  'AccessController.listRoles':
-    'no code at all; the whole permission matrix is public to any caller',
   /**
    * `GET /workspaces/:id/members` returns a per-person `roleId` and account `status` with no
    * permission code and NO scope at all — it calls `WorkspaceService.listMembers`, which is a plain

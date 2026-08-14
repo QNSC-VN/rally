@@ -5854,6 +5854,13 @@ export interface operations {
         }
         content?: never
       }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
     }
   }
   AccessController_getUserAssignments: {

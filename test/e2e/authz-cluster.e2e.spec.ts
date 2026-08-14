@@ -416,4 +416,39 @@ describe('authorization cluster (e2e)', () => {
     // hidden surface back on a feed every Editor reads.
     expect(Object.keys(options[0]).sort()).toEqual(['id', 'itemKey', 'name', 'projectId']);
   });
+
+  /**
+   * `GET /roles` — the whole authorization matrix, and until now readable by ANY authenticated
+   * caller.
+   *
+   * It carried `@SharedRead('the role catalogue is workspace reference data every member sees in
+   * pickers')`, so `PolicyGuard` found no permission metadata and allowed everyone, including a
+   * principal with no role assignment at all. The justification was true when written and expired
+   * silently: custom roles were deleted by the 2026-08-14 ruling, so no picker reads roles any more,
+   * and per-project access is chosen from `admin | editor`. `roles:view` is workspace-tier and only
+   * Workspace Admin holds it, which is also the tier of the one surface still reading the route (the
+   * Audit Log tab, `audit:view`) — so the gate narrows no live reader.
+   *
+   * Asserted HERE and not in `route-policy.ratchet.spec.ts`, which reads source text and would be
+   * just as satisfied by a misspelled code: this is the shape that proves the guard runs. BOTH
+   * directions, because a denial test alone passes equally well against a route nobody can reach.
+   */
+  it('refuses the role catalogue to an Editor and serves it to a Workspace Admin', async () => {
+    const editor = await tokenFor('dev@qnsc.dev');
+    const admin = await tokenFor('admin@qnsc.dev');
+
+    const denied = await get('/roles', editor);
+    expect(denied.statusCode, 'GET /roles for a project Editor').toBe(403);
+    // §199: a denied state must not disclose business data. A 403 body carries the error code only,
+    // so the assertion is that no role name or permission code travels with it.
+    expect(denied.body).not.toContain('permissions');
+    expect(denied.body.toLowerCase()).not.toContain('workspace admin');
+
+    const allowed = await get('/roles', admin);
+    expect(allowed.statusCode, 'GET /roles for a Workspace Admin').toBe(200);
+    const roles = JSON.parse(allowed.body) as { slug: string; permissions: string[] }[];
+    expect(roles.length).toBeGreaterThan(0);
+    // The matrix is still SERVED to the tier that may see it — the gate is not a removal.
+    expect(roles.some((r) => r.permissions.length > 0)).toBe(true);
+  });
 });

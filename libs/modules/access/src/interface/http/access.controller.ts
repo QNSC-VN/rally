@@ -11,7 +11,7 @@ import {
   ProjectPermissionsResponseDto,
 } from './dto/access-response.dto';
 import type { SystemRole, UserRoleAssignment } from '../../domain/access.types';
-import { SelfScoped, SharedRead } from './policy.guard';
+import { SelfScoped } from './policy.guard';
 
 function toRoleDto(r: SystemRole): RoleResponseDto {
   return {
@@ -46,11 +46,35 @@ export class AccessController {
 
   // ── Roles ──────────────────────────────────────────────────────────────────
 
+  /**
+   * `roles:view`, workspace-tier — so Workspace Admin only.
+   *
+   * This route carried `@SharedRead('the role catalogue is workspace reference data every member
+   * sees in pickers')` and therefore answered ANY authenticated caller, including one with zero role
+   * assignments, with every role's full `permissions` array — the whole authorization matrix.
+   *
+   * The justification was true when it was written and is now stale, which is the thing worth
+   * noticing: `@SharedRead` claims data has NO OWNER, and that claim has to be re-checked when the
+   * data's readers change. Custom roles were deleted by the 2026-08-14 ruling, so there is no role
+   * PICKER left anywhere — `members-tab.tsx` says so in its own source ("useSystemRoles removed — no
+   * custom roles under the R1 access-level model"), and per-project access is chosen from
+   * `admin | editor`, not from a role list.
+   *
+   * Its one remaining consumer is the Audit Log tab, which reads `id` and `name` only
+   * (`new Map(roles.map((r) => [r.id, r.name]))`) to label an actor — and that tab is already
+   * `audit:view`, workspace-tier and Workspace-Admin-only. So the gate does not narrow any live
+   * reader: it makes the route agree with the surface that reads it.
+   *
+   * NOT `project:edit`, even though §3.1's `View Permission Model` row is an Admin row gated on that
+   * code. That surface is `permission-model-tab.tsx`, which reads NO API at all — AC-11 made it
+   * read-only static copy — so this route does not feed it, and `project:edit` is project-tier with
+   * no project id in this request to resolve against.
+   */
   @Get('roles')
-  @SharedRead('the role catalogue is workspace reference data every member sees in pickers')
+  @RequirePermission('roles:view')
   @ApiOperation({ summary: 'List all roles available to the workspace' })
   @ApiResponse({ status: 200, type: [RoleResponseDto] })
-  @ApiCommonErrors(401)
+  @ApiCommonErrors(401, 403)
   async listRoles(@CurrentUser() user: JwtPayload): Promise<RoleResponseDto[]> {
     const roles = await this.accessService.listRoles(user.workspaceId);
     return roles.map(toRoleDto);
@@ -67,7 +91,8 @@ export class AccessController {
   // reachable called these.
   //
   // What deliberately STAYS:
-  //   • `GET /roles` — workspace reference data every member sees in pickers.
+  //   • `GET /roles` — a read, now `roles:view` (see its docblock above; the "every member sees it
+  //     in pickers" justification died with the pickers).
   //   • `GET /users/:userId/role-assignments` — a read, and the read-only Permission Model needs it.
   //   • `DELETE /role-assignments/:id` — REVOKING an existing workspace-scoped assignment must remain
   //     possible after creating one stops being possible. Losing the ability to undo a grant you can
