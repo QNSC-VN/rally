@@ -86,13 +86,26 @@ describe('cross-project read scoping (e2e)', () => {
     );
     const memberResponse = await get('/projects?limit=100', member);
     expect(memberResponse.statusCode).toBe(200);
-    const memberKeys = (JSON.parse(memberResponse.body).data as Array<{ key: string }>).map(
-      (p) => p.key,
-    );
+    const memberProjects = JSON.parse(memberResponse.body).data as Array<{
+      id: string;
+      key: string;
+    }>;
 
-    expect(memberKeys.length).toBeGreaterThan(0);
-    for (const key of memberKeys) {
-      expect(adminKeys, `${key} must be visible to the admin too`).toContain(key);
+    expect(memberProjects.length).toBeGreaterThan(0);
+    for (const project of memberProjects) {
+      if (adminKeys.has(project.key)) continue;
+      /**
+       * `?limit=100` is ONE page, and this suite leaves hundreds of projects behind (see the
+       * `createProject` cap in `test/e2e-fixtures.ratchet.spec.ts`) — so once the workspace passes 100
+       * projects, a key missing from the admin's first page is evidence of PAGINATION, not of an
+       * authorization asymmetry. Comparing two truncated pages made this spec fail on a full-suite run
+       * while passing on a freshly seeded database, which reads exactly like a scoping regression.
+       *
+       * Ask the authorization question directly instead: `GET /projects/:id` is `project:view` scoped
+       * to the path id, so a 200 IS "the admin can read this project" with no page in the way.
+       */
+      const direct = await get(`/projects/${project.id}`, admin);
+      expect(direct.statusCode, `${project.key} must be visible to the admin too`).toBe(200);
     }
   });
 
