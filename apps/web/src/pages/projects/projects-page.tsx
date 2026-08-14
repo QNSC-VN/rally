@@ -23,7 +23,7 @@ import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { PERMISSION } from '@/shared/config/permissions'
 import { useProjects, useUpdateProject, useDeleteProject } from '@/features/projects/api'
 import type { Project } from '@/features/projects/api'
-import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { type ProjectColKey, type ProjectCtx } from './model/columns'
 import { PROJECT_COLUMNS, NewProjectModal } from './ui/project-parts'
 
@@ -36,7 +36,7 @@ export function ProjectsPage() {
   const isWorkspaceAdmin = hasPermission(PERMISSION.WORKSPACE_ALL)
 
   const { data: projects = [], isLoading } = useProjects(workspaceId)
-  const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  const { data: wsMembers = [] } = useWorkspaceMemberOptions(workspaceId)
   const update = useUpdateProject()
 
   const [search, setSearch] = useState('')

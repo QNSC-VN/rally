@@ -95,6 +95,7 @@ const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> => ({
   findMembershipsForUser: vi.fn().mockResolvedValue([]),
   listMembers: vi.fn(),
   listMembersWithProfile: vi.fn().mockResolvedValue([]),
+  listMemberOptions: vi.fn().mockResolvedValue([]),
   addMember: vi.fn(),
   updateMember: vi.fn(),
   removeMember: vi.fn().mockResolvedValue(undefined),
@@ -160,6 +161,9 @@ const makeAccessService = () => ({
   invalidateUser: vi.fn().mockResolvedValue(undefined),
   findRole: vi.fn().mockResolvedValue(null),
   grantProjectAccess: vi.fn().mockResolvedValue({ id: 'pm-1' }),
+  // The picker feed's scope (RBE-07). Defaults to UNRESTRICTED so unrelated tests are unaffected;
+  // `null` and `[]` are DIFFERENT answers, which is exactly what the tests below assert.
+  listReadableProjectIds: vi.fn().mockResolvedValue(null),
 });
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -345,6 +349,58 @@ describe('WorkspaceService', () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       await service.deleteWorkspace('ws-1');
       expect(workspaceRepo.softDelete).toHaveBeenCalledWith('ws-1');
+    });
+  });
+
+  // ── listMemberOptions — the picker half of the roster split (RBE-07) ─────────
+  //
+  // The check is IN THE SERVICE (`@AuthorizedInService`), so a service spec is the right shape for
+  // it: what a service spec cannot see is a GUARD defect, and there is no guard on this route by
+  // design. `test/e2e/directory-team-authz.e2e.spec.ts` drives it over real HTTP as well.
+
+  describe('listMemberOptions', () => {
+    const roster = [
+      {
+        userId: 'user-1',
+        displayName: 'Ada',
+        email: 'ada@example.com',
+        avatarUrl: null,
+        status: 'active',
+      },
+    ];
+
+    beforeEach(() => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      memberRepo.listMemberOptions.mockResolvedValue(roster);
+    });
+
+    it('returns the roster to a Workspace Admin (null = UNRESTRICTED)', async () => {
+      access.listReadableProjectIds.mockResolvedValue(null);
+
+      await expect(service.listMemberOptions('ws-1', 'user-1')).resolves.toEqual(roster);
+    });
+
+    it('returns the roster to a caller who can read at least one project', async () => {
+      // The other direction, and the one that matters most: over-restricting here silently breaks
+      // every owner and assignee picker, which is what deferred this fix the first time.
+      access.listReadableProjectIds.mockResolvedValue(['proj-1']);
+
+      await expect(service.listMemberOptions('ws-1', 'user-1')).resolves.toEqual(roster);
+    });
+
+    it('returns NOBODY to a No Access principal ([] = nothing), without querying', async () => {
+      access.listReadableProjectIds.mockResolvedValue([]);
+
+      await expect(service.listMemberOptions('ws-1', 'nobody')).resolves.toEqual([]);
+      expect(memberRepo.listMemberOptions).not.toHaveBeenCalled();
+    });
+
+    it('asks for project:view, the code every level holds', async () => {
+      access.listReadableProjectIds.mockResolvedValue(null);
+
+      await service.listMemberOptions('ws-1', 'user-1');
+
+      expect(access.listReadableProjectIds).toHaveBeenCalledWith('ws-1', 'user-1', 'project:view');
     });
   });
 

@@ -66,6 +66,28 @@ export interface WorkspaceMemberWithProfile {
   teams: MemberTeamSummary[];
 }
 
+/**
+ * The ASSIGNEE / OWNER PICKER feed — the minimal half of the roster split.
+ *
+ * Deliberately NOT a subset type of {@link WorkspaceMemberWithProfile}: the whole point of the
+ * split (RBE-07) is that these four fields travel to every delivery participant while `phone`,
+ * `lastLoginAt` and the role ids travel only to the User Management surface. A structural subset
+ * would let a later field land on both by accident, which is exactly how the sensitive fields came
+ * to be on an ungated route in the first place.
+ *
+ * Name and email are here because they are already visible wherever a person appears — as an
+ * assignee, a project lead, a task owner or a team member — so hiding them from a picker while
+ * printing them in a grid would protect nothing.
+ */
+export interface WorkspaceMemberOption {
+  userId: string;
+  displayName: string;
+  email: string;
+  avatarUrl: string | null;
+  /** The pickers filter on `active`; an inactive member must still RESOLVE for display. */
+  status: string;
+}
+
 export interface WorkspaceInvitation {
   id: string;
   workspaceId: string;

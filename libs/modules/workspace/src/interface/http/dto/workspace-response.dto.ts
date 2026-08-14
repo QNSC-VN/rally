@@ -53,6 +53,29 @@ export const WorkspaceSettingsResponseSchema = z.object({
 
 export class WorkspaceSettingsResponseDto extends createZodDto(WorkspaceSettingsResponseSchema) {}
 
+/**
+ * The ASSIGNEE / OWNER PICKER feed (`GET :id/member-options`).
+ *
+ * Four display fields and nothing else. It is NOT declared as a `.pick()` of the administrative
+ * schema below on purpose: a shared base is how a field added for User Management ends up on the
+ * feed every delivery participant reads, which is the defect (RBE-07) this split closes.
+ */
+export const MemberOptionResponseSchema = z.object({
+  userId: z.string().uuid(),
+  displayName: z.string(),
+  email: z.string(),
+  avatarUrl: z.string().nullable(),
+  status: z.string().describe('Workspace membership status: active | suspended | removed'),
+});
+
+export class MemberOptionResponseDto extends createZodDto(MemberOptionResponseSchema) {}
+
+/**
+ * The ADMINISTRATIVE roster (`GET :id/members-with-profile`), for User Management.
+ *
+ * `phone`, `lastLoginAt` and the four role fields are the reason this route is `workspace:view`
+ * (Workspace Admin) gated while the picker feed above is not.
+ */
 export const MemberWithProfileResponseSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),

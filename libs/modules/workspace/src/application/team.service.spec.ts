@@ -35,7 +35,9 @@ const makeTeamRepo = () => ({
     .fn()
     .mockImplementation((_ws: string, ids: string[]) => Promise.resolve(ids.length)),
   setProjectLinks: vi.fn().mockResolvedValue(undefined),
-  // The team's currently-linked projects — the scope a roster row's project grant covers.
+  listByWorkspaceWithStats: vi.fn().mockResolvedValue([]),
+  // The team's currently-linked projects — the scope a roster row's project grant covers, and the
+  // set a READER must intersect with to reach the team at all (RBE-08).
   listActiveProjectIds: vi.fn().mockResolvedValue(['proj-1']),
   findBlockingCapacityPlans: vi.fn().mockResolvedValue([]),
 });
@@ -56,6 +58,10 @@ const makeAccessService = () => ({
   getProjectAccessLevel: vi.fn().mockResolvedValue(null),
   grantProjectAccess: vi.fn().mockResolvedValue({ id: 'pm-1' }),
   invalidateUsers: vi.fn().mockResolvedValue(undefined),
+  // The team READS' scope (RBE-08 / PRJ-07). `null` = UNRESTRICTED (a Workspace Admin) is the
+  // default so the write tests above are unaffected; `[]` means NOTHING, and that these are two
+  // different answers is what the read tests assert.
+  listReadableProjectIds: vi.fn().mockResolvedValue(null),
 });
 
 const makeWorkspaceRepo = () => ({
@@ -245,5 +251,170 @@ describe('TeamService — team membership and its project access', () => {
 
       expect(access.invalidateUsers).toHaveBeenCalledWith('ws-1', []);
     });
+  });
+});
+
+/**
+ * TEAM READS ARE SCOPED, NOT MERELY DENIED (RBE-08 / PRJ-07).
+ *
+ * `GET /workspaces/:id/teams`, `GET /teams/:id` and `GET /teams/:id/members` carried no
+ * `@RequirePermission` at all, and `PolicyGuard` ALLOWS a handler with no policy metadata — so every
+ * team's name, key, lead and member count, the name and key of every project it links to, and the
+ * roster's display names AND EMAILS were readable by any authenticated caller: unscoped for an
+ * Editor, unhidden for a No Access principal. §3.1 makes "View Project Details and Teams" a
+ * per-Project row.
+ *
+ * The check lives in the service because no decorator can express it: a team is reached through its
+ * project LINKS and may have several, so there is no single project id to resolve, and the list's
+ * `null` (unrestricted) versus `[]` (nothing) sentinels are two different answers a scope descriptor
+ * cannot carry. Both directions are asserted here — a fix that only proved the denial would pass
+ * while having 403'd every Editor's team picker.
+ */
+describe('TeamService — team reads are scoped to readable projects', () => {
+  let service: TeamService;
+  let teamRepo: ReturnType<typeof makeTeamRepo>;
+  let teamMemberRepo: ReturnType<typeof makeTeamMemberRepo>;
+  let access: ReturnType<typeof makeAccessService>;
+
+  const alpha = {
+    ...mockTeam({ id: 'team-alpha', key: 'ALP' }),
+    memberCount: 2,
+    projects: [
+      { projectId: 'proj-1', key: 'NXP', name: 'NextGen Platform' },
+      { projectId: 'proj-2', key: 'PAY', name: 'Payments' },
+    ],
+  };
+  const beta = {
+    ...mockTeam({ id: 'team-beta', key: 'BET' }),
+    memberCount: 1,
+    projects: [{ projectId: 'proj-2', key: 'PAY', name: 'Payments' }],
+  };
+  /** The domain permits an unlinked team; only an unrestricted reader has a path to one. */
+  const orphan = { ...mockTeam({ id: 'team-orphan', key: 'ORP' }), memberCount: 0, projects: [] };
+
+  beforeEach(async () => {
+    teamRepo = makeTeamRepo();
+    teamMemberRepo = makeTeamMemberRepo();
+    access = makeAccessService();
+    teamRepo.listByWorkspaceWithStats.mockResolvedValue([alpha, beta, orphan]);
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        TeamService,
+        { provide: TEAM_REPOSITORY, useValue: teamRepo },
+        { provide: TEAM_MEMBER_REPOSITORY, useValue: teamMemberRepo },
+        { provide: WORKSPACE_REPOSITORY, useValue: makeWorkspaceRepo() },
+        { provide: WORKSPACE_MEMBER_REPOSITORY, useValue: makeWorkspaceMemberRepo() },
+        { provide: UnitOfWork, useValue: makeUow() },
+        { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
+        { provide: AccessService, useValue: access },
+      ],
+    }).compile();
+
+    service = module.get(TeamService);
+  });
+
+  // ── the list ───────────────────────────────────────────────────────────────
+
+  it('gives a Workspace Admin every team, the unlinked one included (null = UNRESTRICTED)', async () => {
+    access.listReadableProjectIds.mockResolvedValue(null);
+
+    const teams = await service.listTeamsForReader('ws-1', 'wa-1');
+
+    expect(teams.map((t) => t.id)).toEqual(['team-alpha', 'team-beta', 'team-orphan']);
+  });
+
+  it('gives an Editor the teams linked to a project they can read', async () => {
+    // The direction that would break if this were over-restricted: the Team picker on Portfolio,
+    // the project detail page and every Team column read this list.
+    access.listReadableProjectIds.mockResolvedValue(['proj-1']);
+
+    const teams = await service.listTeamsForReader('ws-1', 'editor-1');
+
+    expect(teams.map((t) => t.id)).toEqual(['team-alpha']);
+  });
+
+  it('narrows the per-team projects array too, so an unreadable project’s key does not leak', async () => {
+    access.listReadableProjectIds.mockResolvedValue(['proj-1']);
+
+    const [team] = await service.listTeamsForReader('ws-1', 'editor-1');
+
+    expect(team.projects).toEqual([{ projectId: 'proj-1', key: 'NXP', name: 'NextGen Platform' }]);
+  });
+
+  it('gives a No Access principal NO team, without querying ([] = nothing)', async () => {
+    access.listReadableProjectIds.mockResolvedValue([]);
+
+    await expect(service.listTeamsForReader('ws-1', 'nobody')).resolves.toEqual([]);
+    // Never build a predicate from an empty set: `inArray(col, [])` is not portable as "match
+    // nothing", which is why the empty case short-circuits instead of reaching the repository.
+    expect(teamRepo.listByWorkspaceWithStats).not.toHaveBeenCalled();
+  });
+
+  it('asks for project:view, the read code every level holds', async () => {
+    access.listReadableProjectIds.mockResolvedValue(null);
+
+    await service.listTeamsForReader('ws-1', 'wa-1');
+
+    expect(access.listReadableProjectIds).toHaveBeenCalledWith('ws-1', 'wa-1', 'project:view');
+  });
+
+  // ── the detail and the roster ───────────────────────────────────────────────
+
+  it('serves a team detail the reader can reach through a project link', async () => {
+    access.listReadableProjectIds.mockResolvedValue(['proj-1']);
+    teamRepo.listActiveProjectIds.mockResolvedValue(['proj-1', 'proj-2']);
+
+    await expect(service.getTeamForReader('team-alpha', 'ws-1', 'editor-1')).resolves.toMatchObject(
+      {
+        id: 'team-1',
+      },
+    );
+  });
+
+  it('404s a team detail whose every link is unreadable — not 403, so the list cannot be probed', async () => {
+    access.listReadableProjectIds.mockResolvedValue(['proj-1']);
+    teamRepo.listActiveProjectIds.mockResolvedValue(['proj-2']);
+
+    await expect(service.getTeamForReader('team-beta', 'ws-1', 'editor-1')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('404s an unlinked team for a scoped reader, and serves it to a Workspace Admin', async () => {
+    teamRepo.listActiveProjectIds.mockResolvedValue([]);
+
+    access.listReadableProjectIds.mockResolvedValue(['proj-1']);
+    await expect(service.getTeamForReader('team-orphan', 'ws-1', 'editor-1')).rejects.toThrow(
+      NotFoundException,
+    );
+
+    access.listReadableProjectIds.mockResolvedValue(null);
+    await expect(service.getTeamForReader('team-orphan', 'ws-1', 'wa-1')).resolves.toBeTruthy();
+  });
+
+  it('serves the roster of a reachable team and refuses an unreachable one', async () => {
+    teamMemberRepo.listByTeam.mockResolvedValue([
+      { userId: 'user-1', email: 'ada@example.com', displayName: 'Ada' },
+    ]);
+    access.listReadableProjectIds.mockResolvedValue(['proj-1']);
+
+    teamRepo.listActiveProjectIds.mockResolvedValue(['proj-1']);
+    await expect(
+      service.listTeamMembersForReader('team-alpha', 'ws-1', 'editor-1'),
+    ).resolves.toHaveLength(1);
+
+    teamRepo.listActiveProjectIds.mockResolvedValue(['proj-2']);
+    await expect(service.listTeamMembersForReader('team-beta', 'ws-1', 'editor-1')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('leaves the unscoped listTeams alone — it is the internal validation helper', async () => {
+    // `ProjectsService` calls it to validate team ids on a write it has already authorized. If a
+    // future change routes an HTTP read through it, this test is the reminder that it is NOT scoped.
+    await service.listTeams('ws-1');
+
+    expect(access.listReadableProjectIds).not.toHaveBeenCalled();
   });
 });

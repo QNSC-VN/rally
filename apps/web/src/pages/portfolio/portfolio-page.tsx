@@ -24,7 +24,7 @@ import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { notify } from '@/shared/lib/toast'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions, useProjectPermissionsFor } from '@/features/access/api'
-import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { useProjects } from '@/features/projects/api'
 import { type RowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -109,10 +109,13 @@ export function PortfolioPage() {
   /**
    * Roster for the inline Owner picker. Fetched ONCE here and handed to every row —
    * per-row would be one request per visible row for a list that is already cached
-   * workspace-wide (`workspace-members-profile`). Workspace-scoped, not project-scoped:
+   * workspace-wide (`workspace-member-options`). Workspace-scoped, not project-scoped:
    * this grid is cross-project, so a single roster covers every row.
+   *
+   * The PICKER feed, not `useWorkspaceMembers` — that one is the Workspace-Admin-only User
+   * Management roster and 403s for an Editor (RBE-07).
    */
-  const { data: members = [] } = useWorkspaceMembers(workspace?.workspaceId)
+  const { data: members = [] } = useWorkspaceMemberOptions(workspace?.workspaceId)
 
   const table = useDataTable<PortfolioItem, unknown, ColKey>(PORTFOLIO_COLUMNS, {
     storageKey: STORAGE_KEYS.PORTFOLIO_COLUMNS,

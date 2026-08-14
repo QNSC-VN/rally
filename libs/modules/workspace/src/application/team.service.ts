@@ -46,8 +46,88 @@ export class TeamService {
     private readonly access: AccessService,
   ) {}
 
+  /**
+   * EVERY team in the workspace, unscoped — an INTERNAL helper, not a reader's list.
+   *
+   * `ProjectsService` calls it to validate the team ids on a create/link write it has already
+   * authorized. HTTP reads must use {@link listTeamsForReader}; see its docblock for why (RBE-08).
+   */
   async listTeams(workspaceId: string, includeInactive = false): Promise<TeamWithStats[]> {
     return this.teamRepo.listByWorkspaceWithStats(workspaceId, includeInactive);
+  }
+
+  /**
+   * The projects this actor may READ, or `null` for unrestricted.
+   *
+   * One helper so the list and the two detail reads below cannot answer the same question two ways —
+   * the property whose absence produced the zero-point Velocity bars (CLAUDE.md, "Eligibility must
+   * be counted in the SAME scope as the measurement").
+   */
+  private async readableProjectIds(workspaceId: string, actorId: string): Promise<string[] | null> {
+    return this.access.listReadableProjectIds(workspaceId, actorId, 'project:view');
+  }
+
+  /**
+   * Teams a reader may see: those linked to at least one project they can read (RBE-08 / PRJ-07).
+   *
+   * `GET /workspaces/:id/teams` carried no permission at all, and a route with no metadata is OPEN —
+   * so every team's name, key, lead, member count AND the name and key of every project it is linked
+   * to were readable by any authenticated caller, including one with No Access. §3.1 gives "View
+   * Project Details and Teams" as a per-Project row, not a workspace-wide one.
+   *
+   * A team is reached THROUGH its project links, which is what makes this a cross-project list and
+   * `listReadableProjectIds` the fact that scopes it. Both sentinels are load-bearing:
+   *   • `null` → unrestricted (a Workspace Admin sees every team, including an unlinked one).
+   *   • `[]`   → nothing, WITHOUT querying. Flattening it to "all" leaks the workspace; and never
+   *              build a predicate from an empty set — `inArray(col, [])` is not portable as
+   *              "match nothing".
+   *
+   * The per-team `projects` array is narrowed too, not just the team rows: a team linked to both a
+   * readable and an unreadable project would otherwise disclose the second project's key and name,
+   * which is the same leak in a nested field.
+   */
+  async listTeamsForReader(
+    workspaceId: string,
+    actorId: string,
+    includeInactive = false,
+  ): Promise<TeamWithStats[]> {
+    const readable = await this.readableProjectIds(workspaceId, actorId);
+    if (readable === null) return this.listTeams(workspaceId, includeInactive);
+    if (readable.length === 0) return [];
+
+    const allowed = new Set(readable);
+    const all = await this.teamRepo.listByWorkspaceWithStats(workspaceId, includeInactive);
+    return all
+      .filter((t) => t.projects.some((p) => allowed.has(p.projectId)))
+      .map((t) => ({ ...t, projects: t.projects.filter((p) => allowed.has(p.projectId)) }));
+  }
+
+  /**
+   * Refuse a team whose every project link is unreadable by this actor.
+   *
+   * 404, not 403, and for the reason {@link getTeam} already gives: a team the reader has no path to
+   * must not be distinguishable from one that does not exist. It also matches what
+   * {@link listTeamsForReader} does — a surface that hides a row in the list and then admits its
+   * existence on the detail route has not hidden it.
+   *
+   * Kept OFF {@link getTeam} deliberately. That method is the pre-read for `updateTeam`,
+   * `addTeamMember` and `removeTeamMember`, which are Workspace-Admin-gated writes at the route —
+   * putting a reader's scope check inside it would put a second, differently-derived authorization
+   * decision on every write path.
+   */
+  private async assertTeamReadable(
+    teamId: string,
+    workspaceId: string,
+    actorId: string,
+  ): Promise<void> {
+    const readable = await this.readableProjectIds(workspaceId, actorId);
+    if (readable === null) return;
+    const allowed = new Set(readable);
+    const linked = await this.teamRepo.listActiveProjectIds(teamId);
+    // An empty `readable` falls out here with no special case: nothing can be in an empty set.
+    if (!linked.some((projectId) => allowed.has(projectId))) {
+      throw new NotFoundException('TEAM_NOT_FOUND', 'Team not found');
+    }
   }
 
   /**
@@ -331,6 +411,29 @@ export class TeamService {
 
   async listTeamMembers(teamId: string, workspaceId: string): Promise<TeamMember[]> {
     await this.getTeam(teamId, workspaceId);
+    return this.teamMemberRepo.listByTeam(teamId);
+  }
+
+  /** {@link getTeam}, narrowed to a team the actor can reach — see {@link assertTeamReadable}. */
+  async getTeamForReader(id: string, workspaceId: string, actorId: string): Promise<Team> {
+    const team = await this.getTeam(id, workspaceId);
+    await this.assertTeamReadable(id, workspaceId, actorId);
+    return team;
+  }
+
+  /**
+   * {@link listTeamMembers}, narrowed the same way.
+   *
+   * This roster carries every member's display name AND EMAIL (the repository's `identity.users`
+   * join), so an unscoped read of it is the directory leak of RBE-07 reached through a team id.
+   */
+  async listTeamMembersForReader(
+    teamId: string,
+    workspaceId: string,
+    actorId: string,
+  ): Promise<TeamMember[]> {
+    await this.getTeam(teamId, workspaceId);
+    await this.assertTeamReadable(teamId, workspaceId, actorId);
     return this.teamMemberRepo.listByTeam(teamId);
   }
 

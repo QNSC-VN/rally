@@ -14,7 +14,7 @@ import {
   type Project,
   type ProjectEstimationSettings,
 } from '@/features/projects/api'
-import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import {
   useWorkspaceTeams,
   useProjectTeams,
@@ -42,7 +42,9 @@ import { type ProjectColKey, type ProjectCtx } from '../model/columns'
 
 // ── Owner (project lead) picker ──────────────────────────────────────────────
 // Shared by the New Project and Edit Project modals. Backed by the single-source
-// workspace-member roster (useWorkspaceMembers) so the owner list never drifts.
+// workspace picker feed (useWorkspaceMemberOptions) so the owner list never drifts. NOT
+// `useWorkspaceMembers`: that is the Workspace-Admin-only User Management roster, and an Editor
+// reading it gets a 403 (RBE-07 — the roster is two routes by audience).
 
 function OwnerSelect({
   workspaceId,
@@ -56,7 +58,7 @@ function OwnerSelect({
   currentUserId?: string
 }) {
   const { t } = useTranslation('projects')
-  const { data: members = [], isLoading } = useWorkspaceMembers(workspaceId)
+  const { data: members = [], isLoading } = useWorkspaceMemberOptions(workspaceId)
   const options = members.map((m) => ({
     value: m.userId,
     label: (m.displayName || m.email || m.userId) + (m.userId === currentUserId ? ' (you)' : ''),

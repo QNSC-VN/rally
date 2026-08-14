@@ -33,9 +33,62 @@ export type WorkspaceMember = components['schemas']['MemberWithProfileResponseDt
 }
 
 /**
- * Single source of truth for the workspace member roster (profile + role).
- * Shared by Settings (members/admins management) and the Projects owner picker.
- * Keyed by `workspace-members-profile` so all consumers share one cache entry.
+ * The ASSIGNEE / OWNER PICKER feed — `GET /v1/workspaces/{id}/member-options`.
+ *
+ * The roster is TWO routes by audience (RBE-07). This is the one every delivery participant may
+ * read: id, name, email, avatar. `useWorkspaceMembers` below is the User Management roster and
+ * carries `phone`, `lastLoginAt` and the role ids, so it is `workspace:view` (Workspace Admin)
+ * gated on the backend — reading it from a picker 403s for an Editor, which is the regression this
+ * hook exists to prevent.
+ *
+ * Structurally this is `OwnerSelectMember` (`shared/ui/owner-cell`), which is what every owner
+ * picker and owner cell already accepts.
+ *
+ * The type is hand-declared rather than taken from `components['schemas']` because the generated
+ * client is regenerated centrally from a running API; it is asserted against
+ * `MemberOptionResponseDto` on the next regen and the field names are the contract.
+ */
+export interface WorkspaceMemberOption {
+  userId: string
+  displayName: string
+  email: string
+  avatarUrl: string | null
+  status: string
+}
+
+/**
+ * Untyped view of the client for the ONE route that is newer than the committed
+ * `shared/api/generated/api.ts`. Same escape hatch `features/milestones`, `features/quality` and
+ * `features/team-status` already use; it disappears on the next central `codegen` run.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const client = apiClient as any
+
+export function useWorkspaceMemberOptions(workspaceId: string | undefined) {
+  return useQuery({
+    // Nested UNDER `['workspaces']` on purpose: `invalidateQueries` matches by key PREFIX, so the
+    // existing `workspace` tag in `shared/api/invalidation.ts` already fans out to this feed and no
+    // new root has to be registered for a member add/remove to refresh every picker.
+    queryKey: ['workspaces', 'member-options', workspaceId],
+    queryFn: async () => {
+      if (!workspaceId) return []
+      const { data, error, response } = await client.GET('/v1/workspaces/{id}/member-options', {
+        params: { path: { id: workspaceId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as WorkspaceMemberOption[]) ?? []
+    },
+    enabled: !!workspaceId,
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * The USER MANAGEMENT roster (profile + contact details + role) — Workspace Admin only.
+ *
+ * Keyed by `workspace-members-profile` so all consumers share one cache entry. For an owner or
+ * assignee picker use {@link useWorkspaceMemberOptions} instead: this route is gated
+ * `workspace:view` and an Editor reading it gets a 403.
  */
 export function useWorkspaceMembers(workspaceId: string | undefined) {
   return useQuery({

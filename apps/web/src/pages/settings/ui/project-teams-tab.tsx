@@ -21,7 +21,7 @@ import {
   useTeamMembers,
   type Team,
 } from '@/features/teams/api'
-import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useWorkspaceMembers, useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
@@ -52,8 +52,15 @@ export function ProjectTeamsTab({
 }) {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { data: teams = [], isLoading } = useProjectTeams(projectId)
-  // Workspace roster — resolves each team row's Lead name/avatar (mockup parity).
-  const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  /**
+   * The Lead's name/avatar comes from the PICKER feed, not the administrative roster.
+   *
+   * This tab is gated `project:view`, so an EDITOR reaches it — and the administrative roster is now
+   * `workspace:view` (Workspace Admin only), because it carries `phone`, `lastLoginAt` and the role ids
+   * (RBE-07). Reading it here would 403 for every non-WA and silently degrade every Lead to `--`: no
+   * crash, no error, just a column that quietly stops working for the level that uses it most.
+   */
+  const { data: wsMembers = [] } = useWorkspaceMemberOptions(workspaceId)
   const [editing, setEditing] = useState<Team | null>(null)
   const [creating, setCreating] = useState(false)
   const [deactivateTarget, setDeactivateTarget] = useState<Team | null>(null)
@@ -235,7 +242,8 @@ export function TeamDetail({
   isWA: boolean
 }) {
   const { data: members = [], isLoading } = useTeamMembers(team.id)
-  const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  // Display-only, so the picker feed — see the note on the row above.
+  const { data: wsMembers = [] } = useWorkspaceMemberOptions(workspaceId)
   const [editing, setEditing] = useState(false)
   const leadName =
     wsMembers.find((m) => m.userId === team.leadId)?.displayName ??
@@ -340,6 +348,10 @@ function TeamFormModal({
   team: Team | null
   onClose: () => void
 }) {
+  // The administrative roster ON PURPOSE: this modal filters `roleSlug !== 'workspace_admin'` out of
+  // the eligible list (§2.1 — a WA is never a Team member), and `roleSlug` exists only on that feed.
+  // Creating or editing a Team is a Workspace Admin action anyway, so the `workspace:view` gate costs
+  // nothing here. Do not "align" this with the two display-only lookups above.
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
   // Existing project members — only needed on create, to sync access for selected members.
   const { data: projectMembers = [] } = useProjectMembers(team ? undefined : projectId)

@@ -63,17 +63,23 @@ const MAX_UNPOLICED_ROUTES = 0;
 const MIN_ROUTES_FOUND = 150;
 
 /**
- * Routes carrying `@AuthzGap` — a DECLARED missing check. MAY ONLY FALL.
+ * Routes carrying `@AuthzGap` — a DECLARED missing check. MAY ONLY FALL, and it is now ZERO.
  *
- * One: `GET workspaces/:id/members-with-profile`, which CLAUDE.md already recorded as an open
- * decision. It carries `phone`, `lastLoginAt` and role ids, is documented "for the User
- * Management UI", and yet feeds the Portfolio and Projects owner pickers — so gating it needs
- * the feed split first, and whether a staff directory is member-visible is a product call.
+ * The last one was `GET workspaces/:id/members-with-profile`, which carried `phone`, `lastLoginAt`
+ * and role ids, was documented "for the User Management UI", and yet fed the Portfolio and Projects
+ * owner pickers — so it could not be gated without 403ing ordinary delivery screens, which is why
+ * CLAUDE.md recorded it as deferred behind "split the feed first". It is closed by doing exactly
+ * that (RBE-07): `:id/member-options` is the picker feed, scoped in the service by
+ * `listReadableProjectIds`, and `:id/members-with-profile` keeps the sensitive fields behind
+ * `workspace:view` (Workspace Admin). Pinned by `test/roster-split-gate.spec.ts` and
+ * `test/e2e/directory-team-authz.e2e.spec.ts`.
  *
- * Declaring it is the point: it was previously indistinguishable from the 44 routes nobody had
- * decorated, and a note in a markdown file is not something CI can hold.
+ * Declaring the gap was the point while it existed: it was otherwise indistinguishable from the 44
+ * routes nobody had decorated, and a note in a markdown file is not something CI can hold. The
+ * exact-equality assertion below is what makes the zero stick — a new `@AuthzGap` fails here rather
+ * than quietly becoming the new normal.
  */
-const MAX_AUTHZ_GAPS = 1;
+const MAX_AUTHZ_GAPS = 0;
 
 const ROOT = join(__dirname, '..');
 const HTTP_METHOD = /^\s*@(Get|Post|Patch|Put|Delete)\(/;

@@ -38,6 +38,7 @@ import {
 import type {
   Workspace,
   WorkspaceMember,
+  WorkspaceMemberOption,
   WorkspaceMemberWithProfile,
   WorkspaceMembership,
   WorkspaceInvitation,
@@ -238,9 +239,50 @@ export class WorkspaceService {
     return this.memberRepo.listMembers(workspaceId, args);
   }
 
+  /**
+   * The ADMINISTRATIVE roster — phone, last login, role ids and team memberships.
+   *
+   * Authorized at the ROUTE, on `workspace:view` (Workspace Admin only): see the note there for
+   * why this feed and the picker feed below are two routes rather than one.
+   */
   async listMembersWithProfile(workspaceId: string): Promise<WorkspaceMemberWithProfile[]> {
     await this.getWorkspace(workspaceId);
     return this.memberRepo.listMembersWithProfile(workspaceId);
+  }
+
+  /**
+   * The ASSIGNEE / OWNER PICKER roster — id, name, email, avatar (RBE-07).
+   *
+   * WHY THE CHECK IS HERE AND NOT A DECORATOR
+   * Every level must be able to resolve a person to a name, so a workspace-tier code is wrong (an
+   * Editor holds none) and a project-tier code is unavailable (there is no project in the path —
+   * the roster is workspace-wide by construction). What decides it is the one authorization fact
+   * behind every cross-project read: {@link AccessService.listReadableProjectIds}. Its `null` means
+   * UNRESTRICTED and `[]` means NOTHING, and those are different answers — which is precisely what
+   * no static descriptor can carry.
+   *
+   *   • `null`  (a Workspace Admin) → the whole roster.
+   *   • `[]`    (No Access: no active `project_members` row anywhere, and no workspace grant) → an
+   *             empty list. Before this, a principal with zero grants read the company directory
+   *             including phone numbers and last-login times.
+   *   • ids     (an Editor or per-project Admin) → the whole roster, at these four fields.
+   *
+   * THE LAST CASE IS DELIBERATELY NOT NARROWED FURTHER, and that is worth stating because it looks
+   * like a missing filter. Narrowing the POPULATION to the rosters of readable projects is not
+   * available: §2.1 (migration 0118) keeps a Workspace Admin OFF every `project_members` roster,
+   * and a Workspace Admin is exactly who owns a project — the seeded projects' `lead_id` is the
+   * admin user, with no membership row by design. A picker narrowed that way could neither RESOLVE
+   * nor OFFER the current owner, which is the both-directions failure this split exists to avoid.
+   * What the four fields are worth is bounded by the fact that they are already on screen wherever
+   * a person is an assignee, a lead or a team member; the sensitive columns are on the route above.
+   */
+  async listMemberOptions(workspaceId: string, actorId: string): Promise<WorkspaceMemberOption[]> {
+    await this.getWorkspace(workspaceId);
+    const readable = await this.access.listReadableProjectIds(workspaceId, actorId, 'project:view');
+    // `readable === null` is UNRESTRICTED, so it must be tested for explicitly — `!readable?.length`
+    // would collapse it into the empty case and fail closed for a Workspace Admin.
+    if (readable !== null && readable.length === 0) return [];
+    return this.memberRepo.listMemberOptions(workspaceId);
   }
 
   @Span('workspace.addMember')

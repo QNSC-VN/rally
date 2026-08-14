@@ -1,6 +1,7 @@
 import type { CursorPayload, PagedResult, DbExecutor } from '@platform';
 import type {
   WorkspaceMember,
+  WorkspaceMemberOption,
   WorkspaceMemberWithProfile,
   WorkspaceMembership,
   AddMemberInput,
@@ -18,7 +19,17 @@ export interface IWorkspaceMemberRepository {
     workspaceId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<WorkspaceMember>>;
+  /**
+   * The ADMINISTRATIVE roster — profile, contact details, last login and role ids. Reached only
+   * through `GET :id/members-with-profile`, which is `workspace:view` (Workspace Admin) gated.
+   */
   listMembersWithProfile(workspaceId: string): Promise<WorkspaceMemberWithProfile[]>;
+  /**
+   * The PICKER roster — id, name, email, avatar. Reached through `GET :id/member-options`, which
+   * every delivery participant may read. A separate QUERY, not a projection of the one above: the
+   * sensitive columns must not be selected on a path that does not need them.
+   */
+  listMemberOptions(workspaceId: string): Promise<WorkspaceMemberOption[]>;
   addMember(input: AddMemberInput, tx?: DbExecutor): Promise<WorkspaceMember>;
   updateMember(id: string, input: UpdateMemberInput, tx?: DbExecutor): Promise<WorkspaceMember>;
   removeMember(workspaceId: string, userId: string, tx?: DbExecutor): Promise<void>;

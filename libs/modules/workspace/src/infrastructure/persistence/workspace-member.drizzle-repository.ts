@@ -8,6 +8,7 @@ import { systemRoles, userRoleAssignments } from '../../../../../../db/schema/ac
 import { teams, teamMembers } from '../../../../../../db/schema/work';
 import type {
   WorkspaceMember,
+  WorkspaceMemberOption,
   WorkspaceMemberWithProfile,
   WorkspaceMembership,
   AddMemberInput,
@@ -93,6 +94,42 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       .limit(limit + 1);
 
     return buildPageResult(rows as WorkspaceMember[], limit, (m) => [m.joinedAt.toISOString()]);
+  }
+
+  /**
+   * The PICKER feed: identity and display only.
+   *
+   * A query of its own rather than a mapped projection of `listMembersWithProfile`, because the
+   * property worth having is that `users.phone`, `users.last_login_at` and the role ids are never
+   * SELECTED on the path that serves every delivery participant. A projection would keep them one
+   * careless spread away from the response, which is the shape RBE-07 was.
+   *
+   * No `teams` fan-out either — that second query exists for the User Management Teams column and a
+   * picker has no use for it.
+   */
+  async listMemberOptions(workspaceId: string): Promise<WorkspaceMemberOption[]> {
+    const rows = await this.db
+      .select({
+        userId: workspaceMembers.userId,
+        status: workspaceMembers.status,
+        displayName: users.displayName,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+      })
+      .from(workspaceMembers)
+      .leftJoin(users, eq(users.id, workspaceMembers.userId))
+      .where(eq(workspaceMembers.workspaceId, workspaceId))
+      .orderBy(workspaceMembers.joinedAt, asc(workspaceMembers.id));
+
+    return rows.map((r) => ({
+      userId: r.userId,
+      // Same fallback ladder the administrative roster uses, so one person never renders under two
+      // different names depending on which feed a screen happens to read.
+      displayName: r.displayName ?? r.email ?? r.userId,
+      email: r.email ?? '',
+      avatarUrl: r.avatarUrl ?? null,
+      status: r.status,
+    }));
   }
 
   /** Returns workspace members joined with user profile and current workspace-scope role. */

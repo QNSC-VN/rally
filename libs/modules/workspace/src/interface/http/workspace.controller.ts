@@ -29,7 +29,7 @@ import {
   NotFoundException,
 } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
-import { AuthPolicy, RequirePermission, AuthorizedInService, AuthzGap } from '@modules/access';
+import { AuthPolicy, RequirePermission, AuthorizedInService } from '@modules/access';
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
 import { WorkspaceService } from '../../application/workspace.service';
 import {
@@ -44,6 +44,7 @@ import {
 import {
   WorkspaceResponseDto,
   MemberResponseDto,
+  MemberOptionResponseDto,
   MemberWithProfileResponseDto,
   InvitationResponseDto,
   WorkspaceSettingsResponseDto,
@@ -249,16 +250,62 @@ export class WorkspaceController {
     return { data: page.data.map(toMemberDto), pageInfo: page.pageInfo };
   }
 
-  // ── List members with profile (for User Management UI) ─────────────────────
+  // ── The roster, SPLIT IN TWO (RBE-07) ──────────────────────────────────────
+  //
+  // One route used to serve both audiences, and it was reachable by any authenticated caller —
+  // including a principal with No Access, i.e. no active `project_members` row anywhere. So the
+  // company directory, with `phone`, `lastLoginAt` and every role id, was readable by an Editor and
+  // by a non-participant alike. It could not simply be gated, because it also feeds the Portfolio
+  // and Projects OWNER PICKERS: gating it as an admin surface 403s ordinary delivery screens, which
+  // is why CLAUDE.md recorded it as deferred behind "split the feed first".
+  //
+  // The split is by AUDIENCE, and each route is named for what it serves:
+  //   • `:id/member-options`       — the assignee / owner picker feed. id, name, email, avatar.
+  //   • `:id/members-with-profile` — the User Management administrative roster. Everything else.
+  //
+  // The sensitive fields are `phone`, `lastLoginAt` and the role ids — NOT name and email, which
+  // are already on screen wherever someone is an assignee, a lead or a team member.
+
+  @Get(':id/member-options')
+  @AuthorizedInService(
+    'the picker feed is scoped by AccessService.listReadableProjectIds — null means UNRESTRICTED and [] means a No Access principal reads nobody, a distinction no scope descriptor can carry, and no permission code fits: an Editor holds no workspace-tier code and there is no project in the path',
+    'directory-team-authz.e2e.spec.ts',
+  )
+  @ApiOperation({
+    summary: 'Assignee / owner picker feed — workspace members at display fields only',
+  })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: MemberOptionResponseDto, isArray: true })
+  @ApiCommonErrors(401, 404)
+  async listMemberOptions(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<MemberOptionResponseDto[]> {
+    this.assertActive(user, id);
+    return this.workspaceService.listMemberOptions(id, user.sub);
+  }
 
   @Get(':id/members-with-profile')
-  @AuthzGap(
-    'documented in CLAUDE.md as an open decision: it carries phone, lastLoginAt and role ids, is documented for the User Management UI, but feeds the Portfolio and Projects owner pickers — gating it needs the feed split first, and whether a staff directory is member-visible is a product call.',
-  )
-  @ApiOperation({ summary: 'List workspace members with user profile and role details' })
+  // `workspace:view`, the code that already gates `GET :id/settings` on this controller: an
+  // existing, workspace-tier, Workspace-Admin-only read code for workspace administration data,
+  // which a staff directory carrying contact details and last-login times is. Deliberately NOT a
+  // new `users:view` — the catalogue's own comment said there was no such gate because "roster
+  // READS stay open, owner pickers need them", and with the picker feed split out that premise is
+  // gone rather than needing a new code (and a new code would need a backfill migration to reach an
+  // existing workspace at all).
+  //
+  // Chosen for what the ACTION is, not for where the id lives. Every consumer of the sensitive
+  // fields is Workspace-Admin-only already: Members (`users:assign_role`), Workspace Settings
+  // (`workspace:view`), Audit (`audit:view`), the project Add-Member modal
+  // (`project:manage_members`) and the Team form (`teams:create` / `teams:edit`). None of them
+  // loses anything; the picker screens moved to the feed above.
+  @RequirePermission('workspace:view')
+  @ApiOperation({
+    summary: 'User Management roster — profile, contact details and roles (Workspace Admin only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: MemberWithProfileResponseDto, isArray: true })
-  @ApiCommonErrors(401, 404)
+  @ApiCommonErrors(401, 403, 404)
   async listMembersWithProfile(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,

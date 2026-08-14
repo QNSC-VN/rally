@@ -39,7 +39,7 @@ import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { useReleases } from '@/features/releases/api'
 import { useMilestones } from '@/features/milestones/api'
 import { useUpdateAnyWorkItem } from '@/features/work-items/api'
@@ -109,7 +109,7 @@ export function PortfolioDetailPage() {
   const canEdit = mayEdit && server?.archivedAt == null
 
   const { workspace } = useAppContext()
-  const { data: members = [] } = useWorkspaceMembers(workspace?.workspaceId)
+  const { data: members = [] } = useWorkspaceMemberOptions(workspace?.workspaceId)
   const { data: projectReleases = [] } = useReleases(server?.projectId)
   // Milestone options are Project-scoped (SRS §5.1); the sidebar unions in any already-assigned
   // milestone that falls outside them so a save cannot silently drop it.
