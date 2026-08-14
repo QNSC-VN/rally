@@ -364,6 +364,24 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     if (filters.teamId) {
       conditions.push(eq(workItems.teamId, filters.teamId));
     }
+    // ── Manage Filters column predicates (P2-BL-FR-005/006) ──────────────────
+    //
+    // Whitelisted columns only — each value is a bound parameter, never
+    // interpolated. `itemKey`/`title` are substring matches so the text inputs
+    // behave like the Rally column filters they mirror; `planEstimate` is an
+    // exact numeric match (the SRS calls Est a number input, not a range).
+    //
+    // These are ANDed with `q`, not folded into it: P2-BL-TS-015 makes quick
+    // search independent of the Manage Filters set.
+    if (filters.itemKey?.trim()) {
+      conditions.push(ilike(workItems.itemKey, `%${filters.itemKey.trim()}%`));
+    }
+    if (filters.title?.trim()) {
+      conditions.push(ilike(workItems.title, `%${filters.title.trim()}%`));
+    }
+    if (filters.planEstimate !== undefined) {
+      conditions.push(eq(workItems.storyPoints, filters.planEstimate));
+    }
     if (filters.iterationId) conditions.push(eq(workItems.iterationId, filters.iterationId));
     if (filters.releaseId) conditions.push(eq(workItems.releaseId, filters.releaseId));
     if (filters.parentId) conditions.push(eq(workItems.parentId, filters.parentId));

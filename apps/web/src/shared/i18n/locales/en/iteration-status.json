@@ -24,12 +24,10 @@
   },
   "toolbar": {
     "addNew": "Add New",
-    "state": "State",
-    "allStates": "All States",
-    "allOwners": "All Owners",
     "unassigned": "Unassigned",
-    "blockedOnly": "Blocked items only",
-    "clearFilters": "Clear filters"
+    "type": "Type",
+    "blocked": "Blocked",
+    "notBlocked": "Not blocked"
   },
   "totals": {
     "label": "Totals",

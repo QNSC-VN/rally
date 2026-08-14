@@ -33,17 +33,13 @@ import {
 import { useUpdateAnyWorkItem, useRankAnyWorkItem } from '@/features/work-items/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useMilestones } from '@/features/milestones/api'
-import { ScheduleState } from '@/entities/work-item/model/types'
 import { StatusRow } from './ui/status-row'
 import { AddItemModal } from './ui/add-item-modal'
 import { IterationHeader, MetricsStrip, Toolbar, TableFooterTotals } from './ui/iteration-chrome'
 import { computeTotalDays } from './model/iteration-helpers'
-import {
-  type ColKey,
-  ITERATION_STATUS_COLUMNS,
-  OWNER_UNASSIGNED,
-  HEADER_META,
-} from './model/columns'
+import { type ColKey, ITERATION_STATUS_COLUMNS, HEADER_META } from './model/columns'
+import { useIterationFilterFields, toIterationStatusQuery } from './model/filter-fields'
+import { useManageFilters } from '@/features/work-items/model/manage-filters'
 
 // Stable empty-array reference — `status?.items ?? []` would otherwise mint a
 // new array every render while status is loading, which defeats the
@@ -74,9 +70,6 @@ export function IterationStatusPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [stateFilter, setStateFilter] = useState<ScheduleState | 'all'>('all')
-  const [ownerFilter, setOwnerFilter] = useState<string>('all')
-  const [blockedOnly, setBlockedOnly] = useState(false)
   const [pageSize, setPageSize] = useState<number>(25)
   const [page, setPage] = useState<number>(1)
 
@@ -123,11 +116,24 @@ export function IterationStatusPage() {
     [projectId],
   )
 
+  // ── Manage Filters (P2-IS-FR-022) ─────────────────────────────────────────
+  // The shared chooser from `features/work-items`, the same one Backlog uses —
+  // P2-IS §5 makes this screen inherit the Backlog list patterns rather than
+  // grow its own. Every field is a SERVER predicate: Schedule State, Owner and
+  // Blocked used to narrow the already-fetched rows, which answers "which of the
+  // rows we loaded match?" rather than "which rows match?".
+  const filterFields = useIterationFilterFields({ members })
+  const filters = useManageFilters(filterFields)
+  const appliedFilters = useMemo(() => toIterationStatusQuery(filters.applied), [filters.applied])
+
   const {
     data: status,
     isLoading,
     isError,
   } = useIterationStatus(selectedId ?? undefined, {
+    ...appliedFilters,
+    // Quick search is independent of Manage Filters (P2-IS-FR-020: "Quick search
+    // `Filter items...` remains outside Manage Filters"; P2-BL-TS-015).
     q: search.trim() || undefined,
   })
 
@@ -164,27 +170,12 @@ export function IterationStatusPage() {
     [sortCol],
   )
 
-  // Client-side refinement on top of the server-side `q` search: Schedule
-  // State / Owner / Blocked filters applied to the loaded iteration items.
-  const filteredItems = useMemo(() => {
-    return items.filter((it) => {
-      if (stateFilter !== 'all' && it.scheduleState !== stateFilter) return false
-      if (ownerFilter === OWNER_UNASSIGNED && it.assigneeId != null) return false
-      if (
-        ownerFilter !== 'all' &&
-        ownerFilter !== OWNER_UNASSIGNED &&
-        it.assigneeId !== ownerFilter
-      )
-        return false
-      if (blockedOnly && !it.isBlocked) return false
-      return true
-    })
-  }, [items, stateFilter, ownerFilter, blockedOnly])
-
+  // No client-side filter pass: `items` IS the filtered set, because every
+  // Manage Filters field and the quick search are server predicates.
   const sortedItems = useMemo(() => {
-    if (!sortCol) return filteredItems
+    if (!sortCol) return items
     const dir = sortDir === 'asc' ? 1 : -1
-    return [...filteredItems].sort((a, b) => {
+    return [...items].sort((a, b) => {
       let va: string | number
       let vb: string | number
       switch (sortCol) {
@@ -231,7 +222,7 @@ export function IterationStatusPage() {
       if (va > vb) return 1 * dir
       return 0
     })
-  }, [filteredItems, sortCol, sortDir])
+  }, [items, sortCol, sortDir])
 
   // ── Client-side pagination ──────────────────────────────────────────────
   // An iteration is a bounded dataset (the fetch loads the full sprint), so we
@@ -241,7 +232,7 @@ export function IterationStatusPage() {
   const pageCount = Math.max(1, Math.ceil(sortedItems.length / pageSize))
   // Snap back to the first page whenever the underlying view identity changes
   // (project/iteration, search, filters, sort, or page size).
-  const pageResetKey = `${selectedId ?? ''}|${search}|${stateFilter}|${ownerFilter}|${blockedOnly}|${sortCol ?? ''}|${sortDir}|${pageSize}`
+  const pageResetKey = `${selectedId ?? ''}|${search}|${JSON.stringify(filters.applied)}|${sortCol ?? ''}|${sortDir}|${pageSize}`
   const [syncedPageKey, setSyncedPageKey] = useState(pageResetKey)
   if (syncedPageKey !== pageResetKey) {
     setSyncedPageKey(pageResetKey)
@@ -461,13 +452,7 @@ export function IterationStatusPage() {
         hidden={hidden}
         toggleVisible={toggleVisible}
         reorder={reorder}
-        stateFilter={stateFilter}
-        setStateFilter={setStateFilter}
-        ownerFilter={ownerFilter}
-        setOwnerFilter={setOwnerFilter}
-        blockedOnly={blockedOnly}
-        setBlockedOnly={setBlockedOnly}
-        members={members}
+        filters={filters}
       />
 
       {/* ── 6. Table (List view) or Board view ───────────────────────────── */}
@@ -480,13 +465,13 @@ export function IterationStatusPage() {
             <div className="flex h-full items-center justify-center text-ui-lg text-destructive">
               {t('boardLoadError')}
             </div>
-          ) : filteredItems.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="flex h-full items-center justify-center text-ui-lg text-foreground-subtle">
               {t('emptyItems')}
             </div>
           ) : (
             <IterationBoard
-              items={filteredItems}
+              items={items}
               memberMap={memberMap}
               canEdit={canEdit}
               onOpen={(itemKey) => navigate({ to: '/item/$itemKey', params: { itemKey } })}

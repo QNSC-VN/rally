@@ -31,7 +31,7 @@ import { describe, expect, it } from 'vitest'
  * by grepping alongside — an approximation would have set the bar in the wrong place (my own grep
  * said 8 for `text-[` where the real count is 2).
  */
-const MAX_RAW_BUTTON = 62 // occurrences in pages/features/entities/widgets (raised 60→62: the Settings > Workspaces & Projects tree + project-detail tab strip add nav/selection buttons)
+const MAX_RAW_BUTTON = 61 // occurrences in pages/features/entities/widgets (raised 60→62: the Settings > Workspaces & Projects tree + project-detail tab strip add nav/selection buttons) Lowered 62→61 (measured by forcing to -1): the Manage Filters work replaced a raw `<button>` with the shared primitive while building the filter banner, so the ceiling came down with it rather than leaving slack.
 const MAX_INLINE_STYLE = 173 // `style={{` in pages/features/entities/widgets (remainder is data-driven/dynamic). Lowered 182→175: deleting the standalone Teams settings page (teams-tab.tsx) removed its inline-styled rows along with it. Lowered 175→173 (measured by forcing to -1): the Release Tracking / burnup error-state work replaced two inline-styled nodes with shared primitives.
 const MAX_ARBITRARY_TEXT = 2 // `text-[` app-wide (only text-[0] + one navy placeholder rgba remain)
 const MAX_RAW_FONT_SIZE = 12 // raw Tailwind text-{xs,sm,base,lg,xl,2xl,3xl} in consumer layers; use the text-ui-* scale. Residual = deliberate display text (login hero, big numbers, entity-title inputs)

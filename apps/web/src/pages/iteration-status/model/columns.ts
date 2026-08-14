@@ -44,10 +44,6 @@ export const ITERATION_STATUS_COLUMNS: ColumnSpec<unknown, unknown, ColKey>[] = 
   { key: 'devOwner', label: 'Dev Owner', defaultWidth: 130 },
 ]
 
-// Sentinel for the Owner filter's "Unassigned" option (empty string collides
-// with the native <select> placeholder, so use an explicit token).
-export const OWNER_UNASSIGNED = '__unassigned__'
-
 // Sticky-header column metadata (labels + sort keys + alignment) for the grid
 // header. Shared by the page (headerProps) and the chrome Toolbar's DataTableHeader.
 export const HEADER_META: DataTableHeaderColumn<ColKey>[] = [

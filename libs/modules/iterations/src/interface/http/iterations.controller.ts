@@ -332,6 +332,13 @@ export class IterationsController {
         scheduleState: query.scheduleState,
         isBlocked: query.isBlocked,
         assigneeId: query.assigneeId,
+        // Manage Filters (P2-IS-FR-022): the chosen columns' own predicates,
+        // combined server-side with everything above and with `q`.
+        itemKey: query.itemKey,
+        title: query.title,
+        planEstimate: query.planEstimate,
+        taskEstimate: query.taskEstimate,
+        toDo: query.toDo,
       },
       args,
     );

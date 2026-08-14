@@ -12,6 +12,7 @@
   "typeStory": "Story",
   "typeDefect": "Defect",
   "filters": {
+    "type": "Type",
     "allTypes": "All Types",
     "allOwners": "All Owners",
     "unassigned": "Unassigned",

@@ -258,8 +258,26 @@ export interface IterationStatusFilters {
   q?: string
   type?: IterationStatusItem['type']
   scheduleState?: IterationStatusItem['scheduleState']
-  isBlocked?: boolean
+  /**
+   * The WIRE shape, `'true' | 'false'` — not a boolean.
+   *
+   * `isBlocked` used to be `z.coerce.boolean()` server-side, where `Boolean('false') === true`, so
+   * `?isBlocked=false` asked for BLOCKED rows. It is an explicit enum now, and the filter control
+   * already produces those two strings — so carrying a boolean here only to convert it back at the
+   * request boundary is a round trip that can disagree with itself. Kept as the wire value end to end.
+   */
+  isBlocked?: 'true' | 'false'
+  /** A user id, or `UNASSIGNED_OWNER` for rows with no owner (resolved server-side). */
   assigneeId?: string
+  /**
+   * Manage Filters column predicates (P2-IS-FR-022/023/024). Server-side, and
+   * separate from `q` so quick search stays independent (P2-BL-TS-015, inherited).
+   */
+  itemKey?: string
+  title?: string
+  planEstimate?: string
+  taskEstimate?: string
+  toDo?: string
 }
 
 export function useIterationStatus(id: string | undefined, filters: IterationStatusFilters = {}) {
@@ -276,7 +294,10 @@ export function useIterationStatus(id: string | undefined, filters: IterationSta
       let cursor: string | undefined
       for (let page = 0; page < MAX_PAGES; page++) {
         const { data, error, response } = await apiClient.GET('/v1/iterations/{id}/status', {
-          params: { path: { id: id! }, query: { ...filters, limit: 100, cursor } },
+          params: {
+            path: { id: id! },
+            query: { ...filters, limit: 100, cursor },
+          },
         })
         if (error) throw new Error(apiErrorMessage(error, response.status))
         const page$ = data as IterationStatus
