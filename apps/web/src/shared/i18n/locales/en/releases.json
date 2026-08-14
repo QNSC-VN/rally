@@ -85,7 +85,11 @@
       "accepted": "Accepted"
     },
     "artifacts": {
-      "itemCount": "{{total}} items"
+      "itemCount": "{{total}} items",
+      "addButton": "Add Artifact",
+      "pickerTitle": "Release Artifacts",
+      "pickerSearch": "Search stories and defects",
+      "pickerConfirm": "Save Artifacts"
     },
     "pagination": {
       "rowsPerPage": "Rows per page",

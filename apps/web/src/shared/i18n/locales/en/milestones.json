@@ -74,6 +74,10 @@
     }
   },
   "artifacts": {
+    "addButton": "Add Artifact",
+    "pickerTitle": "Milestone Artifacts",
+    "pickerSearch": "Search stories and defects",
+    "pickerConfirm": "Save Artifacts",
     "itemsCount": "{{total}} items",
     "rowsPerPage": "Rows per page",
     "ofTotal": " of {{total}}",

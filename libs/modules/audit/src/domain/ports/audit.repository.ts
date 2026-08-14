@@ -16,6 +16,11 @@ export interface AuditFilters {
 export interface IAuditRepository {
   /** Idempotent — silently no-ops when sourceEventId already exists. */
   create(input: CreateAuditLogInput): Promise<void>;
+  /**
+   * One page of the log plus `pageInfo.total` — the number of rows matching `filters`
+   * across the whole workspace. The total is not optional here: every control on the Audit
+   * Log screen filters the real set, and the screen states the set's size (P45-04).
+   */
   listForWorkspace(
     workspaceId: string,
     filters: AuditFilters,
