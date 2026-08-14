@@ -228,6 +228,16 @@ jobs:
           ENTRA_REDIRECT_URI: http://localhost:3000/v1/bff/callback
           SSO_ALLOWED_EMAIL_DOMAINS: qnsc.vn
           PLATFORM_ADMIN_EMAILS: nghiavt@qnsc.vn
+          # The suite shares ONE authenticated principal (admin@qnsc.dev) across 49 files, and the
+          # DEFAULT rate-limit tier is 100 requests per 60s keyed by `uid:{sub}`. So the limiter is
+          # a shared budget that every spec spends from, and adding assertions anywhere can push an
+          # unrelated file over it — `task-routes.e2e.spec.ts` started returning 429 where it
+          # expected 200/404 after ~24 requests were added to another file.
+          #
+          # Nothing in this suite tests rate limiting, so there is no coverage to lose. It also
+          # removes a local/CI divergence that hid the problem: `.env` sets this true, so the suite
+          # passes locally and only fails here. `web-ci.yml` already does the same for Playwright.
+          DISABLE_RATE_LIMIT: 'true'
 
       - name: Upload coverage
         if: always()

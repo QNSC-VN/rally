@@ -59,25 +59,27 @@ overrides:
   # dependency, not a peer) moves with it.
   "dompurify@<3.4.13": ">=3.4.13"
   # GHSA-2v37-7h3g-55p8 — nanoid, "custom generators can loop indefinitely when size is
-  # zero", fixed in 3.3.17 (and 5.1.6 on the 4.x+ line). Reached only via
-  # postcss@8.5.23 -> nanoid@3.3.16, i.e. the web BUILD toolchain, and postcss calls it
-  # with a fixed non-zero size — so the zero-size path is not reachable here. Pinned to
-  # clear the blocking scanner rather than because it is exploitable in this tree.
+  # zero". Reached only via postcss -> nanoid, i.e. the web BUILD toolchain, and postcss
+  # calls it with a fixed non-zero size — so the zero-size path is not reachable here.
+  # Pinned to clear the blocking scanner rather than because it is exploitable in this tree.
   #
-  # PINNED to 3.3.17 exactly, not a floor — and that is against this file's usual habit,
-  # so it needs a reason. An open floor resolved to 3.3.18, published 2026-08-07, which
-  # this repo's `minimumReleaseAge` policy (24h) then REJECTED: the CVE fix and the
-  # supply-chain cooldown pulled in opposite directions and `pnpm install` failed
-  # outright. 3.3.17 is the version the advisory names as fixed and it published
-  # 2026-08-03, so it is comfortably outside the cooldown.
+  # RAISED 3.3.17 -> 3.3.18 on 2026-08-14, which is the previous note's own instruction
+  # carried out. The advisory's fixed version MOVED: it named 3.3.17 when this pin was
+  # written, and now names 3.3.18, so osv-scanner began failing `Security · Scan` on main —
+  # the pin that used to satisfy the gate became the thing tripping it.
   #
-  # Deliberately NOT forced across majors — postcss declares ^3.3.11 and 4.x+ are
-  # ESM-only, so a cross-major force would break the build exactly the way the undici
-  # pin below once broke jsdom.
+  # The old note pinned 3.3.17 exactly because 3.3.18 had published 2026-08-07 and this
+  # repo's `minimumReleaseAge` cooldown (24h) rejected it at the time, so the CVE fix and
+  # the supply-chain policy pulled in opposite directions. That has resolved itself: 3.3.18
+  # is seven days old, comfortably outside the cooldown.
   #
-  # Raise this by hand when 3.3.18+ has aged past the cooldown; there is no floor here
-  # doing it automatically.
-  "nanoid@>=3.0.0 <3.3.17": "3.3.17"
+  # Still PINNED rather than a floor, and still deliberately NOT forced across majors —
+  # postcss declares ^3.3.11 and 4.x+ are ESM-only, so a cross-major force would break the
+  # build exactly the way the undici pin below once broke jsdom.
+  #
+  # Raise this by hand again if the advisory names a later fix; there is no floor here doing
+  # it automatically, and that is the trade for surviving the cooldown window.
+  "nanoid@>=3.0.0 <3.3.18": "3.3.18"
   # GHSA-r28c-9q8g-f849 — postcss (line-return parsing), fixed in 8.5.18.
   # Transitive via the web build toolchain (vite / tailwind ecosystem). A newly
   # published advisory that also affects main; pinned via override.
