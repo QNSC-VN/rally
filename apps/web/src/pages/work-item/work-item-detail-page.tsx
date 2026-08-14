@@ -46,11 +46,13 @@ import {
   useUpdateWorkItem,
   useWatchers,
   useToggleWatch,
+  useWorkItemByKey,
   useWorkItemConnections,
   useWorkItemChangesets,
   type WorkItem,
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
+import { useCollapseToSummary } from '@/features/work-items/summary-selection'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -178,6 +180,9 @@ export function WorkItemDetailPage() {
   }, [])
 
   const { data: itemByKey, isLoading: loadingKey } = useWorkItemByKey(itemKey)
+
+  // WID-FR-003: collapse back to the Backlog's summary panel, item still selected (AC 7).
+  const collapseToSummary = useCollapseToSummary(itemKey)
 
   const updateMutation = useUpdateWorkItem(itemByKey?.id ?? '')
   const { status: saveStatus, errorMsg: saveErrorMsg, wrap: wrapSave } = useSaveState()
@@ -317,6 +322,14 @@ export function WorkItemDetailPage() {
   return (
     <DetailLayout
       onBack={() => void navigate({ to: '/backlog' })}
+      // WID-FR-003 / AC 7: collapse returns to the Backlog with this item still selected in the
+      // summary panel. `onBack` above is the other gesture — it leaves the item behind.
+      //
+      // Story/Defect only, which is this SRS's own scope ("Full page detail cho Story/Defect")
+      // and the field table's own destination: a Task is not a Backlog row, so there would be no
+      // summary panel state to return it to. Omitting the prop renders no control at all.
+      onCollapse={isTask ? undefined : collapseToSummary}
+      collapseLabel={t('summary.collapse')}
       badge={<TypeBadge type={item.type} />}
       itemKey={item.itemKey}
       title={
@@ -415,33 +428,4 @@ export function WorkItemDetailPage() {
       />
     </DetailLayout>
   )
-}
-
-// ── useWorkItemByKey hook ─────────────────────────────────────────────────────
-// Resolves a route item key to a work item via GET /v1/work-items/by-key, which
-// falls back to the tasks table server-side so task detail pages are reachable.
-
-import { useQuery } from '@tanstack/react-query'
-import { apiClient } from '@/shared/api/http-client'
-import { apiErrorMessage } from '@/shared/api/api-error'
-import { workItemKeys } from '@/features/work-items/api'
-
-function useWorkItemByKey(itemKey: string) {
-  // Keys are workspace-unique (Rally FormattedID) — resolve by key alone, no
-  // project context needed (the route /item/$itemKey carries no project).
-  return useQuery({
-    queryKey: workItemKeys.byKey(itemKey),
-    queryFn: async (): Promise<WorkItem | null> => {
-      const { data, error, response } = await apiClient.GET('/v1/work-items/by-key', {
-        params: { query: { itemKey } },
-      })
-      if (error) {
-        if (response.status === 404) return null
-        throw new Error(apiErrorMessage(error, response.status))
-      }
-      return (data as WorkItem | undefined) ?? null
-    },
-    enabled: !!itemKey,
-    staleTime: 15_000,
-  })
 }

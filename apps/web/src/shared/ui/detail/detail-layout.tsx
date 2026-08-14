@@ -19,10 +19,14 @@
  *   </DetailLayout>
  */
 import { useState, type ReactNode } from 'react'
-import { PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { Minimize2, PanelRightClose, PanelRightOpen } from 'lucide-react'
 
 import { DetailHeader } from '@/shared/ui/detail-header'
+import { IconButton } from '@/shared/ui/icon-button'
 import { DetailTabBar, type DetailTab } from '@/shared/ui/detail/detail-tab-bar'
+
+/** Fallback accessible name for the collapse control; callers pass a `t()` string. */
+const COLLAPSE_FALLBACK_LABEL = 'Collapse to summary panel'
 
 interface DetailLayoutProps {
   // ── Header (forwarded to DetailHeader) ───────────────────────────────────
@@ -38,6 +42,22 @@ interface DetailLayoutProps {
   status?: ReactNode
   /** Right-side action controls (save, delete menu…). */
   actions?: ReactNode
+  /**
+   * Collapse this full-page detail back to the *summary panel* on its list
+   * surface (WID-FR-003 / WID-AC-07, mockup `shared.tsx` → `WorkItemDetailPage.onMinimize`).
+   *
+   * Omit it and no control renders — the slot is opt-in because only a surface that HAS a
+   * summary panel to collapse into can honour it. It lives here rather than in each page's
+   * `actions` so the control's glyph, position (last before the divider + close) and
+   * accessible name cannot drift between detail surfaces, the same reason `onBack` does.
+   *
+   * This is NOT the close button: `onBack` leaves the item behind, `onCollapse` must keep it
+   * SELECTED on the surface it returns to. That is the whole of AC 7, and it is the caller's
+   * responsibility — this component only renders the affordance.
+   */
+  onCollapse?: () => void
+  /** Accessible name + tooltip for the collapse control. Pass a `t()` string. */
+  collapseLabel?: string
   /**
    * Entity-wide summary rendered BETWEEN the header and the tabs.
    *
@@ -66,12 +86,35 @@ export function DetailLayout({
   title,
   status,
   actions,
+  onCollapse,
+  collapseLabel,
   summary,
   tabs,
   activeTab,
   onTabChange,
   children,
 }: DetailLayoutProps) {
+  const collapseName = collapseLabel ?? COLLAPSE_FALLBACK_LABEL
+  // A real <button> via IconButton — so Enter/Space work and the control has an accessible
+  // name. Tuned for the navy bar like the header's own back/close controls.
+  const headerActions = onCollapse ? (
+    <>
+      {actions}
+      <IconButton
+        size="lg"
+        variant="ghost"
+        aria-label={collapseName}
+        title={collapseName}
+        onClick={onCollapse}
+        className="text-white/80 hover:bg-white/10 hover:text-white"
+      >
+        <Minimize2 size={17} />
+      </IconButton>
+    </>
+  ) : (
+    actions
+  )
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* ONE dark block: the header, and the tabs with it when there is no summary. Rally keeps
@@ -86,7 +129,7 @@ export function DetailLayout({
           itemKey={itemKey}
           title={title}
           status={status}
-          actions={actions}
+          actions={headerActions}
         />
         {!summary && <DetailTabBar tabs={tabs} activeTab={activeTab} onTabChange={onTabChange} />}
       </div>
