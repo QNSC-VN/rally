@@ -310,7 +310,7 @@ export class ReportingService {
               rank: i + 1,
               itemKey: f.itemKey,
               name: f.name,
-              teamLabel: f.teamName ?? '',
+              teamLabel: f.teamName ?? NO_TEAM_LABEL,
               row: () =>
                 this.directRow(f, i + 1, childrenByFeature.get(f.id) ?? [], release.id, unit),
             })),
@@ -337,7 +337,7 @@ export class ReportingService {
                 rank: i + 1,
                 itemKey: c.itemKey,
                 name: c.title,
-                teamLabel: c.teamName ?? '',
+                teamLabel: c.teamName ?? NO_TEAM_LABEL,
                 row: () => this.unparentedRow(c, i + 1, unit),
               })),
               refine,
@@ -475,7 +475,7 @@ export class ReportingService {
       id: feature.id,
       itemKey: feature.itemKey,
       name: feature.name,
-      teams: [{ id: feature.teamId, name: feature.teamName ?? '--' }],
+      teams: [{ id: feature.teamId, name: feature.teamName ?? NO_TEAM_LABEL }],
       issueType: 'feature',
       state: feature.state,
       childCount: allChildren.length,
@@ -499,7 +499,7 @@ export class ReportingService {
     unit: ChartUnit,
   ): ReleaseTrackingRow {
     const teams = new Map<string | null, string>();
-    for (const child of cause) teams.set(child.teamId, child.teamName ?? '--');
+    for (const child of cause) teams.set(child.teamId, child.teamName ?? NO_TEAM_LABEL);
     return {
       rank,
       id: feature.id,
@@ -526,7 +526,7 @@ export class ReportingService {
       id: child.id,
       itemKey: child.itemKey,
       name: child.title,
-      teams: [{ id: child.teamId, name: child.teamName ?? '--' }],
+      teams: [{ id: child.teamId, name: child.teamName ?? NO_TEAM_LABEL }],
       issueType: child.type,
       state: child.scheduleState,
       childCount: 0,
@@ -607,6 +607,20 @@ export class ReportingService {
 }
 
 /**
+ * The placeholder a team-less row prints, and SORTS BY.
+ *
+ * `''` and `'--'` were both in use: the row builders printed `'--'` while the sort keys built `''`,
+ * so a Team sort ordered a team-less row by a string the reader is never shown — and `derivedTeamLabel`
+ * joined the empty one into cells like ", Team Alpha". A team-agnostic row is now ordinary here (it
+ * counts inside every scope, see `inScope`), so this is the common case, not a rare one.
+ *
+ * Matches the SPA's `EMPTY_VALUE`, whose own docblock is emphatic that `'--'` and not an em-dash is
+ * what real Rally renders. Declared here rather than imported because `libs/shared-kernel` carries no
+ * display constants and a report string is not a domain fact.
+ */
+const NO_TEAM_LABEL = '--';
+
+/**
  * What a Derived row's Team column prints, as one sortable string.
  *
  * Its Team cell shows "the scoped child Team(s) that caused inclusion" (§5), which can be several,
@@ -615,7 +629,7 @@ export class ReportingService {
  */
 function derivedTeamLabel(cause: readonly ReleaseChild[]): string {
   const names = new Map<string | null, string>();
-  for (const child of cause) names.set(child.teamId, child.teamName ?? '');
+  for (const child of cause) names.set(child.teamId, child.teamName ?? NO_TEAM_LABEL);
   return [...names.values()].join(', ');
 }
 

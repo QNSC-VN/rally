@@ -261,6 +261,28 @@ difference is the whole design. Read this before changing a report or the snapsh
   history cannot be re-sliced on read, so without the column a team-scoped Burndown simply could
   not be served; a read picks exactly one series (team rows, or the All Teams row), never both.
   Team rows begin at 0093, so a team-scoped chart of older history is an honest gap.
+- **In Release Tracking, a team-agnostic row counts inside EVERY scope** — `inScope` admits
+  `teamId === null` under a selected Team, not just under All Teams. This is NOT the
+  `coalesce(item, iteration)` two-tier rule used elsewhere: a release owns no timebox, so there is no
+  second tier to fall back to, and the strict `team_id = ?` it replaced dropped the ordinary case
+  (`portfolio_items.team_id` and `work_items.team_id` are both nullable and mostly unset). The
+  per-Team totals therefore do not sum to All Teams, which is already this report's contract.
+  **The predicate is shared by the live report and by `ReportSnapshotService` on purpose** — one rule
+  for a measurement and for its own eligibility, the property whose absence caused the zero-point
+  Velocity bars. The cost of that sharing is that changing the rule changes what the FROZEN writer
+  records, and two things follow, both of which a future rule change must handle again:
+  `release_team_targets` is captured once per (release, team) with `onConflictDoNothing`, so already
+  captured targets keep the OLD population and the Ideal line sits permanently below its own bars —
+  migration 0116 deletes the team rows (never the All Teams row, whose population did not move) so the
+  next tick re-takes them under the same rule that measures the bars. And `release_daily_snapshots`
+  team rows written before 0116 measured the narrower population: an honest series break, recorded
+  here exactly like "team rows begin at 0093" above, never interpolated away.
+- **`GET /releases/:id/burndown` is gone** (with the Release detail progress panel and seven DTO
+  fields). It answered "how far along is this release?" from the same `release_daily_snapshots` rows as
+  Release Tracking but under a different definition — All Teams only, no scope control, no Ideal — so
+  two surfaces gave one release two numbers. FR-037 puts release progress in
+  `Portfolio > Release Tracking`; Phase 3 Release list/detail must not add a progress column or widget.
+  Do not re-add a progress reader here.
 - **The Phase 6 snapshot tables now have foreign keys.** `iteration_daily_snapshots` and
   `member_capacity` had NONE (verified against `pg_constraint`). Orphan snapshots happened to be
   unreachable through the API — deleting an iteration is blocked unless it is still `planning`, and

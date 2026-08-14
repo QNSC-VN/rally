@@ -12,12 +12,7 @@ import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platfor
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
-import {
-  capacityPlans,
-  releaseDailySnapshots,
-  workItems,
-  tasks,
-} from '../../../../../db/schema/work';
+import { capacityPlans, workItems, tasks } from '../../../../../db/schema/work';
 import { acceptedScheduleStatesSql, type ReleaseStatus } from '../../../../../db/schema/enums';
 import { IReleaseRepository, RELEASE_REPOSITORY } from '../domain/ports/release.repository';
 import type { Release, UpdateReleaseInput } from '../domain/release.types';
@@ -516,44 +511,6 @@ export class ReleasesService {
       'desc',
       Number(countRow?.total ?? 0),
     );
-  }
-
-  // ── Burndown ─────────────────────────────────────────────────────────────
-
-  async getReleaseBurndown(actor: JwtPayload, releaseId: string) {
-    await this.getReleaseForView(actor, releaseId);
-
-    // The ALL TEAMS row (`team_id IS NULL`) — this panel is the release's own history, not one
-    // Team's slice of it.
-    //
-    // Reads the Phase 6 columns, which is what finally gives this panel data: the legacy
-    // total/completed/remaining columns were only ever written by a method with no caller, so
-    // the table has rendered its empty state since it shipped. The response shape is unchanged
-    // (the panel's Date / Total / Done columns), but `completedPoints` now means ACCEPTED —
-    // {Accepted, Release} — rather than the old `Completed`-inclusive population that RT-AC-08
-    // rules out.
-    const snapshots = await this.db
-      .select({
-        date: releaseDailySnapshots.snapshotDate,
-        plannedPoints: releaseDailySnapshots.plannedPoints,
-        acceptedPoints: releaseDailySnapshots.acceptedPoints,
-        plannedCount: releaseDailySnapshots.plannedCount,
-        acceptedCount: releaseDailySnapshots.acceptedCount,
-      })
-      .from(releaseDailySnapshots)
-      .where(
-        and(eq(releaseDailySnapshots.releaseId, releaseId), isNull(releaseDailySnapshots.teamId)),
-      )
-      .orderBy(releaseDailySnapshots.snapshotDate, asc(releaseDailySnapshots.id));
-
-    return snapshots.map((s) => ({
-      date: s.date,
-      totalPoints: Number(s.plannedPoints),
-      completedPoints: Number(s.acceptedPoints),
-      remainingPoints: Number(s.plannedPoints) - Number(s.acceptedPoints),
-      totalItems: s.plannedCount,
-      completedItems: s.acceptedCount,
-    }));
   }
 
   // The snapshot WRITER deliberately does not live here.

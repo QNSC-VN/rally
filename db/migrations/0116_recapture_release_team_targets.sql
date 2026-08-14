@@ -1,0 +1,40 @@
+-- 0116 — re-take the per-Team release Ideal target after the team-scope rule changed.
+--
+-- WHY THIS IS NEEDED AT ALL
+--
+-- Release Tracking's scope predicate was `teamId === scope.teamId`, so a leaf carrying NO team was
+-- dropped from every team-scoped bucket. `portfolio_items.team_id` and `work_items.team_id` are both
+-- nullable and most rows leave them unset, so that predicate excluded the ordinary case — SQL equality
+-- never matches NULL, which is the same fault that once emptied Team Status and mis-credited Velocity.
+-- A team-agnostic row now counts INSIDE every scope (`inScope` in `domain/release-tracking.ts`).
+--
+-- That predicate is shared, deliberately, by the LIVE report and by `ReportSnapshotService` — one rule
+-- for the measurement and for its eligibility, which is the property worth having. The consequence is
+-- that it also changed what the snapshot writer measures:
+--
+--   * `release_team_targets` is captured ONCE per (release, team) with `onConflictDoNothing`, from the
+--     then-current planned scope (RT-BR-09 forbids deriving the Ideal from today's mutable Planned).
+--     Every pair captured before this migration therefore holds a target computed under the NARROW
+--     predicate, while the bars it is compared against now include team-agnostic work. `buildBurnup`
+--     compares the two directly, so the Ideal line would sit permanently BELOW its own bars — and it
+--     would do so only on releases that already have history, i.e. the ones anyone would check.
+--
+-- Deleting the team rows lets the next snapshot tick re-capture them under the same rule that measures
+-- the bars. Re-capture reads today's planned scope, which is not what RT-BR-09 wants in general; it is
+-- the honest option here because the stored value was computed under a definition the report no longer
+-- uses, and an unreachable Ideal is a worse answer than one re-baselined once, at a known migration.
+--
+-- WHAT IS DELIBERATELY LEFT ALONE
+--
+--   * `team_id IS NULL` — the All Teams row. `inScope` returned `true` for every team under the All
+--     Teams scope before this change too, so that population did not move and its target is still
+--     correct. Deleting it would re-baseline a value that was never wrong.
+--   * `release_daily_snapshots` — measurements of a past day, which cannot be recomputed and must not
+--     be invented (see "New business data" in CLAUDE.md). Team rows recorded before this migration
+--     measured the narrower population; that is an honest series break, recorded in CLAUDE.md next to
+--     the existing "team rows begin at 0093" note, exactly as that one is.
+--   * `iteration_team_baselines` — captured through `coalesce(task, parent, iteration)`, a different
+--     predicate that this change did not touch.
+
+DELETE FROM "work"."release_team_targets"
+WHERE "team_id" IS NOT NULL;

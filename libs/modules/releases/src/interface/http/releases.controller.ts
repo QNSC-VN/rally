@@ -187,17 +187,14 @@ export class ReleasesController {
     await this.releasesService.deleteRelease(user, id);
   }
 
-  @Get(':id/burndown')
-  @RequirePermission('release:view', { resource: 'release', from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'Get release burndown data' })
-  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiCommonErrors(400, 401, 404)
-  async getReleaseBurndown(
-    @CurrentUser() user: JwtPayload,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
-    return this.releasesService.getReleaseBurndown(user, id);
-  }
+  // `GET :id/burndown` is deliberately gone, with the panel it fed and the DTO fields beside it.
+  //
+  // FR-037 puts release progress in `Portfolio > Release Tracking`, and this route answered the same
+  // question from the same `release_daily_snapshots` rows under a DIFFERENT definition — its
+  // `completedPoints` was the All Teams accepted total with no scope control and no Ideal, so a reader
+  // comparing it with the report got two numbers for one release. Removing the panel left it with no
+  // consumer at all, which is the point at which "two sources" stops being a trade-off and is just the
+  // wrong one still shipping.
 
   // ── Release Artifacts (P3) ──────────────────────────────────────────
 

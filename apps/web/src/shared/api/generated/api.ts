@@ -1502,23 +1502,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/v1/releases/{id}/burndown': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get release burndown data */
-    get: operations['ReleasesController_getReleaseBurndown']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/v1/releases/{id}/artifacts': {
     parameters: {
       query?: never
@@ -10928,46 +10911,6 @@ export interface operations {
         content: {
           'application/json': components['schemas']['ActivityPageDto']
         }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  ReleasesController_getReleaseBurndown: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
