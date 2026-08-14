@@ -43,7 +43,6 @@ export class RoleDrizzleRepository implements IRoleRepository {
       name: row.name,
       slug: row.slug,
       description: row.description,
-      isSystem: row.isSystem,
       permissions: row.permissions as string[],
       createdAt: row.createdAt,
     };

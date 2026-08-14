@@ -26,6 +26,19 @@ export const systemRoles = accessSchema.table(
     name: varchar('name', { length: 100 }).notNull(),
     slug: varchar('slug', { length: 100 }).notNull(),
     description: text('description'),
+    /**
+     * VESTIGIAL — do not branch on this, and do not use it to mean "custom role".
+     *
+     * `db/seeds/bootstrap.ts` writes `false` for the workspace-owned EDITABLE COPIES of the tier
+     * roles, so on any seeded database `project_admin` and `project_member` carry `false` right beside
+     * a genuine custom role. A report keyed on this flag listed the two roles the whole access model
+     * depends on as deletable (caught before it reached a migration); the discriminator is the SLUG —
+     * anything outside `SYSTEM_ROLE` in `db/permissions.catalog.ts`.
+     *
+     * Nothing reads it any more: it is off the domain type, the response DTO and the SPA. The column
+     * survives only because dropping it needs a migration, and that belongs with the one that removes
+     * the leftover custom-role ROWS (`pnpm db:report:custom-roles` gates it).
+     */
     isSystem: boolean('is_system').notNull().default(false),
     permissions: jsonb('permissions').notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

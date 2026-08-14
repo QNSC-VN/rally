@@ -59,7 +59,6 @@ const role = (slug: string, permissions: string[]): SystemRole => ({
   name: slug,
   slug,
   description: null,
-  isSystem: true,
   permissions,
   createdAt: new Date(),
 });

@@ -20,7 +20,6 @@ function toRoleDto(r: SystemRole): RoleResponseDto {
     name: r.name,
     slug: r.slug,
     description: r.description,
-    isSystem: r.isSystem,
     permissions: r.permissions,
     createdAt: r.createdAt.toISOString(),
   };

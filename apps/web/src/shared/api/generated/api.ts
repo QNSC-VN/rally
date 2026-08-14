@@ -133,60 +133,8 @@ export interface paths {
     /** List all roles available to the workspace */
     get: operations['AccessController_listRoles']
     put?: never
-    /** Create a workspace custom role (workspace admin only) */
-    post: operations['AccessController_createRole']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/permissions': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List assignable permissions with their scope tier (workspace admin only) */
-    get: operations['AccessController_getPermissionCatalog']
-    put?: never
     post?: never
     delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/roles/{roleId}/permissions': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    /** Replace a custom role’s permission set (workspace admin only) */
-    patch: operations['AccessController_updateRolePermissions']
-    trace?: never
-  }
-  '/v1/roles/{roleId}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** Delete a workspace custom role (workspace admin only) */
-    delete: operations['AccessController_deleteRole']
     options?: never
     head?: never
     patch?: never
@@ -203,23 +151,6 @@ export interface paths {
     get: operations['AccessController_getUserAssignments']
     put?: never
     post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/role-assignments': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Assign a role to a user (workspace admin only) */
-    post: operations['AccessController_assignRole']
     delete?: never
     options?: never
     head?: never
@@ -2786,130 +2717,9 @@ export interface components {
       name: string
       slug: string
       description: string | null
-      isSystem: boolean
       permissions: string[]
       /** Format: date-time */
       createdAt: string
-    }
-    PermissionCatalogResponseDto: {
-      permissions: {
-        code: string
-        /** @enum {string} */
-        tier: 'workspace' | 'project'
-      }[]
-    }
-    CreateRoleDto: {
-      name: string
-      description?: string | null
-      /** @default [] */
-      permissions: (
-        | 'workspace:*'
-        | 'workspace:view'
-        | 'workspace:create'
-        | 'workspace:edit'
-        | 'workspace:delete'
-        | 'users:invite'
-        | 'users:remove'
-        | 'users:assign_role'
-        | 'roles:view'
-        | 'roles:edit'
-        | 'teams:create'
-        | 'teams:edit'
-        | 'teams:manage_members'
-        | 'audit:view'
-        | 'scm:manage'
-        | 'project:view'
-        | 'project:create'
-        | 'project:edit'
-        | 'project:archive'
-        | 'project:restore'
-        | 'project:delete'
-        | 'project:manage_members'
-        | 'work_item:view'
-        | 'work_item:create'
-        | 'work_item:edit'
-        | 'work_item:delete'
-        | 'iteration:view'
-        | 'iteration:create'
-        | 'iteration:edit'
-        | 'iteration:delete'
-        | 'timebox:view'
-        | 'release:view'
-        | 'release:create'
-        | 'release:edit'
-        | 'release:delete'
-        | 'team_status:view'
-        | 'team_status:edit'
-        | 'quality:view'
-        | 'milestone:view'
-        | 'milestone:create'
-        | 'milestone:edit'
-        | 'milestone:delete'
-        | 'portfolio:view'
-        | 'portfolio:create'
-        | 'portfolio:edit'
-        | 'portfolio:archive'
-        | 'capacity:view'
-        | 'capacity:manage'
-        | 'capacity:publish'
-        | 'capacity:view_draft'
-        | 'report:view'
-      )[]
-    }
-    UpdateRolePermissionsDto: {
-      permissions: (
-        | 'workspace:*'
-        | 'workspace:view'
-        | 'workspace:create'
-        | 'workspace:edit'
-        | 'workspace:delete'
-        | 'users:invite'
-        | 'users:remove'
-        | 'users:assign_role'
-        | 'roles:view'
-        | 'roles:edit'
-        | 'teams:create'
-        | 'teams:edit'
-        | 'teams:manage_members'
-        | 'audit:view'
-        | 'scm:manage'
-        | 'project:view'
-        | 'project:create'
-        | 'project:edit'
-        | 'project:archive'
-        | 'project:restore'
-        | 'project:delete'
-        | 'project:manage_members'
-        | 'work_item:view'
-        | 'work_item:create'
-        | 'work_item:edit'
-        | 'work_item:delete'
-        | 'iteration:view'
-        | 'iteration:create'
-        | 'iteration:edit'
-        | 'iteration:delete'
-        | 'timebox:view'
-        | 'release:view'
-        | 'release:create'
-        | 'release:edit'
-        | 'release:delete'
-        | 'team_status:view'
-        | 'team_status:edit'
-        | 'quality:view'
-        | 'milestone:view'
-        | 'milestone:create'
-        | 'milestone:edit'
-        | 'milestone:delete'
-        | 'portfolio:view'
-        | 'portfolio:create'
-        | 'portfolio:edit'
-        | 'portfolio:archive'
-        | 'capacity:view'
-        | 'capacity:manage'
-        | 'capacity:publish'
-        | 'capacity:view_draft'
-        | 'report:view'
-      )[]
     }
     RoleAssignmentResponseDto: {
       /** Format: uuid */
@@ -2925,16 +2735,6 @@ export interface components {
       grantedBy: string | null
       /** Format: date-time */
       createdAt: string
-    }
-    AssignRoleDto: {
-      /** Format: uuid */
-      userId: string
-      /** Format: uuid */
-      roleId: string
-      /** @enum {string} */
-      scopeType: 'global' | 'workspace' | 'project'
-      /** Format: uuid */
-      scopeId?: string
     }
     ProjectPermissionsResponseDto: {
       /** Format: uuid */
@@ -3268,7 +3068,7 @@ export interface components {
       displayName: string | null
       email: string | null
       avatarUrl: string | null
-      /** @description Active team_members rows for Teams linked to this project — same scoping as assertTeamScoped */
+      /** @description Active team_members rows for Teams linked to this project */
       teamCount: number
     }
     UpdateProjectMemberDto: {
@@ -5866,212 +5666,6 @@ export interface operations {
       }
     }
   }
-  AccessController_createRole: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateRoleDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['RoleResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AccessController_getPermissionCatalog: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PermissionCatalogResponseDto']
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AccessController_updateRolePermissions: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        roleId: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateRolePermissionsDto']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['RoleResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AccessController_deleteRole: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        roleId: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Role deleted */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
   AccessController_getUserAssignments: {
     parameters: {
       query?: never
@@ -6107,71 +5701,6 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AccessController_assignRole: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AssignRoleDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['RoleAssignmentResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
         headers: {
           [name: string]: unknown
         }
