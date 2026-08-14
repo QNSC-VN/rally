@@ -7,6 +7,7 @@ import type {
   CapacityPlanTeam,
   CapacityPlanView,
   CreateCapacityPlanInput,
+  PlanWindow,
   UpdateCapacityPlanInput,
 } from '../capacity-plan.types';
 
@@ -184,25 +185,32 @@ export interface ICapacityPlanRepository {
   /**
    * Write the plan's window — and optionally its release — onto one Feature.
    *
-   * `releaseId` omitted leaves the column ALONE, which is Rally's behaviour when the plan's
-   * window spans releases: the dates are still written, only the Release field is skipped.
+   * EVERY key here is "present means write it, absent means leave the column ALONE". `releaseId`
+   * omitted is Rally's behaviour when the plan's window does not match its release's: the dates are
+   * still written, only the Release field is skipped. `window` omitted is the same instruction about
+   * the dates, and it is why neither field is nullable — publish used to pass the plan's own
+   * `plannedStartDate` / `plannedEndDate` straight through, so publishing a plan with no window (the
+   * default, since the New Plan dialog collects none per SRS §5) wrote NULL over the planned window
+   * of every allocated Feature. A clear is now unrepresentable rather than merely unintended: there
+   * is no value this method accepts that empties a Feature's window.
+   *
+   * Resolves TRUE when a row was written; false means the Feature is archived and matched nothing.
    */
-  /** Resolves TRUE when a row was written; false means the Feature is archived and matched nothing. */
   applyPlanToFeature(
     portfolioItemId: string,
     workspaceId: string,
     /** The PLAN's project — filtered on, so a publish can never write across projects. */
     projectId: string,
-    fields: { plannedStartDate: string | null; plannedEndDate: string | null; releaseId?: string },
+    fields: { window?: PlanWindow; releaseId?: string },
     executor?: DbExecutor,
   ): Promise<boolean>;
 
   /**
    * Point one Feature at a release, touching NOTHING else.
    *
-   * `applyPlanToFeature` always writes the planned dates too, which is right for a publish and wrong
-   * for Rally's `Update the Release to match the selected plan` — that option moves the Feature's
-   * release and leaves its dates to the target plan's own publish.
+   * `applyPlanToFeature` writes the planned dates alongside the release, which is right for a publish
+   * and wrong for Rally's `Update the Release to match the selected plan` — that option moves the
+   * Feature's release and leaves its dates to the target plan's own publish.
    */
   setFeatureRelease(
     portfolioItemId: string,

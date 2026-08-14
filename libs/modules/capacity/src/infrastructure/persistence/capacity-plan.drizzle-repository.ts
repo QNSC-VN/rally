@@ -34,6 +34,7 @@ import type {
   CapacityPlanTeamView,
   CapacityPlanView,
   CreateCapacityPlanInput,
+  PlanWindow,
   UpdateCapacityPlanInput,
 } from '../../domain/capacity-plan.types';
 import type { ICapacityPlanRepository } from '../../domain/ports/capacity-plan.repository';
@@ -527,14 +528,6 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
     return rows[0] ?? null;
   }
 
-  /**
-   * Write the plan's window — and optionally its release — onto one Feature.
-   *
-   * `releaseId` is `undefined` when the plan's window spans releases: Rally updates the
-   * Release field "only when the start and end dates do not span releases", while the
-   * planned dates are written either way. Passing `undefined` leaves the column alone,
-   * which is different from `null` (clear it) and is why this is not a spread.
-   */
   async setFeatureRelease(
     portfolioItemId: string,
     workspaceId: string,
@@ -554,23 +547,28 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
       );
   }
 
+  /**
+   * Write what the publish was GIVEN onto one Feature, and nothing else.
+   *
+   * Both keys are additive: an omitted one leaves its column alone. That is why this is a built-up
+   * `set` and not a spread of the argument — a spread would put `undefined` in the object, which
+   * Drizzle also skips, but it would let a `null` reach the column just as easily. Publish stamping
+   * the plan's own nullable dates unconditionally is exactly how it came to ERASE the planned window
+   * of every allocated Feature on a plan that had none of its own.
+   */
   async applyPlanToFeature(
     portfolioItemId: string,
     workspaceId: string,
     projectId: string,
-    fields: {
-      plannedStartDate: string | null;
-      plannedEndDate: string | null;
-      releaseId?: string;
-    },
+    fields: { window?: PlanWindow; releaseId?: string },
     executor?: DbExecutor,
   ): Promise<boolean> {
     const exec = executor ?? this.db;
-    const set: Record<string, unknown> = {
-      plannedStartDate: fields.plannedStartDate,
-      plannedEndDate: fields.plannedEndDate,
-      updatedAt: new Date(),
-    };
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+    if (fields.window !== undefined) {
+      set.plannedStartDate = fields.window.start;
+      set.plannedEndDate = fields.window.end;
+    }
     if (fields.releaseId !== undefined) set.releaseId = fields.releaseId;
 
     // `returning` so the caller can tell a WRITE from a no-op: the `archivedAt` filter means an

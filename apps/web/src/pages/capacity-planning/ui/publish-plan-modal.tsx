@@ -34,6 +34,15 @@ export function PublishPlanModal({ plan, onClose }: { plan: CapacityPlan; onClos
   )
   const [error, setError] = useState<string | null>(null)
 
+  /**
+   * A plan has a window only when BOTH dates are set — the same rule the server's `planWindow`
+   * applies, and the reason this is checked here at all: with no window `Publish and update fields`
+   * writes nothing to any Feature (AC-019 refuses the Release field too), so the planner is told
+   * BEFORE the click rather than reading a list of `no_window` skips afterwards. Published plans are
+   * read-only, so the fix — `Edit Plan Details` — is only reachable by reverting to draft first.
+   */
+  const hasWindow = Boolean(plan.plannedStartDate && plan.plannedEndDate)
+
   async function run(updateFields: boolean) {
     setError(null)
     try {
@@ -68,6 +77,7 @@ export function PublishPlanModal({ plan, onClose }: { plan: CapacityPlan; onClos
               <li>{t('publish.releaseRule')}</li>
               <li>{t('publish.revertWarning')}</li>
             </ul>
+            {!hasWindow && <p className="text-ui-sm text-warning">{t('publish.noWindowNote')}</p>}
           </>
         ) : (
           <div role="status" className="space-y-2">

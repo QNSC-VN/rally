@@ -14,7 +14,13 @@ import type { CapacityPlan, PublishResult } from '@/features/capacity-planning/a
 
 const mockPOST = apiClient.POST as ReturnType<typeof vi.fn>
 
-const plan = { id: 'plan-1', name: 'Q3', status: 'draft' } as unknown as CapacityPlan
+const plan = {
+  id: 'plan-1',
+  name: 'Q3',
+  status: 'draft',
+  plannedStartDate: '2026-07-01',
+  plannedEndDate: '2026-07-31',
+} as unknown as CapacityPlan
 
 const result = (over: Partial<PublishResult> = {}): PublishResult =>
   ({
@@ -25,14 +31,14 @@ const result = (over: Partial<PublishResult> = {}): PublishResult =>
     ...over,
   }) as PublishResult
 
-function renderModal() {
+function renderModal(over: Partial<CapacityPlan> = {}) {
   const onClose = vi.fn()
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   const wrap = (node: ReactNode) =>
     render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>)
-  wrap(<PublishPlanModal plan={plan} onClose={onClose} />)
+  wrap(<PublishPlanModal plan={{ ...plan, ...over }} onClose={onClose} />)
   return { onClose }
 }
 
@@ -52,6 +58,23 @@ describe('PublishPlanModal', () => {
     expect(screen.getByText(/planned start and end dates/)).toBeTruthy()
     expect(screen.getByText(/only when the plan’s window falls inside its release/)).toBeTruthy()
     expect(screen.getByText(/does NOT undo these field values/)).toBeTruthy()
+  })
+
+  it('says up front when the plan has NO window, because then nothing will be written', () => {
+    /**
+     * A plan created through the New Plan dialog has no window — SRS §5 gives it six fields and no
+     * dates — so `Publish and update fields` writes nothing to any Feature, and it used to write NULL
+     * over each one's own planned window instead. The server now leaves them alone and reports
+     * `no_window`; this is the same fact said BEFORE the click, because a published plan is read-only
+     * and setting the window afterwards means reverting to draft first.
+     */
+    renderModal({ plannedStartDate: null, plannedEndDate: null })
+    expect(screen.getByText(/no dates or Release will be written/)).toBeTruthy()
+  })
+
+  it('says nothing of the sort when the plan HAS a window', () => {
+    renderModal()
+    expect(screen.queryByText(/no dates or Release will be written/)).toBeNull()
   })
 
   it('offers both of Rally’s publish choices as separate acts', () => {
