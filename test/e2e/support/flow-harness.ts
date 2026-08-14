@@ -167,38 +167,22 @@ export function makeActor(userId: string, permissions: string[] = []): JwtPayloa
 export const adminActor = (): JwtPayload => makeActor(ADMIN_USER_ID, ['workspace:*']);
 
 /**
- * Read-only actor — a view-only principal.
+ * A seeded user holding NO project grant — the No Access principal.
  *
- * The permission list on a principal is INERT: authorization resolves from the
- * database on every check, so a fixture cannot grant itself anything by declaring
- * it here. This actor therefore needs a real grant in the database — call
- * {@link ensureViewerGrant} in a spec's `beforeAll` before using it.
+ * Named `viewer` for the seeded fixture user it wraps, not for a level: §2.2 lists two levels (`Admin`
+ * and `Editor`) and makes No Access the ABSENCE of an active `project_members` row. The BA removed
+ * `Viewer` (`product-docs` 55e7dbb).
  *
- * (It used to work the other way: the token carried
- * `['project:view', 'work_item:view']` and the guard read that list, which is
- * exactly the snapshot authority that was removed.)
+ * It used to be a read-only principal backed by a workspace-owned CUSTOM ROLE assigned at WORKSPACE
+ * scope, arranged by an `ensureViewerGrant` helper. Both halves are gone — custom roles by ruling
+ * (AC-11), and the workspace-scoped shape because one row granting project-tier codes across every
+ * project IS the over-grant migration 0111 removed. So there is nothing to arrange: use this actor for
+ * the denied case, and `grantProjectAccess` when a spec needs a principal that CAN do something.
+ *
+ * The permission list on a principal is INERT either way — authorization resolves from the database on
+ * every check, so a fixture cannot grant itself anything by declaring a list here.
  */
 export const viewerActor = (): JwtPayload => makeActor(VIEWER_ID);
-
-/**
- * Give {@link viewerActor} a REAL read-only grant: per-Project `editor` on the seeded project.
- *
- * `ACCESS_LEVEL_PERMISSIONS.editor` is EXACTLY `project:view` + `work_item:view` and six other
- * delivery codes, which is what this principal has always been used for — a caller with genuine
- * access to the project but none of the codes any spec here puts under test.
- *
- * It used to create a workspace-owned CUSTOM ROLE holding those two codes and assign it at workspace
- * scope. Custom roles were deleted by ruling (2026-08-14, AC-11), and that fixture was itself the
- * anti-pattern the ruling targets: a workspace-scoped grant of project-tier codes across every
- * project, which is what migration 0111 removed. Going through `grantProjectAccess` also exercises the
- * real permission-cache invalidation, so a spec asserting a grant is visible on the NEXT request is
- * testing the invalidation rather than a TTL expiry.
- *
- * Idempotent (the underlying write upserts), so every spec can call it in `beforeAll`.
- */
-export async function ensureViewerGrant(app: INestApplication): Promise<void> {
-  await grantProjectAccess(app, VIEWER_ID, SEEDED.nxp.projectId, 'editor');
-}
 
 /**
  * Grant a user per-Project access at `admin` or `editor` — the ONLY supported way to give someone
