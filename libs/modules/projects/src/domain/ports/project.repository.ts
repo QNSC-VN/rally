@@ -41,7 +41,8 @@ export interface IProjectRepository {
     workspaceId: string,
     tx?: DbExecutor,
   ): Promise<Project>;
-  softDelete(id: string, workspaceId: string): Promise<void>;
+  /** `tx` so the delete and its `project.deleted` audit emit share one transaction (§8). */
+  softDelete(id: string, workspaceId: string, tx?: DbExecutor): Promise<void>;
   /** Seed workspace-wide item counters (per type). Idempotent. */
   initCounter(workspaceId: string, tx?: DbExecutor): Promise<void>;
   /** Allocate the next workspace-wide sequence for a type (Rally FormattedID). */

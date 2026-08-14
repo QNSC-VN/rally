@@ -827,6 +827,20 @@
       "when": 1788334203005,
       "tag": "0116_recapture_release_team_targets",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1788334303005,
+      "tag": "0117_project_settings_for_every_project",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1788334403005,
+      "tag": "0118_workspace_admin_is_not_a_project_member",
+      "breakpoints": true
     }
   ]
 }

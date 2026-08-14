@@ -119,6 +119,8 @@ const makeProjectTeamRepo = () => ({
 
 const makeProjectMemberRepo = () => ({
   listByProject: vi.fn().mockResolvedValue([]),
+  // §2.1 — no Workspace Admin by default; the RBE-03 tests set this.
+  listWorkspaceAdminUserIds: vi.fn().mockResolvedValue([]),
   findMember: vi.fn().mockResolvedValue(null),
   addMember: vi.fn().mockResolvedValue(undefined),
   updateMember: vi.fn().mockResolvedValue(undefined),
@@ -138,12 +140,18 @@ const makeWorkspaceMemberRepo = () => ({
 const makeUow = () => {
   // `updateEstimationSettings` writes via `tx.insert(projectSettings).values().onConflictDoUpdate()`;
   // the default `{}` tx made `tx.insert` undefined. Expose `tx` so a test can assert the upsert ran.
+  // `createProject` also upserts work.project_settings, and the row it writes is the point of
+  // the PRJ-06 fix — so the values are captured, not discarded.
+  const inserted: Array<Record<string, unknown>> = [];
   const tx = {
     insert: vi.fn(() => ({
-      values: () => ({ onConflictDoUpdate: () => Promise.resolve(undefined) }),
+      values: (v: Record<string, unknown>) => {
+        inserted.push(v);
+        return { onConflictDoUpdate: () => Promise.resolve(undefined) };
+      },
     })),
   };
-  return { run: vi.fn((fn: (tx: unknown) => unknown) => fn(tx)), tx };
+  return { run: vi.fn((fn: (tx: unknown) => unknown) => fn(tx)), tx, inserted };
 };
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -198,6 +206,9 @@ describe('ProjectsService', () => {
           useValue: {
             listReadableProjectIds: vi.fn().mockResolvedValue(null),
             invalidateUser: vi.fn().mockResolvedValue(undefined),
+            // Archive/restore is WA-only; these specs run as one.
+            hasPermission: vi.fn().mockResolvedValue(true),
+            getProjectAccessLevel: vi.fn().mockResolvedValue(null),
           },
         },
         {
@@ -243,6 +254,63 @@ describe('ProjectsService', () => {
       );
       // 4 default statuses + 1 counter init
       expect(statusRepo.create).toHaveBeenCalledTimes(4);
+    });
+
+    /**
+     * PRJ-06. §4.2 makes the estimate scale a Create Project field; it used to arrive through a
+     * second, best-effort PATCH the SPA skipped whenever the values equalled the defaults, so the
+     * common path created a project with NO `work.project_settings` row at all.
+     */
+    it('writes the caller-supplied estimation settings inside the create transaction', async () => {
+      projectRepo.create.mockResolvedValue(mockProject());
+      statusRepo.create.mockResolvedValue(mockStatus());
+
+      await service.createProject(mockActor, {
+        key: 'proj',
+        name: 'Test Project',
+        estimationSettings: {
+          xsPoints: 2,
+          sPoints: 4,
+          mPoints: 6,
+          lPoints: 10,
+          xlPoints: 20,
+          hoursPerPoint: 6.5,
+        },
+      });
+
+      // The SAME tx the project, counter, statuses and team links were written in.
+      expect(uow.inserted).toEqual([
+        expect.objectContaining({
+          workspaceId: 'ws-1',
+          xsPoints: 2,
+          sPoints: 4,
+          mPoints: 6,
+          lPoints: 10,
+          xlPoints: 20,
+          // numeric(8,2) is written as a string.
+          hoursPerPoint: '6.5',
+        }),
+      ]);
+    });
+
+    it('writes the DEFAULT scale when the caller supplies none — the ROW is never optional', async () => {
+      projectRepo.create.mockResolvedValue(mockProject());
+      statusRepo.create.mockResolvedValue(mockStatus());
+
+      await service.createProject(mockActor, { key: 'proj', name: 'Test Project' });
+
+      // Every project has a settings row; only the OVERRIDE is optional. Defaults mirror
+      // migration 0106's column DEFAULTs and DEFAULT_PRELIMINARY_ESTIMATE_MAP.
+      expect(uow.inserted).toEqual([
+        expect.objectContaining({
+          xsPoints: 1,
+          sPoints: 3,
+          mPoints: 5,
+          lPoints: 8,
+          xlPoints: 13,
+          hoursPerPoint: '8',
+        }),
+      ]);
     });
 
     it('normalises project key to uppercase', async () => {
@@ -509,6 +577,98 @@ describe('ProjectsService', () => {
     });
   });
 
+  /**
+   * RBE-03. AC-8 / §2.1: "a Workspace Admin is not added as a Project user or Team member." The
+   * seed writes the row and migration 0104 promoted it to `access_level = 'admin'`, and nothing
+   * anti-joined it anywhere — so a WA was a member of every project in the workspace, and
+   * offerable again as one.
+   */
+  describe('Workspace Admin is not a project member (§2.1)', () => {
+    it('filters Workspace Admins out of the project roster', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      projectMemberRepo.listWorkspaceAdminUserIds.mockResolvedValue(['wa-1']);
+      projectMemberRepo.listByProject.mockResolvedValue([
+        { id: 'pm-1', userId: 'wa-1', accessLevel: 'admin' },
+        { id: 'pm-2', userId: 'user-2', accessLevel: 'editor' },
+      ]);
+
+      const roster = await service.listProjectMembers('ws-1', 'proj-1', 'user-1');
+
+      expect(roster.map((m) => m.userId)).toEqual(['user-2']);
+    });
+
+    it('REFUSES adding a Workspace Admin as a project member', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'wa-1', status: 'active' });
+      projectMemberRepo.listWorkspaceAdminUserIds.mockResolvedValue(['wa-1']);
+
+      // Refused, not silently dropped: the roster now hides these rows, so a row created here
+      // would be an invisible grant the moment the user stops being a Workspace Admin.
+      await expect(
+        service.addProjectMember('ws-1', 'proj-1', 'wa-1', 'admin', 'editor'),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(projectMemberRepo.addMember).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * PRJ-03. "Archived Projects are read-only regardless of access level" (PRJ-FR-010) held in four
+   * other modules and in NONE of this one's own writes, though `assertProjectWritable` is a
+   * sibling method in the same class. Reads stay open — archived means read-only, not invisible —
+   * and the three member writes stay open so access can still be revoked.
+   */
+  describe('an archived project refuses its own configuration writes (PRJ-FR-010)', () => {
+    beforeEach(() => {
+      projectRepo.findById.mockResolvedValue(mockProject({ status: 'archived' }));
+    });
+
+    it('refuses a new workflow status', async () => {
+      await expect(
+        service.createStatus('ws-1', 'proj-1', { name: 'Blocked', category: 'to_do', position: 4 }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(statusRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses a new label', async () => {
+      await expect(service.createLabel('ws-1', 'proj-1', 'urgent')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(labelRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses an estimation-settings edit', async () => {
+      await expect(
+        service.updateEstimationSettings(mockActor, 'proj-1', { mPoints: 50 }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(audit.emit).not.toHaveBeenCalled();
+    });
+
+    it('refuses a team link', async () => {
+      teamService.listTeams.mockResolvedValue([{ id: 'team-1' }]);
+      await expect(service.linkTeam('ws-1', 'proj-1', 'team-1')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(projectTeamRepo.linkTeam).not.toHaveBeenCalled();
+    });
+
+    it('still LISTS its statuses — archived is read-only, not invisible', async () => {
+      statusRepo.listByProject.mockResolvedValue([mockStatus()]);
+      await expect(service.listStatuses('ws-1', 'proj-1')).resolves.toHaveLength(1);
+    });
+
+    it('still allows REVOKING a member — access is not the project content', async () => {
+      projectMemberRepo.findMember.mockResolvedValue({
+        id: 'pm-1',
+        userId: 'user-2',
+        accessLevel: 'editor',
+      });
+      await expect(
+        service.removeProjectMember('ws-1', 'proj-1', 'user-2', 'user-1'),
+      ).resolves.toBeUndefined();
+      expect(projectMemberRepo.removeMember).toHaveBeenCalled();
+    });
+  });
+
   describe('createTransition', () => {
     const transitionInput = { fromStatusId: 'status-1', toStatusId: 'status-2', name: 'Start' };
 
@@ -592,6 +752,23 @@ describe('ProjectsService', () => {
       expect(result.name).toBe('Renamed');
     });
 
+    /**
+     * PRJ-05 / RBE-12. Restoring an archived project was audited as `project.updated` —
+     * indistinguishable in the Audit Log from a rename, on the one write that brings a read-only
+     * project back into use. §8 audits it as its own administrative event.
+     */
+    it('audits a restore as project.restored, not project.updated', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject({ status: 'archived' }));
+      projectRepo.update.mockResolvedValue(mockProject({ status: 'active' }));
+
+      await service.updateProject(mockActor, 'proj-1', { status: 'active' });
+
+      expect(audit.emit).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'project.restored', resourceId: 'proj-1' }),
+        expect.anything(),
+      );
+    });
+
     it('rejects an end date before the existing start date (merged validation)', async () => {
       projectRepo.findById.mockResolvedValue(mockProject({ startDate: '2026-07-01' }));
 
@@ -608,9 +785,36 @@ describe('ProjectsService', () => {
     it('soft-deletes project', async () => {
       projectRepo.findById.mockResolvedValue(mockProject());
 
-      await service.deleteProject('ws-1', 'proj-1');
+      await service.deleteProject(mockActor, 'proj-1');
 
-      expect(projectRepo.softDelete).toHaveBeenCalledWith('proj-1', 'ws-1');
+      expect(projectRepo.softDelete).toHaveBeenCalledWith('proj-1', 'ws-1', expect.anything());
+    });
+
+    /**
+     * PRJ-05 / RBE-12. §8 makes deleting a project an administrative audit event, and
+     * `project.deleted` did not exist as an action — the most destructive write in the module was
+     * the one mutation the Audit Log could not show. Emitted in the SAME transaction as the
+     * delete, like every other emit here, so the outbox row cannot diverge from the state change.
+     */
+    it('emits project.deleted inside the same transaction as the soft delete', async () => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+
+      await service.deleteProject(mockActor, 'proj-1');
+
+      expect(audit.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'project.deleted',
+          resourceType: 'project',
+          resourceId: 'proj-1',
+          workspaceId: 'ws-1',
+          actor: { id: mockActor.sub },
+          // Names WHAT was deleted, not merely that something was.
+          changes: { before: expect.objectContaining({ key: 'PROJ' }) },
+        }),
+        // The tx handed to the uow callback — the same one softDelete received above.
+        uow.tx,
+      );
+      expect(uow.run).toHaveBeenCalled();
     });
   });
 
