@@ -36,11 +36,11 @@ import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { notify } from '@/shared/lib/toast'
-
-const ACCESS_OPTIONS = [
-  { value: 'admin', label: 'Admin' },
-  { value: 'editor', label: 'Editor' },
-] as const
+import {
+  accessSelectOptions,
+  requiresTeamSelection,
+  type AccessLevel,
+} from '@/shared/config/access-levels'
 
 export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA: boolean }) {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
@@ -55,7 +55,7 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
     `${m.displayName ?? ''} ${m.email ?? ''}`.toLowerCase().includes(query.toLowerCase()),
   )
 
-  function handleChange(member: ProjectMember, level: 'admin' | 'editor') {
+  function handleChange(member: ProjectMember, level: AccessLevel) {
     // NULL access_level rows are team-derived: their `id` is a team_members id,
     // and PATCHing it 404s. POST upserts (BE sets the level on the existing
     // row or creates the explicit grant).
@@ -164,8 +164,8 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
                     variant="cell"
                     value={m.accessLevel}
                     ariaLabel={`Access level for ${m.displayName ?? m.email ?? m.userId}`}
-                    options={ACCESS_OPTIONS as unknown as SelectOption[]}
-                    onChange={(v) => handleChange(m, v as 'admin' | 'editor')}
+                    options={accessSelectOptions}
+                    onChange={(v) => handleChange(m, v as AccessLevel)}
                   />
                 ) : (
                   <span className="text-ui-sm text-foreground-subtle capitalize">
@@ -251,7 +251,7 @@ function AddExistingUserModal({
   const addMember = useAddProjectMember(projectId)
   const addTeamMember = useAddTeamMember()
   const [userId, setUserId] = useState<string | null>(null)
-  const [level, setLevel] = useState<'admin' | 'editor'>('editor')
+  const [level, setLevel] = useState<AccessLevel>('editor')
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
 
   // Workspace Admin is company-level only — never a Project member candidate (§2).
@@ -279,7 +279,7 @@ function AddExistingUserModal({
       { userId: newUserId, accessLevel: level },
       {
         onSuccess: async () => {
-          if (level === 'editor' && selectedTeamIds.length > 0) {
+          if (requiresTeamSelection(level) && selectedTeamIds.length > 0) {
             await Promise.all(
               selectedTeamIds.map((teamId) =>
                 addTeamMember
@@ -321,8 +321,8 @@ function AddExistingUserModal({
             variant="field"
             value={level}
             ariaLabel="Access level"
-            options={ACCESS_OPTIONS as unknown as SelectOption[]}
-            onChange={(v) => setLevel(v as 'admin' | 'editor')}
+            options={accessSelectOptions}
+            onChange={(v) => setLevel(v as AccessLevel)}
           />
           <p className="text-ui-xs text-foreground-subtle">
             {level === 'admin'
@@ -330,7 +330,7 @@ function AddExistingUserModal({
               : 'Editor access is scoped to the teams selected below.'}
           </p>
         </div>
-        {level === 'editor' && (
+        {requiresTeamSelection(level) && (
           <div className="space-y-1.5">
             <p className="text-ui-sm font-medium text-foreground">Teams</p>
             <SearchableSelect

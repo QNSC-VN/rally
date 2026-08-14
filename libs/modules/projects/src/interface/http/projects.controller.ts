@@ -13,6 +13,7 @@ import {
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors, ApiPagedResponse, buildPageArgs } from '@platform';
 import type { JwtPayload, PagedResult } from '@platform';
+import type { ProjectAccessLevel } from '@shared-kernel';
 import { CurrentUser } from '@modules/identity';
 import { RequirePermission, AuthPolicy, AuthorizedInService } from '@modules/access';
 import {
@@ -129,7 +130,7 @@ function toProjectMemberDto(m: ProjectMember): ProjectMemberResponseDto {
     workspaceId: m.workspaceId,
     projectId: m.projectId,
     userId: m.userId,
-    accessLevel: (m.accessLevel as 'admin' | 'editor' | null) ?? null,
+    accessLevel: (m.accessLevel as ProjectAccessLevel | null) ?? null,
     status: m.status,
     joinedAt: m.joinedAt instanceof Date ? m.joinedAt.toISOString() : m.joinedAt,
     updatedAt: m.updatedAt instanceof Date ? m.updatedAt.toISOString() : m.updatedAt,
@@ -253,9 +254,22 @@ export class ProjectsController {
 
   // ── Update project ─────────────────────────────────────────────────────────
 
+  // ── STRUCTURAL, so Workspace Admin only ──────────────────────────────────
+  //
+  // SRS §3.1 marks "Create, edit, archive, restore or delete Project" and "Create, edit, deactivate
+  // or restore Team" Hidden for a per-Project `Admin`, and gives "View Project Details and Teams"
+  // to Admin as Read-only. `project:edit` is in the Admin access-level set — deliberately, because
+  // it also gates label and workflow-status configuration, which §3.1's own summary DOES give Admin
+  // ("`Admin` is powerful for delivery management"). So gating this route on `project:edit` let a
+  // Project Admin rename the project, reassign its owner and move its dates.
+  //
+  // `workspace:edit` is workspace-tier and held only by the Workspace Admin, so no project scope is
+  // resolved by the guard; the service re-scopes the id to the caller's workspace itself, which is
+  // why a WA from another workspace still gets a 404 rather than cross-workspace write access. Same
+  // shape, and the same reasoning, as `PATCH :id/estimation-settings` below.
   @Patch(':id')
-  @RequirePermission('project:edit', { from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'Update project' })
+  @RequirePermission('workspace:edit')
+  @ApiOperation({ summary: 'Update project (Workspace Admin only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ProjectResponseDto })
   @ApiCommonErrors(400, 401, 404, 422)
@@ -478,9 +492,11 @@ export class ProjectsController {
     return this.projectsService.listProjectTeams(user.workspaceId, id);
   }
 
+  // Linking a Team to a Project is Team CONFIGURATION, which §3.1 reserves for the Workspace Admin
+  // (Admin: Hidden). See the note on `PATCH :id` for why `project:edit` cannot express that.
   @Post(':id/teams')
-  @RequirePermission('project:edit', { from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'Link a team to a project' })
+  @RequirePermission('workspace:edit')
+  @ApiOperation({ summary: 'Link a team to a project (Workspace Admin only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(400, 401, 404, 409, 422)
   async linkTeam(
@@ -493,8 +509,9 @@ export class ProjectsController {
 
   @Delete(':id/teams/:teamId')
   @HttpCode(204)
-  @RequirePermission('project:edit', { from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'Unlink a team from a project' })
+  // Workspace Admin only, as with the link above (§3.1).
+  @RequirePermission('workspace:edit')
+  @ApiOperation({ summary: 'Unlink a team from a project (Workspace Admin only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiParam({ name: 'teamId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 204, description: 'Team unlinked' })
@@ -538,7 +555,7 @@ export class ProjectsController {
   async addProjectMember(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: { userId: string; accessLevel?: 'admin' | 'editor' },
+    @Body() dto: { userId: string; accessLevel?: ProjectAccessLevel },
   ): Promise<ProjectMemberResponseDto> {
     const member = await this.projectsService.addProjectMember(
       user.workspaceId,

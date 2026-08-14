@@ -6,6 +6,7 @@ import { useMemo } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
+import type { AccessLevel } from '@/shared/config/access-levels'
 
 // ── Types (generated schema uses Record<string,never> for team types) ─────────
 
@@ -48,7 +49,7 @@ export interface ProjectMember {
   userId: string
   workspaceId: string
   projectId: string
-  accessLevel: 'admin' | 'editor' | null
+  accessLevel: AccessLevel | null
   status: string
   displayName?: string
   email?: string
@@ -314,7 +315,7 @@ export function useUpdateProjectAccess(projectId: string) {
       accessLevel,
     }: {
       memberId: string
-      accessLevel: 'admin' | 'editor'
+      accessLevel: AccessLevel
     }) => {
       const { error, response } = await apiClient.PATCH('/v1/projects/{id}/members/{memberId}', {
         params: { path: { id: projectId, memberId } },
@@ -334,13 +335,7 @@ export function useUpdateProjectAccess(projectId: string) {
  */
 export function useAddProjectMember(projectId: string) {
   return useMutation({
-    mutationFn: async ({
-      userId,
-      accessLevel,
-    }: {
-      userId: string
-      accessLevel?: 'admin' | 'editor'
-    }) => {
+    mutationFn: async ({ userId, accessLevel }: { userId: string; accessLevel?: AccessLevel }) => {
       const { data, error, response } = await apiClient.POST('/v1/projects/{id}/members', {
         params: { path: { id: projectId } },
         body: { userId, ...(accessLevel ? { accessLevel } : {}) } as never as never,

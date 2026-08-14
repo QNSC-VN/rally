@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PROJECT_ACCESS_LEVEL } from '@shared-kernel';
 import { createZodDto } from 'nestjs-zod';
 import { ISO_DATE, PageQuerySchema } from '@platform';
 import { projectStatusEnum, projectMemberStatusEnum } from '../../../../../../../db/schema/enums';
@@ -66,7 +67,7 @@ export class UpdateLabelDto extends createZodDto(UpdateLabelSchema) {}
 // ── Update Project Member ─────────────────────────────────────────────────────
 
 export const UpdateProjectMemberSchema = z.object({
-  accessLevel: z.enum(['admin', 'editor']).optional(),
+  accessLevel: z.enum(PROJECT_ACCESS_LEVEL).optional(),
   status: z.enum(projectMemberStatusEnum.enumValues).optional(),
 });
 

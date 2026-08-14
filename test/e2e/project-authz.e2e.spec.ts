@@ -57,7 +57,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AccessService } from '@modules/access';
 import { AppModule } from '../../apps/api/src/app.module';
-import { PAY_PROJECT_ID, SEED_PROJECTS, WORKSPACE_ID } from '../../db/seeds/constants';
+import {
+  PAY_PROJECT_ID,
+  SEED_PROJECTS,
+  TEAM_ALPHA_ID,
+  WORKSPACE_ID,
+} from '../../db/seeds/constants';
+import { grantProjectAccess } from './support/flow-harness';
 
 const NXP = SEED_PROJECTS[0].id;
 const PAY = PAY_PROJECT_ID;
@@ -79,6 +85,33 @@ const projectScopedReads = (projectId: string) => [
   `/projects/${projectId}/teams`,
   `/projects/${projectId}/estimation-settings`,
 ];
+
+/**
+ * Routes that edit the PROJECT ITSELF or its Team links — structural, so Workspace Admin only.
+ *
+ * SRS §3.1 marks "Create, edit, archive, restore or delete Project" and "Create, edit, deactivate or
+ * restore Team" Hidden for a per-Project Admin. These three carried `project:edit`, which IS in the
+ * Admin access-level set, so a Project Admin could rename the project, reassign its owner and move
+ * its dates, and link or unlink its Teams.
+ */
+const structuralWrites = (projectId: string) =>
+  [
+    {
+      method: 'PATCH' as const,
+      url: `/projects/${projectId}`,
+      payload: { name: 'Renamed by test' },
+    },
+    {
+      method: 'POST' as const,
+      url: `/projects/${projectId}/teams`,
+      payload: { teamId: TEAM_ALPHA_ID },
+    },
+    {
+      method: 'DELETE' as const,
+      url: `/projects/${projectId}/teams/${TEAM_ALPHA_ID}`,
+      payload: undefined,
+    },
+  ] as const;
 
 /** Admin-only surfaces the removed `workspace:view` floor used to open to everyone. */
 const WORKSPACE_ADMIN_ONLY_READS = [
@@ -128,6 +161,44 @@ describe('project-scoped routes: authorization over HTTP (e2e)', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: body,
     });
+  }
+
+  function send(
+    spec: { method: 'PATCH' | 'POST' | 'DELETE'; url: string; payload?: Record<string, unknown> },
+    token: string,
+  ) {
+    return app.inject({
+      method: spec.method,
+      url: spec.url,
+      headers: { authorization: `Bearer ${token}` },
+      ...(spec.payload ? { payload: spec.payload } : {}),
+    });
+  }
+
+  /**
+   * A fresh principal at a given level on a given project, built through the real paths.
+   *
+   * Dedicated per test rather than reusing `dev@qnsc.dev`: `work.project_members` survives until the
+   * next fixture reset, so granting a shared fixture user a level changes what later specs see. That
+   * exact mistake made `read-scoping.e2e.spec.ts` pass while asserting the opposite of the contract.
+   */
+  async function principalAt(
+    level: 'admin' | 'editor' | 'viewer',
+    projectId: string,
+  ): Promise<string> {
+    const claims: EntraClaims = {
+      oid: `authz-${level}-${randomUUID()}`,
+      email: `authz-${level}-${randomUUID().slice(0, 8)}@qnsc.vn`,
+      displayName: `E2E ${level}`,
+      externalTenantId: 'dev-tenant',
+      roles: [],
+    };
+    const { accessToken } = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
+    const userId = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString())[
+      'sub'
+    ] as string;
+    await grantProjectAccess(app, userId, projectId, level);
+    return accessToken;
   }
 
   beforeAll(async () => {
@@ -328,6 +399,114 @@ describe('project-scoped routes: authorization over HTTP (e2e)', () => {
       xsPoints: current['xsPoints'],
     });
     expect(response.statusCode, response.body).toBe(200);
+  });
+
+  // ── Viewer: reads everything in the project, writes nothing ──────────────
+
+  it('serves every project-scoped read to a VIEWER', async () => {
+    /**
+     * The level restored by architect ruling on 2026-08-14, against the BA's removal and in line
+     * with real Rally, whose Viewer is "Access to view the project and all work items within the
+     * project" and is the provisioning default for a new user. See the divergence note in CLAUDE.md.
+     *
+     * If the synthesis in `effectiveAssignments` ever stops recognising the level — it filtered on a
+     * hand-written `'admin' | 'editor'` pair before this — a viewer row resolves to nothing and
+     * reads as No Access. These 200s are what catch that.
+     */
+    const viewer = await principalAt('viewer', NXP);
+    for (const url of projectScopedReads(NXP)) {
+      expect((await get(url, viewer)).statusCode, `${url} must be allowed`).toBe(200);
+    }
+  });
+
+  it('refuses a VIEWER every write, and the user roster', async () => {
+    const viewer = await principalAt('viewer', NXP);
+
+    // Read-only means the delivery writes too, not just the structural ones.
+    const created = await app.inject({
+      method: 'POST',
+      url: '/work-items',
+      headers: { authorization: `Bearer ${viewer}` },
+      payload: { projectId: NXP, type: 'story', title: 'Viewer must not create this' },
+    });
+    expect(created.statusCode, created.body).toBe(403);
+
+    for (const spec of structuralWrites(NXP)) {
+      expect((await send(spec, viewer)).statusCode, `${spec.method} ${spec.url}`).toBe(403);
+    }
+
+    // §3.1 gives "View Project Users & Permissions" to WA and Admin only.
+    expect((await get(`/projects/${NXP}/members`, viewer)).statusCode).toBe(403);
+  });
+
+  it('keeps a VIEWER out of a project they hold nothing on', async () => {
+    const viewer = await principalAt('viewer', NXP);
+    for (const url of projectScopedReads(PAY)) {
+      const response = await get(url, viewer);
+      expect([403, 404], `${url} → ${response.statusCode}`).toContain(response.statusCode);
+    }
+  });
+
+  // ── Admin is a DELIVERY admin, not a structural one ──────────────────────
+
+  it('refuses a per-Project ADMIN every structural write', async () => {
+    /**
+     * §3.1's Admin column is Hidden for project and team configuration, and AC-4 says it "cannot
+     * maintain Projects, Teams or access assignments". These three routes now carry `workspace:edit`,
+     * which only a Workspace Admin holds.
+     *
+     * `project:edit` deliberately REMAINS in the Admin set — it also gates labels and workflow
+     * statuses, which §3.1 does give Admin — so this asserts the ROUTES moved, not that the code was
+     * taken away. Asserting it at the boundary is the point: the previous arrangement typechecked,
+     * passed the decorator ratchet, and let an Admin rename the project.
+     */
+    const admin = await principalAt('admin', NXP);
+    for (const spec of structuralWrites(NXP)) {
+      expect((await send(spec, admin)).statusCode, `${spec.method} ${spec.url}`).toBe(403);
+    }
+  });
+
+  it('refuses an EDITOR every structural write too', async () => {
+    const editor = await principalAt('editor', NXP);
+    for (const spec of structuralWrites(NXP)) {
+      expect((await send(spec, editor)).statusCode, `${spec.method} ${spec.url}`).toBe(403);
+    }
+  });
+
+  it('still serves the project roster to a per-Project ADMIN', async () => {
+    // The Read-only half of the same §3.1 row: Admin sees the roster, Editor and Viewer do not.
+    const admin = await principalAt('admin', NXP);
+    expect((await get(`/projects/${NXP}/members`, admin)).statusCode).toBe(200);
+
+    const editor = await principalAt('editor', NXP);
+    expect((await get(`/projects/${NXP}/members`, editor)).statusCode).toBe(403);
+  });
+
+  it('allows a Workspace Admin the structural writes it just refused everyone else', async () => {
+    /**
+     * The other direction, so the four refusals above cannot pass by the routes simply being broken.
+     *
+     * Asserted as "NOT 403", not as 2xx, and the distinction is the whole point: what is under test
+     * is whether the GUARD admits a Workspace Admin, and a domain refusal downstream proves it did.
+     * Both team routes refuse this particular pair for real reasons — the seed already links Team
+     * Alpha to NXP, so a link is a 409, and Alpha sits on NXP's seeded capacity plan, so an unlink is
+     * `PROJECT_TEAM_HAS_CAPACITY_PLAN` (412), which is a documented guard in its own right. Forcing a
+     * 2xx would mean either mutating the shared fixture or building a throwaway project and team to
+     * link, and both cost more than they prove here.
+     *
+     * The rename is the one that genuinely succeeds, and it writes the project's CURRENT name back,
+     * so this test changes nothing. Nothing resets between files within a run.
+     */
+    const wa = await tokenFor('admin@qnsc.dev');
+    const [rename, link, unlink] = structuralWrites(NXP);
+
+    for (const spec of [link, unlink]) {
+      const response = await send(spec, wa);
+      expect(response.statusCode, `${spec.method} ${spec.url} must not be a 403`).not.toBe(403);
+    }
+
+    const project = JSON.parse((await get(`/projects/${NXP}`, wa)).body) as { name: string };
+    expect((await send({ ...rename, payload: { name: project.name } }, wa)).statusCode).toBe(200);
   });
 
   // ── Authentication is still the outer gate ───────────────────────────────

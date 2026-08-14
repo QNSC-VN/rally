@@ -15,6 +15,7 @@ import {
   PERMISSION,
   PERMISSION_TIER,
   permissionGrants,
+  isProjectAccessLevel,
   ACCESS_LEVEL_PERMISSIONS,
   type ProjectPermission,
   type ProjectAccessLevel,
@@ -149,7 +150,9 @@ export class AccessService {
       roleSlug: string | null;
       permissions: string[];
     }> = accessRows
-      .filter((r) => r.accessLevel === 'admin' || r.accessLevel === 'editor')
+      // Against the catalogue, not a hand-written pair: `viewer` was invisible here for the whole
+      // time it existed as a CHECK value, so a viewer row synthesized nothing and read as No Access.
+      .filter((r) => isProjectAccessLevel(r.accessLevel))
       .map((r) => ({
         scopeType: 'project',
         scopeId: r.projectId,
@@ -543,9 +546,7 @@ export class AccessService {
     const eff = await this.effectiveAssignments(workspaceId, userId);
     const entry = eff.find(
       (a) =>
-        a.scopeType === 'project' &&
-        a.scopeId === projectId &&
-        (a.roleSlug === 'admin' || a.roleSlug === 'editor'),
+        a.scopeType === 'project' && a.scopeId === projectId && isProjectAccessLevel(a.roleSlug),
     );
     return (entry?.roleSlug as ProjectAccessLevel | undefined) ?? null;
   }
@@ -563,7 +564,15 @@ export class AccessService {
   ): Promise<void> {
     if (!teamId) return;
     const level = await this.getProjectAccessLevel(actor.workspaceId, actor.sub, projectId);
-    if (level !== 'editor') return; // admin/WA bypass (All Teams)
+    // Only an Editor is Team-scoped. `admin` is All Teams by definition and Workspace Admin
+    // resolves no level at all, so both pass straight through.
+    //
+    // `viewer` also returns here, and that is safe for a reason worth stating rather than assuming:
+    // this runs AFTER the project-level write permission check, and the viewer set holds no write
+    // code, so a Viewer can never reach a call site. If a write is ever gated on a view code, THAT
+    // is the bug — do not turn this into a deny for viewer and call it defence, because it would
+    // hide the real fault while leaving every other unscoped write open.
+    if (level !== 'editor') return;
     // Named `scopedTeams` — a bare `teams` would shadow the imported schema table.
     const scopedTeams = await this.db
       .select({ teamId: teamMembers.teamId })

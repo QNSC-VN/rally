@@ -587,6 +587,48 @@ button and got a 403 for an item they can create from the Backlog.
 It is invisible in testing because the dev principal is a Workspace Admin whose `workspace:*` masks
 every one of them — exactly how the `report:view` bug survived to migration 0092.
 
+## Declared divergences from the BA, in the access model
+
+Three rulings made on 2026-08-14, after an eight-slice audit cross-checked the code against BA main
+(`product-docs` `55e7dbb`) and against real Broadcom Rally. None is drift; none should be "fixed" on
+sight. The audit and its sourced Rally research are in
+`product-docs/projects/mini-rally/09_Gap_Audit/`.
+
+- **`Viewer` is RESTORED, against the BA's removal.** The BA deleted the level on 2026-08-14
+  (`55e7dbb`, "remove viewer, no access permission"), leaving Workspace Admin + per-Project
+  Admin/Editor. Real Rally's `ProjectPermission.Role` is No Access / Viewer / Editor / Project
+  Admin, and its Viewer is load-bearing five ways: the documented answer to "make this user
+  read-only", the **provisioning default** ("A newly created user will have Workspace User and
+  Project Viewer permissions"), one of four Quick Filter Toggles on the admin permission grid, the
+  demotion target in the team-membership state machine, and a full-licence consumer whose only
+  purpose is access control. Without it a read-only stakeholder or auditor is either invisible or a
+  full Editor. So the model is FOUR levels: `admin` | `editor` | `viewer`, plus implicit No Access
+  when no active `project_members` row exists. `viewer`'s permission set is written out rather than
+  derived — deriving "every code ending in `:view`" would silently absorb admin-only view codes like
+  `report:view`, which is the exact over-grant the level exists to prevent.
+- **Team-scoped Editor is KEPT, against real Rally.** The BA scopes an Editor's writes to their
+  assigned Teams (§2.2, §3.2 "in assigned Teams"). Rally has **no `Team` object and no team
+  authorization scope** at all — `POST /user/<OID>/teammemberships/add` takes **project** refs, and
+  "Team Member" is a presentational checkbox beside the Permission field with auto-promotion to
+  Editor. Our own research file concluded "do not build a team scope". Kept anyway, because the BA
+  models Teams as first-class and every delivery surface already slices by them. Enforced by
+  `AccessService.assertTeamScoped`. **Known incomplete:** it covers a minority of Editor-reachable
+  writes and no reads, and a team-agnostic item (`teamId === null`) passes through by design. Treat
+  extending it as finishing this ruling, not as new scope.
+- **A per-Project `Admin` has NO structural authority**, following the BA over Rally. §3.1 marks
+  every structural row Hidden for Admin — create/edit/archive/restore/delete Project, create/edit/
+  deactivate/restore Team, assign Project access and Team membership — and gives it Read-only on
+  "View Project Details and Teams". Rally's Project Admin *does* configure its project and edit
+  viewer/editor/team-member permissions, so this is deliberate. In code: `PATCH /projects/:id` and
+  the two `:id/teams` link/unlink routes carry **`workspace:edit`** (workspace-tier, WA-only), not
+  `project:edit`.
+
+  **`project:edit` deliberately STAYS in the Admin set**, because it also gates label and
+  workflow-status configuration — delivery configuration, which §3.1's own summary gives Admin
+  ("`Admin` is powerful for delivery management") — and because `View Permission Model` is a §3.1
+  Admin row gated on that code. So do not read "Admin must not hold `project:edit`" from the rule
+  above; read "the structural routes must not be gated on it".
+
 ## Permissions reach a workspace ONCE
 
 `db/permissions.catalog.ts` is the source of truth, but `db/seeds/bootstrap.ts` upserts the

@@ -408,29 +408,77 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
 };
 
 /**
- * Per-Project ACCESS LEVELS (RBAC migration — see
- * docs/superpowers/plans/rbac-migration.md). Replace the retiring
- * PROJECT_ADMIN / PROJECT_MEMBER tier roles. Carried on
- * work.project_members.access_level; no active row = No Access.
+ * Per-Project ACCESS LEVELS. Carried on `work.project_members.access_level`; no active row = No
+ * Access, which is the only level with no name because it is the absence of a grant.
  *
- * The model has THREE levels total: workspace_admin + per-Project admin/editor.
- * There is no 'viewer' level and no named 'No Access' level — No Access is
- * simply the absence of an active project_members row.
+ * admin  = full delivery administration in one Project. NOT structural authority: creating,
+ *          renaming, archiving or deleting a Project, linking Teams to it and assigning access
+ *          are Workspace Admin's alone (SRS §3.1 marks every one of those rows Hidden for Admin).
+ *          Project CONFIGURATION that shapes delivery — labels, workflow statuses and transitions
+ *          — stays here, because §3.1's own summary is that "`Admin` is powerful for delivery
+ *          management".
+ * editor = team-scoped delivery contributor. Writes are additionally narrowed to the Teams the
+ *          user is assigned to (`AccessService.assertTeamScoped`).
+ * viewer = read-only. Sees the Project and its delivery data and can mutate none of it.
  *
- * admin  = full delivery administration in one Project (today's PROJECT_ADMIN set).
- * editor = team-scoped delivery contributor (today's PROJECT_MEMBER set; team
- *          scoping enforced in Phase 9).
+ * WHY `viewer` EXISTS, given the BA removed it (product-docs `55e7dbb`, 2026-08-14).
+ * -------------------------------------------------------------------------------
+ * Restored by architect ruling on 2026-08-14, against that removal and in line with the product
+ * being cloned. Real Rally's `ProjectPermission.Role` is No Access / Viewer / Editor / Project
+ * Admin, and Viewer is load-bearing there in five independent ways: it is the documented answer to
+ * "make this user read-only", it is the PROVISIONING DEFAULT ("A newly created user will have
+ * Workspace User and Project Viewer permissions"), it is one of four Quick Filter Toggles on the
+ * admin permission grid, it is the demotion target in the team-membership state machine, and it
+ * consumes a full licence — so access control is the only reason it exists at all. With
+ * admin/editor/absent only, a read-only stakeholder or auditor is either invisible or a full
+ * Editor, which are the two configurations Rally customers most often need to avoid.
  *
- * admin/editor DERIVE from the existing tier sets so they stay in lockstep until
- * the Phase 10 contract retires the tiers — no duplication to drift.
+ * Recorded in `docs/DIVERGENCE.md`. Sourced research:
+ * `product-docs/projects/mini-rally/09_Gap_Audit/research/RALLY_PERMISSIONS_MODEL.md`.
+ *
+ * `admin`/`editor` DERIVE from the tier sets above so they cannot drift from them. `viewer` is
+ * spelled out instead of derived, because it is not any tier's set: it is the read-only PROJECTION
+ * of `editor`, and deriving it by filtering for codes ending in `:view` would silently pick up
+ * every future view code — including admin-only ones like `report:view` — which is exactly the
+ * over-grant the level exists to prevent.
  */
-export const PROJECT_ACCESS_LEVEL = ['admin', 'editor'] as const;
+export const PROJECT_ACCESS_LEVEL = ['admin', 'editor', 'viewer'] as const;
 export type ProjectAccessLevel = (typeof PROJECT_ACCESS_LEVEL)[number];
 
 export const ACCESS_LEVEL_PERMISSIONS: Record<ProjectAccessLevel, readonly Permission[]> = {
   admin: ROLE_PERMISSIONS[SYSTEM_ROLE.PROJECT_ADMIN],
   editor: ROLE_PERMISSIONS[SYSTEM_ROLE.PROJECT_MEMBER],
+  viewer: [
+    PERMISSION.PROJECT_VIEW,
+    PERMISSION.WORK_ITEM_VIEW,
+    PERMISSION.ITERATION_VIEW,
+    PERMISSION.QUALITY_VIEW,
+    PERMISSION.TEAM_STATUS_VIEW,
+    // Exactly the Editor's view codes, and that is the rule: Viewer ⊂ Editor, pinned by
+    // `permissions.spec.ts`. A read-only level that could see something an Editor cannot would be an
+    // escalation dressed as a restriction.
+    //
+    // So NOT here, all for the same reason — §3.2 marks them Hidden for Editor:
+    // `release:view` and `milestone:view` (Releases and Milestones are Admin/WA surfaces), and
+    // `report:view`, `portfolio:view`, `capacity:view` (Reports, Portfolio Items, Capacity
+    // Planning). The first two were in this list until the subset test rejected them, which is
+    // worth recording: "Rally's Viewer sees the project and all work items within it" reads like a
+    // licence to add every view code, and the BA's own matrix is narrower than that sentence.
+  ],
 };
+
+/**
+ * Is this value one of the per-Project access levels?
+ *
+ * A guard rather than an inline comparison, because the inline form is how `viewer` went missing:
+ * `AccessService` filtered its synthesized assignments with `x === 'admin' || x === 'editor'` in two
+ * places, so adding a level to the constant above would have left both silently ignoring it — a row
+ * that reads as No Access, which is the failure direction nobody notices until someone cannot see a
+ * project they were granted.
+ */
+export function isProjectAccessLevel(value: unknown): value is ProjectAccessLevel {
+  return typeof value === 'string' && (PROJECT_ACCESS_LEVEL as readonly string[]).includes(value);
+}
 
 /** Human-readable role names for the seed / admin UI. */
 export const ROLE_NAMES: Record<SystemRoleSlug, string> = {

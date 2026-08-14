@@ -1,3 +1,4 @@
+import type { ProjectAccessLevel } from '@shared-kernel';
 import type {
   WorkflowStatusCategory,
   ProjectStatus,
@@ -168,11 +169,11 @@ export interface AddProjectMemberInput {
   projectId: string;
   userId: string;
   /** Persisted up front on create AND on reactivation of a removed row. */
-  accessLevel?: 'admin' | 'editor';
+  accessLevel?: ProjectAccessLevel;
 }
 
 export interface UpdateProjectMemberInput {
   roleId?: string;
-  accessLevel?: 'admin' | 'editor';
+  accessLevel?: ProjectAccessLevel;
   status?: ProjectMemberStatus;
 }

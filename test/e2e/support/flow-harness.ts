@@ -47,6 +47,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
+import type { ProjectAccessLevel } from '@shared-kernel';
 import { ProjectsService } from '@modules/projects';
 import { PlatformModule } from '@platform';
 import { NotificationsModule } from '@modules/notifications';
@@ -235,7 +236,7 @@ export async function grantProjectAccess(
   app: INestApplication,
   userId: string,
   projectId: string,
-  accessLevel: 'admin' | 'editor',
+  accessLevel: ProjectAccessLevel,
 ): Promise<void> {
   const projects = app.get(ProjectsService);
   await projects.addProjectMember(WORKSPACE_ID, projectId, userId, ADMIN_USER_ID, accessLevel);

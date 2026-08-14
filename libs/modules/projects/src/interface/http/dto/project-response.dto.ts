@@ -1,3 +1,4 @@
+import { PROJECT_ACCESS_LEVEL } from '@shared-kernel';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import {
@@ -81,7 +82,7 @@ export const ProjectMemberResponseSchema = z.object({
   workspaceId: z.string().uuid(),
   projectId: z.string().uuid(),
   userId: z.string().uuid(),
-  accessLevel: z.enum(['admin', 'editor']).nullable(),
+  accessLevel: z.enum(PROJECT_ACCESS_LEVEL).nullable(),
   status: z.enum(projectMemberStatusEnum.enumValues),
   joinedAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
