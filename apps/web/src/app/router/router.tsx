@@ -65,6 +65,17 @@ function lazyPage<T extends Record<string, React.ComponentType>>(
   )
 }
 
+// ── Deep-link project adoption ────────────────────────────────────────────────
+// A deep link is a property of the ROUTE, so "which project does this record belong to" is resolved
+// here — not on whatever clicked it. That switch used to live in `useOpenNotification`, i.e. on the
+// notification CLICK handler, so an in-app click landed in the right project context and the very
+// same URL pasted into a chat did not. One code path now serves both, and it runs before the first
+// paint, so the shell's breadcrumb and project selector never flicker through the previous project.
+//
+// Both adopters are imported dynamically: everything at this file's top level is in the shell
+// bundle, and each page is deliberately its own chunk. The page's chunk imports the same feature
+// module, so the loader shares it rather than duplicating it.
+
 // ── Public routes ─────────────────────────────────────────────────────────────
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -139,6 +150,11 @@ const workItemDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/item/$itemKey',
   staticData: { breadcrumb: 'Work Item' },
+  // A shared link must open in the ITEM's project, not the recipient's last-selected one.
+  loader: ({ context, params }) =>
+    import('@/features/work-items/deep-link').then((m) =>
+      m.adoptWorkItemProject(context.queryClient, params.itemKey),
+    ),
   component: lazyPage(
     () => import('@/pages/work-item/work-item-detail-page'),
     'WorkItemDetailPage',
@@ -175,6 +191,11 @@ const releaseDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/releases/$releaseId',
   staticData: { breadcrumb: 'Release Detail' },
+  // A shared link must open in the RELEASE's project, not the recipient's last-selected one.
+  loader: ({ context, params }) =>
+    import('@/features/releases/deep-link').then((m) =>
+      m.adoptReleaseProject(context.queryClient, params.releaseId),
+    ),
   component: lazyPage(() => import('@/pages/releases/releases-detail-page'), 'ReleaseDetailPage'),
 })
 

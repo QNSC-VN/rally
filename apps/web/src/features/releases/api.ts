@@ -128,10 +128,19 @@ export function useReleasesForProjects(projectIds: readonly string[]) {
   return { data, isLoading }
 }
 
-export function useRelease(id: string | undefined) {
-  return useQuery({
-    queryKey: releaseKeys.detail(id ?? ''),
-    queryFn: async () => {
+/**
+ * One release by id — the resolver behind the `/releases/$releaseId` deep link.
+ *
+ * A release id is workspace-unique and `GET /releases/:id` resolves the owning project from the row
+ * before authorizing it (`PolicyGuard`, `resource: 'release'`), so the URL carries no project and
+ * does not need to. Exposed as query OPTIONS as well as a hook because the route loader resolves the
+ * release outside React, to adopt its project before the first paint — same key, so the loader's
+ * fetch warms the cache this hook reads.
+ */
+export function releaseQueryOptions(id: string) {
+  return {
+    queryKey: releaseKeys.detail(id),
+    queryFn: async (): Promise<Release | null> => {
       if (!id) return null
       const { data, error, response } = await apiClient.GET('/v1/releases/{id}', {
         params: { path: { id } },
@@ -139,9 +148,12 @@ export function useRelease(id: string | undefined) {
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as unknown as Release
     },
-    enabled: !!id,
     staleTime: 30_000,
-  })
+  }
+}
+
+export function useRelease(id: string | undefined) {
+  return useQuery({ ...releaseQueryOptions(id ?? ''), enabled: !!id })
 }
 
 // `useReleaseBurndown` used to sit here and is deliberately gone with the panel it fed. A release

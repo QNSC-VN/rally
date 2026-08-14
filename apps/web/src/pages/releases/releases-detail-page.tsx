@@ -25,7 +25,7 @@ import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
 import { TaskRollupPanel } from './ui/release-detail-panels'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from './model/release-states'
 import { useProjectPermissions } from '@/features/access/api'
-import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useRecordProject } from '@/shared/lib/deep-link-project'
 import {
   useRelease,
   useUpdateRelease,
@@ -41,12 +41,24 @@ export function ReleaseDetailPage() {
   const { t } = useTranslation('releases')
   const navigate = useNavigate()
   const { releaseId } = useParams({ from: '/auth/releases/$releaseId' })
-  const { project } = useAppContext()
-  const projectId = project?.projectId ?? ''
-  const { can } = useProjectPermissions(projectId || undefined)
-  const canManage = can('release:create') || can('release:edit') || can('release:delete')
 
   const { data: release, isLoading, isError } = useRelease(releaseId)
+
+  /**
+   * Both of these read the RELEASE's own project, never the selected one — the rule the Artifacts
+   * tab below already followed, and this file's only remaining exception to it.
+   *
+   * A release id is workspace-unique, so `/releases/:id` is a valid deep link with no project in the
+   * URL and a bookmarked or forwarded one opens a release in ANY project the caller can read. Asking
+   * `useProjectPermissions` about the selected project therefore answered a question about the wrong
+   * project in both directions: an Editor on this release's project saw it locked because they hold
+   * nothing on the one they happened to have selected, and an Admin of the selected project saw
+   * editors on a release they cannot write — every Save 403ing to `/403`. The scope label had the
+   * same fault visibly: a PAY release rendered `Project scope: NXP`.
+   */
+  const { can } = useProjectPermissions(release?.projectId)
+  const releaseProject = useRecordProject(release?.projectId)
+  const canManage = can('release:create') || can('release:edit') || can('release:delete')
   const { data: activityLogs = [], isLoading: activityLoading } = useReleaseActivityLog(releaseId)
   const update = useUpdateRelease(releaseId)
 
@@ -195,8 +207,8 @@ export function ReleaseDetailPage() {
               <div className="space-y-4">
                 <DetailField label={t('detailPage.projectScope')}>
                   <ProjectCell
-                    projectKey={project?.projectKey}
-                    projectName={project?.projectName}
+                    projectKey={releaseProject?.projectKey}
+                    projectName={releaseProject?.projectName}
                   />
                 </DetailField>
 
