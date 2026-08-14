@@ -342,14 +342,24 @@ export class MilestonesService {
     return this.getMilestone(actor.workspaceId, id);
   }
 
-  async getMilestone(
-    workspaceId: string,
-    id: string,
-  ): Promise<Milestone & { progress?: MilestoneProgress }> {
+  /**
+   * Load a milestone (with its Project/Team/Release links) or refuse. The workspace check is
+   * the isolation boundary here — `findById` is deliberately unscoped, so every caller has to
+   * apply it, and one place that does is better than several that might.
+   */
+  private async requireMilestone(workspaceId: string, id: string): Promise<Milestone> {
     const milestone = await this.milestoneRepo.findById(id);
     if (!milestone || milestone.workspaceId !== workspaceId) {
       throw new NotFoundException('MILESTONE_NOT_FOUND', 'Milestone not found');
     }
+    return milestone;
+  }
+
+  async getMilestone(
+    workspaceId: string,
+    id: string,
+  ): Promise<Milestone & { progress?: MilestoneProgress }> {
+    const milestone = await this.requireMilestone(workspaceId, id);
 
     /**
      * No repair on the read path any more.
@@ -523,12 +533,6 @@ export class MilestonesService {
     const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
     const uniqueIds = [...new Set(workItemIds)];
     if (uniqueIds.length > 0) {
-      // Milestone scope per SRS §5.2 / FR-021/023: an artifact must belong to
-      // one of the milestone's selected Projects and, when Team scope is
-      // selected, one of its selected Teams. The owning project is always part
-      // of the project scope alongside any additionally linked projects.
-      const projectScope = new Set<string>([milestone.projectId, ...(milestone.projectIds ?? [])]);
-      const teamScope = milestone.teamIds ?? [];
       const rows = await this.db
         .select({
           id: workItems.id,
@@ -544,33 +548,41 @@ export class MilestonesService {
             isNull(workItems.deletedAt),
           ),
         );
-      if (rows.length !== uniqueIds.length || rows.some((r) => !projectScope.has(r.projectId))) {
+      // A missing row is an id naming no live work item in this workspace. Reported as a scope
+      // mismatch rather than a 404 because this is a replace-SET: the write is refused whole and
+      // an unresolvable id is, from here, indistinguishable from one outside the scope.
+      if (rows.length !== uniqueIds.length) {
         throw new PreconditionFailedException(
           'MILESTONE_PROJECT_MISMATCH',
           'One or more work items do not belong to this milestone\u2019s project scope',
         );
       }
-      // SRS §5.1 / FR-014: a Milestone Artifact is a Story or Defect work item.
-      // Reject initiatives, features and tasks so the Artifacts dashboard stays
-      // the Backlog-shaped Story/Defect list the BA specified.
-      if (rows.some((r) => r.type !== 'story' && r.type !== 'defect')) {
-        throw new PreconditionFailedException(
-          'MILESTONE_INVALID_ARTIFACT_TYPE',
-          'Only stories and defects can be assigned as milestone artifacts',
-        );
-      }
-      if (teamScope.length > 0) {
-        const teamSet = new Set(teamScope);
-        if (rows.some((r) => r.teamId === null || !teamSet.has(r.teamId))) {
-          throw new PreconditionFailedException(
-            'MILESTONE_TEAM_MISMATCH',
-            'One or more work items are outside this milestone\u2019s team scope',
-          );
-        }
-      }
+      // Project, artifact TYPE and Team scope are all decided in ONE place, because the
+      // work-item side writes the same rows — see assertArtifactsInMilestoneScope.
+      assertArtifactsInMilestoneScope(milestone, rows);
     }
     await this.milestoneRepo.setArtifactLinks(milestoneId, uniqueIds);
     return this.milestoneRepo.getArtifactIds(milestoneId);
+  }
+
+  /**
+   * The artifact-scope rule, applied from the WORK-ITEM side of the same link table
+   * (`PUT /work-items/:id/milestones` → `WorkItemsService.setWorkItemMilestones`).
+   *
+   * It lives here, and the milestone is loaded here, because the rule reads the Milestone's
+   * scope — its owning project plus its selected Projects and Teams. The caller passes the
+   * work items it wants linked; N milestones × the caller's items is the same cross product
+   * the milestone-side write checks with 1 milestone × N items.
+   */
+  async assertArtifactsAssignable(
+    workspaceId: string,
+    milestoneIds: string[],
+    candidates: readonly MilestoneArtifactCandidate[],
+  ): Promise<void> {
+    for (const milestoneId of [...new Set(milestoneIds)]) {
+      const milestone = await this.requireMilestone(workspaceId, milestoneId);
+      assertArtifactsInMilestoneScope(milestone, candidates);
+    }
   }
 
   async getMilestoneProjects(actor: JwtPayload, milestoneId: string): Promise<string[]> {
@@ -641,5 +653,79 @@ export class MilestonesService {
      */
     await this.milestoneRepo.delete(id);
     this.logger.log({ milestoneId: id }, 'Milestone deleted; its artifact links are removed');
+  }
+}
+
+/** The work-item half of one artifact link — everything the scope rule below reads. */
+export interface MilestoneArtifactCandidate {
+  projectId: string;
+  teamId: string | null;
+  type: string;
+}
+
+/** The milestone half: its owning project plus the Projects/Teams it additionally selects. */
+export interface MilestoneArtifactScope {
+  projectId: string;
+  projectIds?: string[];
+  teamIds?: string[];
+}
+
+/**
+ * The ONE home of the artifact-link rule — `milestone_artifacts` has two write paths and they
+ * must agree, because they write the same rows.
+ *
+ * `PUT /milestones/:id/artifacts` (one milestone, N work items) enforced all three conditions;
+ * `PUT /work-items/:id/milestones` (one work item, N milestones) enforced only the first, and
+ * not even in the same form. So a Task could be made a Milestone artifact, and an item on any
+ * team could join a Team-scoped Milestone, as long as the request came in from the work-item
+ * side — the Artifacts dashboard then rendered rows §5.1 says cannot exist, from a screen that
+ * had refused to create them. Same class of defect as the two `@RequirePermission` gates chosen
+ * for where the id lived: the rule was attached to a call site instead of to the link.
+ *
+ *   • project — an artifact must belong to one of the Milestone's Projects, which is its OWNING
+ *     project plus any additionally linked ones (SRS §5.2 / FR-021/023). The work-item side used
+ *     `milestones.project_id` alone, so a Milestone reachable from this project through
+ *     `milestone_projects` was refused here and accepted there.
+ *   • type — a Milestone Artifact is a Story or Defect (SRS §5.1 / FR-014). Initiatives,
+ *     Features and Tasks are refused so the Artifacts dashboard stays the Backlog-shaped list
+ *     the BA specified.
+ *   • team — when the Milestone selects Team scope, an artifact must be on one of those Teams.
+ *     A team-agnostic item (`teamId === null`) is OUT of a team scope, not exempt from it:
+ *     unlike `AccessService.assertTeamScoped`, which asks whether the ACTOR may write, this
+ *     asks whether the WORK is inside a declared scope, and "no team" is not one of them.
+ *
+ * The prose is deliberately direction-neutral: one message has to read correctly whether the
+ * caller named the milestone or the work item.
+ */
+export function assertArtifactsInMilestoneScope(
+  milestone: MilestoneArtifactScope,
+  candidates: readonly MilestoneArtifactCandidate[],
+): void {
+  if (candidates.length === 0) return;
+
+  const projectScope = new Set<string>([milestone.projectId, ...(milestone.projectIds ?? [])]);
+  if (candidates.some((c) => !projectScope.has(c.projectId))) {
+    throw new PreconditionFailedException(
+      'MILESTONE_PROJECT_MISMATCH',
+      'A milestone artifact must belong to one of the milestone’s projects',
+    );
+  }
+
+  if (candidates.some((c) => c.type !== 'story' && c.type !== 'defect')) {
+    throw new PreconditionFailedException(
+      'MILESTONE_INVALID_ARTIFACT_TYPE',
+      'Only stories and defects can be assigned as milestone artifacts',
+    );
+  }
+
+  const teamScope = milestone.teamIds ?? [];
+  if (teamScope.length > 0) {
+    const teamSet = new Set(teamScope);
+    if (candidates.some((c) => c.teamId === null || !teamSet.has(c.teamId))) {
+      throw new PreconditionFailedException(
+        'MILESTONE_TEAM_MISMATCH',
+        'A milestone artifact must belong to one of the milestone’s selected teams',
+      );
+    }
   }
 }

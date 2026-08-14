@@ -1109,13 +1109,4 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       }
     });
   }
-
-  async countMilestonesInProject(milestoneIds: string[], projectId: string): Promise<number> {
-    if (milestoneIds.length === 0) return 0;
-    const rows = await this.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(milestones)
-      .where(and(inArray(milestones.id, milestoneIds), eq(milestones.projectId, projectId)));
-    return Number(rows[0]?.count ?? 0);
-  }
 }

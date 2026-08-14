@@ -421,6 +421,70 @@ describe('MilestonesService', () => {
     });
   });
 
+  // ── assertArtifactsAssignable — the WORK-ITEM side of the same link ────────
+  //
+  // `PUT /work-items/:id/milestones` writes these rows too and used to apply only its own
+  // project check, so a Task or an out-of-team item became an artifact through that endpoint
+  // while this one refused it. Both call the rule below now (P23-07).
+
+  describe('assertArtifactsAssignable', () => {
+    const story = { projectId: 'proj-1', teamId: 'team-a', type: 'story' };
+
+    it('accepts an item in the owning project', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      await expect(
+        service.assertArtifactsAssignable('ws-1', ['ms-1'], [story]),
+      ).resolves.toBeUndefined();
+    });
+
+    it('accepts an item in an ADDITIONALLY linked project (SRS §5.2 / FR-021)', async () => {
+      // `findById` resolves the link tables itself, so the scope rides on the milestone.
+      repo.findById.mockResolvedValue(
+        mockMilestone({ projectId: 'proj-9', projectIds: ['proj-1'] }),
+      );
+      await expect(
+        service.assertArtifactsAssignable('ws-1', ['ms-1'], [story]),
+      ).resolves.toBeUndefined();
+    });
+
+    it('rejects a TASK (SRS §5.1 / FR-014)', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      await expect(
+        service.assertArtifactsAssignable('ws-1', ['ms-1'], [{ ...story, type: 'task' }]),
+      ).rejects.toMatchObject({ code: 'MILESTONE_INVALID_ARTIFACT_TYPE' });
+    });
+
+    it('rejects an item outside a selected Team scope', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1', teamIds: ['team-b'] }));
+      await expect(
+        service.assertArtifactsAssignable('ws-1', ['ms-1'], [story]),
+      ).rejects.toMatchObject({ code: 'MILESTONE_TEAM_MISMATCH' });
+    });
+
+    it('rejects a team-AGNOSTIC item against a Team-scoped milestone', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1', teamIds: ['team-a'] }));
+      await expect(
+        service.assertArtifactsAssignable('ws-1', ['ms-1'], [{ ...story, teamId: null }]),
+      ).rejects.toMatchObject({ code: 'MILESTONE_TEAM_MISMATCH' });
+    });
+
+    it('rejects a milestone in another workspace', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ workspaceId: 'ws-other' }));
+      await expect(service.assertArtifactsAssignable('ws-1', ['ms-1'], [story])).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('checks EVERY milestone in the set, not just the first', async () => {
+      repo.findById.mockImplementation((id: string) =>
+        Promise.resolve(mockMilestone({ id, projectId: id === 'ms-2' ? 'proj-9' : 'proj-1' })),
+      );
+      await expect(
+        service.assertArtifactsAssignable('ws-1', ['ms-1', 'ms-2'], [story]),
+      ).rejects.toMatchObject({ code: 'MILESTONE_PROJECT_MISMATCH' });
+    });
+  });
+
   // ── status transitions (relaxed graph — completed is terminal) ─────────────
 
   describe('status transitions', () => {

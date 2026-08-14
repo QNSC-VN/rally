@@ -4,6 +4,7 @@ import type {
   CreateWorkItemRelationInput,
 } from '../work-item-relation.types';
 import type { WorkItemRelationType } from '../../../../../../db/schema/enums';
+import type { DbExecutor } from '@platform';
 
 export const WORK_ITEM_RELATION_REPOSITORY = Symbol('WORK_ITEM_RELATION_REPOSITORY');
 
@@ -19,11 +20,16 @@ export interface IWorkItemRelationRepository {
     workspaceId: string,
   ): Promise<boolean>;
 
-  create(input: CreateWorkItemRelationInput, workspaceId: string): Promise<WorkItemRelation>;
+  /** `tx` enlists the insert in the caller's unit of work, alongside its activity entry. */
+  create(
+    input: CreateWorkItemRelationInput,
+    workspaceId: string,
+    tx?: DbExecutor,
+  ): Promise<WorkItemRelation>;
 
   findById(id: string, workspaceId: string): Promise<WorkItemRelation | null>;
 
-  delete(id: string, workspaceId: string): Promise<void>;
+  delete(id: string, workspaceId: string, tx?: DbExecutor): Promise<void>;
 
   /** Delete every relation touching `itemId` (either end) — used on item delete. */
   deleteForItem(itemId: string, workspaceId: string): Promise<void>;
