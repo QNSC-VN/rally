@@ -89,6 +89,8 @@ const makeAccess = () => ({
 describe('ReleasesService', () => {
   /** Rows the stubbed capacity-plan lookup returns — see the delete guard. */
   let capacityPlanRows: { planKey: string; name: string }[];
+  /** Rows every stubbed grouped roll-up query returns — see the roll-up shape specs. */
+  let statRows: Record<string, unknown>[];
   let service: ReleasesService;
   let repo: ReturnType<typeof makeRepo>;
   let projects: ReturnType<typeof makeProjects>;
@@ -99,17 +101,18 @@ describe('ReleasesService', () => {
     projects = makeProjects();
     access = makeAccess();
 
-    const statRow = {
-      totalItems: 0,
-      completedItems: 0,
-      acceptedItems: 0,
-      totalPoints: '0',
-      completedPoints: '0',
-      // computeTaskEstimates reads releaseId/estimate; a null releaseId means
-      // the row is skipped, so taskEstimate resolves to 0 in these unit tests.
-      releaseId: null,
-      estimate: '0',
-    };
+    statRows = [
+      {
+        // The roll-up queries read releaseId plus the hour sums / accepted count; a null
+        // releaseId means the row is skipped, so the roll-up resolves to EMPTY_TASK_ROLLUP
+        // and taskEstimate to 0 in these unit tests.
+        releaseId: null,
+        estimateHours: '0',
+        toDoHours: '0',
+        actualHours: '0',
+        acceptedItems: 0,
+      },
+    ];
     // Capacity plans built on the release under test. Empty by default: most specs are not about the
     // delete guard, and a release with no plan is the ordinary case.
     capacityPlanRows = [];
@@ -124,11 +127,11 @@ describe('ReleasesService', () => {
       }
       // `.limit()` is its OWN terminal, resolving to `capacityPlanRows`: the delete path asks whether a
       // capacity plan is built on the release, and that question needs a different answer from the
-      // stats queries above — which is why it cannot share the generic `[statRow]` result.
+      // stats queries above — which is why it cannot share the generic `statRows` result.
       chain.limit = vi.fn(() => ({
         then: (resolve: (v: unknown) => void) => resolve(capacityPlanRows),
       }));
-      (chain as { then: unknown }).then = (resolve: (v: unknown) => void) => resolve([statRow]);
+      (chain as { then: unknown }).then = (resolve: (v: unknown) => void) => resolve(statRows);
       return chain;
     };
     const mockDrizzle = {
@@ -311,5 +314,49 @@ describe('ReleasesService', () => {
     });
     // release:view is enforced by the PolicyGuard at the route (P2), resource-
     // resolved from :id — covered by context-isolation-rbac e2e, not here.
+
+    /**
+     * P3-REL-FR-023: the Task Roll-up is Estimate / To Do / Actual HOURS from the assigned
+     * tasks. It used to be an item/point roll-up carrying a `progressPercent`, which
+     * P3-REL-FR-037 forbids on a Phase 3 release surface and §7.5 defers to
+     * `Portfolio > Release Tracking`. Asserted on the SERVICE payload, not the SPA: a panel
+     * cannot render a field the API never returns, and hiding the number in the component
+     * would leave it computed and served.
+     */
+    it('rolls up task HOURS and the accepted total, and computes no progress percentage', async () => {
+      repo.findById.mockResolvedValue(mockRelease());
+      // Drizzle hands numeric columns back as strings — the sums must survive that.
+      statRows = [
+        {
+          releaseId: 'rel-1',
+          estimateHours: '18.5',
+          toDoHours: '6',
+          actualHours: '12.5',
+          acceptedItems: 3,
+        },
+      ];
+
+      const { taskRollup, taskEstimate } = await service.getReleaseDetail(actor, 'rel-1');
+
+      expect(taskRollup).toEqual({
+        estimateHours: 18.5,
+        toDoHours: 6,
+        actualHours: 12.5,
+        acceptedItems: 3,
+      });
+      // The list's Task Est. column is the roll-up's Estimate, computed once.
+      expect(taskEstimate).toBe(18.5);
+      for (const forbidden of [
+        'progressPercent',
+        'totalPoints',
+        'completedPoints',
+        'toDoPoints',
+        'totalItems',
+        'completedItems',
+        'toDoItems',
+      ]) {
+        expect(taskRollup).not.toHaveProperty(forbidden);
+      }
+    });
   });
 });

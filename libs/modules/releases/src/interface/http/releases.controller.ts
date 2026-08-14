@@ -44,15 +44,10 @@ function toReleaseDto(
   r: Release & {
     taskEstimate?: number;
     taskRollup?: {
-      totalItems: number;
-      completedItems: number;
+      estimateHours: number;
+      toDoHours: number;
+      actualHours: number;
       acceptedItems: number;
-      toDoItems: number;
-      totalPoints: number;
-      completedPoints: number;
-      toDoPoints: number;
-      /** Null when not computable — nothing linked, or nothing estimated. */
-      progressPercent: number | null;
     };
   },
 ): ReleaseResponseDto {

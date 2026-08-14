@@ -3,16 +3,16 @@ import { z } from 'zod';
 
 const RELEASE_STATES = ['planning', 'active', 'accepted'] as const;
 
+/**
+ * The right panel's roll-up (P3-REL-FR-018): Task Roll-up hours (FR-023) plus the accepted
+ * work total (FR-024). No percentage and no point totals — FR-037 forbids a Release Progress
+ * widget on the Phase 3 list/detail and §7.5 defers progress to `Portfolio > Release Tracking`.
+ */
 const TaskRollupSchema = z.object({
-  totalItems: z.number(),
-  completedItems: z.number(),
+  estimateHours: z.number(),
+  toDoHours: z.number(),
+  actualHours: z.number(),
   acceptedItems: z.number(),
-  toDoItems: z.number(),
-  totalPoints: z.number(),
-  completedPoints: z.number(),
-  toDoPoints: z.number(),
-  /** Null when not computable: nothing linked, or nothing estimated and not all done. */
-  progressPercent: z.number().nullable(),
 });
 
 const ReleaseListItemSchema = z.object({

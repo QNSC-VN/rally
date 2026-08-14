@@ -22,14 +22,13 @@ import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ReleaseArtifactsTab } from './ui/release-artifacts-tab'
 import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
-import { TaskRollupPanel, BurndownPanel } from './ui/release-detail-panels'
+import { TaskRollupPanel } from './ui/release-detail-panels'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from './model/release-states'
 import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useRelease,
   useUpdateRelease,
-  useReleaseBurndown,
   useReleaseActivityLog,
   type Release,
   type ReleaseStatus,
@@ -50,7 +49,6 @@ export function ReleaseDetailPage() {
   const { data: release, isLoading, isError } = useRelease(releaseId)
   const { data: activityLogs = [], isLoading: activityLoading } = useReleaseActivityLog(releaseId)
   const update = useUpdateRelease(releaseId)
-  const { data: burndown, isLoading: burndownLoading } = useReleaseBurndown(releaseId)
 
   const [activeTab, setActiveTab] = useState<TabKey>('details')
 
@@ -282,9 +280,13 @@ export function ReleaseDetailPage() {
                 </DetailField>
               </div>
 
+              {/*
+                Task Roll-up + Accepted (P3-REL-FR-018) and nothing else. The Burndown table that
+                used to sit below this — and the fetch that fed it — are gone: §7.5 keeps release
+                progress out of Phase 3.2 and FR-037 puts tracking in `Portfolio > Release
+                Tracking`.
+              */}
               {rollup && <TaskRollupPanel rollup={rollup} />}
-
-              <BurndownPanel burndown={burndown} loading={burndownLoading} />
             </>
           }
         />

@@ -40,9 +40,6 @@
     "plannedVelocityLabel": "Planned Velocity",
     "planEstimateLabel": "Plan Estimate",
     "versionLabel": "Version",
-    "progress": "Progress",
-    "items": "Items",
-    "points": "Points",
     "updated": "Release updated",
     "updateFailed": "Failed to update release"
   },
@@ -82,22 +79,10 @@
     "versionTag": "Version Release Tag",
     "rollup": {
       "title": "Task Roll-up",
-      "completion": "Completion",
       "estimate": "Estimate",
       "toDo": "To Do",
       "actual": "Actual",
-      "items": "Items:",
-      "toDoItems": "To Do:",
-      "done": "Done:",
       "accepted": "Accepted"
-    },
-    "burndown": {
-      "title": "Burndown",
-      "date": "Date",
-      "total": "Total",
-      "done": "Done",
-      "remaining": "Remaining",
-      "empty": "No burndown data available yet."
     },
     "artifacts": {
       "itemCount": "{{total}} items"

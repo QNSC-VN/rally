@@ -31,15 +31,20 @@ export function useReleaseActivityLog(releaseId: string | undefined) {
 
 export type ReleaseStatus = 'planning' | 'active' | 'accepted'
 
+/**
+ * The Release detail's right-panel roll-up (P3-REL-FR-018): Task Roll-up hours (FR-023) and the
+ * accepted work total (FR-024).
+ *
+ * No percentage and no point totals, deliberately. FR-037: "Phase 3 Release list/detail must not
+ * add a Release Progress column/widget; progress/tracking belongs to
+ * `Portfolio > Release Tracking`", and §7.5 defers the progress percentage out of Phase 3.2. The
+ * API no longer computes or serves those fields, so this mirror does not declare them.
+ */
 export interface TaskRollup {
-  totalItems: number
-  completedItems: number
+  estimateHours: number
+  toDoHours: number
+  actualHours: number
   acceptedItems: number
-  toDoItems: number
-  totalPoints: number
-  completedPoints: number
-  toDoPoints: number
-  progressPercent: number
 }
 
 export interface Release {
@@ -67,22 +72,12 @@ export interface Release {
   taskRollup?: TaskRollup
 }
 
-export interface BurndownPoint {
-  date: string
-  totalPoints: number
-  completedPoints: number
-  remainingPoints: number
-  totalItems: number
-  completedItems: number
-}
-
 // ── Keys ─────────────────────────────────────────────────────────────────────
 
 export const releaseKeys = {
   all: ['releases'] as const,
   list: (projectId: string) => [...releaseKeys.all, 'list', projectId] as const,
   detail: (id: string) => [...releaseKeys.all, 'detail', id] as const,
-  burndown: (id: string) => [...releaseKeys.all, 'burndown', id] as const,
 } as const
 
 // ── Queries ──────────────────────────────────────────────────────────────────
@@ -149,23 +144,10 @@ export function useRelease(id: string | undefined) {
   })
 }
 
-export function useReleaseBurndown(releaseId: string | undefined) {
-  return useQuery({
-    queryKey: releaseKeys.burndown(releaseId ?? ''),
-    queryFn: async () => {
-      if (!releaseId) return []
-      const res = await fetch(`/api/v1/releases/${releaseId}/burndown`)
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body.message ?? `Burndown fetch failed (${res.status})`)
-      }
-      const json = (await res.json()) as BurndownPoint[]
-      return json
-    },
-    enabled: !!releaseId,
-    staleTime: 5 * 60_000,
-  })
-}
+// `useReleaseBurndown` used to sit here and is deliberately gone with the panel it fed. A release
+// burndown is Phase 6 `Portfolio > Release Tracking` (P3-REL-FR-037, §7.5), and a request whose
+// result nothing renders is worse than no request: it cost every Release detail open a round trip
+// to `GET /releases/:id/burndown` for a table the BA says not to show.
 
 // ── Mutations ────────────────────────────────────────────────────────────────
 
