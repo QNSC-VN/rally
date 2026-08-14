@@ -61,9 +61,20 @@ export class PortfolioAttachmentsController {
     private readonly attachments: EntityAttachmentsService,
   ) {}
 
-  /** Proves the item exists and is visible, and yields the project for the activity log. */
-  private async subject(user: JwtPayload, id: string) {
-    const item = await this.items.getItem(user, id);
+  /**
+   * Proves the item exists and is visible, and yields the project for the activity log.
+   *
+   * `'write'` additionally refuses an ARCHIVED project (PRJ-FR-010) through
+   * `PortfolioItemsService.getItemForWrite`, which is the only place that rule is stated for a
+   * portfolio item. Presign/confirm/delete pass it; the four read routes do not, because a read
+   * is never guarded — archived means read-only, not invisible, so an archived project's
+   * attachments must still be listable and downloadable.
+   */
+  private async subject(user: JwtPayload, id: string, mode: 'read' | 'write' = 'read') {
+    const item =
+      mode === 'write'
+        ? await this.items.getItemForWrite(user, id)
+        : await this.items.getItem(user, id);
     return {
       ref: { entityType: 'portfolio_item' as const, entityId: id },
       projectId: item.projectId,
@@ -82,7 +93,7 @@ export class PortfolioAttachmentsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: PresignAttachmentDto,
   ): Promise<PresignAttachmentResponseDto> {
-    const { ref } = await this.subject(user, id);
+    const { ref } = await this.subject(user, id, 'write');
     return this.attachments.presign(user, ref, {
       filename: dto.filename,
       mimeType: dto.mimeType,
@@ -104,7 +115,7 @@ export class PortfolioAttachmentsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('aid', ParseUUIDPipe) aid: string,
   ): Promise<AttachmentResponseDto> {
-    const { ref, projectId } = await this.subject(user, id);
+    const { ref, projectId } = await this.subject(user, id, 'write');
     return toAttachmentDto(await this.attachments.confirm(user, ref, aid, projectId));
   }
 
@@ -176,7 +187,7 @@ export class PortfolioAttachmentsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('aid', ParseUUIDPipe) aid: string,
   ): Promise<void> {
-    const { ref, projectId } = await this.subject(user, id);
+    const { ref, projectId } = await this.subject(user, id, 'write');
     await this.attachments.delete(user, ref, aid, projectId);
   }
 }

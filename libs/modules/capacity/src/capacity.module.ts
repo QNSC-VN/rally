@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AccessModule } from '@modules/access';
 import { PortfolioModule } from '@modules/portfolio';
+import { ProjectsModule } from '@modules/projects';
 import { CapacityPlansService } from './application/capacity-plans.service';
 import { CapacityPlansController } from './interface/http/capacity-plans.controller';
 import { CapacityPlanDrizzleRepository } from './infrastructure/persistence/capacity-plan.drizzle-repository';
@@ -17,9 +18,15 @@ import { CAPACITY_PLAN_REPOSITORY } from './domain/ports/capacity-plan.repositor
  * Imports PortfolioModule because allocations point at portfolio items and both surfaces
  * share `PreliminaryEstimateMapService` — two readers of the workspace size map would let
  * the portfolio and capacity screens disagree about what "M" means.
+ *
+ * Imports ProjectsModule for exactly one thing: `ProjectsService.assertProjectWritable`, the
+ * single home of "Archived Projects are read-only regardless of access level" (PRJ-FR-010).
+ * Not a copy of that rule — a plan writes Release and planned dates onto `portfolio_items`
+ * transactionally on publish, so the rule has to be the SAME rule the portfolio and work-item
+ * writes use or the two answers drift.
  */
 @Module({
-  imports: [AccessModule, PortfolioModule],
+  imports: [AccessModule, PortfolioModule, ProjectsModule],
   controllers: [CapacityPlansController],
   providers: [
     CapacityPlansService,

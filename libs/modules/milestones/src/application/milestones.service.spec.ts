@@ -598,4 +598,69 @@ describe('MilestonesService', () => {
       await expect(service.deleteMilestone(actor, 'bad')).rejects.toThrow(NotFoundException);
     });
   });
+
+  /**
+   * PRJ-03. Create, update and delete carried `assertProjectWritable`; the four replace-SET writes
+   * did not, so an archived project's milestones kept their artifacts, Projects, Teams and Releases
+   * fully editable — and `setMilestoneReleases` additionally rewrites the milestone's own target
+   * window, which FR-011/012 derive from the linked releases.
+   *
+   * `assertArtifactsAssignable` is included because `milestone_artifacts` has TWO write paths and
+   * they must enforce the same set of rules. It is the milestone half of
+   * `PUT /work-items/:id/milestones`: `WorkItemsService` checks the WORK ITEM's project, this
+   * checks the MILESTONE's, and the two genuinely differ — a milestone's artifact scope spans
+   * `milestone_projects`. Without it, the row `setMilestoneArtifacts` refuses could be written from
+   * the other end, which is exactly the asymmetry that method's docblock was written about.
+   */
+  describe('an archived project refuses the link-set writes (PRJ-FR-010)', () => {
+    beforeEach(() => {
+      repo.findById.mockResolvedValue(mockMilestone());
+      projects.assertProjectWritable.mockRejectedValue(
+        new PreconditionFailedException('PROJECT_ARCHIVED', 'archived'),
+      );
+    });
+
+    it('refuses an artifact set', async () => {
+      await expect(service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1'])).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setArtifactLinks).not.toHaveBeenCalled();
+    });
+
+    it('refuses a project set', async () => {
+      await expect(service.setMilestoneProjects(actor, 'ms-1', ['proj-2'])).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setProjectLinks).not.toHaveBeenCalled();
+    });
+
+    it('refuses a team set', async () => {
+      await expect(service.setMilestoneTeams(actor, 'ms-1', ['team-1'])).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setTeamLinks).not.toHaveBeenCalled();
+    });
+
+    it('refuses a release set, which would also rewrite the target window', async () => {
+      await expect(service.setMilestoneReleases(actor, 'ms-1', ['rel-1'])).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setReleaseLinks).not.toHaveBeenCalled();
+    });
+
+    it('refuses the WORK-ITEM side of the same artifact link', async () => {
+      await expect(
+        service.assertArtifactsAssignable(
+          'ws-1',
+          ['ms-1'],
+          [{ projectId: 'proj-1', teamId: null, type: 'story' }],
+        ),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+    });
+
+    it('still READS its links — archived is read-only, not invisible', async () => {
+      await expect(service.getMilestoneArtifacts(actor, 'ms-1')).resolves.toEqual([]);
+      await expect(service.getMilestoneReleases(actor, 'ms-1')).resolves.toEqual([]);
+    });
+  });
 });
