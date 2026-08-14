@@ -10,13 +10,21 @@ test.describe('P2.1 Backlog Enhancement', () => {
     await expect(page.getByRole('heading', { name: 'Backlog' })).toBeVisible()
     // Filters live behind the collapsible "Filters" toggle (Rally-style) — open it.
     await page.getByRole('button', { name: /Filters/ }).click()
-    await expect(page.getByLabel('Filter by owner')).toBeVisible()
-    await expect(page.getByLabel('Filter by release')).toBeVisible()
-    // No iteration filter, deliberately: the Backlog is unscheduled work only, so every row's
-    // Iteration is `Unscheduled` and there is nothing for the control to narrow
-    // (`RECONCILED_SOURCE_OF_TRUTH.md:42`). A Release filter still means something — an item can be
-    // targeted at a release without being pulled into a sprint.
-    await expect(page.getByLabel('Filter by iteration')).toHaveCount(0)
+    // `<Column> filter value` since the banner became `Manage Filters` (P2-BL-FR-005/020): every
+    // control is now generated from one field list, and its accessible name comes from the SAME
+    // `COLUMN_LABELS` entry as the grid header — so a filter cannot be labelled differently from the
+    // column it filters. These two are `defaultVisible`, which is what this test is asserting.
+    await expect(page.getByLabel('Owner filter value')).toBeVisible()
+    await expect(page.getByLabel('Release filter value')).toBeVisible()
+    // No iteration filter, deliberately, and now enforced by the field list rather than by omission:
+    // the Backlog is unconditionally `iteration_id IS NULL`, so the control could only ever return
+    // everything or nothing (`RECONCILED_SOURCE_OF_TRUTH.md:42`). A Release filter still means
+    // something — an item can be targeted at a release without being pulled into a sprint. Checked
+    // with the chooser OPEN, because a column that is merely not `defaultVisible` would pass a
+    // closed-banner check while still being offerable.
+    await page.getByRole('button', { name: 'Manage Filters' }).click()
+    await expect(page.getByLabel('Filter by Iteration')).toHaveCount(0)
+    await expect(page.getByLabel('Iteration filter value')).toHaveCount(0)
   })
 
   test('inline-edits a work item schedule state and it persists', async ({ page }) => {
