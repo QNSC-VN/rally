@@ -93,7 +93,17 @@ export function ReleaseBurnup({
   totals: { planned: number; accepted: number; preliminary: number } | undefined
 }) {
   const { t } = useTranslation(['release-tracking', 'common'])
-  const { data } = useReleaseBurnup({ projectId, teamId, releaseId, unit })
+  /**
+   * `isError` was never read here, so a failed burnup request rendered the chart's own empty
+   * sentence — "no burnup history has been recorded for this release" — as a measured claim. The
+   * burnup has its OWN query, separate from the tracking table's, so its failure is invisible to the
+   * page-level `isError` the table already uses.
+   *
+   * Fourth and last instance of one shape in Phase 6 (Velocity, Team Capacity and Iteration Burndown
+   * were the others): `data` is undefined while in flight AND after failure, so branching on `data`
+   * alone states something false about delivery whenever the request breaks.
+   */
+  const { data, isError } = useReleaseBurnup({ projectId, teamId, releaseId, unit })
 
   const points = data?.points ?? []
   const unitLabel = unit === 'points' ? t('unit.points') : t('unit.count')
@@ -161,7 +171,12 @@ export function ReleaseBurnup({
         to: formatDate(releaseEnd),
       })}
       height={320}
-      isEmpty={points.length === 0 || !hasMeasuredDay}
+      /**
+       * A failed request is not an empty release. Error takes precedence over both empty reasons and
+       * carries its own copy, so the reader is told to retry rather than told the release has no
+       * history — `ChartFrame` renders whichever title/description it is handed.
+       */
+      isEmpty={isError || points.length === 0 || !hasMeasuredDay}
       /**
        * The secondary iteration row, directly under the dates it labels.
        *
@@ -211,8 +226,8 @@ export function ReleaseBurnup({
           ...(hasIdealTarget ? [point.ideal] : []),
         ]),
       }}
-      emptyTitle={t('burnup.empty.title')}
-      emptyDescription={t('burnup.empty.description')}
+      emptyTitle={isError ? t('burnup.error.title') : t('burnup.empty.title')}
+      emptyDescription={isError ? t('burnup.error.body') : t('burnup.empty.description')}
       legend={
         <>
           {/* A DOT for the shaded series and rules for the trajectories — Rally's own convention, and it

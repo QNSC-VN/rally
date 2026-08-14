@@ -19,6 +19,7 @@ import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { formatWith } from '@/shared/lib/utils'
 import { useSystemRoles } from '../model/use-system-roles'
+import { SearchableSelect } from '@/shared/ui/searchable-select'
 
 const AUDIT_DEFAULT_PAGE_SIZE = 50
 
@@ -57,6 +58,17 @@ export function AuditLogTab() {
   const [search, setSearch] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  /**
+   * ACTOR, filtered server-side. §"Search supports Actor name and Time text" asks for exactly this,
+   * and `GET /v1/audit-logs` has taken an `actorId` all along — it was simply never sent, so the only
+   * way to find one person's actions was to type their name into a box that searched the 50 rows
+   * already on screen. On a log of any size that reads as "this user did nothing".
+   *
+   * A select rather than free text because the API takes one id: a name fragment matching two people
+   * cannot be expressed as `actorId`, and silently picking the first match would be worse than not
+   * offering it. The member list is already loaded for the Detail column's name resolution.
+   */
+  const [actorId, setActorId] = useState('')
 
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { data: members = [] } = useWorkspaceMembers(workspaceId)
@@ -66,14 +78,21 @@ export function AuditLogTab() {
   // Server offset/limit pagination — logs are large, so the API is the source of
   // truth for the page window (never client-sliced).
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['audit-logs', offset, pageSize, from, to],
+    queryKey: ['audit-logs', offset, pageSize, from, to, actorId],
     queryFn: async () => {
-      const query: { limit: number; offset: number; from?: string; to?: string } = {
+      const query: {
+        limit: number
+        offset: number
+        from?: string
+        to?: string
+        actorId?: string
+      } = {
         limit: pageSize,
         offset,
       }
       if (from) query.from = `${from}T00:00:00`
       if (to) query.to = `${to}T23:59:59`
+      if (actorId) query.actorId = actorId
       const res = await apiClient.GET('/v1/audit-logs', { params: { query } })
       return res.data
     },
@@ -94,11 +113,35 @@ export function AuditLogTab() {
     }
   }, [members, teams, roles])
 
+  /**
+   * Only members are offerable, and that is a real limit worth naming: an audit row's actor may be a
+   * user who has since been removed from the workspace, and such a row cannot be selected here. It is
+   * still reachable — clear the filter and page to it — and the alternative (a distinct-actor endpoint)
+   * is a bigger change than this finding.
+   */
+  const actorOptions = useMemo(
+    () => [
+      { value: '', label: t('audit.allActors') },
+      ...members.map((m) => ({
+        value: m.userId,
+        label: m.displayName || m.email || m.userId,
+      })),
+    ],
+    [members, t],
+  )
+
   const systemLabel = t('audit.system')
   const cellCtx = useMemo<AuditCtx>(() => ({ resolver, systemLabel }), [resolver, systemLabel])
 
-  // Client-side search over the CURRENT server page only (matches the previous
-  // behaviour — a quick refine within the loaded window).
+  /**
+   * Free text still refines the CURRENT server page only, and now says so in its own placeholder
+   * (`audit.searchPlaceholderPage`).
+   *
+   * Kept rather than removed because it is the only way to search the Detail sentence, which is
+   * assembled client-side from `action` + `changes` + resolved names and therefore cannot be a
+   * server predicate at all. The part the spec names — Actor — moved to the server filter above,
+   * where it works across the whole log instead of one window.
+   */
   const q = search.trim().toLowerCase()
   const actorLabel = (a: AuditRow): string => a.actorName ?? a.actorEmail ?? systemLabel
   const filtered = q
@@ -166,7 +209,7 @@ export function AuditLogTab() {
     storageKey: STORAGE_KEYS.SETTINGS_AUDIT_COLUMNS,
   })
 
-  const activeFilterCount = (from ? 1 : 0) + (to ? 1 : 0)
+  const activeFilterCount = (from ? 1 : 0) + (to ? 1 : 0) + (actorId ? 1 : 0)
 
   if (!workspaceId) {
     return <p className="text-ui-lg text-foreground-subtle">{t('members.noWorkspace')}</p>
@@ -190,14 +233,25 @@ export function AuditLogTab() {
         search={{
           value: search,
           onChange: setSearch,
-          placeholder: t('audit.searchPlaceholder'),
-          ariaLabel: t('audit.searchPlaceholder'),
+          placeholder: t('audit.searchPlaceholderPage'),
+          ariaLabel: t('audit.searchPlaceholderPage'),
           width: 256,
         }}
         activeFilterCount={activeFilterCount}
-        defaultFiltersOpen={!!(from || to)}
+        defaultFiltersOpen={!!(from || to || actorId)}
         filters={
           <>
+            <SearchableSelect
+              variant="field"
+              value={actorId}
+              ariaLabel={t('audit.actorFilter')}
+              placeholder={t('audit.allActors')}
+              options={actorOptions}
+              onChange={(v) => {
+                setActorId(v)
+                setOffset(0)
+              }}
+            />
             <Input
               type="date"
               value={from}
@@ -226,6 +280,7 @@ export function AuditLogTab() {
               onClick={() => {
                 setFrom('')
                 setTo('')
+                setActorId('')
                 setOffset(0)
               }}
             >

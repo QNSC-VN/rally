@@ -371,7 +371,11 @@ export function TasksTab({
 // Inline-editable Tasks-tab row (DEV-014): Name / State / Owner / To Do / Actuals
 // are edited in place with the shared cell primitives (InlineEditableCell /
 // InlineCellSelect / OwnerSelectCell — identical to the Team Status task grid);
-// Estimate is read-only derived (To Do + Actuals). Each edit invalidates the
+// Estimate is EDITABLE, like the other two hour fields — this comment used to say it was
+// "read-only derived (To Do + Actuals)", which is the `Estimate = To Do + Actual` rule reversed on
+// 2026-07-28. The three hours are independent (Portfolio SRS:141-147), the cell here has always been
+// an editable number input, and two BA SRS files still carry the dead rule — so a reader trusting
+// this comment would have "fixed" working code to match it. Each edit invalidates the
 // ['work-items'] root, so the totals row and parent roll-up recompute immediately.
 // The row key includes `updatedAt` so committed values re-sync after a refresh.
 function TaskRow({

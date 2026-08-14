@@ -37,7 +37,11 @@
     "noBaselineNote": "No start baseline was recorded, so the Ideal line is not drawn.",
     "partialCapture": "One day was recorded before it closed ({{dates}}), so its value is not an end-of-day figure.",
     "partialCapture_plural": "{{count}} days were recorded before they closed ({{dates}}), so those values are not end-of-day figures.",
-    "tableCaption": "Iteration Burndown as a table: Task To Do hours, the Ideal baseline and cumulative Accepted points, per day of the iteration."
+    "tableCaption": "Iteration Burndown as a table: Task To Do hours, the Ideal baseline and cumulative Accepted points, per day of the iteration.",
+    "error": {
+      "title": "Could not load the burndown",
+      "body": "The request failed, so no daily history could be read. This is not a statement about the iteration — try again."
+    }
   },
   "velocity": {
     "title": "Velocity - Accepted Iterations",
@@ -69,7 +73,7 @@
     "tableIteration": "Iteration",
     "error": {
       "title": "Could not load velocity",
-      "body": "The request failed, so no iteration history could be read. This is not a statement about the project \u2014 try again."
+      "body": "The request failed, so no iteration history could be read. This is not a statement about the project — try again."
     }
   },
   "capacity": {

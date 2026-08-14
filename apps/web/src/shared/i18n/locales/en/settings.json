@@ -253,7 +253,10 @@
     "colDetail": "Detail",
     "loading": "Loading audit log…",
     "loadError": "Failed to load audit log. Please try again.",
-    "empty": "No audit events found."
+    "empty": "No audit events found.",
+    "searchPlaceholderPage": "Filter this page…",
+    "actorFilter": "Filter by actor",
+    "allActors": "All actors"
   },
   "roles": {
     "permissionsUpdated": "Role permissions updated",

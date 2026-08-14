@@ -234,8 +234,10 @@ difference is the whole design. Read this before changing a report or the snapsh
   `remainingToDo(d)` with `ideal(d)`, the indicator read "On track" for a team that had burned nothing
   and could not read "Behind plan" until a team exceeded every other team's estimate as well. Capture
   groups by the same `coalesce(task, parent, iteration)` team the hours are measured with, so the
-  baseline and its bars can never be scoped differently. **The release Ideal target
-  (`releases.ideal_target_*`) still has this defect** — it is captured only under `teamId === null`.
+  baseline and its bars can never be scoped differently. The release Ideal target got the same
+  treatment in migration 0099 (`release_team_targets`), which also DROPPED
+  `releases.ideal_target_points` / `_count` — so a note here claiming that target "still has this
+  defect" is stale, and it named two columns that no longer exist. Both quantities are now per-team.
 - **The snapshot job only writes INSIDE the timebox window.** `findActiveIterations` selects on
   `state = 'committed'` and nothing else, and committing early is legal — so an iteration committed
   before it started had its *immutable* baseline captured at commit time, commonly zero because tasks
