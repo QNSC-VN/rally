@@ -288,7 +288,10 @@
     "saved": "Project access saved",
     "saveFailed": "Failed to save project access",
     "unsavedHint_one": "{{count}} pending change — review before saving.",
-    "unsavedHint_other": "{{count}} pending changes — review before saving."
+    "unsavedHint_other": "{{count}} pending changes — review before saving.",
+    "effectNextRequest": "Changes take effect on your next request.",
+    "workspaceAdminReadOnly": "This user is a Workspace Admin and already has full access to every project. Per-project access levels do not apply, so this tab is read-only.",
+    "workspaceAdminReadOnlyShort": "Read-only — a Workspace Admin's access comes from the workspace-wide grant."
   },
   "roles": {
     "permissionsUpdated": "Role permissions updated",

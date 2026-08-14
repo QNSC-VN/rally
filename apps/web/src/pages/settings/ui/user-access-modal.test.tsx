@@ -87,17 +87,23 @@ function seed(level: 'admin' | 'editor' | null, memberOfTeamA = true) {
   })
 }
 
-async function openAccessTab() {
+/** Mount the modal on its Project Access tab. Returns nothing — the tab's contents
+ *  differ per target, so each test awaits whatever it is asserting on. */
+function renderModal(member: WorkspaceMember = MEMBER) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   render(
     <QueryClientProvider client={qc}>
-      <UserAccessModal member={MEMBER} workspaceId="ws-1" onClose={vi.fn()} />
+      <UserAccessModal member={member} workspaceId="ws-1" onClose={vi.fn()} />
     </QueryClientProvider>,
   )
   // Radix Tabs activates from mousedown/focus, not click.
   fireEvent.mouseDown(screen.getByRole('tab', { name: 'Project Access' }))
+}
+
+async function openAccessTab(member: WorkspaceMember = MEMBER) {
+  renderModal(member)
   return screen.findByRole('button', { name: 'Access level for NextGen Platform' })
 }
 
@@ -130,6 +136,56 @@ describe('UserAccessModal Project Access — §5.1 draft, review, confirm', () =
     await openAccessTab()
     expect(await screen.findByRole('button', { name: 'Teams for NextGen Platform' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Review Changes' })).toBeDisabled()
+    noWrites()
+  })
+
+  it('adopts team memberships that arrive AFTER the level was chosen', async () => {
+    /**
+     * The race the shipped modal lost, made deterministic.
+     *
+     * `/v1/teams/{id}/members` is its own query, so a user can choose `Editor` before it resolves.
+     * The draft used to materialise `teamIds` from the baseline at that instant — `[]` — and a draft
+     * SHADOWS the baseline, so the real memberships could never reach it. §2.2's "an Editor needs a
+     * Team" guard then stayed true forever: `Review Changes` disabled permanently, the user's own team
+     * unchecked in the picker, and no way out but closing the modal.
+     *
+     * Held open with a deferred promise rather than a timer, so this fails on the frozen-state bug and
+     * cannot pass on a lucky interleaving. Before the fix it reproduced 2 runs in 8 by chance, and a 5s
+     * `waitFor` did not help — which is what proved the state was frozen rather than slow.
+     */
+    let releaseTeamMembers = () => {}
+    const teamMembersArrived = new Promise<void>((resolve) => {
+      releaseTeamMembers = resolve
+    })
+    mockGET.mockImplementation((path: string) => {
+      if (path === '/v1/projects') return Promise.resolve({ data: { data: PROJECTS } })
+      if (path === '/v1/projects/{id}/members')
+        return Promise.resolve({ data: [projectMember('admin')] })
+      if (path === '/v1/projects/{id}/teams') return Promise.resolve({ data: TEAMS })
+      if (path === '/v1/teams/{id}/members') {
+        // Team Alpha's roster is withheld until the level has already been staged.
+        return teamMembersArrived.then(() => ({
+          data: [{ id: 'tm-1', teamId: 'team-a', userId: 'u-1', status: 'active', joinedAt: '' }],
+        }))
+      }
+      return Promise.resolve({ data: [] })
+    })
+
+    renderModal()
+    const levelSelect = await screen.findByRole('button', {
+      name: 'Access level for NextGen Platform',
+    })
+    fireEvent.click(levelSelect)
+    fireEvent.click(await screen.findByRole('button', { name: 'Editor' }))
+
+    // Staged while the memberships are still in flight: blocked, correctly, on what is known so far.
+    const review = await screen.findByRole('button', { name: 'Review Changes' })
+    expect(review).toBeDisabled()
+
+    releaseTeamMembers()
+
+    // The late baseline must reach the untouched draft and clear the §2.2 block.
+    await waitFor(() => expect(review).not.toBeDisabled())
     noWrites()
   })
 
@@ -189,6 +245,49 @@ describe('UserAccessModal Project Access — §5.1 draft, review, confirm', () =
     expect(await screen.findByText('1 pending change — review before saving.')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Review Changes' })).toBeDisabled()
     noWrites()
+  })
+
+  /**
+   * §2.1: a Workspace Admin's authority is the workspace-wide grant, and the model
+   * defines no `project_members` row for one — so this tab must not offer to write
+   * or revoke a level for that target, even to a Workspace Admin actor (who this
+   * test's `useAuthStore` mock is).
+   *
+   * The regression: the tab rendered its full editor for a WA target, so a
+   * `project_members` row §2.1 forbids was one click away and `Remove access`
+   * promised a revocation that could not take anything away. Reverting the
+   * `targetIsWorkspaceAdmin` gate brings back the Access Level select, the Remove
+   * button, `+ Add project access` and `Review Changes` — each asserted absent below.
+   */
+  it('is read-only for a Workspace Admin target (§2.1)', async () => {
+    // An `editor` baseline on purpose: the row renders (rows stay visible, read-only)
+    // so the absent select and absent Remove are real absences, not an empty tab.
+    seed('editor')
+    renderModal({ ...MEMBER, roleSlug: 'workspace_admin' } as unknown as WorkspaceMember)
+
+    // The tab explains why instead of offering an editor.
+    expect(
+      await screen.findByText(
+        'This user is a Workspace Admin and already has full access to every project. Per-project access levels do not apply, so this tab is read-only.',
+      ),
+    ).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Add project access' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Review Changes' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Remove access' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Access level for NextGen Platform' })).toBeNull()
+    noWrites()
+  })
+
+  /**
+   * The counterpart: the gate must key on the TARGET, not simply disable the tab.
+   * A non-WA target still gets the full editor for a WA actor.
+   */
+  it('still offers the editor for a non-admin target', async () => {
+    seed('editor')
+    await openAccessTab()
+    expect(screen.getByRole('button', { name: 'Remove access' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Access level for NextGen Platform' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Review Changes' })).toBeTruthy()
   })
 
   it('stages a Remove and only DELETEs on Confirm & Save', async () => {
