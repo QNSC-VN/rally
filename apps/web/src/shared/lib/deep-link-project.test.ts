@@ -21,7 +21,7 @@ vi.mock('@/shared/api/http-client', () => ({
 
 import { apiClient } from '@/shared/api/http-client'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useRecordProject } from '@/shared/lib/deep-link-project'
+import { adoptRecordProject, useRecordProject } from '@/shared/lib/deep-link-project'
 
 const mockGET = apiClient.GET as ReturnType<typeof vi.fn>
 
@@ -91,6 +91,67 @@ describe('useRecordProject — the display side never falls back to the selector
     const { result } = mount(undefined)
 
     expect(result.current).toBeUndefined()
+    expect(mockGET).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * `adoptRecordProject` — a HOVER may warm the cache and must not move the app.
+ *
+ * The router runs `defaultPreload: 'intent'`, so a route's loader fires on hover with
+ * `cause: 'preload'` and no navigation. This loader is not a pure fetch: it writes `setProject` and
+ * `setTeam(null)`. `widgets/app-shell/global-search.tsx` renders a `<Link to="/item/$itemKey">` for
+ * whatever key the reader types, and item keys are workspace-unique — so pointing at a suggestion
+ * for another project's item silently switched the whole app to that project and cleared the
+ * selected Team, with no click and nothing on screen to explain it.
+ *
+ * Both directions, because the fix must not be "stop preloading": the fetch has to still happen on
+ * hover or the preload is pointless, and the commit has to still happen on a real navigation or a
+ * deep link lands in the wrong project — the defect this whole module exists to fix.
+ */
+describe('adoptRecordProject — preload fetches, navigation commits', () => {
+  it('does NOT switch project on a hover-time preload, but still warms the cache', async () => {
+    mockGET.mockResolvedValue(ok(PAY))
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    await adoptRecordProject(qc, PAY.id, { commit: false })
+
+    // The reader has not gone anywhere: they are still on the project they chose.
+    expect(useAppContext.getState().project).toEqual(NXP)
+    expect(useAppContext.getState().team).toBeNull()
+    // …and the request was made, so the eventual click paints from cache.
+    expect(mockGET).toHaveBeenCalledTimes(1)
+    expect(qc.getQueryData(['project', PAY.id])).toEqual({
+      projectId: PAY.id,
+      projectKey: PAY.key,
+      projectName: PAY.name,
+    })
+  })
+
+  it('DOES switch project when the navigation is real', async () => {
+    mockGET.mockResolvedValue(ok(PAY))
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    await adoptRecordProject(qc, PAY.id)
+
+    expect(useAppContext.getState().project).toEqual({
+      projectId: PAY.id,
+      projectKey: PAY.key,
+      projectName: PAY.name,
+    })
+    // The Team belonged to the project being left, exactly as the shell's own switcher does.
+    expect(useAppContext.getState().team).toBeNull()
+  })
+
+  it('leaves the selected Team alone on a preload of the project already selected', async () => {
+    // The case that made this invisible: inside a project-scoped list the ids match, the early
+    // return fires, and nothing happens either way. Pinned so the early return cannot be "tidied"
+    // into a store write.
+    useAppContext.setState({ project: NXP, team: { teamId: 't-1', teamName: 'Team Alpha' } })
+
+    await adoptRecordProject(new QueryClient(), NXP.projectId, { commit: false })
+
+    expect(useAppContext.getState().team).toEqual({ teamId: 't-1', teamName: 'Team Alpha' })
     expect(mockGET).not.toHaveBeenCalled()
   })
 })

@@ -72,10 +72,29 @@ export function recordProjectQueryOptions(projectId: string) {
  * Swallows a failure on purpose. A 403 is already handled globally (the HTTP client redirects to
  * `/403`) and a 404 belongs to the page's own empty state; a loader that threw would replace both
  * with the router's error boundary.
+ *
+ * `commit: false` FETCHES BUT DOES NOT SWITCH, and it is the reason this parameter exists.
+ * ---------------------------------------------------------------------------------------
+ * The router is configured `defaultPreload: 'intent'`, so it runs a route's loader on HOVER, with
+ * `cause: 'preload'` and no navigation. A loader that only warms a cache is safe there; this one
+ * also writes GLOBAL STATE (`setProject`, and `setTeam(null)` with it), and a store write on hover
+ * is not a preload — it is a navigation's side effect without the navigation.
+ *
+ * It was reachable: `widgets/app-shell/global-search.tsx` renders a `<Link to="/item/$itemKey">` for
+ * whatever key the reader has typed, and item keys are workspace-unique, so pointing at a suggestion
+ * for another project's item silently moved the whole app to that project and cleared the selected
+ * Team — with no click, and nothing on screen to explain it. Inside a project-scoped list it is
+ * invisible (same project, early return), which is exactly why it survived.
+ *
+ * So the two halves are split rather than the preload being turned off: the record fetch and this
+ * project fetch still run on hover (that is the point of preloading), and only the store write is
+ * withheld until the reader actually commits to the route. `cause === 'stay'` still commits — a
+ * re-navigation to the same route is a navigation.
  */
 export async function adoptRecordProject(
   queryClient: QueryClient,
   projectId: string | null | undefined,
+  opts: { commit: boolean } = { commit: true },
 ): Promise<void> {
   if (!projectId) return
   if (useAppContext.getState().project?.projectId === projectId) return
@@ -84,6 +103,9 @@ export async function adoptRecordProject(
     .ensureQueryData(recordProjectQueryOptions(projectId))
     .catch(() => null)
   if (!resolved) return
+  // Warmed the cache, and that is all a hover may do.
+  if (!opts.commit) return
+  // Warmed the cache, and that is all a hover may do.
 
   // Re-read the store: this is an await boundary, and the caller may have picked a project in the
   // meantime. Losing that race would move them off their own choice.

@@ -13,11 +13,17 @@ import { releaseQueryOptions } from './api'
 export async function adoptReleaseProject(
   queryClient: QueryClient,
   releaseId: string,
+  /**
+   * The loader's own `cause`. `'preload'` fires on HOVER under `defaultPreload: 'intent'`, and a
+   * hover must not switch the app's project — see {@link adoptRecordProject} for the search-box
+   * case this was reachable through. The fetch still happens either way.
+   */
+  cause: 'preload' | 'enter' | 'stay' = 'enter',
 ): Promise<void> {
   const release = await queryClient
     .ensureQueryData(releaseQueryOptions(releaseId))
     // Swallowed deliberately — a 403 already redirects to `/403` and a 404 is the page's own
     // error state; a throwing loader would replace both with the router's error boundary.
     .catch(() => null)
-  await adoptRecordProject(queryClient, release?.projectId)
+  await adoptRecordProject(queryClient, release?.projectId, { commit: cause !== 'preload' })
 }

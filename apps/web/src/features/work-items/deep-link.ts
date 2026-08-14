@@ -19,6 +19,12 @@ import { workItemByKeyQueryOptions } from './api'
 export async function adoptWorkItemProject(
   queryClient: QueryClient,
   itemKey: string,
+  /**
+   * The loader's own `cause`. `'preload'` fires on HOVER under `defaultPreload: 'intent'`, and a
+   * hover must not switch the app's project — see {@link adoptRecordProject} for the search-box
+   * case this was reachable through. The fetch still happens either way.
+   */
+  cause: 'preload' | 'enter' | 'stay' = 'enter',
 ): Promise<void> {
   const item = await queryClient
     .ensureQueryData(workItemByKeyQueryOptions(itemKey))
@@ -26,5 +32,5 @@ export async function adoptWorkItemProject(
     // `/403`) and a 404 belongs to the page's own "not found" state. A loader that threw would
     // replace both with the router's error boundary.
     .catch(() => null)
-  await adoptRecordProject(queryClient, item?.projectId)
+  await adoptRecordProject(queryClient, item?.projectId, { commit: cause !== 'preload' })
 }

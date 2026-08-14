@@ -201,9 +201,12 @@ const workItemDetailRoute = createRoute({
   path: '/item/$itemKey',
   staticData: { breadcrumb: 'Work Item' },
   // A shared link must open in the ITEM's project, not the recipient's last-selected one.
-  loader: ({ context, params }) =>
+  // `cause` is threaded on purpose: `defaultPreload: 'intent'` runs this loader on HOVER, and the
+  // adopter writes global state. Global search links here for any typed key, so a hover used to
+  // switch project silently. See `adoptRecordProject`.
+  loader: ({ context, params, cause }) =>
     import('@/features/work-items/deep-link').then((m) =>
-      m.adoptWorkItemProject(context.queryClient, params.itemKey),
+      m.adoptWorkItemProject(context.queryClient, params.itemKey, cause),
     ),
   // Gated on the code its LIST surfaces carry (`work_item:view`), which the alias table folds onto
   // this path — see there for why a surface code on a record route is §197 and not §198. The loader
@@ -255,9 +258,11 @@ const releaseDetailRoute = createRoute({
   path: '/releases/$releaseId',
   staticData: { breadcrumb: 'Release Detail' },
   // A shared link must open in the RELEASE's project, not the recipient's last-selected one.
-  loader: ({ context, params }) =>
+  // `cause` threaded for the same reason as `/item/$itemKey` above — a hover-time preload must not
+  // move the selected project.
+  loader: ({ context, params, cause }) =>
     import('@/features/releases/deep-link').then((m) =>
-      m.adoptReleaseProject(context.queryClient, params.releaseId),
+      m.adoptReleaseProject(context.queryClient, params.releaseId, cause),
     ),
   // A record of the Timeboxes surface, so it carries `timebox:view` like the three list modes do.
   // Unguarded, a caller the nav denies `/timeboxes` to could paste a release URL and get the record.
