@@ -6,24 +6,43 @@
  *     editable per-member today — Status (active/suspended), reusing the exact
  *     `useUpdateMember` + confirm-before-suspend behaviour the Members grid uses
  *     (P4-SET-07).
- *   - Project Access: a Workspace Admin can ASSIGN / CHANGE / REMOVE the user's
- *     per-Project access (admin / editor / No Access) — the same writes the
- *     Project-centric and Team journeys make, so all three stay synchronized —
- *     plus an inline Teams picker per project (P4-RBAC-010/011: team membership
- *     writes through the SAME `useAddTeamMember` / `useRemoveTeamMember` hooks
- *     the project's own Teams tab uses, so both surfaces stay in sync via one
- *     React Query cache).
+ *   - Project Access: a Workspace Admin ASSIGNS / CHANGES / REMOVES the user's
+ *     per-Project access (admin / editor / No Access) and, for an Editor, their
+ *     Teams — the same writes the Project-centric and Team journeys make, so all
+ *     three stay synchronized (P4-RBAC-010/011: team membership goes through the
+ *     SAME `useAddTeamMember` / `useRemoveTeamMember` hooks the project's own
+ *     Teams tab uses, so both surfaces stay in sync via one React Query cache).
  *
- * Every mutation here commits on change — there is no draft/batch-review state,
- * matching the rest of this file and `project-teams-tab.tsx`.
+ * **Project Access is a DRAFT.** Nothing is written until `Review Changes` →
+ * `Confirm & Save`, because §5.1's journey names those two steps literally:
+ * "Choose Admin / Editor -> Choose Teams only when level is Editor -> Review
+ * Changes -> Confirm & Save" (:125-135), and the mockup implements them as a
+ * `draft` + a review dialog + a `save()` (`SettingsPage.tsx`:293-294, 434,
+ * 438-452). Every control here used to commit on change, so a mis-click on
+ * Access Level was already persisted (and had already invalidated the target
+ * user's permission cache) with nothing to review and nothing to abandon — and
+ * the two §5 journeys had different transactional semantics, which §5's closing
+ * sentence ("All three journeys update the same Project access and Team
+ * membership source") exists to prevent.
+ *
+ * The General tab's Status deliberately stays immediate: it is a
+ * `workspace_members` field with its own typed confirmation (P4-SET-07), not
+ * Project access, and §5.1's review step is scoped to the latter.
+ *
+ * **Admin shows `All Teams`, never a Team picker** (§5.1 :141-143, §2.2 :51).
+ * The picker used to render for Admin as well, so a Workspace Admin was invited
+ * to build a team scope for a level that has none — `assertTeamScoped` skips
+ * team scoping for Admin, so those rows changed nothing. Promoting an Editor to
+ * Admin therefore writes no team rows and REMOVES none either: the existing
+ * memberships carry delivery meaning (assignment, Team Status, capacity) and
+ * keeping them makes a later demotion lossless. Only Remove clears them (§5.2).
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Plus, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useProjects } from '@/features/projects/api'
 import {
   useProjectMembers,
-  useUpdateProjectAccess,
-  useAddProjectMember,
   useProjectTeams,
   useAddTeamMember,
   useRemoveTeamMember,
@@ -45,8 +64,10 @@ import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { notify } from '@/shared/lib/toast'
+import { AllTeamsChip } from '@/shared/ui/all-teams-chip'
 import {
   accessSelectOptions,
+  grantsAllTeams,
   requiresTeamSelection,
   type AccessLevel,
 } from '@/shared/config/access-levels'
@@ -64,6 +85,61 @@ type MemberStatus = 'active' | 'suspended' | 'removed'
 
 type ModalTab = 'general' | 'access'
 
+/** One team of a project, as the rows report it up for the review summary. */
+interface TeamRef {
+  id: string
+  name: string
+}
+
+/**
+ * The SERVER's current answer for one project — what the draft is diffed against
+ * on save. Reported by whichever child owns that project's queries.
+ */
+interface ProjectBaseline {
+  /** An active `project_members` row exists (any level, including NULL). */
+  hasAccess: boolean
+  /** `project_members.id`, and ONLY for an explicit row — see `writeLevel`. */
+  memberId: string | null
+  level: AccessLevel | null
+  /** The user's active team memberships among this project's teams. */
+  teamIds: string[]
+  /** The project's teams, for the review summary and the "no team to pick" case. */
+  teams: TeamRef[]
+}
+
+/** The pending edit for one project row. `level: null` = a team-derived row untouched. */
+interface AccessDraft {
+  level: AccessLevel | null
+  teamIds: string[]
+}
+
+/** One row of the `Review Changes` summary, and one unit of work for `Confirm & Save`. */
+type PendingChange =
+  | { kind: 'remove'; projectId: string; label: string }
+  | {
+      kind: 'grant' | 'update'
+      projectId: string
+      label: string
+      level: AccessLevel | null
+      levelChanged: boolean
+      teamIds: string[]
+      teamNames: string[]
+      /** No team exists to satisfy §2.2's "Editor needs a Team" — see `isBlocked`. */
+      projectHasNoTeams: boolean
+    }
+
+/** An Editor with no team is invalid (§2.2) — unless the project has no team to give. */
+function isBlocked(change: PendingChange): boolean {
+  if (change.kind === 'remove') return false
+  return (
+    requiresTeamSelection(change.level) && change.teamIds.length === 0 && !change.projectHasNoTeams
+  )
+}
+
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && [...a].sort().join() === [...b].sort().join()
+}
+
 export function UserAccessModal({
   member,
   workspaceId,
@@ -73,25 +149,133 @@ export function UserAccessModal({
   workspaceId: string
   onClose: () => void
 }) {
+  const { t } = useTranslation('settings')
   const { hasPermission, user } = useAuthStore()
   const isWA = hasPermission(PERMISSION.WORKSPACE_ALL)
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<ModalTab>('general')
   const { data: projects = [], isLoading } = useProjects(workspaceId)
-  const [removeProject, setRemoveProject] = useState<{ id: string; name: string } | null>(null)
-  /* Mockup parity: the roster lists only projects the user HAS access to; the
-   * rest surface through the "+ Add project access" picker. Membership is resolved
-   * by the same per-project probe each row already runs — the row reports back. */
-  const [membership, setMembership] = useState<Record<string, boolean>>({})
-  const reportMembership = (projectId: string, hasAccess: boolean) => {
-    setMembership((prev) =>
-      prev[projectId] === hasAccess ? prev : { ...prev, [projectId]: hasAccess },
-    )
+
+  // ── Project Access draft (§5.1). `baselines` is the server's answer, reported
+  // by each project's row/probe; `drafts` holds only what the admin CHANGED;
+  // `added` / `removed` are the two row-level edits. Effective value =
+  // draft ?? baseline, so a row needs no seeding and cannot be seeded twice.
+  const [baselines, setBaselines] = useState<Record<string, ProjectBaseline>>({})
+  const [drafts, setDrafts] = useState<Record<string, AccessDraft>>({})
+  const [added, setAdded] = useState<string[]>([])
+  const [removed, setRemoved] = useState<string[]>([])
+  const [reviewing, setReviewing] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const resolveBaseline = useCallback((projectId: string, next: ProjectBaseline) => {
+    setBaselines((prev) => ({ ...prev, [projectId]: next }))
+  }, [])
+
+  const isVisible = useCallback(
+    (projectId: string) =>
+      added.includes(projectId) ||
+      (baselines[projectId]?.hasAccess === true && !removed.includes(projectId)),
+    [added, removed, baselines],
+  )
+
+  const effective = useCallback(
+    (projectId: string): AccessDraft =>
+      drafts[projectId] ?? {
+        level: baselines[projectId]?.level ?? null,
+        teamIds: baselines[projectId]?.teamIds ?? [],
+      },
+    [drafts, baselines],
+  )
+
+  const patchDraft = useCallback(
+    (projectId: string, patch: Partial<AccessDraft>) => {
+      setDrafts((prev) => ({ ...prev, [projectId]: { ...effective(projectId), ...patch } }))
+    },
+    [effective],
+  )
+
+  function addRow(projectId: string, level: AccessLevel) {
+    // Re-adding a project whose access still exists on the server is an UNDO of
+    // the Remove, so it restores the baseline instead of becoming a fresh grant.
+    setRemoved((prev) => prev.filter((id) => id !== projectId))
+    if (!baselines[projectId]?.hasAccess) setAdded((prev) => [...prev, projectId])
+    setDrafts((prev) => ({
+      ...prev,
+      [projectId]: { level, teamIds: baselines[projectId]?.teamIds ?? [] },
+    }))
   }
+
+  function removeRow(projectId: string) {
+    setAdded((prev) => prev.filter((id) => id !== projectId))
+    setDrafts((prev) => {
+      const next = { ...prev }
+      delete next[projectId]
+      return next
+    })
+    if (baselines[projectId]?.hasAccess) setRemoved((prev) => [...prev, projectId])
+  }
+
+  /**
+   * Forget the draft entries for the projects whose writes LANDED, and only those.
+   *
+   * Called on the failure path as well, which is the whole point. `save()` used to
+   * clear the draft (and invalidate) only after EVERY change succeeded, so a
+   * failure part-way left the ones that had already been written still listed in
+   * `changes`: pressing `Confirm & Save` again re-issued a DELETE that had worked,
+   * `removeProjectMember` 404'd on it (`findMember` is active-only), and the loop
+   * died on that same first change every time — the remaining work could not be
+   * applied at all without closing and reopening the modal.
+   */
+  const forgetApplied = useCallback((projectIds: readonly string[]) => {
+    if (projectIds.length === 0) return
+    const done = new Set(projectIds)
+    setDrafts((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => !done.has(id))))
+    setAdded((prev) => prev.filter((id) => !done.has(id)))
+    setRemoved((prev) => prev.filter((id) => !done.has(id)))
+  }, [])
+
+  const changes: PendingChange[] = useMemo(() => {
+    const out: PendingChange[] = []
+    for (const p of projects) {
+      const base = baselines[p.id]
+      const label = `${p.key} · ${p.name}`
+      const visible = added.includes(p.id) || (base?.hasAccess === true && !removed.includes(p.id))
+      if (!visible) {
+        if (base?.hasAccess) out.push({ kind: 'remove', projectId: p.id, label })
+        continue
+      }
+      const draft = drafts[p.id] ?? {
+        level: base?.level ?? null,
+        teamIds: base?.teamIds ?? [],
+      }
+      const levelChanged = draft.level !== (base?.level ?? null)
+      // Admin covers every team, so its team rows are not part of the diff.
+      const teamsChanged =
+        requiresTeamSelection(draft.level) && !sameIds(draft.teamIds, base?.teamIds ?? [])
+      if (!base?.hasAccess || levelChanged || teamsChanged) {
+        const teams = base?.teams ?? []
+        out.push({
+          kind: base?.hasAccess ? 'update' : 'grant',
+          projectId: p.id,
+          label,
+          level: draft.level,
+          levelChanged,
+          teamIds: draft.teamIds,
+          teamNames: teams.filter((tm) => draft.teamIds.includes(tm.id)).map((tm) => tm.name),
+          projectHasNoTeams: teams.length === 0,
+        })
+      }
+    }
+    return out
+  }, [projects, baselines, drafts, added, removed])
+
+  const blocked = changes.some(isBlocked)
 
   // ── General tab: Status (active/suspended) — same hook + confirm-before-
   // suspend behaviour as the Members grid's inline status cell (P4-SET-07).
   const updateMember = useUpdateMember(workspaceId)
+  const addTeamMember = useAddTeamMember()
+  const removeTeamMember = useRemoveTeamMember()
   const [confirmSuspend, setConfirmSuspend] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const statusLocked = member.userId === user?.id || member.roleSlug === 'workspace_admin'
@@ -117,6 +301,95 @@ export function UserAccessModal({
       },
     )
   }
+
+  /**
+   * `Confirm & Save` — the ONE write handler for the whole draft (§5.1).
+   *
+   * Sequential on purpose: a grant's `project_members` row must land before the
+   * `team_members` writes that scope it, and a failure part-way must not race
+   * the rest. Raw `apiClient` for the level writes because the level hooks bind
+   * one projectId at their call site and this loop spans projects — hence the
+   * explicit cache invalidation, which `meta.invalidates` would otherwise do.
+   *
+   * PARTIAL PROGRESS IS KEPT: each project drops out of the draft as its own
+   * writes land (`forgetApplied`), and the baselines are re-read in a `finally`.
+   * A failure therefore leaves exactly the REMAINING work in `changes`, and
+   * `Confirm & Save` retries that and nothing else — see `forgetApplied` for the
+   * unrecoverable modal this replaces.
+   */
+  async function save() {
+    setSaving(true)
+    // Per project, appended only once that project's writes have all landed.
+    const applied: string[] = []
+    try {
+      for (const change of changes) {
+        if (change.kind === 'remove') {
+          const { error, response } = await apiClient.DELETE('/v1/projects/{id}/members/{userId}', {
+            params: { path: { id: change.projectId, userId: member.userId } },
+          })
+          if (error) throw new Error(apiErrorMessage(error, response.status))
+          applied.push(change.projectId)
+          continue
+        }
+        const base = baselines[change.projectId]
+        if (change.levelChanged && change.level) {
+          // A NULL access_level row is team-derived — its `id` is a team_members
+          // id, so PATCHing it 404s. POST upserts (the BE sets the level on the
+          // existing row, or creates the explicit grant).
+          if (base?.memberId && base.level) {
+            const { error, response } = await apiClient.PATCH(
+              '/v1/projects/{id}/members/{memberId}',
+              {
+                params: { path: { id: change.projectId, memberId: base.memberId } },
+                body: { accessLevel: change.level },
+              },
+            )
+            if (error) throw new Error(apiErrorMessage(error, response.status))
+          } else {
+            const { error, response } = await apiClient.POST('/v1/projects/{id}/members', {
+              params: { path: { id: change.projectId } },
+              body: { userId: member.userId, accessLevel: change.level } as never,
+            })
+            if (error) throw new Error(apiErrorMessage(error, response.status))
+          }
+        }
+        if (requiresTeamSelection(change.level)) {
+          const had = base?.teamIds ?? []
+          for (const teamId of change.teamIds.filter((id) => !had.includes(id))) {
+            await addTeamMember.mutateAsync({ teamId, userId: member.userId })
+          }
+          for (const teamId of had.filter((id) => !change.teamIds.includes(id))) {
+            await removeTeamMember.mutateAsync({ teamId, userId: member.userId })
+          }
+        }
+        applied.push(change.projectId)
+      }
+      notify.success(t('access.saved'))
+      setReviewing(false)
+    } catch (e) {
+      notify.fromError(e, t('access.saveFailed'))
+    } finally {
+      // Invalidate FIRST, and on the failure path too. The baselines every change
+      // was diffed against are stale either way, and a partial failure needs them
+      // re-read most of all: a level write that landed before its team write threw
+      // must show up as `levelChanged: false` on the retry, or the retry re-issues
+      // it. Awaited so the rows have re-reported before the draft is trimmed.
+      await queryClient.invalidateQueries({ queryKey: ['teams'] })
+      forgetApplied(applied)
+      setSaving(false)
+    }
+  }
+
+  const rowProjects = projects.filter((p) => isVisible(p.id))
+  // A project with access that is merely REMOVED in the draft gets no probe: the
+  // probe cannot see team memberships, and overwriting the row's baseline with an
+  // empty team list would make the Remove impossible to undo faithfully.
+  const probeProjects = projects.filter(
+    (p) => baselines[p.id]?.hasAccess !== true && !isVisible(p.id),
+  )
+  const candidates: SelectOption[] = projects
+    .filter((p) => !isVisible(p.id))
+    .map((p) => ({ value: p.id, label: `${p.key} · ${p.name}` }))
 
   return (
     <AppModal open onClose={onClose} title="Manage Access" width={560}>
@@ -177,45 +450,37 @@ export function UserAccessModal({
               </p>
             ) : (
               <div className="flex flex-col gap-3">
-                {projects
-                  .filter((p) => membership[p.id] === true)
-                  .map((p) => (
-                    <UserProjectAccessRow
-                      key={p.id}
-                      projectId={p.id}
-                      projectKey={p.key}
-                      projectName={p.name}
-                      userId={member.userId}
-                      isWA={isWA}
-                      onMembership={reportMembership}
-                      onRemove={() => setRemoveProject({ id: p.id, name: `${p.key} · ${p.name}` })}
-                    />
-                  ))}
-                {/* Probes for not-yet-assigned projects: resolve membership (and
-                    re-report after an Add/Remove) without rendering a row. */}
-                {projects
-                  .filter((p) => membership[p.id] !== true)
-                  .map((p) => (
-                    <MembershipProbe
-                      key={p.id}
-                      projectId={p.id}
-                      userId={member.userId}
-                      onMembership={reportMembership}
-                    />
-                  ))}
-                {Object.keys(membership).length > 0 &&
-                  projects.every((p) => membership[p.id] !== true) && (
-                    <p className="py-2 text-center text-ui-sm text-foreground-subtle">
-                      No project access yet.
-                    </p>
-                  )}
-                {isWA && projects.some((p) => membership[p.id] === false) && (
-                  <AddProjectAccess
+                {rowProjects.map((p) => (
+                  <UserProjectAccessRow
+                    key={p.id}
+                    projectId={p.id}
+                    projectKey={p.key}
+                    projectName={p.name}
                     userId={member.userId}
-                    candidates={projects
-                      .filter((p) => membership[p.id] === false)
-                      .map((p) => ({ value: p.id, label: `${p.key} · ${p.name}` }))}
+                    isWA={isWA}
+                    draft={effective(p.id)}
+                    onResolve={resolveBaseline}
+                    onChange={patchDraft}
+                    onRemove={() => removeRow(p.id)}
                   />
+                ))}
+                {/* Probes for projects with no row: resolve the baseline (and
+                    re-report after a save) without rendering anything. */}
+                {probeProjects.map((p) => (
+                  <MembershipProbe
+                    key={p.id}
+                    projectId={p.id}
+                    userId={member.userId}
+                    onResolve={resolveBaseline}
+                  />
+                ))}
+                {Object.keys(baselines).length > 0 && rowProjects.length === 0 && (
+                  <p className="py-2 text-center text-ui-sm text-foreground-subtle">
+                    No project access yet.
+                  </p>
+                )}
+                {isWA && candidates.length > 0 && (
+                  <AddProjectAccess candidates={candidates} onAdd={addRow} />
                 )}
               </div>
             )}
@@ -228,38 +493,33 @@ export function UserAccessModal({
             so this is accurate: a grant/revocation lands on the user's NEXT
             request, not their next sign-in. */}
         <p className="text-ui-xs text-foreground-subtle">
-          Changes take effect on your next request.
+          {changes.length > 0
+            ? t('access.unsavedHint', { count: changes.length })
+            : 'Changes take effect on your next request.'}
         </p>
+        {isWA && (
+          <Button
+            type="button"
+            className="ml-auto"
+            disabled={changes.length === 0 || blocked || saving}
+            onClick={() => setReviewing(true)}
+          >
+            {t('access.reviewChanges')}
+          </Button>
+        )}
       </ModalFooter>
 
+      {/* §5.1's `Review Changes` -> `Confirm & Save`: the summary lists the level
+          and the team names the save is about to write, per project. */}
       <ConfirmDialog
-        open={!!removeProject}
-        title="Remove project access"
-        message={
-          removeProject
-            ? `Remove this user's access to ${removeProject.name}? They lose all access (No Access) and their Team memberships in that project.`
-            : ''
-        }
-        confirmLabel="Remove Access"
-        destructive
-        onConfirm={async () => {
-          if (!removeProject) return
-          try {
-            const { error, response } = await apiClient.DELETE(
-              '/v1/projects/{id}/members/{userId}',
-              { params: { path: { id: removeProject.id, userId: member.userId } } },
-            )
-            if (error) throw new Error(apiErrorMessage(error, response.status))
-            // Same staleness bug as Add: raw DELETE must bust the member caches
-            // or the removed row lingers until refetch-by-staleTime.
-            await queryClient.invalidateQueries({ queryKey: ['teams'] })
-            notify.success('Access removed (No Access)')
-          } catch (e) {
-            notify.fromError(e, 'Failed to remove access')
-          }
-          setRemoveProject(null)
-        }}
-        onCancel={() => setRemoveProject(null)}
+        open={reviewing}
+        title={t('access.reviewTitle')}
+        message={<ReviewList changes={changes} />}
+        confirmLabel={t('access.confirmAndSave')}
+        cancelLabel={t('access.back')}
+        pending={saving}
+        onConfirm={save}
+        onCancel={() => setReviewing(false)}
       />
 
       <ConfirmDialog
@@ -311,13 +571,60 @@ export function UserAccessModal({
   )
 }
 
+/**
+ * The `Review Changes` summary (mockup `SettingsPage.tsx`:438-452): one row per
+ * project, its level, and the team names — or the mockup's own
+ * "No team membership" when an Editor row has none.
+ */
+function ReviewList({ changes }: { changes: PendingChange[] }) {
+  const { t } = useTranslation('settings')
+  if (changes.length === 0) {
+    return <span className="text-ui-sm text-foreground-subtle">{t('access.noChanges')}</span>
+  }
+  return (
+    <span className="flex flex-col gap-2">
+      {changes.map((change) => (
+        <span
+          key={change.projectId}
+          className="flex items-center gap-3 rounded-md border border-border-subtle bg-surface-hover px-3 py-2"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-ui-sm font-medium text-foreground">
+              {change.label}
+            </span>
+            <span className="block truncate text-ui-xs text-foreground-subtle">
+              {change.kind === 'remove'
+                ? t('access.accessRemoved')
+                : grantsAllTeams(change.level)
+                  ? t('access.allTeams')
+                  : change.teamNames.length > 0
+                    ? change.teamNames.join(', ')
+                    : t('access.noTeamMembership')}
+            </span>
+          </span>
+          <span className="text-ui-xs font-semibold text-foreground capitalize">
+            {change.kind === 'remove' ? t('access.noAccess') : change.level}
+          </span>
+        </span>
+      ))}
+    </span>
+  )
+}
+
+/**
+ * One project's draft row. Owns that project's QUERIES (so it can report the
+ * baseline the save diffs against) and nothing else — the value it renders comes
+ * from the parent's draft, and every edit goes back up. It writes nothing.
+ */
 function UserProjectAccessRow({
   projectId,
   projectKey,
   projectName,
   userId,
   isWA,
-  onMembership,
+  draft,
+  onResolve,
+  onChange,
   onRemove,
 }: {
   projectId: string
@@ -325,55 +632,41 @@ function UserProjectAccessRow({
   projectName: string
   userId: string
   isWA: boolean
-  onMembership: (projectId: string, hasAccess: boolean) => void
+  draft: AccessDraft
+  onResolve: (projectId: string, baseline: ProjectBaseline) => void
+  onChange: (projectId: string, patch: Partial<AccessDraft>) => void
   onRemove: () => void
 }) {
+  const { t } = useTranslation('settings')
   const { data: members = [], isLoading } = useProjectMembers(projectId)
+  const { data: teams = [] } = useProjectTeams(projectId)
+  const teamIds = useMemo(() => teams.map((tm) => tm.id), [teams])
+  const { memberTeamIds, isLoading: teamsLoading } = useUserTeamMemberships(teamIds, userId)
   const me = members.find((m) => m.userId === userId)
-  const updateAccess = useUpdateProjectAccess(projectId)
-  const addMember = useAddProjectMember(projectId)
-  const reported = useRef<boolean | null>(null)
+
+  // NULL access_level is a real member row (team-derived rows, and rows created
+  // before the add-with-level fix) — the user IS in the project, so the row
+  // renders and its level select writes through the POST branch on save.
+  const baseline: ProjectBaseline = useMemo(
+    () => ({
+      hasAccess: !!me && me.status === 'active',
+      memberId: me?.id ?? null,
+      level: me?.accessLevel ?? null,
+      teamIds: memberTeamIds,
+      teams: teams.map((tm) => ({ id: tm.id, name: tm.name })),
+    }),
+    [me, memberTeamIds, teams],
+  )
+  const signature = JSON.stringify(baseline)
+  const reported = useRef<string | null>(null)
   useEffect(() => {
-    if (isLoading) return
-    // NULL access_level is a real member row (team-derived union rows and rows
-    // created before the add-with-level fix) — the user IS in the project; the
-    // row renders and its level select PATCHes. Excluding them hid the row while
-    // the server still answered 409 ALREADY_EXISTS on Add (finding from live use).
-    const has = !!me && me.status === 'active'
-    if (reported.current !== has) {
-      reported.current = has
-      onMembership(projectId, has)
-    }
-  }, [isLoading, me, projectId, onMembership])
+    if (isLoading || teamsLoading) return
+    if (reported.current === signature) return
+    reported.current = signature
+    onResolve(projectId, baseline)
+  }, [isLoading, teamsLoading, signature, baseline, projectId, onResolve])
 
-  function handleChange(level: AccessLevel) {
-    // me.id is a project_members id ONLY for explicit rows. A NULL access_level
-    // row is team-derived (its id is a team_members id!) or a pre-fix row whose
-    // id may predate the union — PATCHing either 404s. POST upserts: the BE sets
-    // the level on the existing row or creates it.
-    if (me?.accessLevel) {
-      updateAccess.mutate(
-        { memberId: me.id, accessLevel: level },
-        {
-          onSuccess: () => notify.success(`Access updated to ${level}`),
-          onError: (e) => notify.fromError(e, 'Failed to update access'),
-        },
-      )
-    } else {
-      addMember.mutate(
-        { userId, accessLevel: level },
-        {
-          onSuccess: () => notify.success(`Access set to ${level}`),
-          onError: (e) => notify.fromError(e, 'Failed to set access'),
-        },
-      )
-    }
-  }
-
-  // Teams are only assignable where the user actually has Project access — a
-  // "No Access" row has nothing to assign a team into (matches this file's own
-  // Remove-Access copy above: losing Project access also clears Team membership).
-  const canAssignTeams = isWA && (me?.accessLevel === 'admin' || me?.accessLevel === 'editor')
+  const teamOptions: SelectOption[] = teams.map((tm) => ({ value: tm.id, label: tm.name }))
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border-subtle p-4">
@@ -390,7 +683,7 @@ function UserProjectAccessRow({
             className="disabled:opacity-100"
           />
         </FormField>
-        {isWA && me && (
+        {isWA && (
           <IconButton
             size="sm"
             aria-label="Remove access"
@@ -408,98 +701,113 @@ function UserProjectAccessRow({
         {isWA ? (
           <SearchableSelect
             variant="field"
-            value={me?.accessLevel ?? ''}
+            value={draft.level ?? ''}
             ariaLabel={`Access level for ${projectName}`}
             placeholder="No Access"
             options={accessSelectOptions}
-            onChange={(v) => handleChange(v as AccessLevel)}
+            onChange={(v) => onChange(projectId, { level: v as AccessLevel })}
           />
         ) : (
           <span className="text-ui-sm text-foreground-subtle capitalize">
-            {me?.accessLevel ?? 'No Access'}
+            {draft.level ?? 'No Access'}
           </span>
         )}
       </FormField>
 
-      {canAssignTeams && (
-        <ProjectTeamsField
-          projectId={projectId}
-          projectName={projectName}
-          userId={userId}
-          requireTeam={requiresTeamSelection(me?.accessLevel)}
-        />
+      {/* §5.1 :141-143 — Teams for an Editor, `All Teams` for an Admin, nothing
+          for a row with no level yet. */}
+      {grantsAllTeams(draft.level) && (
+        <FormField label={t('access.teams')}>
+          <AllTeamsChip />
+        </FormField>
+      )}
+      {requiresTeamSelection(draft.level) && (
+        <FormField label={t('access.teams')}>
+          {teamOptions.length === 0 ? (
+            <p className="text-ui-xs text-foreground-subtle">{t('access.projectHasNoTeams')}</p>
+          ) : (
+            <>
+              <SearchableSelect
+                multiple
+                variant="field"
+                value={draft.teamIds}
+                readOnly={!isWA || teamsLoading}
+                options={teamOptions}
+                ariaLabel={`Teams for ${projectName}`}
+                placeholder={t('access.selectTeams')}
+                searchPlaceholder={t('access.searchTeams')}
+                onChange={(v) => onChange(projectId, { teamIds: v })}
+              />
+              {draft.teamIds.length === 0 && (
+                <p className="mt-1 text-ui-xs text-warning">{t('access.editorNoTeamWarning')}</p>
+              )}
+            </>
+          )}
+        </FormField>
       )}
     </div>
   )
 }
 
-/** Invisible membership probe for a not-yet-assigned project: reports whether
- *  the user has access so the list and the Add picker stay truthful, without
- *  rendering a row. Re-reports after the cache invalidation an Add fires. */
+/**
+ * Invisible baseline probe for a project with no draft row: reports whether the
+ * user has access, and the project's teams (so the Add picker and the review
+ * step know whether a Team can be picked at all), without rendering anything or
+ * paying the per-team membership fan-out.
+ */
 function MembershipProbe({
   projectId,
   userId,
-  onMembership,
+  onResolve,
 }: {
   projectId: string
   userId: string
-  onMembership: (projectId: string, hasAccess: boolean) => void
+  onResolve: (projectId: string, baseline: ProjectBaseline) => void
 }) {
   const { data: members = [], isLoading } = useProjectMembers(projectId)
+  const { data: teams = [] } = useProjectTeams(projectId)
+  const reported = useRef<string | null>(null)
   useEffect(() => {
     if (isLoading) return
     const me = members.find((m) => m.userId === userId)
-    onMembership(projectId, !!me && me.status === 'active')
-  }, [isLoading, members, projectId, userId, onMembership])
+    const baseline: ProjectBaseline = {
+      hasAccess: !!me && me.status === 'active',
+      memberId: me?.id ?? null,
+      level: me?.accessLevel ?? null,
+      teamIds: [],
+      teams: teams.map((tm) => ({ id: tm.id, name: tm.name })),
+    }
+    const signature = JSON.stringify(baseline)
+    if (reported.current === signature) return
+    reported.current = signature
+    onResolve(projectId, baseline)
+  }, [isLoading, members, teams, projectId, userId, onResolve])
   return null
 }
 
-/** "+ Add project access" — pick an unassigned project + level, assign in one POST. */
-function AddProjectAccess({ userId, candidates }: { userId: string; candidates: SelectOption[] }) {
+/**
+ * "+ Add project access" — adds a DRAFT row for an unassigned project (mockup
+ * `addProjectAccess`, `SettingsPage.tsx`:305-309). Teams are chosen in the row
+ * itself, so this form is just Project + level and writes nothing.
+ */
+function AddProjectAccess({
+  candidates,
+  onAdd,
+}: {
+  candidates: SelectOption[]
+  onAdd: (projectId: string, level: AccessLevel) => void
+}) {
+  const { t } = useTranslation('settings')
   const [open, setOpen] = useState(false)
   const [projectId, setProjectId] = useState<string | null>(null)
   const [level, setLevel] = useState<AccessLevel>('editor')
-  const [teamIds, setTeamIds] = useState<string[]>([])
-  const [pending, setPending] = useState(false)
-  // Raw apiClient carries no `meta.invalidates` — without this the member caches
-  // stay stale, the probe never re-reports, and the new row/Teams field never
-  // appear. `['teams']` is the teamKeys root: covers projectMembers by prefix.
-  const qc = useQueryClient()
-  // Mockup parity: the Add form itself offers Teams (an Editor needs >=1). Teams
-  // of the CHOSEN project; unbound writer so the teamId travels with each call.
-  const { data: teams = [] } = useProjectTeams(projectId ?? undefined)
-  const addTeamMember = useAddTeamMember()
-  const teamOptions: SelectOption[] = teams.map((t) => ({ value: t.id, label: t.name }))
 
-  async function handleAdd() {
+  function handleAdd() {
     if (!projectId) return
-    if (requiresTeamSelection(level) && teamIds.length === 0) return
-    setPending(true)
-    try {
-      const { error, response } = await apiClient.POST('/v1/projects/{id}/members', {
-        params: { path: { id: projectId } },
-        body: { userId, accessLevel: level } as never,
-      })
-      // The BE POST upserts (sets the level on an existing NULL-level row or
-      // creates one) — no 409 fallback needed.
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      // Editor lands WITH teams (mockup: team selection inside the Add form).
-      if (requiresTeamSelection(level)) {
-        for (const teamId of teamIds) {
-          await addTeamMember.mutateAsync({ teamId, userId })
-        }
-      }
-      await qc.invalidateQueries({ queryKey: ['teams'] })
-      notify.success(`Project access set to ${level}`)
-      setProjectId(null)
-      setLevel('editor')
-      setTeamIds([])
-      setOpen(false)
-    } catch (e) {
-      notify.fromError(e, 'Failed to add project access')
-    } finally {
-      setPending(false)
-    }
+    onAdd(projectId, level)
+    setProjectId(null)
+    setLevel('editor')
+    setOpen(false)
   }
 
   if (!open) {
@@ -519,10 +827,7 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
             ariaLabel="Project to add"
             placeholder="Select project"
             options={candidates}
-            onChange={(v) => {
-              setProjectId(v as string)
-              setTeamIds([])
-            }}
+            onChange={(v) => setProjectId(v as string)}
           />
         </FormField>
         <FormField label="Access Level" required>
@@ -535,121 +840,17 @@ function AddProjectAccess({ userId, candidates }: { userId: string; candidates: 
           />
         </FormField>
       </div>
-      {requiresTeamSelection(level) && projectId && teamOptions.length > 0 && (
-        <FormField label="Teams" hint="An Editor needs at least one team." required>
-          <SearchableSelect
-            multiple
-            variant="field"
-            value={teamIds}
-            ariaLabel="Teams for the new project access"
-            placeholder="Select teams"
-            options={teamOptions}
-            onChange={(v) => setTeamIds(v as string[])}
-          />
-        </FormField>
-      )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={() => setOpen(false)}>
           Cancel
         </Button>
-        <Button
-          type="button"
-          disabled={!projectId || pending || (level === 'editor' && teamIds.length === 0)}
-          onClick={handleAdd}
-        >
-          {pending && <Loader2 size={12} className="animate-spin" />} Add
+        <Button type="button" disabled={!projectId} onClick={handleAdd}>
+          Add
         </Button>
       </div>
       <p className="text-ui-xs text-foreground-subtle">
-        {level === 'admin'
-          ? 'Admin automatically covers all teams in the project.'
-          : teamOptions.length === 0
-            ? 'This project has no teams yet — add one on its Teams tab.'
-            : 'Teams above write together with the access level.'}
+        {grantsAllTeams(level) ? t('access.adminCoversAllTeams') : t('access.editorScopedToTeams')}
       </p>
     </div>
-  )
-}
-
-/**
- * Inline Teams multi-select for one project row (P4-RBAC-010/011). Writes
- * through the same `useAddTeamMember` / `useRemoveTeamMember` hooks the
- * project's own Teams tab uses (`project-teams-tab.tsx`), so this is not a
- * second write surface — both stay in sync via the shared `team` cache tag.
- *
- * `requireTeam` (Editor only — Admin bypasses Team scoping entirely per
- * `access.service.ts`'s `assertTeamScoped`, so a Team row is never load-bearing
- * for Admin): surfaces the SRS's "Editor must be assigned to at least one active
- * Team" rule inline rather than blocking the Access Level select itself — Rally
- * writes Access Level and Team membership as two independent immediate calls
- * (no batch/review step), so there's no single save action left to gate.
- */
-function ProjectTeamsField({
-  projectId,
-  projectName,
-  userId,
-  requireTeam = false,
-}: {
-  projectId: string
-  projectName: string
-  userId: string
-  requireTeam?: boolean
-}) {
-  const { data: teams = [] } = useProjectTeams(projectId)
-  const teamIds = teams.map((t) => t.id)
-  const { memberTeamIds, isLoading } = useUserTeamMemberships(teamIds, userId)
-  // Unbound instances (no fixed teamId): the same team varies per selection
-  // here, unlike the Teams tab's per-team cell, so the teamId travels with
-  // each mutate() call instead of being bound at the hook call site.
-  const addTeamMember = useAddTeamMember()
-  const removeTeamMember = useRemoveTeamMember()
-
-  if (teams.length === 0) return null
-
-  const options: SelectOption[] = teams.map((t) => ({ value: t.id, label: t.name }))
-
-  function handleChange(next: string[]) {
-    for (const teamId of next.filter((id) => !memberTeamIds.includes(id))) {
-      const team = teams.find((t) => t.id === teamId)
-      addTeamMember.mutate(
-        { teamId, userId },
-        {
-          onSuccess: () => notify.success(`Added to ${team?.name ?? 'team'}`),
-          onError: (e) => notify.fromError(e, 'Failed to add to team'),
-        },
-      )
-    }
-    for (const teamId of memberTeamIds.filter((id) => !next.includes(id))) {
-      const team = teams.find((t) => t.id === teamId)
-      removeTeamMember.mutate(
-        { teamId, userId },
-        {
-          onSuccess: () => notify.success(`Removed from ${team?.name ?? 'team'}`),
-          onError: (e) => notify.fromError(e, 'Failed to remove from team'),
-        },
-      )
-    }
-  }
-
-  return (
-    <FormField label="Teams">
-      <SearchableSelect
-        multiple
-        variant="field"
-        value={memberTeamIds}
-        readOnly={isLoading}
-        options={options}
-        ariaLabel={`Teams for ${projectName}`}
-        placeholder="No teams"
-        searchPlaceholder="Search teams"
-        onChange={handleChange}
-      />
-      {requireTeam && !isLoading && memberTeamIds.length === 0 && (
-        <p className="mt-1 text-ui-xs text-warning">
-          Select at least one team — an Editor with no team can&apos;t act on any work in this
-          project yet.
-        </p>
-      )}
-    </FormField>
   )
 }
