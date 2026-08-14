@@ -77,7 +77,15 @@ export const RolloverIterationSchema = z.object({
 
 export class RolloverIterationDto extends createZodDto(RolloverIterationSchema) {}
 
-// ── Assignment options query (P2-IT-10) ──────────────────────────────────
+// ── Compact-feed query (P2-IT-10) ────────────────────────────────────────
+//
+// Shared by BOTH compact feeds — `GET /iterations/options` (reference) and
+// `GET /iterations/assignable` (eligibility). The two differ in POPULATION, not in what the caller
+// asks for, so one query shape is honest here; what must never be shared is the RESPONSE
+// projection, and it is not (see IterationReferenceSchema).
+//
+// `teamId` means "the team's own timeboxes PLUS the project's shared ones" on both, never a strict
+// `team_id = ?`: most iterations name no team, and SQL equality never matches NULL.
 
 export const IterationAssignmentOptionsQuerySchema = z.object({
   projectId: z.string().uuid(),

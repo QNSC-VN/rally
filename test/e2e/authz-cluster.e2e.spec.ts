@@ -133,8 +133,13 @@ describe('authorization cluster (e2e)', () => {
      *
      * BOTH DIRECTIONS, because either alone passes for the wrong reason. Only the refusal would
      * also be satisfied by revoking `iteration:view` from the Editor — which 403s Iteration Status,
-     * the Backlog's iteration filter, Team Status and Quality, all of which read `GET /iterations`.
-     * Only the grant is satisfied by the pre-split code.
+     * the Backlog's iteration filter, Team Status and Quality, all four of which needed an iteration
+     * feed. Only the grant is satisfied by the pre-split code.
+     *
+     * `GET /iterations` moved from the second list to the FIRST when the feed was split too: those
+     * four surfaces read `GET /iterations/options` now (REFERENCE, every state) and write through
+     * `GET /iterations/assignable` (ELIGIBILITY), so nothing an Editor may open depends on the
+     * record any more. `iteration-feed-split.e2e.spec.ts` owns the population half of that.
      *
      * `dev@qnsc.dev` is the Editor: the seed gives it `project_members.access_level = 'editor'` on
      * NXP and NO workspace-scoped tier role (migration 0111/0112 and the comment in `demo.ts`), so
@@ -145,6 +150,11 @@ describe('authorization cluster (e2e)', () => {
     const editor = await tokenFor('dev@qnsc.dev');
 
     for (const url of [
+      // The RECORD list joined this set in the second half of the split: its payload is `goal`,
+      // `theme`, `notes` and `plannedVelocity`, so it is the `Plan > Timeboxes` grid's feed and
+      // `timebox:view`. It answered 200 here until the two compact feeds below existed to take its
+      // place — see `test/e2e/iteration-feed-split.e2e.spec.ts`.
+      `/iterations?projectId=${NXP}`,
       `/iterations/${NXP_ITER_CURRENT_ID}`,
       `/iterations/${NXP_ITER_CURRENT_ID}/activity`,
     ]) {
@@ -155,8 +165,10 @@ describe('authorization cluster (e2e)', () => {
     }
 
     for (const url of [
-      `/iterations?projectId=${NXP}`,
+      // REFERENCE (every state) and ELIGIBILITY (planning|committed). Two routes, not one route
+      // with a flag: the populations differ, and the four §3.2 Editor surfaces read the first.
       `/iterations/options?projectId=${NXP}`,
+      `/iterations/assignable?projectId=${NXP}`,
       `/iterations/${NXP_ITER_CURRENT_ID}/status`,
     ]) {
       const response = await get(url, editor);
@@ -183,6 +195,7 @@ describe('authorization cluster (e2e)', () => {
     await grantProjectAccess(app, userId, NXP, 'admin');
 
     for (const url of [
+      `/iterations?projectId=${NXP}`,
       `/iterations/${NXP_ITER_CURRENT_ID}`,
       `/iterations/${NXP_ITER_CURRENT_ID}/activity`,
     ]) {
@@ -450,5 +463,32 @@ describe('authorization cluster (e2e)', () => {
     expect(roles.length).toBeGreaterThan(0);
     // The matrix is still SERVED to the tier that may see it — the gate is not a removal.
     expect(roles.some((r) => r.permissions.length > 0)).toBe(true);
+  });
+
+  /**
+   * `GET /workspaces/:id/members` is DELETED, and this asserts the absence rather than trusting it.
+   *
+   * It listed every member's `roleId` and account `status` behind an in-service claim that amounted
+   * to `assertActive`, so any active workspace member — including one with No Access to every
+   * project — read the whole company's role assignments. It had no consumer at all, which is why the
+   * answer was deletion and not a gate: a gated dead route keeps the payload alive for whoever finds
+   * it next and reads, in review, as a decision about an audience.
+   *
+   * Asserted for a WORKSPACE ADMIN deliberately. A 404 for an Editor would prove nothing — it is
+   * what a gate would produce too. The one principal who could reach anything must also get nothing.
+   */
+  it('has no workspace member-list route left to reach', async () => {
+    const admin = await tokenFor('admin@qnsc.dev');
+    const ws = WORKSPACE_ID;
+
+    const gone = await get(`/workspaces/${ws}/members`, admin);
+    expect(gone.statusCode, 'GET /workspaces/:id/members must not exist').toBe(404);
+
+    // Both audiences it used to serve still have a route, which is what makes the deletion safe
+    // rather than a removal of function.
+    const options = await get(`/workspaces/${ws}/member-options`, admin);
+    expect(options.statusCode, 'the picker feed survives').toBe(200);
+    const profile = await get(`/workspaces/${ws}/members-with-profile`, admin);
+    expect(profile.statusCode, 'the administrative roster survives').toBe(200);
   });
 });

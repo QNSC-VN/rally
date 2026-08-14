@@ -112,9 +112,13 @@ beforeEach(() => {
         response: { status: 200 },
       })
     }
-    if (path === '/v1/iterations') {
+    // `/v1/iterations/options`, NOT `/v1/iterations`, and for the same reason as the releases branch
+    // above: the panel resolves an iteration NAME, so it reads the REFERENCE feed (`iteration:view`,
+    // every state). The record list is `timebox:view`, which a project Editor does not hold — and
+    // this panel rendered `--` for a real, scheduled iteration. A bare array, unpaged.
+    if (path === '/v1/iterations/options') {
       return Promise.resolve({
-        data: { data: [{ id: 'it-1', name: 'Sprint 26.1' }] },
+        data: [{ id: 'it-1', name: 'Sprint 26.1' }],
         error: undefined,
         response: { status: 200 },
       })

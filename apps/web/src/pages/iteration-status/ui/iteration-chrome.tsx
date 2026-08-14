@@ -14,7 +14,7 @@ import {
 
 import { BRAND } from '@/shared/config/brand'
 import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
-import { type Iteration } from '@/features/iterations/api'
+import { type IterationReference } from '@/features/iterations/api'
 import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
@@ -41,8 +41,11 @@ export function IterationHeader({
   viewMode,
   setViewMode,
 }: {
-  iterations: Iteration[]
-  selected: Iteration | undefined
+  // The REFERENCE projection, not the timebox record: the picker needs a name and a window, and
+  // this screen is one §3.2 grants an Editor — who may not read `goal`, `theme`, `notes` or
+  // `plannedVelocity`.
+  iterations: IterationReference[]
+  selected: IterationReference | undefined
   selectedId: string | null
   selectedIndex: number
   setSelectedId: (id: string) => void

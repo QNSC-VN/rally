@@ -24,9 +24,9 @@ import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import {
-  useIterations,
-  useIterationStatus,
   useIterationOptions,
+  useIterationStatus,
+  useAssignableIterations,
   useCreateIterationItem,
   type IterationStatusItem,
 } from '@/features/iterations/api'
@@ -58,7 +58,11 @@ export function IterationStatusPage() {
   const canEdit = can('work_item:edit')
   const canCreate = can('work_item:create')
 
-  const { data: iterations = [], isLoading: iterationsLoading } = useIterations(projectId)
+  // The REFERENCE feed, not `useIterations`: this page's own picker must offer every timebox
+  // including accepted ones, and `GET /iterations` is `timebox:view` — §3.2 marks `Plan > Timeboxes`
+  // Hidden for an Editor while granting them THIS screen, so reading the record here 403'd the
+  // surface the split exists to keep open.
+  const { data: iterations = [], isLoading: iterationsLoading } = useIterationOptions(projectId)
   // The assignee feed, NOT the administrative roster: that one is Admin-only (§3.1:71), and
   // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
   const { data: members = [] } = useProjectMemberOptions(projectId)
@@ -145,10 +149,10 @@ export function IterationStatusPage() {
   )
   const selected = iterations[selectedIndex]
 
-  // Iteration picker feed for inline reassignment — scoped to the current
-  // iteration's team so every option is assignable (backend enforces the same
-  // team-scope rule via assertIterationAssignable).
-  const { data: iterationOptions = [] } = useIterationOptions(projectId, selected?.teamId)
+  // Iteration picker feed for inline REASSIGNMENT — the ELIGIBILITY feed
+  // (`planning | committed`), scoped to the current iteration's team so every option is genuinely
+  // assignable (the backend enforces the same team-scope rule via assertIterationAssignable).
+  const { data: iterationOptions = [] } = useAssignableIterations(projectId, selected?.teamId)
 
   const items = status?.items ?? EMPTY_ITEMS
 
@@ -333,7 +337,10 @@ export function IterationStatusPage() {
   // An iteration is finished once it's been accepted or explicitly completed —
   // regardless of the raw end-date arithmetic (which reads 0/negative when past
   // due and otherwise misleadingly shows "0 days left" on a done sprint).
-  const iterationDone = selected?.state === 'accepted' || selected?.completedAt != null
+  // `state === 'accepted'` alone: `iterations.completed_at` is the ACCEPTANCE stamp and the service
+  // writes it on accept and clears it on every other transition (`iterations.service.ts`), so the
+  // two are maintained in lockstep and the reference feed deliberately does not carry it.
+  const iterationDone = selected?.state === 'accepted'
   // Elapsed / total, capped at 100%; a finished iteration always shows full.
   const iterationProgressPct = iterationDone
     ? 100

@@ -26,7 +26,9 @@ vi.mock('@/shared/api/http-client', () => ({
 const iterationFeed: { data?: unknown[]; isError?: boolean; error?: unknown; isLoading?: boolean } =
   { data: [{ id: 'it-1', name: 'Sprint 26.1' }] }
 vi.mock('@/features/iterations/api', () => ({
-  useIterations: () => iterationFeed,
+  // The REFERENCE feed (`GET /iterations/options`), which is what the picker reads now: the record
+  // list is `timebox:view` and a project Editor may not read it.
+  useIterationOptions: () => iterationFeed,
 }))
 
 import { apiClient } from '@/shared/api/http-client'

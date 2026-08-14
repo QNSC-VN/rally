@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
-import { useIterations } from '@/features/iterations/api'
+import { useIterationOptions } from '@/features/iterations/api'
 import { listResource } from '@/shared/lib/query/resource'
 import { useTeamCapacityReport, type TeamCapacityTeam } from '@/features/reporting/api'
 import { iterationsInScope, teamScopeLabel } from '@/features/reporting/scope'
@@ -76,13 +76,17 @@ export function TeamCapacityReport({
   /**
    * The PICKER's feed is a resource for the same reason the report's own query is one.
    *
-   * `const { data: allIterations = [] } = useIterations(projectId)` made a failing
+   * `const { data: allIterations = [] } = useIterations` — the timebox RECORD — made a failing
    * `/v1/iterations` indistinguishable from a project with no timeboxes: the picker emptied,
    * `selectedId` stayed null, and the surface rendered `capacity.empty.noIteration` **plus four
    * `--` KPI cards** — which is precisely the "measured absence for a request that never ran"
    * this file's own docblock claims to have fixed on the report query alone.
+   *
+   * The REFERENCE feed, not `useIterations`: this picker needs a NAME and a window for every state
+   * (a finished sprint is the one a capacity report is usually read about), and it must not read the
+   * timebox record, which is `timebox:view`.
    */
-  const iterationsQuery = useIterations(projectId)
+  const iterationsQuery = useIterationOptions(projectId)
   const iterationFeed = listResource(iterationsQuery)
   // Same scope rule as the report itself: the team's own timeboxes plus the project's shared ones.
   const iterations = iterationsInScope(iterationFeed.rows, teamId)

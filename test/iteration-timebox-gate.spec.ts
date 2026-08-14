@@ -22,7 +22,14 @@
  * for Admin and WA, while the row directly above grants the Editor `Iteration Status | View and
  * update in assigned Teams`. One code — `iteration:view` — gated both, so an Editor read the whole
  * timebox inventory on a screen the BA hides. Revoking it was not available: four surfaces §3.2
- * grants an Editor read `GET /iterations`.
+ * grants an Editor read the iteration list.
+ *
+ * AND THE SECOND HALF, which took a second change: `GET /iterations` KEPT `iteration:view`, because
+ * it was those four surfaces' only feed — so the SURFACE was split and the FEED was not, and the
+ * Editor went on reading `goal`, `theme`, `notes` and `plannedVelocity` from it. The fix is two
+ * compact feeds, split by the QUESTION each answers rather than by a flag: `GET /iterations/options`
+ * (REFERENCE, every state) and `GET /iterations/assignable` (ELIGIBILITY, `planning | committed`).
+ * The record list then moved to `timebox:view` with nothing left depending on it but the grid.
  */
 import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
@@ -42,8 +49,12 @@ function requiredPermission(handler: keyof IterationsController): string {
  * The two surfaces, named by the BA row they implement rather than by route, so a reader can check
  * the assertion against §3.2 without opening the controller.
  */
-const TIMEBOXES_SURFACE = ['getIteration', 'getActivity'] as const;
-const EDITOR_SURFACES = ['listIterations', 'getAssignmentOptions', 'getIterationStatus'] as const;
+const TIMEBOXES_SURFACE = ['listIterations', 'getIteration', 'getActivity'] as const;
+const EDITOR_SURFACES = [
+  'listIterationReferences',
+  'getAssignmentOptions',
+  'getIterationStatus',
+] as const;
 
 describe('the Timeboxes surface and Iteration Status are separately gated', () => {
   it('gates the Timeboxes reads on timebox:view', () => {
@@ -54,10 +65,18 @@ describe('the Timeboxes surface and Iteration Status are separately gated', () =
 
   it('leaves the Editor-reachable iteration reads on iteration:view', () => {
     /**
-     * The list is included deliberately even though it also feeds the Timeboxes GRID: it is the
-     * picker feed for Iteration Status, the Backlog's iteration filter, Team Status and Quality.
-     * Moving it to `timebox:view` would 403 all four, which is the failure mode that made
-     * "just revoke iteration:view from the Editor" the wrong fix.
+     * `listIterations` used to be HERE, and the note in its place read: "the list is included
+     * deliberately even though it also feeds the Timeboxes GRID — moving it to `timebox:view` would
+     * 403 Iteration Status, the Backlog's iteration filter, Team Status and Quality". That was true
+     * and it was the unfinished half of this split: the payload is the timebox RECORD (`goal`,
+     * `theme`, `notes`, `plannedVelocity`), so the SURFACE was split and the FEED was not.
+     *
+     * The two compact feeds below are what those four surfaces read now, which is what let the
+     * record move to `timebox:view`:
+     *   • `listIterationReferences` (`GET /iterations/options`)    REFERENCE, every state
+     *   • `getAssignmentOptions`    (`GET /iterations/assignable`) ELIGIBILITY, planning|committed
+     * BOTH are asserted, in both directions, because the failure mode of over-restricting is an
+     * empty picker — indistinguishable from never having split anything.
      */
     for (const handler of EDITOR_SURFACES) {
       expect(requiredPermission(handler), handler).toBe('iteration:view');

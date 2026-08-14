@@ -220,7 +220,21 @@ const AUDIENCE: Record<string, Audience> = {
   'IterationsController.getAssignmentOptions': 'editor',
   'IterationsController.getIteration': 'admin',
   'IterationsController.getIterationStatus': 'editor',
-  'IterationsController.listIterations': 'editor',
+  /**
+   * The timebox RECORD, in a page. `admin`, and it USED to be `editor` — the entry directly below
+   * `READ_AUDIENCE_GAPS['IterationsController.listIterations']`, which is now deleted, because this
+   * is the fix that closed it. §3.2 marks `Plan > Timeboxes` Hidden for an Editor, and the grid is
+   * the only surface left reading this route.
+   */
+  'IterationsController.listIterations': 'admin',
+  /**
+   * The REFERENCE feed split out of it, and the one that made moving the record possible: the four
+   * §3.2 Editor surfaces (Iteration Status, the Backlog filter, Team Status, Quality) plus both
+   * report scope pickers read this instead. Same split as `GET /releases/options`,
+   * `GET /milestones/options` and the two `member-options` feeds — the sixth time that shape has
+   * been the answer.
+   */
+  'IterationsController.listIterationReferences': 'editor',
   'IterationsController.rolloverIteration': 'admin',
   'IterationsController.updateIteration': 'admin',
 
@@ -561,12 +575,21 @@ const KNOWN_REFERENCE_FEED_GAPS: readonly string[] = [
  * the cheap way to make a failure here go away is to relabel the route `workspace-admin`, which
  * "fixes" the test by declaring the defect intentional. That lowers this count and fails.
  *
- * Measured 2026-08-14 by forcing the baseline high and reading the count the failure reports — not
- * by grepping, which counts decorator TEXT and so cannot tell a class-level decorator, a commented
- * one or a prose mention from a real gate. 137 of 176 gated routes (81 admin + 56 editor), out of
- * 215 handlers in total.
+ * Measured by forcing the baseline high and reading the count the failure reports — not by grepping,
+ * which counts decorator TEXT and so cannot tell a class-level decorator, a commented one or a prose
+ * mention from a real gate. 137 of 176 gated routes (81 admin + 56 editor), out of 215 handlers, on
+ * 2026-08-14.
+ *
+ * Raised 137→138 by the iteration feed split, which added `listIterationReferences` (editor) and
+ * moved `listIterations` from editor to admin — still project-tier, so still counted. Measured
+ * 2026-08-15 by forcing this constant high and reading the count the failure reports: **139**. Never
+ * by grep — CLAUDE.md records a grep answering 8 where the real count was 2.
+ *
+ * It sat at 138 for part of that day, one BELOW the measurement, because the extra route belonged to
+ * a change running concurrently and baking someone else's contribution into a floor would fail this
+ * file if that change landed on its own. Both landed together, so the floor is the measurement again.
  */
-const MIN_PROJECT_TIER_ROUTES_COVERED = 137;
+const MIN_PROJECT_TIER_ROUTES_COVERED = 139;
 
 /**
  * Sanity floor: if the reflection stops finding routes, fail loudly rather than silently. A scan
@@ -968,46 +991,33 @@ const READ_AUDIENCE_EXCEPTIONS: Record<string, string> = {
  * LIVE DEFECTS in this dimension, declared so they are counted rather than rediscovered. Same
  * `@AuthzGap` shape as `KNOWN_REFERENCE_FEED_GAPS`, and asserted as an exact set for the same reason.
  *
- * TWO are live: `WorkspaceController.listMembers` (no code, no scope, and no consumer — the fix is
- * probably deletion) and `IterationsController.listIterations` (the timebox RECORD on a feed an
- * Editor must be able to read, which needs a reference projection and six call sites). A third,
- * `PortfolioItemsController.listItems`, is CLOSED and says so in its own note: the key is still
- * computed by this sweep, so the entry has to stay even though the defect does not.
+ * NONE is live. `PortfolioItemsController.listItems` is the only entry left and it is CLOSED, as its
+ * own note says: the key is still computed by this sweep, so the entry has to stay even though the
+ * defect does not.
+ *
+ * `WorkspaceController.listMembers` left by the third route out: the ROUTE was deleted. Its payload
+ * was a per-person `roleId` and account `status` behind no permission code and no scope, and it had
+ * no SPA consumer at all — so a gate would have preserved a dead route, which is worse than none
+ * (it keeps the payload alive for whoever finds it next and reads, in review, as a considered
+ * decision about an audience). `GET :id/member-options` and `GET :id/members-with-profile` already
+ * serve its two real audiences.
  *
  * `AccessController.listRoles` was here and is GONE, which is the other way an entry leaves: the
  * route took a real gate (`roles:view`), so the sweep now classifies it by AUDIENCE and this file
  * fails if a closed gap is still declared. Deleting the entry is the required half of that fix.
+ *
+ * `IterationsController.listIterations` left the same way, and it is worth recording what it took,
+ * because the entry sat here describing a live defect for a week. It was the timebox RECORD
+ * (`goal`, `theme`, `notes`, `plannedVelocity`) on a feed an Editor MUST be able to read — four §3.2
+ * Editor surfaces had no other iteration feed. `IterationOptionDto` could not be pointed at, because
+ * `GET /iterations/options` filtered to `planning | committed` and an ACCEPTED iteration still has
+ * to resolve to a name. So the endpoint was split by the QUESTION rather than by a flag:
+ * `GET /iterations/options` became the REFERENCE feed (every state, `iteration:view`,
+ * `IterationReferenceDto`), the eligibility population moved to `GET /iterations/assignable`, and
+ * the record list took `timebox:view`. A flag would have been the conflation that produced the
+ * zero-point Velocity bars, in a new place.
  */
 const READ_AUDIENCE_GAPS: Record<string, string> = {
-  /**
-   * `GET /workspaces/:id/members` returns a per-person `roleId` and account `status` with no
-   * permission code and NO scope at all — it calls `WorkspaceService.listMembers`, which is a plain
-   * workspace-wide read. (This note used to credit `listReadableProjectIds` with narrowing it; that
-   * method serves `listMemberOptions`, a different route. Worth recording, because a scope named in
-   * prose is exactly the kind of claim that reads as a control and is not one.) **It has NO SPA
-   * consumer at all** (`grep "workspaces/{id}/members'"` finds nothing outside the generated
-   * client), so the fix is probably deletion rather than a gate; that is a contract change and wants
-   * its own review.
-   */
-  'WorkspaceController.listMembers':
-    'no code, no scope, no consumer; roleId + account status readable by any authenticated caller',
-  /**
-   * `GET /iterations` is `iteration:view`, which an Editor MUST hold — it is the picker feed for
-   * Iteration Status, the Backlog filter, Team Status and Quality — while its payload is the timebox
-   * RECORD: `goal`, `theme`, `notes`, `plannedVelocity`. §3.2 marks `Plan > Timeboxes` Hidden for an
-   * Editor and `timebox:view` was added to enforce exactly that, so the SURFACE was split and the
-   * FEED was not. `IterationOptionDto` already exists as the reference projection; the reason the
-   * pickers do not use it is that `GET /iterations/options` filters to `planning|committed`, and an
-   * accepted iteration must still resolve to a name. Fixing it means a reference LIST feed plus
-   * pointing `useIterations`' six picker call sites at it — five of them in pages this change could
-   * not touch.
-   *
-   * Not caught by the person/always split above (none of the four is a designated field), which is
-   * why it is declared here by hand: the taxonomy covers PEOPLE well and entity records only by
-   * enumeration.
-   */
-  'IterationsController.listIterations':
-    'the timebox record (goal, theme, notes, plannedVelocity) on the Editor picker feed; §3.2 hides it',
   /**
    * NOT A LIVE DEFECT ANY MORE — the entry stays because this file's sweep is decorator- and
    * payload-only, so it still computes this key and an exact-set assertion would fire on its
@@ -1089,13 +1099,15 @@ const READS = discoverResponseSchemas();
 const TYPED_READS = READS.filter((r) => r.dtoNames.length > 0);
 
 /**
- * Sanity floor, measured 2026-08-14 by forcing it to 99999 and reading the count the failure
- * reports: 91 GET routes discovered, **72** of which declare a response DTO. (A grep for
+ * Sanity floor, measured by forcing it to 99999 and reading the count the failure reports: 91 GET
+ * routes discovered, **72** of which declared a response DTO on 2026-08-14. Raised 72→**73**
+ * (re-measured 2026-08-15) for `GET /iterations/options`' `IterationReferenceDto` — exactly the one
+ * read this change adds. (A grep for
  * `@ApiResponse` would have said 66 — it misses `@ApiPagedResponse`, which records the model under
  * `swagger/apiExtraModels` instead. That is why the number is measured and not counted by hand.) MAY ONLY RISE — a route that stops declaring its response type drops out
  * of this contract silently, which is the failure mode a floor exists to catch.
  */
-const MIN_TYPED_READS = 72;
+const MIN_TYPED_READS = 73;
 
 /**
  * Every designated administration field this read returns. One function so the violation sweep and
@@ -1187,6 +1199,7 @@ describe('a read that returns an administration field is not reachable by a part
       'ReleasesController.listReleaseOptions',
       'MilestonesController.listMilestoneOptions',
       'IterationsController.getAssignmentOptions',
+      'IterationsController.listIterationReferences',
       'ProjectsController.listLabels',
       'ProjectsController.listStatuses',
     ];

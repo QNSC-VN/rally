@@ -21,13 +21,14 @@ import { useTranslation } from 'react-i18next'
 import { Maximize2, X } from 'lucide-react'
 
 import { EMPTY_VALUE, stripHtml } from '@/shared/lib/utils'
+import { listResource } from '@/shared/lib/query/resource'
 import { IconButton } from '@/shared/ui/icon-button'
 import { Spinner } from '@/shared/ui/spinner'
 import { DetailField, DetailFieldPair, DetailReadonlyValue } from '@/shared/ui/detail'
 import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-item/ui/badges'
 import { useWorkItemByKey } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
-import { useIterations } from '@/features/iterations/api'
+import { useIterationOptions } from '@/features/iterations/api'
 import { useProjectMembers } from '@/features/teams/api'
 
 interface NamedRef {
@@ -79,7 +80,14 @@ export function WorkItemSummaryPanel({
   // Reference lists for the id → name fields. All three are already warm from the Backlog grid,
   // which reads the same keys.
   const { data: releases = [], isLoading: releasesLoading } = useReleases(item?.projectId)
-  const { data: iterations = [], isLoading: iterationsLoading } = useIterations(item?.projectId)
+  // The REFERENCE feed (`GET /iterations/options`, every state), not `useIterations`: this panel only
+  // resolves an id to a "KEY: name" label, and `GET /iterations` is `timebox:view` — §3.2 hides that
+  // surface from an Editor, so on the Backlog it 403'd and every scheduled item read `--`.
+  // A resource rather than `?? []`, so a FAILED feed is not the same answer as a resolved list with
+  // no match: the first must keep saying "loading/unknown", the second is a genuine EMPTY_VALUE.
+  const iterationFeed = listResource(useIterationOptions(item?.projectId))
+  const iterations = iterationFeed.rows
+  const iterationsLoading = iterationFeed.isLoading || iterationFeed.isError
   const { data: members = [], isLoading: membersLoading } = useProjectMembers(item?.projectId)
 
   if (isLoading || item === undefined) {

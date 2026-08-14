@@ -42,7 +42,7 @@ import {
 } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
 import { useProjectMemberOptions } from '@/features/teams/api'
-import { useIterationOptions, useIterations } from '@/features/iterations/api'
+import { useAssignableIterations, useIterationOptions } from '@/features/iterations/api'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -114,14 +114,16 @@ export function BacklogPage() {
   // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
   const { data: members = [] } = useProjectMemberOptions(projectId)
   const { data: releases = [] } = useReleases(projectId)
-  // Assignable choices only (planning/committed) — used to populate the
-  // inline-edit <option> list and the filter dropdown.
-  const { data: iterationOptions = [] } = useIterationOptions(projectId, team?.teamId)
-  // All iterations regardless of state — used to resolve an already-set
-  // iterationId to its name. Reusing iterationOptions here silently rendered
-  // a dash for any item whose iteration had since become Accepted, even though
-  // the relation was genuinely set (see RELATION_DATA_TRACEABILITY.md).
-  const { data: allIterations = [] } = useIterations(projectId, team?.teamId)
+  // ELIGIBILITY — `planning | committed`. Populates the inline-edit <option> list, the filter
+  // dropdown and Bulk Assign Iteration: every one of those WRITES, so the population must be the
+  // one the server accepts.
+  const { data: iterationOptions = [] } = useAssignableIterations(projectId, team?.teamId)
+  // REFERENCE — every state. Resolves an already-set iterationId to its name. Reusing
+  // `iterationOptions` here silently rendered a dash for any item whose iteration had since become
+  // Accepted, even though the relation was genuinely set (see RELATION_DATA_TRACEABILITY.md) — the
+  // two feeds are separate endpoints for exactly this reason. It used to read `GET /iterations`, the
+  // timebox RECORD, which is `timebox:view` and so 403'd every project Editor on this grid.
+  const { data: allIterations = [] } = useIterationOptions(projectId, team?.teamId)
 
   // Bulk Assign Release/Iteration choices — same composite "KEY: name" labels as
   // the inline row pickers, so the bulk bar and per-row selects stay consistent.

@@ -70,13 +70,11 @@ function mockRoutes({
         ? Promise.resolve(failure)
         : Promise.resolve({ data: BURNDOWN, error: undefined, response: { status: 200 } })
     }
+    // `GET /iterations/options` — the REFERENCE feed, a bare array (not a page). The picker moved
+    // off `GET /iterations` because that route is the timebox RECORD and carries `timebox:view`.
     return iterationsFail
       ? Promise.resolve(failure)
-      : Promise.resolve({
-          data: { data: ITERATIONS, pageInfo: { hasNextPage: false, nextCursor: null, limit: 50 } },
-          error: undefined,
-          response: { status: 200 },
-        })
+      : Promise.resolve({ data: ITERATIONS, error: undefined, response: { status: 200 } })
   })
 }
 
@@ -128,8 +126,8 @@ describe('IterationBurndownReport', () => {
 
   it('reports a failed ITERATION LIST as a failure, not as "select an iteration"', async () => {
     // The picker's own feed. `const { data: allIterations = [] } = useIterations(projectId)` made a
-    // 500 on `/v1/iterations` indistinguishable from a project with no timeboxes, and the body then
-    // instructed the reader to pick one from an empty picker.
+    // 500 on the iteration feed indistinguishable from a project with no timeboxes, and the body
+    // then instructed the reader to pick one from an empty picker.
     mockRoutes({ burndownFails: false, iterationsFail: true })
     renderReport()
 
@@ -145,11 +143,7 @@ describe('IterationBurndownReport', () => {
     mockGET.mockImplementation((url: string) =>
       url.includes('burndown')
         ? Promise.resolve({ data: BURNDOWN, error: undefined, response: { status: 200 } })
-        : Promise.resolve({
-            data: { data: [], pageInfo: { hasNextPage: false, nextCursor: null, limit: 50 } },
-            error: undefined,
-            response: { status: 200 },
-          }),
+        : Promise.resolve({ data: [], error: undefined, response: { status: 200 } }),
     )
     renderReport()
 

@@ -87,7 +87,9 @@ const WORK_ITEM_ALL: readonly QueryKey[] = [
 const ITERATION_ROOTS: readonly QueryKey[] = [
   ['iterations'], // list + committed-count
   ['iteration'], // detail + activity (singular)
-  ['iteration-options'], // compact picker feed (was the forgotten root)
+  ['iteration-options'], // REFERENCE feed, every state (was the forgotten root)
+  ['iteration-assignable'], // ELIGIBILITY feed, planning|committed — a SECOND root, because
+  // committing or accepting an iteration changes which feed it appears in, not just its own row.
   ['iteration-status'], // status read-model
 ]
 // `reports` is here because Release Tracking classifies from `Release.id` on Features and their

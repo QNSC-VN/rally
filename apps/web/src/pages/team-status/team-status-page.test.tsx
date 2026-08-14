@@ -53,7 +53,9 @@ const iterationFeed: {
   isLoading?: boolean
 } = { data: [ITERATION] }
 vi.mock('@/features/iterations/api', () => ({
-  useIterations: () => iterationFeed,
+  // The REFERENCE feed, not the timebox record — §5 grants an Editor Team Status, and
+  // `GET /iterations` is `timebox:view`.
+  useIterationOptions: () => iterationFeed,
 }))
 
 import { apiClient } from '@/shared/api/http-client'

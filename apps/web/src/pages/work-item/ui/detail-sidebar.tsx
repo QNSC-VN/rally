@@ -19,7 +19,7 @@ import { useReleases } from '@/features/releases/api'
 import { usePortfolioFeatureOptions } from '@/features/portfolio/api'
 import { listResource } from '@/shared/lib/query/resource'
 import { useMilestoneOptions } from '@/features/milestones/api'
-import { useIterationOptions } from '@/features/iterations/api'
+import { useAssignableIterations } from '@/features/iterations/api'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import {
   PRIORITY_VALUES,
@@ -151,7 +151,9 @@ export function DetailSidebar({
   // cannot become an accidental unlink on the next save.
   const featureFeed = listResource(usePortfolioFeatureOptions(item.projectId))
   const features = featureFeed.rows
-  const { data: iterations = [] } = useIterationOptions(item.projectId, item.teamId)
+  // The ELIGIBILITY feed: this select WRITES `iterationId`, so it must only offer the
+  // `planning | committed` population the server will accept.
+  const { data: iterations = [] } = useAssignableIterations(item.projectId, item.teamId)
   const { data: parentItem } = useWorkItem(item.parentId ?? undefined)
   const { data: taskTotals } = useTaskTotals(item.type !== 'task' ? item.id : undefined)
   const { data: tags = [] } = useWorkItemLabels(item.id)

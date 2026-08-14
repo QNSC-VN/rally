@@ -42,6 +42,7 @@ describe('IterationsService', () => {
     listByProject: ReturnType<typeof vi.fn>;
     taskEstimatesByIteration: ReturnType<typeof vi.fn>;
     listAssignmentOptions: ReturnType<typeof vi.fn>;
+    listReferences: ReturnType<typeof vi.fn>;
     nextKeyNumber: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
@@ -81,6 +82,7 @@ describe('IterationsService', () => {
       listByProject: vi.fn(),
       taskEstimatesByIteration: vi.fn().mockResolvedValue(new Map()),
       listAssignmentOptions: vi.fn().mockResolvedValue([]),
+      listReferences: vi.fn().mockResolvedValue([]),
       nextKeyNumber: vi.fn().mockResolvedValue(1),
       create: vi.fn().mockImplementation((i) => Promise.resolve(mockIteration(i))),
       update: vi
@@ -165,6 +167,39 @@ describe('IterationsService', () => {
     it('omits teamId from repo call when not provided', async () => {
       await service.getAssignmentOptions(actor, 'proj-1');
       expect(repo.listAssignmentOptions).toHaveBeenCalledWith('proj-1', 'ws-1', undefined);
+    });
+  });
+
+  /**
+   * The REFERENCE half of the feed split. Two feeds, two repository methods — deliberately not one
+   * method with an `includeAllStates` flag, because the population is the whole difference between
+   * "what may I assign into" and "what is this called".
+   */
+  describe('getIterationReferences', () => {
+    it('validates project exists then delegates to the REFERENCE query', async () => {
+      const refs = [{ id: 'it-9', name: 'Sprint 9', iterationKey: 'IT-9', state: 'accepted' }];
+      repo.listReferences.mockResolvedValue(refs);
+
+      const result = await service.getIterationReferences(actor, 'proj-1', 'team-1');
+
+      expect(projects.getProject).toHaveBeenCalledWith('ws-1', 'proj-1');
+      expect(repo.listReferences).toHaveBeenCalledWith('proj-1', 'ws-1', 'team-1');
+      // And NOT the eligibility query: an accepted iteration must survive this call.
+      expect(repo.listAssignmentOptions).not.toHaveBeenCalled();
+      expect(result).toEqual(refs);
+    });
+
+    it('propagates project-not-found when project does not exist', async () => {
+      projects.getProject.mockRejectedValue(new Error('PROJECT_NOT_FOUND'));
+      await expect(service.getIterationReferences(actor, 'bad-proj')).rejects.toThrow(
+        'PROJECT_NOT_FOUND',
+      );
+      expect(repo.listReferences).not.toHaveBeenCalled();
+    });
+
+    it('omits teamId from repo call when not provided', async () => {
+      await service.getIterationReferences(actor, 'proj-1');
+      expect(repo.listReferences).toHaveBeenCalledWith('proj-1', 'ws-1', undefined);
     });
   });
 

@@ -28,6 +28,7 @@ import {
 import {
   IterationResponseDto,
   IterationOptionDto,
+  IterationReferenceDto,
   IterationActivityResponseDto,
 } from './dto/iteration-response.dto';
 import {
@@ -38,7 +39,7 @@ import {
   IterationStatusResponseDto,
   CreateIterationItemResponseDto,
 } from './dto/iteration-status-response.dto';
-import type { Iteration, IterationOption } from '../../domain/iteration.types';
+import type { Iteration, IterationOption, IterationReference } from '../../domain/iteration.types';
 import type { ActivityLog as IterationActivityLog } from '@modules/activity';
 
 // ── Mappers ────────────────────────────────────────────────────────────────────
@@ -51,6 +52,22 @@ function toIterationOptionDto(o: IterationOption): IterationOptionDto {
     startDate: o.startDate,
     endDate: o.endDate,
     state: o.state,
+  };
+}
+
+/**
+ * Field-by-field, NOT a spread of the row: the reference feed's whole purpose is that a field added
+ * to the timebox record cannot reach it. A `{ ...row }` here would undo the split silently.
+ */
+function toIterationReferenceDto(r: IterationReference): IterationReferenceDto {
+  return {
+    id: r.id,
+    name: r.name,
+    iterationKey: r.iterationKey,
+    state: r.state,
+    startDate: r.startDate,
+    endDate: r.endDate,
+    teamId: r.teamId,
   };
 }
 
@@ -98,15 +115,32 @@ function toIterationActivityDto(a: IterationActivityLog): IterationActivityRespo
 // guard; update/delete/commit/accept resolve the project from the iteration id.
 // Guards run in a guaranteed order (JwtAuth → Permission → ProjectPermission).
 //
-// THE READS SPLIT IN TWO, AND THE SPLIT IS THE POINT (§3.2, RBE-09 / P23-08 / P01-11).
-//   • `iteration:view`   — the timebox READ every delivery surface needs: the list, the
-//     `/options` picker feed and `Track > Iteration Status`, which §3.2 grants an Editor as
-//     "View and update in assigned Teams".
-//   • `timebox:view`     — the `Plan > Timeboxes` administration surface: a timebox's own
-//     record and its revision history. §3.2 marks that surface **Hidden** for an Editor.
-// One code used to gate both, so an Editor read the whole timebox inventory on a hidden
-// screen. Do not "simplify" these back to one: whichever code won, one of the two §3.2 rows
-// would be wrong again. See the TIMEBOX_VIEW docblock in db/permissions.catalog.ts.
+// THE READS SPLIT IN THREE, AND THE SPLIT IS THE POINT (§3.2, RBE-09 / P23-08 / P01-11).
+//
+//   route                        question it answers                     population         code
+//   ───────────────────────────  ──────────────────────────────────────  ─────────────────  ──────────────
+//   GET /iterations/options      REFERENCE: what is it called, and when?  every state        iteration:view
+//   GET /iterations/assignable   ELIGIBILITY: what may I assign into?     planning|committed iteration:view
+//   GET /iterations              the RECORD: goal/theme/notes/velocity    every state        timebox:view
+//   GET /iterations/:id{,/activity}  the RECORD + its revision history    —                 timebox:view
+//   GET /iterations/:id/status   Iteration Status read-model              —                  iteration:view
+//
+// The FIRST split (2026-08-14) separated the SURFACE: `timebox:view` for `Plan > Timeboxes`, which
+// §3.2 marks **Hidden** for an Editor, and `iteration:view` for `Track > Iteration Status`, which
+// §3.2 grants them as "View and update in assigned Teams". It left `GET /iterations` on
+// `iteration:view` because four Editor surfaces read it — so the surface was split and the FEED was
+// not, and the timebox RECORD (goal, theme, notes, planned velocity) stayed readable by every
+// Editor. That is what this second split closes.
+//
+// TWO ROUTES AND NOT A `?includeAllStates` FLAG, deliberately. REFERENCE and ELIGIBILITY are two
+// different questions over two different populations, and a flag that silently changes a population
+// is the shape that produced the zero-point Velocity bars (CLAUDE.md: "Eligibility must be counted
+// in the SAME scope as the measurement"). `/options` keeps the REFERENCE meaning because that word
+// already means "reference feed" for releases, milestones, portfolio items and member options —
+// consistency across the seam beats avoiding a rename.
+//
+// Do not "simplify" any of these back into one: whichever code won, one of the two §3.2 rows would
+// be wrong again. See the TIMEBOX_VIEW docblock in db/permissions.catalog.ts.
 @AuthPolicy()
 export class IterationsController {
   constructor(
@@ -115,11 +149,19 @@ export class IterationsController {
   ) {}
 
   @Get()
-  // Stays `iteration:view`. It is the Timeboxes GRID's feed, but it is also the picker feed
-  // for Iteration Status, the Backlog's iteration filter, Team Status and Quality — four
-  // surfaces §3.2 grants an Editor. Gating it on `timebox:view` would 403 all four.
-  @RequirePermission('iteration:view', { from: 'query', field: 'projectId' })
-  @ApiOperation({ summary: 'List iterations for a project' })
+  /**
+   * The timebox RECORD, in a page: `goal`, `theme`, `notes`, `plannedVelocity` and the task-estimate
+   * rollup. It is the `Plan > Timeboxes` GRID's feed and nothing else, so it takes the
+   * administration code — §3.2 marks that surface Hidden for an Editor.
+   *
+   * It used to be `iteration:view`, because it was ALSO the feed behind Iteration Status's picker,
+   * the Backlog's iteration filter, Team Status and Quality, and gating it would have 403'd all
+   * four. `GET /iterations/options` is what those read now: same population, none of the record.
+   */
+  @RequirePermission('timebox:view', { from: 'query', field: 'projectId' })
+  @ApiOperation({
+    summary: 'List iterations for a project (the timebox record — Plan > Timeboxes)',
+  })
   @ApiPagedResponse(IterationResponseDto)
   @ApiCommonErrors(400, 401, 404)
   async listIterations(
@@ -162,11 +204,53 @@ export class IterationsController {
     return toIterationDto(iteration);
   }
 
-  // ── Assignment options (P2-IT-10) — declared before :id to avoid route conflict ──
+  // ── The two compact feeds (P2-IT-10) — declared before :id to avoid route conflict ──
 
   @Get('options')
+  /**
+   * REFERENCE. Every state, `iteration:view` — the code every project access level holds, and must:
+   * this is the feed for Iteration Status's picker, the Backlog's iteration filter and its id→name
+   * cell, Team Status's picker, Quality's inline cell, the Backlog summary panel and both report
+   * scope pickers. Nine of those ten call sites read `GET /iterations` before this existed.
+   *
+   * `IterationReferenceDto`, NOT `IterationResponseDto`: the payload is identity plus window plus
+   * team, and the record's narrative and forecast fields are structurally absent (a separate zod
+   * schema, not a `.pick()`).
+   *
+   * ACCEPTED iterations are INCLUDED, and that is the difference from `/assignable`. An item's
+   * iteration keeps resolving to its name after the sprint closes; without it, a Backlog cell for a
+   * genuinely scheduled item rendered `--` — see RELATION_DATA_TRACEABILITY.md.
+   */
   @RequirePermission('iteration:view', { from: 'query', field: 'projectId' })
-  @ApiOperation({ summary: 'Get assignable iterations for the work-item picker' })
+  @ApiOperation({
+    summary: 'Reference feed: every iteration, for filters, labels and scope pickers',
+  })
+  @ApiResponse({ status: 200, type: [IterationReferenceDto] })
+  @ApiCommonErrors(400, 401, 404)
+  async listIterationReferences(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: IterationAssignmentOptionsQueryDto,
+  ): Promise<IterationReferenceDto[]> {
+    const references = await this.iterationsService.getIterationReferences(
+      user,
+      query.projectId,
+      query.teamId,
+    );
+    return references.map(toIterationReferenceDto);
+  }
+
+  @Get('assignable')
+  /**
+   * ELIGIBILITY. `planning | committed` only, `iteration:view` — the population `PATCH
+   * /work-items/bulk-iteration` and the inline/sidebar assignment pickers may write into, so a
+   * caller can never be offered a target the server would refuse.
+   *
+   * This route is `GET /iterations/options` renamed. `/options` took over the reference meaning it
+   * carries everywhere else in this API, and the eligibility question moved here rather than
+   * becoming a query flag on one endpoint.
+   */
+  @RequirePermission('iteration:view', { from: 'query', field: 'projectId' })
+  @ApiOperation({ summary: 'Eligibility feed: the iterations work may be assigned into' })
   @ApiResponse({ status: 200, type: [IterationOptionDto] })
   @ApiCommonErrors(400, 401, 404)
   async getAssignmentOptions(

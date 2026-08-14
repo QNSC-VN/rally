@@ -229,24 +229,6 @@ export interface paths {
     patch: operations['WorkspaceController_updateWorkspace']
     trace?: never
   }
-  '/v1/workspaces/{id}/members': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List workspace members */
-    get: operations['WorkspaceController_listMembers']
-    put?: never
-    /** Add a user to the workspace */
-    post: operations['WorkspaceController_addMember']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/v1/workspaces/{id}/member-options': {
     parameters: {
       query?: never
@@ -275,6 +257,23 @@ export interface paths {
     get: operations['WorkspaceController_listMembersWithProfile']
     put?: never
     post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/workspaces/{id}/members': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Add a user to the workspace */
+    post: operations['WorkspaceController_addMember']
     delete?: never
     options?: never
     head?: never
@@ -1424,7 +1423,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** List iterations for a project */
+    /** List iterations for a project (the timebox record — Plan > Timeboxes) */
     get: operations['IterationsController_listIterations']
     put?: never
     /** Create an iteration */
@@ -1442,7 +1441,24 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** Get assignable iterations for the work-item picker */
+    /** Reference feed: every iteration, for filters, labels and scope pickers */
+    get: operations['IterationsController_listIterationReferences']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/iterations/assignable': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Eligibility feed: the iterations work may be assigned into */
     get: operations['IterationsController_getAssignmentOptions']
     put?: never
     post?: never
@@ -2866,20 +2882,6 @@ export interface components {
         [key: string]: unknown
       }
     }
-    MemberResponseDto: {
-      /** Format: uuid */
-      id: string
-      /** Format: uuid */
-      workspaceId: string
-      /** Format: uuid */
-      userId: string
-      roleId: string | null
-      status: string
-      /** Format: date-time */
-      joinedAt: string
-      /** Format: date-time */
-      createdAt: string
-    }
     MemberOptionResponseDto: {
       /** Format: uuid */
       userId: string
@@ -2923,6 +2925,20 @@ export interface components {
       /** Format: uuid */
       userId: string
       roleId?: string
+    }
+    MemberResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      userId: string
+      roleId: string | null
+      status: string
+      /** Format: date-time */
+      joinedAt: string
+      /** Format: date-time */
+      createdAt: string
     }
     UpdateMemberDto: {
       roleId?: string
@@ -3697,6 +3713,19 @@ export interface components {
       startDate?: string
       endDate?: string
       plannedVelocity?: number
+    }
+    IterationReferenceDto: {
+      /** Format: uuid */
+      id: string
+      name: string
+      iterationKey: string | null
+      /** @enum {string} */
+      state: 'planning' | 'committed' | 'accepted'
+      /** @description YYYY-MM-DD */
+      startDate: string | null
+      /** @description YYYY-MM-DD */
+      endDate: string | null
+      teamId: string | null
     }
     IterationOptionDto: {
       /** Format: uuid */
@@ -6104,117 +6133,6 @@ export interface operations {
       }
     }
   }
-  WorkspaceController_listMembers: {
-    parameters: {
-      query?: {
-        limit?: number
-        cursor?: string
-        sort?: string
-      }
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Paginated list */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': {
-            data?: components['schemas']['MemberResponseDto'][]
-            pageInfo?: {
-              /** @description Opaque cursor token for the next page */
-              nextCursor: string | null
-              hasNextPage: boolean
-              /** @description Number of items returned per page */
-              limit: number
-              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
-              total?: number
-            }
-          }
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  WorkspaceController_addMember: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AddMemberDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['MemberResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
   WorkspaceController_listMemberOptions: {
     parameters: {
       query?: never
@@ -6285,6 +6203,66 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkspaceController_addMember: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AddMemberDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MemberResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -10711,6 +10689,49 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  IterationsController_listIterationReferences: {
+    parameters: {
+      query: {
+        projectId: string
+        teamId?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['IterationReferenceDto'][]
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }

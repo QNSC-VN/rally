@@ -90,13 +90,21 @@ export const PERMISSION = {
 
   // ── iteration namespace ────────────────────────────────────────────────────
   /**
-   * READ the project's iterations: the list, the `/options` picker feed and
+   * READ the project's iterations as REFERENCE data: the `/options` reference feed
+   * (every state — a filter and an id→name label must be able to name an accepted
+   * timebox), the `/assignable` eligibility feed (`planning | committed`) and
    * `Track > Iteration Status`.
    *
    * Held by EVERY level, Editor included, and it has to be. §3.2 gives the Editor
    * `Iteration Status | View and update in assigned Teams`, and that screen's own picker
-   * reads `GET /iterations` — as do the Backlog's iteration filter, Team Status's picker
-   * and Quality's. Revoking it would 403 four surfaces the same matrix grants.
+   * reads it — as do the Backlog's iteration filter, Team Status's picker and Quality's.
+   * Revoking it would 403 four surfaces the same matrix grants.
+   *
+   * It does NOT cover `GET /iterations`, the PAGED RECORD behind the `Plan > Timeboxes`
+   * grid: that carries `TIMEBOX_VIEW`. It used to carry this code, because it was also the
+   * only feed those four surfaces had — so the surface was split and the feed was not, and
+   * the Editor kept reading `goal`, `theme`, `notes` and `plannedVelocity`. The reference
+   * feed is what closed it.
    *
    * Do NOT gate the `Plan > Timeboxes` surface on this code. That is `TIMEBOX_VIEW`
    * below, and conflating the two is the defect that code was added to fix.

@@ -18,7 +18,7 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { useIterations } from '@/features/iterations/api'
+import { useIterationOptions } from '@/features/iterations/api'
 import {
   useTeamStatus,
   useUpdateCapacity,
@@ -140,7 +140,9 @@ export function TeamStatusPage() {
   // this project/team yet." **plus a "Go to Timeboxes →" call to action**, so a failed
   // `/v1/iterations` sent the reader off to create a sprint that already exists. Same defect,
   // same sentence shape, as Release Tracking's §5.1 branch.
-  const iterationsQuery = useIterations(projectId)
+  // The REFERENCE feed: §5 gives an Editor `Team Status | View`, and `GET /iterations` is
+  // `timebox:view` — so reading the record here 403'd a surface the matrix grants.
+  const iterationsQuery = useIterationOptions(projectId)
   const iterationFeed = listResource(iterationsQuery)
   const allIterations = iterationFeed.rows
   const iterations = teamId

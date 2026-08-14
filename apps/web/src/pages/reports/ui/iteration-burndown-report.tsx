@@ -14,7 +14,7 @@ import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { BRAND } from '@/shared/config/brand'
-import { useIterations } from '@/features/iterations/api'
+import { useIterationOptions } from '@/features/iterations/api'
 import { listResource } from '@/shared/lib/query/resource'
 import { useIterationBurndown } from '@/features/reporting/api'
 import { iterationsInScope, reportScopeLabel } from '@/features/reporting/scope'
@@ -43,7 +43,7 @@ export function IterationBurndownReport({
   /**
    * The PICKER's feed, and it is a resource for the same reason the report's own query is.
    *
-   * This was `const { data: allIterations = [] } = useIterations(projectId)`. A failing
+   * This was `const { data: allIterations = [] } = useIterations`, i.e. the timebox RECORD. A failing
    * `/v1/iterations` therefore produced an empty picker, `selectedId === null`, and the body
    * rendered `burndown.empty.noIteration` — "Select an iteration to see its burndown" — an
    * AFFORDANCE INSTRUCTION standing in for a network fault, with no iteration available to obey
@@ -52,7 +52,9 @@ export function IterationBurndownReport({
    * below keeps the report endpoint healthy and fails the PICKER endpoint, which is exactly the
    * case the original test could not see.
    */
-  const iterationsQuery = useIterations(projectId)
+  // The REFERENCE feed: every state, so a closed sprint's burndown is still reachable, and none of
+  // the timebox record — `GET /iterations` is `timebox:view` and would 403 a project Editor here.
+  const iterationsQuery = useIterationOptions(projectId)
   const iterationFeed = listResource(iterationsQuery)
   // The picker offers what the report can serve — the team's own timeboxes plus the shared ones.
   const iterations = iterationsInScope(iterationFeed.rows, teamId)

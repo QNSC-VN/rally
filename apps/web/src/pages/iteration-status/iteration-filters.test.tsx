@@ -93,12 +93,11 @@ const apply = () => fireEvent.click(screen.getAllByRole('button', { name: 'Apply
 beforeEach(() => {
   vi.clearAllMocks()
   mockGET.mockImplementation((path: string) => {
-    if (path === '/v1/iterations') {
-      return Promise.resolve({
-        data: { data: [ITERATION], pageInfo: { hasNextPage: false, nextCursor: null } },
-        error: undefined,
-        response: { status: 200 },
-      })
+    // The page's own picker feed is `/v1/iterations/options` — the REFERENCE feed, a bare ARRAY, not
+    // a page. It moved off `/v1/iterations` because that route returns the timebox RECORD and carries
+    // `timebox:view`, which §3.2 withholds from an Editor.
+    if (path === '/v1/iterations/options') {
+      return Promise.resolve({ data: [ITERATION], error: undefined, response: { status: 200 } })
     }
     if (path === '/v1/iterations/{id}/status') {
       return Promise.resolve({ data: STATUS, error: undefined, response: { status: 200 } })
@@ -113,7 +112,7 @@ beforeEach(() => {
         response: { status: 200 },
       })
     }
-    // /v1/iterations/options, /v1/milestones and anything else the chrome asks for.
+    // /v1/iterations/assignable, /v1/milestones and anything else the chrome asks for.
     return Promise.resolve({
       data: { data: [] },
       error: undefined,

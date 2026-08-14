@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
-import { useCreateIterationItem, type Iteration } from '@/features/iterations/api'
+import { useCreateIterationItem, type IterationReference } from '@/features/iterations/api'
 import { useProjectMemberOptions, useProjectTeams } from '@/features/teams/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { notify } from '@/shared/lib/toast'
@@ -24,7 +24,9 @@ export function AddItemModal({
   onClose,
   onCreated,
 }: {
-  iteration: Iteration
+  // Reference, not the record: this modal shows the inherited Project/Team/Iteration read-only
+  // (P2-IS-FR-044/045), which is name + window + team and nothing else.
+  iteration: IterationReference
   projectId: string | undefined
   onClose: () => void
   onCreated: () => void

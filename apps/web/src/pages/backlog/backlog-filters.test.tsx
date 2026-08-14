@@ -50,8 +50,10 @@ vi.mock('@/features/releases/api', async (orig) => ({
 
 vi.mock('@/features/iterations/api', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
+  // Both compact feeds: `/options` is REFERENCE (every state, resolves a name) and `/assignable` is
+  // ELIGIBILITY (planning|committed, what the filter and the inline writes may offer).
   useIterationOptions: () => ({ data: [] }),
-  useIterations: () => ({ data: [] }),
+  useAssignableIterations: () => ({ data: [] }),
 }))
 
 import '@/shared/i18n/i18n'

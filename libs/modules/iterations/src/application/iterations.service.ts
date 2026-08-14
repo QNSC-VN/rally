@@ -30,6 +30,7 @@ import type {
   Iteration,
   IterationState,
   IterationOption,
+  IterationReference,
   IterationFilters,
   UpdateIterationInput,
 } from '../domain/iteration.types';
@@ -219,8 +220,15 @@ export class IterationsService {
     return iteration;
   }
 
-  // ── Assignment options (P2-IT-10) — lightweight picker feed ─────────────────
+  // ── The two compact feeds (P2-IT-10) ────────────────────────────────────────
+  //
+  // TWO QUESTIONS, TWO ROUTES, and that is the design rather than an accident:
+  //   • ELIGIBILITY — "which iterations may I assign work INTO?" → `planning | committed`
+  //   • REFERENCE   — "what is this iteration called, and when was it?" → EVERY state
+  // One endpoint with a boolean would let a caller measure one population while a sibling caller
+  // enumerates another; that conflation is exactly what produced the zero-point Velocity bars.
 
+  /** ELIGIBILITY. Feeds the bulk-assign bar and the inline/sidebar assignment pickers. */
   async getAssignmentOptions(
     actor: JwtPayload,
     projectId: string,
@@ -228,6 +236,20 @@ export class IterationsService {
   ): Promise<IterationOption[]> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
     return this.iterationRepo.listAssignmentOptions(projectId, actor.workspaceId, teamId);
+  }
+
+  /**
+   * REFERENCE. Feeds every filter, id→name label and report scope picker on the four surfaces §3.2
+   * grants an Editor (Iteration Status, the Backlog filter, Team Status, Quality) plus the two
+   * report pickers — none of which may read the timebox RECORD.
+   */
+  async getIterationReferences(
+    actor: JwtPayload,
+    projectId: string,
+    teamId?: string,
+  ): Promise<IterationReference[]> {
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    return this.iterationRepo.listReferences(projectId, actor.workspaceId, teamId);
   }
 
   // ── Get ───────────────────────────────────────────────────────────────────
