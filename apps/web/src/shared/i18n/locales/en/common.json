@@ -8,6 +8,15 @@
   "edit": "Edit",
   "create": "Create",
   "search": "Search",
+  "searchEntry": {
+    "label": "Search work items",
+    "placeholder": "Search work items",
+    "inProject": "Search in {{project}}",
+    "results": "Search results",
+    "openByKey": "Open this item",
+    "noMatches": "No matching work items",
+    "selectProject": "Select a project to search, or type an item key"
+  },
   "filter": "Filter",
   "actions": "Actions",
   "confirm": "Confirm",

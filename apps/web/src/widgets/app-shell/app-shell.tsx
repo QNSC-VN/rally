@@ -30,6 +30,7 @@ import { withCsrfHeader } from '@/shared/api/csrf'
 import { isFeatureEnabled } from '@/shared/config/feature-flags'
 import { queryClient } from '@/shared/api/query-client'
 import { NotificationPopover } from '@/widgets/notification-popover/notification-popover'
+import { GlobalSearch } from './global-search'
 
 interface SubNavItem {
   path: string
@@ -287,7 +288,6 @@ export function AppShell() {
   // Which top-nav dropdown is open, keyed by nav label (Plan, Track, …). Only one at a time.
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [notifOpen, setNotifOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
   // Workspace-switcher project tree state (filter + which project is expanded).
   const [projectSearch, setProjectSearch] = useState('')
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
@@ -753,27 +753,7 @@ export function AppShell() {
 
         {/* Right controls */}
         <div className="flex items-center gap-1">
-          {/* Search */}
-          <div className="relative mr-1">
-            <Search
-              size={12}
-              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
-              style={{ color: 'rgba(255,255,255,0.4)' }}
-            />
-            <input
-              type="search"
-              placeholder="Search all work items"
-              aria-label="Search all work items"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="rounded py-1 pr-3 pl-7 text-ui-md text-white placeholder:text-[rgba(255,255,255,0.45)] focus:outline-none"
-              style={{
-                backgroundColor: 'rgba(255,255,255,0.1)',
-                border: '1px solid rgba(255,255,255,0.18)',
-                width: 200,
-              }}
-            />
-          </div>
+          <GlobalSearch />
 
           {/* Notifications — click to open popover; Shift+click goes to full page */}
           <div className="relative">

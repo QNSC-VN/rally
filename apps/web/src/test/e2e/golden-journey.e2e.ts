@@ -9,7 +9,8 @@ import { loginAndSelectProject, settle, expect } from './helpers'
  *     → create a Planning iteration (Timeboxes)
  *     → create a Story INTO that iteration (Iteration Status › Add Item)
  *     → the Story surfaces on Iteration Status
- *     → the Story surfaces on the Backlog carrying its iteration name
+ *     → and is ABSENT from the Backlog, which is unscheduled work only
+ *     → create a second, UNSCHEDULED Story on the Backlog
  *     → move its Schedule State on the Backlog and it PERSISTS across reload
  *     → open the seeded Release detail (shared DetailLayout chrome)
  *
@@ -68,7 +69,15 @@ test.describe('Golden journey', () => {
     await settle(page, 800)
     await expect(page.getByText(storyTitle).first()).toBeVisible({ timeout: 10_000 })
 
-    // ── 4. The Story surfaces on the Backlog carrying its iteration name ──────
+    // ── 4. …and is ABSENT from the Backlog, which is unscheduled work only ────
+    /**
+     * "Plan > Backlog shows only Story/Defect items whose Iteration is `Unscheduled`. Assigning a
+     * Story/Defect to an Iteration removes it from Backlog" (`RECONCILED_SOURCE_OF_TRUTH.md:42`).
+     *
+     * This step used to assert the opposite — that the story appeared here carrying its iteration
+     * name — because the predicate that defines the screen was missing from `listBacklog`. Proving
+     * the two lists are DISJOINT is the more useful assertion, and it is the one the rule makes.
+     */
     await page.goto('/backlog')
     await settle(page)
     await page
@@ -76,11 +85,32 @@ test.describe('Golden journey', () => {
       .fill(storyTitle)
       .catch(() => {})
     await settle(page, 600)
-    const row = page.locator('div.group.flex').filter({ hasText: storyTitle })
-    await expect(row).toBeVisible({ timeout: 10_000 })
-    await expect(row).toContainText(iterationName)
+    await expect(page.locator('div.group.flex').filter({ hasText: storyTitle })).toHaveCount(0)
 
-    // ── 5. Move its Schedule State and confirm it persists across reload ──────
+    // ── 5. A second, UNSCHEDULED story — created here, so it belongs here ─────
+    //
+    // The schedule-state step below needs a row on THIS page, and step 4 has just established that a
+    // scheduled story is not one. Creating it through the Backlog's own Add New also covers the
+    // create path a groomer actually uses, which the iteration-first path in step 2 does not.
+    const backlogStoryTitle = `Golden Backlog Story ${ts}`
+    await page.getByRole('button', { name: 'Add New' }).click()
+    // A DIFFERENT modal from step 2's, with its own copy: the Backlog opens `New Work Item`
+    // (`work-items.json` create.titlePlaceholder), where Iteration Status opens `Add Item to
+    // Iteration`. Matched on the visible label rather than the placeholder so a copy edit to either
+    // modal cannot silently retarget this step at the wrong one.
+    await expect(page.getByText('New Work Item')).toBeVisible()
+    await page.getByLabel(/^Title/).fill(backlogStoryTitle)
+    await page.getByRole('button', { name: 'Create Item' }).click()
+    await settle(page, 1200)
+    await page
+      .getByPlaceholder('Search…')
+      .fill(backlogStoryTitle)
+      .catch(() => {})
+    await settle(page, 600)
+    const row = page.locator('div.group.flex').filter({ hasText: backlogStoryTitle })
+    await expect(row).toBeVisible({ timeout: 10_000 })
+
+    // ── 6. Move its Schedule State and confirm it persists across reload ──────
     // Schedule state is a Rally-style segmented stepper (role=group); the active
     // segment is disabled and shows its letter. Move to In-Progress ("P").
     const stepper = row.getByRole('group', { name: 'Schedule state' })
@@ -92,16 +122,16 @@ test.describe('Golden journey', () => {
       await settle(page)
       await page
         .getByPlaceholder('Search…')
-        .fill(storyTitle)
+        .fill(backlogStoryTitle)
         .catch(() => {})
       await settle(page, 600)
-      const rowAfter = page.locator('div.group.flex').filter({ hasText: storyTitle })
+      const rowAfter = page.locator('div.group.flex').filter({ hasText: backlogStoryTitle })
       await expect(
         rowAfter.getByRole('group', { name: 'Schedule state' }).locator('button:disabled'),
       ).toHaveText('P')
     }
 
-    // ── 6. Open the seeded Release detail (shared DetailLayout chrome) ────────
+    // ── 7. Open the seeded Release detail (shared DetailLayout chrome) ────────
     await page.goto('/releases')
     await settle(page)
     await page.getByRole('button', { name: 'RE-1' }).click()
