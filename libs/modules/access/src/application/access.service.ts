@@ -5,6 +5,7 @@ import {
   NotFoundException,
   ConflictException,
   PermissionDeniedException,
+  PreconditionFailedException,
   UnitOfWork,
   AuditProducer,
   AUDIT_ACTION,
@@ -20,7 +21,7 @@ import {
   type ProjectPermission,
   type ProjectAccessLevel,
 } from '@shared-kernel';
-import type { JwtPayload, DrizzleDB } from '@platform';
+import type { JwtPayload, DrizzleDB, DbExecutor, DrizzleTx } from '@platform';
 import { InjectDrizzle } from '@platform';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import {
@@ -36,12 +37,29 @@ import {
   IRoleAssignmentRepository,
   ROLE_ASSIGNMENT_REPOSITORY,
 } from '../domain/ports/role-assignment.repository';
+import {
+  IProjectAccessRepository,
+  PROJECT_ACCESS_REPOSITORY,
+} from '../domain/ports/project-access.repository';
+import type { ProjectAccessGrant } from '../domain/project-access';
 import type {
   SystemRole,
   UserRoleAssignment,
   ScopeType,
   AssignRoleInput,
 } from '../domain/access.types';
+
+/** The one shape every per-Project grant journey passes to {@link AccessService.grantProjectAccess}. */
+export interface GrantProjectAccessInput {
+  workspaceId: string;
+  projectId: string;
+  userId: string;
+  /** Omitted lands a NULL level — "a member, no level yet" — never a defaulted one. */
+  accessLevel?: ProjectAccessLevel;
+  actorId: string;
+  /** No default: every caller decides. See {@link AccessService.grantProjectAccess}. */
+  onWorkspaceAdmin: 'refuse' | 'skip';
+}
 
 @Injectable()
 export class AccessService {
@@ -51,6 +69,8 @@ export class AccessService {
     @Inject(ROLE_REPOSITORY) private readonly roleRepo: IRoleRepository,
     @Inject(ROLE_ASSIGNMENT_REPOSITORY)
     private readonly assignmentRepo: IRoleAssignmentRepository,
+    @Inject(PROJECT_ACCESS_REPOSITORY)
+    private readonly projectAccessRepo: IProjectAccessRepository,
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
     private readonly cache: CacheService,
@@ -400,6 +420,180 @@ export class AccessService {
       const candidate = `${base}_${i}`;
       if (!taken.has(candidate)) return candidate;
     }
+  }
+
+  // ── Per-Project access grants ─────────────────────────────────────────────
+
+  /**
+   * Whether the user's project authority IS the workspace-wide grant (§2.1).
+   *
+   * Public because two callers legitimately need to SKIP a grant rather than be refused one — see
+   * `onWorkspaceAdmin` on {@link grantProjectAccess}. Takes an executor so it can be asked inside
+   * a transaction that has just written the user's `workspace_members` row.
+   */
+  async isWorkspaceAdmin(workspaceId: string, userId: string, exec?: DbExecutor): Promise<boolean> {
+    const admins = await this.projectAccessRepo.listWorkspaceAdminUserIds(workspaceId, exec);
+    return admins.includes(userId);
+  }
+
+  /**
+   * Grant a user per-Project access — the ONE writer of a `work.project_members` grant.
+   *
+   * It lives here, and not in `ProjectsService` where it used to, because THREE journeys grant
+   * project access and §5's closing sentence (AC-9) is that all three update the same source:
+   * the Users & Permissions screen, an invitation's initial access (§6.4) and team setup
+   * (P4-RBAC-010). `ProjectsModule` imports `WorkspaceModule` — `ProjectsService` resolves
+   * `TeamService` and `WORKSPACE_MEMBER_REPOSITORY` from it — so workspace and teams cannot
+   * import projects back, and a `forwardRef` cannot help: the failure is a JS module cycle, which
+   * surfaces at module-evaluation time (a partially-initialised `@modules/identity` reached
+   * through the cycle threw `TypeError: CurrentUser is not a function` when this was attempted the
+   * other way round). `AccessModule` imports nothing, so it is the one place every caller can
+   * reach.
+   *
+   * `tx` optional, and absent it opens its own — so the Users & Permissions journey is unchanged
+   * while the other two join the transaction they already hold. Every check reads through the
+   * SAME executor as the writes: `acceptInvitation` writes the `workspace_members` row in its own
+   * transaction moments before granting, and a membership check on `this.db` could not see it,
+   * so the grant would be refused with `ASSIGNEE_NOT_WORKSPACE_MEMBER`. Skipping the check for
+   * transactional callers was the other option and it is not acceptable — it is what stops a user
+   * from another workspace/tenant becoming a project member.
+   *
+   * CACHE INVALIDATION IS THE CALLER'S when `tx` is supplied, and it must happen AFTER commit:
+   * invalidating first lets a concurrent request repopulate from pre-commit state, which is the
+   * staleness the cache exists to remove. With no `tx` this method owns the transaction and does
+   * it itself.
+   *
+   * `onWorkspaceAdmin` has no default on purpose — a caller must decide. `refuse` is the
+   * Users & Permissions answer: the admin asked for a grant, and a 201 that writes nothing is how
+   * a UI comes to show a member who is not there. `skip` is the answer where the grant is a side
+   * effect of another action (accepting an invitation, joining a team): a Workspace Admin already
+   * has access to every project, so writing nothing is CORRECT there — §2.1 says they are not
+   * added as a Project user — while refusing would make the invitation permanently unredeemable
+   * or the team uncreatable.
+   */
+  async grantProjectAccess(
+    input: GrantProjectAccessInput & { onWorkspaceAdmin: 'refuse' },
+    tx?: DrizzleTx,
+  ): Promise<ProjectAccessGrant>;
+  async grantProjectAccess(
+    input: GrantProjectAccessInput & { onWorkspaceAdmin: 'skip' },
+    tx?: DrizzleTx,
+  ): Promise<ProjectAccessGrant | null>;
+  async grantProjectAccess(
+    input: GrantProjectAccessInput,
+    // `DrizzleTx`, not `DbExecutor`: `AuditProducer.emit` will only enlist on a real transaction,
+    // and every write here emits one. A caller with only a plain connection has no transaction to
+    // join, which is the no-`tx` case below.
+    tx?: DrizzleTx,
+  ): Promise<ProjectAccessGrant | null> {
+    const { workspaceId, projectId, userId, accessLevel, actorId, onWorkspaceAdmin } = input;
+
+    // Existence, not writability: access is not the project's content, so the member writes stay
+    // open on an ARCHIVED project — revoking or correcting a grant must never require unarchiving.
+    if (!(await this.projectAccessRepo.findLiveProject(workspaceId, projectId, tx))) {
+      throw new NotFoundException('PROJECT_NOT_FOUND', 'Project not found');
+    }
+
+    // A project member must first be an active member of the owning workspace — the same rule
+    // enforced for a project's lead (PRJ-FR-006) and a work item's assignee (P1-15). This is what
+    // prevents adding a user from another workspace/tenant.
+    if (!(await this.projectAccessRepo.isActiveWorkspaceMember(workspaceId, userId, tx))) {
+      throw new PreconditionFailedException(
+        'ASSIGNEE_NOT_WORKSPACE_MEMBER',
+        'The assigned user is not an active member of this workspace',
+      );
+    }
+
+    // §2.1 — see `onWorkspaceAdmin` above, and `selectWorkspaceAdminUserIds` for the predicate.
+    // Enforced here rather than in the SPA's candidate filter (`roleSlug !== 'workspace_admin'`),
+    // which is a client-side courtesy, and because `listProjectMembers` HIDES these rows — so a
+    // row created through any of these paths would be an invisible grant rather than a visible
+    // mistake, live Project Admin the moment the user stops being a Workspace Admin.
+    if (await this.isWorkspaceAdmin(workspaceId, userId, tx)) {
+      if (onWorkspaceAdmin === 'skip') {
+        this.logger.log(
+          { projectId, userId },
+          'Project access not granted: the user is a Workspace Admin and already has every project (§2.1)',
+        );
+        return null;
+      }
+      throw new PreconditionFailedException(
+        'PROJECT_MEMBER_IS_WORKSPACE_ADMIN',
+        'A Workspace Admin already has access to every project and cannot be added as a project user',
+      );
+    }
+
+    const existing = await this.projectAccessRepo.findGrant(projectId, userId, tx);
+
+    const write = async (exec: DrizzleTx): Promise<ProjectAccessGrant | 'unchanged'> => {
+      if (existing) {
+        // UPSERT, not 409: a grant row can legitimately pre-exist with a NULL access_level (rows
+        // created before add-with-level, and every "team-derived" roster row — a user on a linked
+        // team with no explicit grant). Refusing the POST meant the UI could show the user in the
+        // project yet be unable to give them a level. With a level supplied, set it; without one,
+        // stay idempotent.
+        if (accessLevel === undefined || accessLevel === existing.accessLevel) return 'unchanged';
+        const next = await this.projectAccessRepo.setGrantLevel(existing.id, accessLevel, exec);
+        await this.audit.emit(
+          {
+            action: AUDIT_ACTION.PROJECT_MEMBER_UPDATED,
+            resourceType: AUDIT_RESOURCE.PROJECT,
+            resourceId: projectId,
+            workspaceId,
+            actor: { id: actorId },
+            projectId,
+            changes: {
+              before: { userId, accessLevel: existing.accessLevel },
+              after: { userId, accessLevel },
+            },
+          },
+          exec,
+        );
+        return next;
+      }
+
+      const created = await this.projectAccessRepo.createGrant(
+        {
+          id: uuidv7(),
+          workspaceId,
+          projectId,
+          userId,
+          // Persist the chosen level up front rather than landing a NULL row the caller must
+          // immediately PATCH. Repo treats undefined as NULL.
+          ...(accessLevel !== undefined && { accessLevel }),
+        },
+        exec,
+      );
+      // Access grants are administrative events — a grant of Admin/Editor is at least as
+      // sensitive as the team-membership writes that ARE logged. Same tx as the mutation: the
+      // outbox row can never diverge from the grant it records.
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.PROJECT_MEMBER_ADDED,
+          resourceType: AUDIT_RESOURCE.PROJECT,
+          resourceId: projectId,
+          workspaceId,
+          actor: { id: actorId },
+          projectId,
+          changes: { after: { userId, accessLevel: accessLevel ?? null } },
+        },
+        exec,
+      );
+      return created;
+    };
+
+    if (tx) {
+      // The caller owns the transaction AND the post-commit invalidation (see the docblock).
+      const result = await write(tx);
+      return result === 'unchanged' ? existing! : result;
+    }
+
+    const result = await this.uow.run(write);
+    if (result === 'unchanged') return existing!;
+    // Invalidate so the level lands on the user's next request rather than at the 5-min cache TTL.
+    await this.invalidateUser(workspaceId, userId);
+    this.logger.log({ projectId, userId, accessLevel }, 'Project access granted');
+    return result;
   }
 
   // ── Assignments ───────────────────────────────────────────────────────────

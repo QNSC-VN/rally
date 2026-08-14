@@ -1,8 +1,4 @@
-import type {
-  ProjectMember,
-  AddProjectMemberInput,
-  UpdateProjectMemberInput,
-} from '../project.types';
+import type { ProjectMember, UpdateProjectMemberInput } from '../project.types';
 import type { DbExecutor } from '@platform';
 
 export const PROJECT_MEMBER_REPOSITORY = Symbol('PROJECT_MEMBER_REPOSITORY');
@@ -17,7 +13,11 @@ export interface IProjectMemberRepository {
    * too — see `selectWorkspaceAdminUserIds`, which is the one place the predicate lives.
    */
   listWorkspaceAdminUserIds(workspaceId: string): Promise<string[]>;
-  addMember(input: AddProjectMemberInput, tx?: DbExecutor): Promise<ProjectMember>;
+  // There is deliberately no `addMember` here. CREATING a grant row is
+  // `AccessService.grantProjectAccess` — the one writer all three §5 journeys reach (AC-9) — and
+  // its SQL moved to `ProjectAccessDrizzleRepository.createGrant` with it. A second insert path
+  // here is exactly how the reactivation rule for `uq_project_member` would come to exist in two
+  // versions, one of which would be wrong.
   updateMember(
     id: string,
     input: UpdateProjectMemberInput,

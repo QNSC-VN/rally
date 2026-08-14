@@ -1013,6 +1013,21 @@ export class ProjectsService {
     return members.filter((m) => !admins.has(m.userId));
   }
 
+  /**
+   * The Users & Permissions journey's grant — a THIN DELEGATE to the one writer.
+   *
+   * The whole body (existence check, the active-workspace-member rule, the §2.1 Workspace Admin
+   * refusal, the upsert-not-409 rule, both audit events, the cache invalidation) moved to
+   * `AccessService.grantProjectAccess`, unchanged. It had to: §5's closing sentence (AC-9) is that
+   * all three journeys update the same source, and the other two — an invitation's initial access
+   * (§6.4) and team setup (P4-RBAC-010) — live in `WorkspaceModule`, which this module IMPORTS.
+   * They therefore cannot call into here at all, and `forwardRef` does not help because the
+   * failure is a JS module cycle evaluated before Nest sees it.
+   *
+   * `onWorkspaceAdmin: 'refuse'` is this journey's answer specifically: an admin used the Users &
+   * Permissions screen to ask for a grant, so a 201 that writes nothing would be a lie. The two
+   * side-effect journeys pass `skip`.
+   */
   async addProjectMember(
     workspaceId: string,
     projectId: string,
@@ -1020,103 +1035,14 @@ export class ProjectsService {
     actorId: string,
     accessLevel?: ProjectAccessLevel,
   ): Promise<ProjectMember> {
-    // `getProject`, not `assertProjectWritable`: access is not the project's content. See the
-    // note on the workflow-status mutations for why the three member writes stay open on an
-    // archived project.
-    await this.getProject(workspaceId, projectId);
-
-    // A project member must first be an active member of the owning workspace —
-    // same rule enforced for a project's lead (PRJ-FR-006) and a work item's
-    // assignee (P1-15). Prevents adding a user from another workspace/tenant.
-    await this.assertWorkspaceMember(workspaceId, userId);
-
-    /**
-     * §2.1 — a Workspace Admin cannot be added as a Project user. REFUSED, not silently
-     * dropped: the caller asked for a grant, and a POST that answers 201 while writing nothing
-     * is how a UI comes to show a member who is not there.
-     *
-     * Enforced here because the SPA's own candidate filter (`roleSlug !== 'workspace_admin'`)
-     * is a client-side courtesy, not a rule — and because `listProjectMembers` now hides these
-     * rows, so a row created through this path would be an invisible grant rather than a
-     * visible mistake. See `workspaceAdminIds` for the whole reasoning; it is the same set,
-     * deliberately.
-     */
-    if ((await this.workspaceAdminIds(workspaceId)).has(userId)) {
-      throw new PreconditionFailedException(
-        'PROJECT_MEMBER_IS_WORKSPACE_ADMIN',
-        'A Workspace Admin already has access to every project and cannot be added as a project user',
-      );
-    }
-
-    const existing = await this.projectMemberRepo.findMember(projectId, userId);
-    if (existing) {
-      // UPSERT, not 409: a member row can legitimately pre-exist with a NULL
-      // access_level (rows created before add-with-level, and every "team-derived"
-      // roster row — a user on a linked team with no explicit grant). Refusing the
-      // POST meant the UI could show the user in the project yet be unable to give
-      // them a level. With a level supplied, set it; without one, stay idempotent.
-      if (accessLevel !== undefined && accessLevel !== existing.accessLevel) {
-        const updated = await this.uow.run(async (tx) => {
-          const next = await this.projectMemberRepo.updateMember(existing.id, { accessLevel }, tx);
-          await this.audit.emit(
-            {
-              action: AUDIT_ACTION.PROJECT_MEMBER_UPDATED,
-              resourceType: AUDIT_RESOURCE.PROJECT,
-              resourceId: projectId,
-              workspaceId,
-              actor: { id: actorId },
-              projectId,
-              changes: {
-                before: { userId, accessLevel: existing.accessLevel },
-                after: { userId, accessLevel },
-              },
-            },
-            tx,
-          );
-          return next;
-        });
-        await this.access.invalidateUser(workspaceId, userId);
-        this.logger.log({ projectId, userId }, 'Project member level set (upsert)');
-        return updated;
-      }
-      return existing;
-    }
-
-    const member = await this.uow.run(async (tx) => {
-      const created = await this.projectMemberRepo.addMember(
-        {
-          id: uuidv7(),
-          workspaceId,
-          projectId,
-          userId,
-          // Persist the chosen level up front (the Add Existing User flow) rather than
-          // landing a NULL row the caller must immediately PATCH. Repo ignores undefined.
-          ...(accessLevel !== undefined && { accessLevel }),
-        },
-        tx,
-      );
-      // Access grants are administrative events — a grant of Admin/Editor is at least
-      // as sensitive as the team-membership writes that ARE logged. Same tx as the
-      // mutation: the outbox row can never diverge from the grant it records.
-      await this.audit.emit(
-        {
-          action: AUDIT_ACTION.PROJECT_MEMBER_ADDED,
-          resourceType: AUDIT_RESOURCE.PROJECT,
-          resourceId: projectId,
-          workspaceId,
-          actor: { id: actorId },
-          projectId,
-          changes: { after: { userId, accessLevel: accessLevel ?? null } },
-        },
-        tx,
-      );
-      return created;
+    return this.access.grantProjectAccess({
+      workspaceId,
+      projectId,
+      userId,
+      accessLevel,
+      actorId,
+      onWorkspaceAdmin: 'refuse',
     });
-    // RBAC migration Phase 4: invalidate so the new access_level lands on the
-    // user's next request, not the 5-min cache TTL.
-    await this.access.invalidateUser(workspaceId, userId);
-    this.logger.log({ projectId, userId }, 'Project member added');
-    return member;
   }
 
   async updateProjectMember(

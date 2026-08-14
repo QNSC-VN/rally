@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnitOfWork, AuditProducer, DRIZZLE } from '@platform';
+import { UnitOfWork, AuditProducer, DRIZZLE, PreconditionFailedException } from '@platform';
 import { CacheService } from '@qnsc-vn/platform-cache';
 import { AccessService } from './access.service';
 import { ROLE_REPOSITORY, IRoleRepository } from '../domain/ports/role.repository';
@@ -9,6 +9,7 @@ import {
   ROLE_ASSIGNMENT_REPOSITORY,
   IRoleAssignmentRepository,
 } from '../domain/ports/role-assignment.repository';
+import { PROJECT_ACCESS_REPOSITORY } from '../domain/ports/project-access.repository';
 import type {
   SystemRole,
   UserRoleAssignment,
@@ -17,6 +18,33 @@ import type {
 } from '../domain/access.types';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
+
+/**
+ * The per-Project grant reads and writes. Every method takes an optional executor because
+ * `grantProjectAccess` has to be joinable to a transaction its caller already opened — see the
+ * port's docblock. Defaults describe the ordinary case: a live project, an active workspace member,
+ * no Workspace Admins, no existing grant.
+ */
+/** The tx `UnitOfWork.run` hands the work, exposed so a test can prove the writes enlisted on it. */
+const makeUow = () => {
+  const tx = { __tx: 'uow' };
+  return { run: vi.fn((fn: (tx: unknown) => unknown) => fn(tx)), tx };
+};
+
+const makeProjectAccessRepo = () => ({
+  findLiveProject: vi.fn().mockResolvedValue({ id: 'proj-1' }),
+  isActiveWorkspaceMember: vi.fn().mockResolvedValue(true),
+  listWorkspaceAdminUserIds: vi.fn().mockResolvedValue([]),
+  findGrant: vi.fn().mockResolvedValue(null),
+  createGrant: vi
+    .fn()
+    .mockImplementation((input: { id: string; accessLevel?: string }) =>
+      Promise.resolve({ id: input.id, accessLevel: input.accessLevel ?? null }),
+    ),
+  setGrantLevel: vi
+    .fn()
+    .mockImplementation((id: string, accessLevel: string) => Promise.resolve({ id, accessLevel })),
+});
 
 let projectMemberRows: Array<{ projectId: string }> = [];
 // Phase 3: effectiveAssignments reads per-Project access_level rows directly.
@@ -67,8 +95,15 @@ describe('AccessService — scope-aware permission resolution', () => {
   let service: AccessService;
   let roleRepo: Mocked<IRoleRepository>;
   let assignmentRepo: Mocked<IRoleAssignmentRepository>;
+  let projectAccessRepo: ReturnType<typeof makeProjectAccessRepo>;
+  let uow: ReturnType<typeof makeUow>;
+  let audit: { emit: ReturnType<typeof vi.fn> };
+  let cache: Mocked<CacheService>;
 
   beforeEach(async () => {
+    projectAccessRepo = makeProjectAccessRepo();
+    uow = makeUow();
+    audit = { emit: vi.fn().mockResolvedValue(undefined) };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AccessService,
@@ -94,8 +129,9 @@ describe('AccessService — scope-aware permission resolution', () => {
             delete: vi.fn(),
           },
         },
-        { provide: UnitOfWork, useValue: { run: vi.fn((fn: (tx: unknown) => unknown) => fn({})) } },
-        { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
+        { provide: PROJECT_ACCESS_REPOSITORY, useValue: projectAccessRepo },
+        { provide: UnitOfWork, useValue: uow },
+        { provide: AuditProducer, useValue: audit },
         {
           // `listReadableProjectIds` reads project_members directly (no port exists for
           // the roster). Chainable stub; `projectMemberRows` is what each test controls.
@@ -133,6 +169,7 @@ describe('AccessService — scope-aware permission resolution', () => {
     service = module.get(AccessService);
     roleRepo = module.get(ROLE_REPOSITORY);
     assignmentRepo = module.get(ROLE_ASSIGNMENT_REPOSITORY);
+    cache = module.get(CacheService);
     // Default: the acting user is a workspace admin. Escalation checks now resolve
     // the ACTOR's own permissions from the database instead of reading the token,
     // so tests that exercise a write need a resolvable actor; the no-escalation
@@ -593,6 +630,192 @@ describe('AccessService — scope-aware permission resolution', () => {
       });
     });
   });
+
+  /**
+   * The ONE per-Project grant writer. §5's closing sentence (AC-9) is that all three journeys —
+   * Users & Permissions, an invitation's initial access (§6.4) and team setup (P4-RBAC-010) —
+   * update the same source, and they can only do that if there is one writer to reach.
+   *
+   * These tests came from `projects.service.spec.ts` with the body they cover. They had to move:
+   * `ProjectsService.addProjectMember` is a thin delegate now and `AccessService` is a mock over
+   * there, so an assertion on the repository would be asserting on nothing.
+   */
+  describe('grantProjectAccess — the one per-Project grant writer', () => {
+    const grant = (o: Record<string, unknown> = {}) => ({
+      workspaceId: WORKSPACE,
+      projectId: 'proj-1',
+      userId: 'user-2',
+      actorId: 'admin-1',
+      onWorkspaceAdmin: 'refuse' as const,
+      ...o,
+    });
+
+    it('grants a user who is an active workspace member', async () => {
+      await service.grantProjectAccess(grant());
+      expect(projectAccessRepo.createGrant).toHaveBeenCalled();
+    });
+
+    it('404s an unknown or soft-deleted project before any check that could leak it exists', async () => {
+      projectAccessRepo.findLiveProject.mockResolvedValue(null);
+      await expect(service.grantProjectAccess(grant())).rejects.toMatchObject({
+        code: 'PROJECT_NOT_FOUND',
+      });
+      expect(projectAccessRepo.createGrant).not.toHaveBeenCalled();
+    });
+
+    it('rejects a user who is not an active workspace member', async () => {
+      // The rule that stops a user from another workspace/tenant becoming a project member.
+      projectAccessRepo.isActiveWorkspaceMember.mockResolvedValue(false);
+      await expect(service.grantProjectAccess(grant({ userId: 'foreign-user' }))).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(projectAccessRepo.createGrant).not.toHaveBeenCalled();
+    });
+
+    it('persists the chosen access level up front (Add Existing User flow)', async () => {
+      await service.grantProjectAccess(grant({ accessLevel: 'editor' }));
+      expect(projectAccessRepo.createGrant).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-2', accessLevel: 'editor' }),
+        uow.tx,
+      );
+    });
+
+    it('omits accessLevel when none is supplied (lands NULL until a PATCH)', async () => {
+      await service.grantProjectAccess(grant());
+      expect(projectAccessRepo.createGrant).toHaveBeenCalledWith(
+        expect.not.objectContaining({ accessLevel: expect.anything() }),
+        uow.tx,
+      );
+    });
+
+    it('upserts: an existing NULL-level row gets the level instead of a 409', async () => {
+      // The team-derived / pre-fix shape: an explicit row with no level. Refusing the POST meant
+      // the UI could show the user in the project yet be unable to give them a level.
+      projectAccessRepo.findGrant.mockResolvedValue({
+        id: 'pm-existing',
+        userId: 'user-2',
+        accessLevel: null,
+      });
+
+      const result = await service.grantProjectAccess(grant({ accessLevel: 'editor' }));
+
+      expect(projectAccessRepo.setGrantLevel).toHaveBeenCalledWith('pm-existing', 'editor', uow.tx);
+      expect(result.accessLevel).toBe('editor');
+      expect(audit.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'project.member.updated',
+          changes: {
+            before: { userId: 'user-2', accessLevel: null },
+            after: { userId: 'user-2', accessLevel: 'editor' },
+          },
+        }),
+        uow.tx,
+      );
+    });
+
+    it('is idempotent when the level already matches — no write, no audit row', async () => {
+      const existing = { id: 'pm-existing', userId: 'user-2', accessLevel: 'editor' };
+      projectAccessRepo.findGrant.mockResolvedValue(existing);
+
+      await expect(service.grantProjectAccess(grant({ accessLevel: 'editor' }))).resolves.toBe(
+        existing,
+      );
+      expect(projectAccessRepo.setGrantLevel).not.toHaveBeenCalled();
+      expect(audit.emit).not.toHaveBeenCalled();
+    });
+
+    it('emits project.member.added in the SAME tx as the write', async () => {
+      // Same tx as the mutation: the outbox row can never diverge from the grant it records.
+      await service.grantProjectAccess(grant({ accessLevel: 'admin' }));
+      expect(audit.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'project.member.added',
+          projectId: 'proj-1',
+          changes: { after: { userId: 'user-2', accessLevel: 'admin' } },
+        }),
+        uow.tx,
+      );
+    });
+
+    it('invalidates the cached permissions AFTER the transaction it owns', async () => {
+      await service.grantProjectAccess(grant({ accessLevel: 'editor' }));
+      expect(cache.del).toHaveBeenCalledWith(`authz:assign:${WORKSPACE}:user-2`);
+    });
+
+    /**
+     * RBE-03. AC-8 / §2.1: "a Workspace Admin is not added as a Project user or Team member."
+     * `listProjectMembers` HIDES these rows, so a row created here would be an invisible grant —
+     * live Project Admin the moment the user stops being a Workspace Admin.
+     */
+    describe('a Workspace Admin is not a project user (§2.1)', () => {
+      beforeEach(() => {
+        projectAccessRepo.listWorkspaceAdminUserIds.mockResolvedValue(['wa-1']);
+      });
+
+      it('REFUSES the grant when the caller asked for one directly', async () => {
+        await expect(
+          service.grantProjectAccess(grant({ userId: 'wa-1', accessLevel: 'editor' })),
+        ).rejects.toMatchObject({ code: 'PROJECT_MEMBER_IS_WORKSPACE_ADMIN' });
+        expect(projectAccessRepo.createGrant).not.toHaveBeenCalled();
+      });
+
+      it('SKIPS the grant when it is a side effect of another action', async () => {
+        // Accepting an invitation or joining a team must not become unredeemable/uncreatable
+        // because the user already has every project by workspace grant.
+        await expect(
+          service.grantProjectAccess(
+            grant({ userId: 'wa-1', accessLevel: 'editor', onWorkspaceAdmin: 'skip' }),
+          ),
+        ).resolves.toBeNull();
+        expect(projectAccessRepo.createGrant).not.toHaveBeenCalled();
+      });
+    });
+
+    /**
+     * The reason this method takes a `tx` at all. `WorkspaceService.acceptInvitation` writes the
+     * user's `workspace_members` row and grants project access in ONE transaction — and
+     * `UnitOfWork.run` is `db.transaction`, which does not nest. A membership check that read the
+     * pool instead of the caller's tx could not see the uncommitted row and would refuse the grant
+     * with `ASSIGNEE_NOT_WORKSPACE_MEMBER`; skipping the check instead is what would let a user
+     * from another workspace/tenant in.
+     */
+    describe('joining a caller’s transaction', () => {
+      const callerTx = { __tx: 'caller' } as never;
+
+      it('threads the caller’s tx through every CHECK, not just the writes', async () => {
+        await service.grantProjectAccess(grant({ accessLevel: 'editor' }), callerTx);
+
+        expect(projectAccessRepo.findLiveProject).toHaveBeenCalledWith(
+          WORKSPACE,
+          'proj-1',
+          callerTx,
+        );
+        expect(projectAccessRepo.isActiveWorkspaceMember).toHaveBeenCalledWith(
+          WORKSPACE,
+          'user-2',
+          callerTx,
+        );
+        expect(projectAccessRepo.listWorkspaceAdminUserIds).toHaveBeenCalledWith(
+          WORKSPACE,
+          callerTx,
+        );
+        expect(projectAccessRepo.findGrant).toHaveBeenCalledWith('proj-1', 'user-2', callerTx);
+        expect(projectAccessRepo.createGrant).toHaveBeenCalledWith(expect.anything(), callerTx);
+      });
+
+      it('does not open its own transaction', async () => {
+        await service.grantProjectAccess(grant({ accessLevel: 'editor' }), callerTx);
+        expect(uow.run).not.toHaveBeenCalled();
+      });
+
+      it('leaves cache invalidation to the caller, who knows when the tx commits', async () => {
+        // Invalidating before commit lets a concurrent request repopulate from pre-commit state —
+        // the exact staleness the cache exists to remove.
+        await service.grantProjectAccess(grant({ accessLevel: 'editor' }), callerTx);
+        expect(cache.del).not.toHaveBeenCalled();
+      });
+    });
+  });
 });
 
 /**
@@ -606,6 +829,8 @@ describe('AccessService — cached-permission invalidation', () => {
   let roleRepo: Mocked<IRoleRepository>;
   let assignmentRepo: Mocked<IRoleAssignmentRepository>;
   let cache: Mocked<CacheService>;
+  let projectAccessRepo: ReturnType<typeof makeProjectAccessRepo>;
+  let uow: ReturnType<typeof makeUow>;
 
   const actor = {
     sub: 'admin-1',
@@ -614,6 +839,8 @@ describe('AccessService — cached-permission invalidation', () => {
   } as unknown as Parameters<AccessService['assignRole']>[0];
 
   beforeEach(async () => {
+    projectAccessRepo = makeProjectAccessRepo();
+    uow = makeUow();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AccessService,
@@ -639,7 +866,8 @@ describe('AccessService — cached-permission invalidation', () => {
             delete: vi.fn().mockResolvedValue(undefined),
           },
         },
-        { provide: UnitOfWork, useValue: { run: vi.fn((fn: (tx: unknown) => unknown) => fn({})) } },
+        { provide: PROJECT_ACCESS_REPOSITORY, useValue: projectAccessRepo },
+        { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         {
           // `listReadableProjectIds` reads project_members directly (no port exists for

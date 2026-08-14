@@ -21,7 +21,7 @@ import type {
   UpdateProjectInput,
 } from '../../domain/project.types';
 import { IProjectRepository } from '../../domain/ports/project.repository';
-import { selectWorkspaceAdminUserIds } from './workspace-admin-ids';
+import { selectWorkspaceAdminUserIds } from '@modules/access';
 
 @Injectable()
 export class ProjectDrizzleRepository implements IProjectRepository {

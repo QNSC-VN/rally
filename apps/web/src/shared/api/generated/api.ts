@@ -2833,6 +2833,7 @@ export interface components {
         | 'iteration:create'
         | 'iteration:edit'
         | 'iteration:delete'
+        | 'timebox:view'
         | 'release:view'
         | 'release:create'
         | 'release:edit'
@@ -2887,6 +2888,7 @@ export interface components {
         | 'iteration:create'
         | 'iteration:edit'
         | 'iteration:delete'
+        | 'timebox:view'
         | 'release:view'
         | 'release:create'
         | 'release:edit'
@@ -3021,6 +3023,12 @@ export interface components {
       /** Format: email */
       email: string
       roleId?: string
+      projectAccess?: {
+        /** Format: uuid */
+        projectId: string
+        /** @enum {string} */
+        accessLevel: 'admin' | 'editor'
+      }[]
     }
     InvitationResponseDto: {
       /** Format: uuid */

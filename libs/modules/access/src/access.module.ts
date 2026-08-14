@@ -7,8 +7,10 @@ import { RouteAuthzAudit } from './interface/http/route-authz-audit';
 import { PolicyGuard } from './interface/http/policy.guard';
 import { RoleDrizzleRepository } from './infrastructure/persistence/role.drizzle-repository';
 import { RoleAssignmentDrizzleRepository } from './infrastructure/persistence/role-assignment.drizzle-repository';
+import { ProjectAccessDrizzleRepository } from './infrastructure/persistence/project-access.drizzle-repository';
 import { ROLE_REPOSITORY } from './domain/ports/role.repository';
 import { ROLE_ASSIGNMENT_REPOSITORY } from './domain/ports/role-assignment.repository';
+import { PROJECT_ACCESS_REPOSITORY } from './domain/ports/project-access.repository';
 
 @Module({
   // DiscoveryModule gives RouteAuthzAudit the controller inventory it scans at bootstrap.
@@ -24,6 +26,10 @@ import { ROLE_ASSIGNMENT_REPOSITORY } from './domain/ports/role-assignment.repos
     PolicyGuard,
     { provide: ROLE_REPOSITORY, useClass: RoleDrizzleRepository },
     { provide: ROLE_ASSIGNMENT_REPOSITORY, useClass: RoleAssignmentDrizzleRepository },
+    // The per-Project grant reads and writes. They live here — not in ProjectsModule, where the
+    // writer used to — because ProjectsModule imports WorkspaceModule, so invitations and teams
+    // cannot import projects back, and all three journeys must reach the SAME writer (AC-9).
+    { provide: PROJECT_ACCESS_REPOSITORY, useClass: ProjectAccessDrizzleRepository },
   ],
   exports: [AccessService, ProjectScopeResolver, PolicyGuard],
 })
