@@ -29,6 +29,27 @@
  * `workspace_members` field with its own typed confirmation (P4-SET-07), not
  * Project access, and §5.1's review step is scoped to the latter.
  *
+ * **A WORKSPACE ADMIN target is read-only here** (§2.1). A Workspace Admin's
+ * authority IS the workspace-wide grant; §2.1 gives it every project outright and
+ * lists no per-Project row for it, so `project_members.access_level` has nothing to
+ * say about one. This surface nonetheless offered the full editor: an `Access Level`
+ * picker, `+ Add project access` and `Remove access` for a principal the model says
+ * cannot hold either state — so the one write it invited (a `project_members` row on
+ * a WA) was a row §2.1 forbids, and the one it implied (Remove) promised a
+ * revocation that changes nothing, because `workspace:*` is what actually grants the
+ * access. The General tab was already read-only for a WA (`statusLocked`); only
+ * Project Access was not.
+ *
+ * Detected from `member.roleSlug`, deliberately NOT from an absent access level:
+ * `AccessService.getProjectAccessLevel` returns `null` for a Workspace Admin AND for
+ * No Access, and every caller reads that `null` as "WA, allowed" (see
+ * `ProjectsService.listProjectMembers`). Inferring WA-ness from it here would make
+ * this screen and that guard disagree about what `null` means.
+ *
+ * Existing rows still RENDER, read-only, rather than being hidden. A WA that
+ * predates its elevation can legitimately carry `project_members` rows, and hiding
+ * them would leave the one screen that reports a user's access silently incomplete.
+ *
  * **Admin shows `All Teams`, never a Team picker** (§5.1 :141-143, §2.2 :51).
  * The picker used to render for Admin as well, so a Workspace Admin was invited
  * to build a team scope for a level that has none — `assertTeamScoped` skips
@@ -107,10 +128,49 @@ interface ProjectBaseline {
   teams: TeamRef[]
 }
 
-/** The pending edit for one project row. `level: null` = a team-derived row untouched. */
+/**
+ * The pending edit for one project row — ONLY what the user actually touched.
+ * `level: null` = a team-derived row untouched.
+ *
+ * `teamIds` is OPTIONAL, and that is the point. It used to be materialised the moment any part of the
+ * row was edited, from `baselines[projectId]?.teamIds ?? []` — but the baseline's team memberships
+ * arrive from their own query, so choosing `Editor` before `/v1/teams/{id}/members` resolved froze
+ * `[]` into the draft. A draft existing then SHADOWS the baseline, so the real memberships could never
+ * reach it: §2.2's "an Editor needs a Team" guard stayed true forever, `Review Changes` was disabled
+ * permanently, and the Team picker showed the user's own team unchecked. The only way out was to close
+ * and reopen the modal. Reproduced 2 runs in 8; raising the test's timeout to 5s did not help, which is
+ * what proved it was frozen state rather than a slow render.
+ *
+ * `undefined` therefore means "not touched — resolve against the baseline when it arrives", the same
+ * absent-versus-empty distinction this repo relies on elsewhere (a capacity plan's window, an
+ * allocation's value). {@link resolveAccess} is the single place that resolution happens.
+ */
 interface AccessDraft {
   level: AccessLevel | null
+  teamIds?: string[]
+}
+
+/** A draft resolved against its baseline: what a row renders, and what a save would write. */
+interface ResolvedAccess {
+  level: AccessLevel | null
   teamIds: string[]
+}
+
+/**
+ * Resolve a draft against its baseline. The ONE home for that rule.
+ *
+ * It was previously inlined twice — in `effective()` and again in the `changes` builder — with the
+ * same `?? []` fallback written out both times. Two copies of "what does this row currently say" is
+ * how the row a reader sees and the change a save writes drift apart.
+ */
+function resolveAccess(
+  draft: AccessDraft | undefined,
+  base: ProjectBaseline | undefined,
+): ResolvedAccess {
+  return {
+    level: draft ? draft.level : (base?.level ?? null),
+    teamIds: draft?.teamIds ?? base?.teamIds ?? [],
+  }
 }
 
 /** One row of the `Review Changes` summary, and one unit of work for `Confirm & Save`. */
@@ -152,6 +212,14 @@ export function UserAccessModal({
   const { t } = useTranslation('settings')
   const { hasPermission, user } = useAuthStore()
   const isWA = hasPermission(PERMISSION.WORKSPACE_ALL)
+  /**
+   * The TARGET is a Workspace Admin — §2.1 gives it every project through the
+   * workspace-wide grant and defines no per-Project row for it, so there is nothing
+   * on this tab to set. Read the role slug, never an absent level: see the docblock.
+   */
+  const targetIsWorkspaceAdmin = member.roleSlug === 'workspace_admin'
+  /** The actor may edit project access AND the target is allowed to hold it. */
+  const canEditAccess = isWA && !targetIsWorkspaceAdmin
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<ModalTab>('general')
   const { data: projects = [], isLoading } = useProjects(workspaceId)
@@ -179,19 +247,23 @@ export function UserAccessModal({
   )
 
   const effective = useCallback(
-    (projectId: string): AccessDraft =>
-      drafts[projectId] ?? {
-        level: baselines[projectId]?.level ?? null,
-        teamIds: baselines[projectId]?.teamIds ?? [],
-      },
+    (projectId: string): ResolvedAccess => resolveAccess(drafts[projectId], baselines[projectId]),
     [drafts, baselines],
   )
 
   const patchDraft = useCallback(
     (projectId: string, patch: Partial<AccessDraft>) => {
-      setDrafts((prev) => ({ ...prev, [projectId]: { ...effective(projectId), ...patch } }))
+      setDrafts((prev) => {
+        // Deliberately NOT `...effective(projectId)`: that materialised `teamIds` from whatever the
+        // baseline held at this instant, which is `[]` until the memberships query resolves. Carry
+        // forward only the keys already in the draft, so an untouched `teamIds` stays absent.
+        const current: AccessDraft = prev[projectId] ?? {
+          level: baselines[projectId]?.level ?? null,
+        }
+        return { ...prev, [projectId]: { ...current, ...patch } }
+      })
     },
-    [effective],
+    [baselines],
   )
 
   function addRow(projectId: string, level: AccessLevel) {
@@ -199,10 +271,9 @@ export function UserAccessModal({
     // the Remove, so it restores the baseline instead of becoming a fresh grant.
     setRemoved((prev) => prev.filter((id) => id !== projectId))
     if (!baselines[projectId]?.hasAccess) setAdded((prev) => [...prev, projectId])
-    setDrafts((prev) => ({
-      ...prev,
-      [projectId]: { level, teamIds: baselines[projectId]?.teamIds ?? [] },
-    }))
+    // No `teamIds`: absent resolves to the baseline, which is what makes re-adding a removed project
+    // an UNDO rather than a fresh grant that silently drops the teams the user is already in.
+    setDrafts((prev) => ({ ...prev, [projectId]: { level } }))
   }
 
   function removeRow(projectId: string) {
@@ -244,10 +315,7 @@ export function UserAccessModal({
         if (base?.hasAccess) out.push({ kind: 'remove', projectId: p.id, label })
         continue
       }
-      const draft = drafts[p.id] ?? {
-        level: base?.level ?? null,
-        teamIds: base?.teamIds ?? [],
-      }
+      const draft = resolveAccess(drafts[p.id], base)
       const levelChanged = draft.level !== (base?.level ?? null)
       // Admin covers every team, so its team rows are not part of the diff.
       const teamsChanged =
@@ -450,6 +518,13 @@ export function UserAccessModal({
               </p>
             ) : (
               <div className="flex flex-col gap-3">
+                {/* §2.1: a Workspace Admin holds every project through the
+                    workspace-wide grant, so say so instead of offering a picker. */}
+                {targetIsWorkspaceAdmin && (
+                  <p className="rounded-lg border border-border-subtle bg-surface-hover px-3 py-2 text-ui-xs text-foreground-subtle">
+                    {t('access.workspaceAdminReadOnly')}
+                  </p>
+                )}
                 {rowProjects.map((p) => (
                   <UserProjectAccessRow
                     key={p.id}
@@ -457,7 +532,7 @@ export function UserAccessModal({
                     projectKey={p.key}
                     projectName={p.name}
                     userId={member.userId}
-                    isWA={isWA}
+                    canEdit={canEditAccess}
                     draft={effective(p.id)}
                     onResolve={resolveBaseline}
                     onChange={patchDraft}
@@ -474,12 +549,14 @@ export function UserAccessModal({
                     onResolve={resolveBaseline}
                   />
                 ))}
-                {Object.keys(baselines).length > 0 && rowProjects.length === 0 && (
-                  <p className="py-2 text-center text-ui-sm text-foreground-subtle">
-                    No project access yet.
-                  </p>
-                )}
-                {isWA && candidates.length > 0 && (
+                {Object.keys(baselines).length > 0 &&
+                  rowProjects.length === 0 &&
+                  !targetIsWorkspaceAdmin && (
+                    <p className="py-2 text-center text-ui-sm text-foreground-subtle">
+                      No project access yet.
+                    </p>
+                  )}
+                {canEditAccess && candidates.length > 0 && (
                   <AddProjectAccess candidates={candidates} onAdd={addRow} />
                 )}
               </div>
@@ -493,11 +570,13 @@ export function UserAccessModal({
             so this is accurate: a grant/revocation lands on the user's NEXT
             request, not their next sign-in. */}
         <p className="text-ui-xs text-foreground-subtle">
-          {changes.length > 0
-            ? t('access.unsavedHint', { count: changes.length })
-            : 'Changes take effect on your next request.'}
+          {targetIsWorkspaceAdmin
+            ? t('access.workspaceAdminReadOnlyShort')
+            : changes.length > 0
+              ? t('access.unsavedHint', { count: changes.length })
+              : t('access.effectNextRequest')}
         </p>
-        {isWA && (
+        {canEditAccess && (
           <Button
             type="button"
             className="ml-auto"
@@ -621,7 +700,7 @@ function UserProjectAccessRow({
   projectKey,
   projectName,
   userId,
-  isWA,
+  canEdit,
   draft,
   onResolve,
   onChange,
@@ -631,8 +710,13 @@ function UserProjectAccessRow({
   projectKey: string
   projectName: string
   userId: string
-  isWA: boolean
-  draft: AccessDraft
+  /**
+   * The actor may write this row AND the target may hold a level at all — a
+   * Workspace Admin target is `false` here even for a Workspace Admin actor (§2.1).
+   */
+  canEdit: boolean
+  /** The RESOLVED value from `effective()`, never the raw draft — `teamIds` is always concrete here. */
+  draft: ResolvedAccess
   onResolve: (projectId: string, baseline: ProjectBaseline) => void
   onChange: (projectId: string, patch: Partial<AccessDraft>) => void
   onRemove: () => void
@@ -683,7 +767,7 @@ function UserProjectAccessRow({
             className="disabled:opacity-100"
           />
         </FormField>
-        {isWA && (
+        {canEdit && (
           <IconButton
             size="sm"
             aria-label="Remove access"
@@ -698,7 +782,7 @@ function UserProjectAccessRow({
       </div>
 
       <FormField label="Access Level">
-        {isWA ? (
+        {canEdit ? (
           <SearchableSelect
             variant="field"
             value={draft.level ?? ''}
@@ -731,7 +815,7 @@ function UserProjectAccessRow({
                 multiple
                 variant="field"
                 value={draft.teamIds}
-                readOnly={!isWA || teamsLoading}
+                readOnly={!canEdit || teamsLoading}
                 options={teamOptions}
                 ariaLabel={`Teams for ${projectName}`}
                 placeholder={t('access.selectTeams')}
