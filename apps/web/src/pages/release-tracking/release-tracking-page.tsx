@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { GitBranch } from 'lucide-react'
 
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
+import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useReleases } from '@/features/releases/api'
 import { useProjectTeams } from '@/features/teams/api'
@@ -50,8 +51,8 @@ export function ReleaseTrackingPage() {
     [projectTeams],
   )
   // Persist Release Tracking view selections across reload (P6-COM-006).
-  const [chosenReleaseId, setChosenReleaseId] = useState<string | null>(
-    () => localStorage.getItem(STORAGE_KEYS.RELEASE_TRACKING_RELEASE),
+  const [chosenReleaseId, setChosenReleaseId] = useState<string | null>(() =>
+    localStorage.getItem(STORAGE_KEYS.RELEASE_TRACKING_RELEASE),
   )
   function chooseRelease(id: string | null) {
     setChosenReleaseId(id)
@@ -74,22 +75,36 @@ export function ReleaseTrackingPage() {
 
   const [bucket, setBucket] = useState<ReleaseBucket>(() => {
     const s = localStorage.getItem(STORAGE_KEYS.RELEASE_TRACKING_BUCKET)
-    return s === 'direct' || s === 'derived' || s === 'unparented'
-      ? (s as ReleaseBucket)
-      : 'direct'
+    return s === 'direct' || s === 'derived' || s === 'unparented' ? (s as ReleaseBucket) : 'direct'
   })
   function changeBucket(next: ReleaseBucket) {
     setBucket(next)
     localStorage.setItem(STORAGE_KEYS.RELEASE_TRACKING_BUCKET, next)
   }
 
-  // Paging lives here because this component owns the query. The rows are now a SERVER page:
-  // the endpoint classifies and totals over the whole population, then returns one slice, so
-  // switching page refetches rather than re-slicing something already in memory.
+  /**
+   * Search and sort live here, with paging, because this component owns the query.
+   *
+   * All three are SERVER-side: the endpoint classifies the whole population, then searches, sorts
+   * and slices it (§259 "Search applies within the active bucket", RT-AC-05's two-directional sort
+   * on Rank/ID/Team). The grid used to do both over `report.rows` — one page — so `ID ▼` ordered
+   * whichever 25 rows had arrived.
+   *
+   * `useTableSort` seeded with RT-AC-04's default (`rank`, ascending), so a new column starts
+   * ascending exactly as it does on every other grid in the app.
+   */
+  const [search, setSearch] = useState('')
+  const {
+    sortField: sortCol,
+    sortDir,
+    toggle: toggleSort,
+  } = useTableSort<string>({ field: 'rank', dir: 'asc' })
+
   const [pageSize, setPageSize] = useState(25)
   const [page, setPage] = useState(1)
-  // A bucket switch changes the population; page 3 of the old bucket means nothing in the new.
-  const pageResetKey = `${releaseId ?? ''}|${bucket}|${pageSize}`
+  // A bucket switch changes the population; page 3 of the old bucket means nothing in the new. So
+  // does a new search term or a new sort — page 3 of the previous order is a different set of rows.
+  const pageResetKey = `${releaseId ?? ''}|${bucket}|${pageSize}|${search}|${sortCol}:${sortDir}`
   const [syncedPageKey, setSyncedPageKey] = useState(pageResetKey)
   if (syncedPageKey !== pageResetKey) {
     setSyncedPageKey(pageResetKey)
@@ -104,6 +119,10 @@ export function ReleaseTrackingPage() {
     bucket,
     page,
     pageSize,
+    q: search.trim() || undefined,
+    // `rank:asc` is the server's own default, so it is omitted rather than sent — one cache key for
+    // the default view instead of two that mean the same thing.
+    sort: sortCol === 'rank' && sortDir === 'asc' ? undefined : `${sortCol}:${sortDir ?? 'asc'}`,
   })
 
   if (!projectId) {
@@ -268,6 +287,13 @@ export function ReleaseTrackingPage() {
               pageSize={pageSize}
               onPageChange={setPage}
               onPageSizeChange={setPageSize}
+              search={search}
+              onSearchChange={setSearch}
+              // `?? 'asc'`: the hook reports a null direction only while nothing is sorted, which
+              // cannot happen here (it is seeded), but the header's contract wants a concrete one.
+              sortCol={sortCol ?? 'rank'}
+              sortDir={sortDir ?? 'asc'}
+              onSort={toggleSort}
             />
           </div>
         </div>

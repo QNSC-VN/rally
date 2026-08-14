@@ -148,7 +148,8 @@ const MismatchSchema = z.object({
 });
 
 const TrackingRowSchema = z.object({
-  // Sequential within the active bucket (RT-AC-04), not the stored lexorank.
+  // The row's position in the active bucket's own rank order (RT-AC-04), not the stored lexorank
+  // and not its position in the current view — assigned before `q` and `sort` are applied.
   rank: z.number().int(),
   id: z.string().uuid(),
   itemKey: z.string(),
@@ -182,12 +183,12 @@ export const ReleaseTrackingResponseSchema = z.object({
     derived: z.number().int(),
     unparented: z.number().int(),
   }),
-  /** One page of the ACTIVE bucket. `page.total` is that bucket's whole-population size. */
+  /** One page of the ACTIVE bucket, searched and sorted over the whole bucket first. */
   rows: z.array(TrackingRowSchema),
   page: z.object({
     page: z.number().int(),
     pageSize: z.number().int(),
-    /** The active bucket's full row count — always equal to `summary[bucket]`. */
+    /** Rows MATCHING in the active bucket — equal to `summary[bucket]` when no `q` is given. */
     total: z.number().int(),
     pageCount: z.number().int(),
   }),

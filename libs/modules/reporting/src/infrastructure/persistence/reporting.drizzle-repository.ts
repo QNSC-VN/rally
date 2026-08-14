@@ -547,7 +547,18 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           isNull(workItems.deletedAt),
           sql`(${workItems.releaseId} = ${releaseId}::uuid or ${workItems.featureId} is not null)`,
         ),
-      );
+      )
+      /**
+       * Backlog rank order, and a total one.
+       *
+       * This query had NO `ORDER BY` at all, so the Unparented bucket's order — and with it the
+       * Rank column and which rows land on which page — was whatever Postgres returned. Two
+       * requests for the same page could legitimately disagree, dropping or repeating a row at the
+       * boundary. `rank` is the same lexorank the Backlog and Iteration Status order by, so the
+       * bucket now reads in the order every other list shows these items in, and `item_key`/`id`
+       * make the order total for the rows that share a rank (the column defaults to `''`).
+       */
+      .orderBy(asc(workItems.rank), asc(workItems.itemKey), asc(workItems.id));
 
     return rows.map((r) => ({
       id: r.id,

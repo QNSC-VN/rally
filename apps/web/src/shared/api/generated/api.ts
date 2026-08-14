@@ -3786,14 +3786,10 @@ export interface components {
       /** Format: date-time */
       updatedAt: string
       taskRollup?: {
-        totalItems: number
-        completedItems: number
+        estimateHours: number
+        toDoHours: number
+        actualHours: number
         acceptedItems: number
-        toDoItems: number
-        totalPoints: number
-        completedPoints: number
-        toDoPoints: number
-        progressPercent: number | null
       }
     }
     CreateReleaseDto: {
@@ -12871,6 +12867,8 @@ export interface operations {
         bucket?: 'direct' | 'derived' | 'unparented'
         page?: number
         pageSize?: number
+        q?: string
+        sort?: string
       }
       header?: never
       path?: never

@@ -56,6 +56,11 @@ export type ReleaseMismatch = ReleaseTrackingRow['mismatches'][number]
 export type ReleaseBucket = ReleaseTrackingReport['bucket']
 export type ChartUnit = ReleaseTrackingReport['unit']
 
+/** The list query, straight from the generated client — `q` and `sort` are in it as of codegen. */
+type ReleaseTrackingQuery = NonNullable<
+  operations['ReportingController_getReleaseTracking']['parameters']['query']
+>
+
 export type ReleaseBurnup = Json<'ReportingController_getReleaseBurnup'>
 export type BurnupPoint = ReleaseBurnup['points'][number]
 
@@ -76,6 +81,8 @@ export const reportingKeys = {
     bucket: ReleaseBucket,
     page: number,
     pageSize: number,
+    q: string,
+    sort: string,
   ) =>
     [
       'reports',
@@ -89,6 +96,10 @@ export const reportingKeys = {
       // page's cache entry for another would show stale rows under a new page number.
       page,
       pageSize,
+      // So are the search term and the sort: both are applied to the whole bucket SERVER-side
+      // now (§259, RT-AC-05), so each combination is a different response.
+      q,
+      sort,
     ] as const,
   releaseBurnup: (
     projectId: string,
@@ -168,6 +179,17 @@ export function useTeamCapacityReport({
   })
 }
 
+/**
+ * The Release Tracking list.
+ *
+ * `q` and `sort` are SERVER-side, over the whole active bucket: "Search applies within the active
+ * bucket" (RT §5) and RT-AC-05's two-directional sort is only meaningful over the same population,
+ * while the rows that travel are one page. Filtering in the browser searched and sorted whichever
+ * 25 rows had arrived.
+ *
+ * Un-debounced, like the Backlog's `q`: TanStack Query caches per key, so a term the reader
+ * backspaces to is served from cache rather than refetched.
+ */
 export function useReleaseTracking({
   projectId,
   teamId,
@@ -176,12 +198,18 @@ export function useReleaseTracking({
   bucket,
   page,
   pageSize,
+  q,
+  sort,
 }: Scope & {
   releaseId: string | undefined
   unit: ChartUnit
   bucket: ReleaseBucket
   page: number
   pageSize: number
+  /** Free-text over the bucket's ID and Name. */
+  q?: string
+  /** `"<field>[:asc|:desc]"` — `rank`, `id`, `team` or `name`. */
+  sort?: string
 }) {
   return useQuery({
     queryKey: reportingKeys.releaseTracking(
@@ -192,20 +220,25 @@ export function useReleaseTracking({
       bucket,
       page,
       pageSize,
+      q ?? '',
+      sort ?? '',
     ),
     queryFn: async () => {
+      // Built as a variable rather than inline so the optional spreads below stay readable; the
+      // generated client now carries `q` and `sort`, so the type needs no widening.
+      const query: ReleaseTrackingQuery = {
+        projectId: projectId!,
+        teamId,
+        releaseId: releaseId!,
+        unit,
+        bucket,
+        page,
+        pageSize,
+        ...(q ? { q } : {}),
+        ...(sort ? { sort } : {}),
+      }
       const { data, error, response } = await apiClient.GET('/v1/reports/release-tracking', {
-        params: {
-          query: {
-            projectId: projectId!,
-            teamId,
-            releaseId: releaseId!,
-            unit,
-            bucket,
-            page,
-            pageSize,
-          },
-        },
+        params: { query },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data as ReleaseTrackingReport

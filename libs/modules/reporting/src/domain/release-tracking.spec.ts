@@ -8,6 +8,7 @@ import {
   inScope,
   isFullMismatch,
   preliminaryTotal,
+  refineBucket,
   releaseMismatches,
   releaseTotals,
   trackedLeaves,
@@ -63,7 +64,61 @@ describe('inScope', () => {
   it('admits only the selected Team otherwise (example 7)', () => {
     expect(inScope('t1', T1)).toBe(true);
     expect(inScope('t2', T1)).toBe(false);
-    expect(inScope(null, T1)).toBe(false);
+  });
+
+  it('treats a row with NO Team as team-agnostic, so it is in EVERY scope', () => {
+    // The same rule `teamOrSharedTimebox` applies to a shared iteration: a row that names no
+    // team makes no statement a selected Team can exclude it on. Excluded, a team-less Feature
+    // fell out of all three buckets while its children still fed Planned/Accepted/Burnup.
+    expect(inScope(null, T1)).toBe(true);
+  });
+});
+
+describe('a team-less Feature under a selected Team (P6-01)', () => {
+  // `portfolio_items.team_id` is nullable and only Epics are shape-constrained, so a Feature with
+  // a Release and no Team is an ordinary row (`FE-2` in the demo seed is one).
+  const teamless = feature({ id: 'f-nt', releaseId: REL_A, teamId: null, teamName: null });
+  const itsChild = child({ id: 'c-nt', featureId: 'f-nt', releaseId: REL_A, teamId: 't1' });
+
+  it('is in exactly one bucket, and never in two', () => {
+    const forA = bucketFeatures([teamless], [itsChild], REL_A, T1);
+    expect(forA.direct.map((f) => f.id)).toEqual(['f-nt']);
+    expect(forA.derived).toEqual([]);
+  });
+
+  it('accounts for every leaf behind Planned in one of the three buckets', () => {
+    // The reader must be able to reconcile the totals against the buckets. Every tracked leaf is
+    // either Unparented or a child of a Feature in one of the two Feature buckets.
+    const buckets = bucketFeatures([teamless], [itsChild], REL_A, T1);
+    const unparented = unparentedItems([itsChild], REL_A, T1);
+    const leaves = trackedLeaves([itsChild], REL_A, T1);
+    expect(releaseTotals(leaves, [...buckets.direct, ...buckets.derived], 'points').planned).toBe(
+      5,
+    );
+
+    const bucketed = new Set([
+      ...buckets.direct.map((f) => f.id),
+      ...buckets.derived.map((f) => f.id),
+    ]);
+    for (const leaf of leaves) {
+      expect(
+        leaf.featureId === null
+          ? unparented.some((u) => u.id === leaf.id)
+          : bucketed.has(leaf.featureId),
+      ).toBe(true);
+    }
+  });
+
+  it('counts a team-less LEAF under a selected Team too, so eligibility matches the measurement', () => {
+    const leaf = child({
+      id: 'c-nl',
+      featureId: null,
+      releaseId: REL_A,
+      teamId: null,
+      teamName: null,
+    });
+    expect(trackedLeaves([leaf], REL_A, T1).map((c) => c.id)).toEqual(['c-nl']);
+    expect(unparentedItems([leaf], REL_A, T1).map((c) => c.id)).toEqual(['c-nl']);
   });
 });
 
@@ -131,6 +186,76 @@ describe('unparentedItems (RT-BR-04, example 3)', () => {
     expect(
       unparentedItems([child({ featureId: 'f1', releaseId: REL_B })], REL_B, ALL_TEAMS),
     ).toEqual([]);
+  });
+});
+
+describe('refineBucket — search and sort over the whole bucket (§259, RT-AC-05, P6-03)', () => {
+  // The bucket in its own rank order: `rank` is assigned before any of this runs.
+  const bucket = [
+    { rank: 1, itemKey: 'FE-2', name: 'Billing', teamLabel: 'Team One' },
+    { rank: 2, itemKey: 'FE-10', name: 'authentication', teamLabel: '' },
+    { rank: 3, itemKey: 'FE-9', name: 'Checkout billing', teamLabel: 'Team Two' },
+  ];
+  const keys = (rows: readonly { itemKey: string }[]) => rows.map((r) => r.itemKey);
+
+  it('leaves the bucket in rank order when nothing is asked for', () => {
+    expect(keys(refineBucket(bucket, {}))).toEqual(['FE-2', 'FE-10', 'FE-9']);
+  });
+
+  it('searches key and name, case-insensitively, within the bucket', () => {
+    expect(keys(refineBucket(bucket, { q: 'billing' }))).toEqual(['FE-2', 'FE-9']);
+    expect(keys(refineBucket(bucket, { q: 'fe-1' }))).toEqual(['FE-10']);
+    expect(refineBucket(bucket, { q: 'nothing here' })).toEqual([]);
+  });
+
+  it('sorts ID in both directions, digit-aware, over the bucket rather than the page', () => {
+    const asc = { sortBy: 'id', sortDirection: 'asc' } as const;
+    expect(keys(refineBucket(bucket, { sort: asc }))).toEqual(['FE-2', 'FE-9', 'FE-10']);
+    expect(keys(refineBucket(bucket, { sort: { ...asc, sortDirection: 'desc' } }))).toEqual([
+      'FE-10',
+      'FE-9',
+      'FE-2',
+    ]);
+  });
+
+  it('sorts Name case-insensitively and Team with a team-less row first ascending', () => {
+    expect(keys(refineBucket(bucket, { sort: { sortBy: 'name', sortDirection: 'asc' } }))).toEqual([
+      'FE-10',
+      'FE-2',
+      'FE-9',
+    ]);
+    expect(keys(refineBucket(bucket, { sort: { sortBy: 'team', sortDirection: 'asc' } }))).toEqual([
+      'FE-10',
+      'FE-2',
+      'FE-9',
+    ]);
+  });
+
+  it('keeps the bucket rank on every row, so a search does not renumber the matches', () => {
+    expect(refineBucket(bucket, { q: 'checkout' }).map((r) => r.rank)).toEqual([3]);
+    expect(
+      refineBucket(bucket, { sort: { sortBy: 'id', sortDirection: 'desc' } }).map((r) => r.rank),
+    ).toEqual([2, 3, 1]);
+  });
+
+  it('reverses Rank on demand and breaks every tie by rank, so paging is stable', () => {
+    expect(
+      refineBucket(bucket, { sort: { sortBy: 'rank', sortDirection: 'desc' } }).map((r) => r.rank),
+    ).toEqual([3, 2, 1]);
+    const tied = [
+      { rank: 4, itemKey: 'FE-4', name: 'd', teamLabel: 'Same' },
+      { rank: 1, itemKey: 'FE-1', name: 'a', teamLabel: 'Same' },
+      { rank: 3, itemKey: 'FE-3', name: 'c', teamLabel: 'Same' },
+    ];
+    expect(
+      refineBucket(tied, { sort: { sortBy: 'team', sortDirection: 'desc' } }).map((r) => r.rank),
+    ).toEqual([1, 3, 4]);
+  });
+
+  it('does not mutate the caller’s array', () => {
+    const original = [...bucket];
+    refineBucket(bucket, { sort: { sortBy: 'id', sortDirection: 'desc' } });
+    expect(bucket).toEqual(original);
   });
 });
 

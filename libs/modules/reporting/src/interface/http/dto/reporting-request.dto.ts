@@ -81,6 +81,21 @@ export const ReleaseTrackingQuerySchema = z.object({
    */
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(RELEASE_TRACKING_MAX_PAGE_SIZE).optional(),
+  /**
+   * Free-text search WITHIN the active bucket (§259), over the row's key and name.
+   *
+   * Server-side because the rows are one page: searching in the browser searched whichever 25
+   * rows had arrived. `max(200)` is a bound, not a rule — a term longer than any key or name
+   * cannot match anything and there is no reason to accept it.
+   */
+  q: z.string().trim().max(200).optional(),
+  /**
+   * `"<field>[:asc|:desc]"` over the whole bucket — `rank`, `id`, `team` or `name`
+   * (RT-AC-05, plus the `name` Rally-parity divergence). Parsed by the shared `parseSort`
+   * against `RELEASE_TRACKING_SORT_FIELDS`, so an unknown field falls back to rank order
+   * instead of failing the request.
+   */
+  sort: z.string().optional(),
 });
 export class ReleaseTrackingQueryDto extends createZodDto(ReleaseTrackingQuerySchema) {}
 

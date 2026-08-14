@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { NotFoundException } from '@platform';
+import { NotFoundException, parseSort } from '@platform';
 import type { JwtPayload } from '@platform';
 import { PreliminaryEstimateMapService } from '@modules/portfolio';
 import { IReportingRepository, REPORTING_REPOSITORY } from '../domain/ports/reporting.repository';
@@ -12,11 +12,14 @@ import {
   directStatus,
   featureProgress,
   isFullMismatch,
+  refineBucket,
   releaseMismatches,
   releaseTotals,
   trackedLeaves,
   unparentedItems,
   RELEASE_TRACKING_PAGE_SIZE,
+  RELEASE_TRACKING_SORT_FIELDS,
+  type BucketSortKeys,
   type ChartUnit,
   type ReleaseBucket,
   type ReleaseChild,
@@ -228,6 +231,10 @@ export class ReportingService {
       bucket?: ReleaseBucket;
       page?: number;
       pageSize?: number;
+      /** Free-text search over the ACTIVE bucket's key and name (§259). */
+      q?: string;
+      /** `"<field>[:asc|:desc]"` over the whole bucket (RT-AC-05). */
+      sort?: string;
     },
   ): Promise<ReleaseTrackingReport> {
     const { workspaceId } = actor;
@@ -272,35 +279,80 @@ export class ReportingService {
     };
 
     /**
-     * Page the ACTIVE bucket only, after classification.
+     * Search, sort and page the ACTIVE bucket, after classification.
      *
      * Classification needs the whole population by construction — a Derived Feature is one
      * that is NOT in the release but has a scoped child that is, so it cannot be found by a
      * `WHERE release_id = ...` — and `preliminaryTotal` sums Direct + Derived, so a paged
-     * feature set would quietly shrink the Preliminary line and the burnup's reference. The
-     * slice therefore happens here, and every number above it is already final.
+     * feature set would quietly shrink the Preliminary line and the burnup's reference. All
+     * three therefore happen here, over rows already in hand, and every number above them is
+     * final.
      *
-     * The index passed to each row builder is the ABSOLUTE position in the bucket, so Rank
-     * stays sequential across pages (RT-AC-04) instead of restarting at 1 on every page.
+     * Search and sort used to run in the BROWSER over the page that had arrived, so `ID ▼`
+     * ordered 25 rank-first rows while the header's caret claimed the bucket was sorted, and the
+     * search box had to disclose that it searched one page. §259 settles it — "Search applies
+     * within the active bucket" — and RT-AC-05's two-directional sort is only meaningful over the
+     * same population.
+     *
+     * `rank` is assigned BEFORE either, from the bucket's own rank order, so a row's Rank is a
+     * property of the bucket (§247) and not of the current view: sorting by ID shows those ranks
+     * out of order, and a search shows each match's real position instead of renumbering it 1.
+     * `row` is a thunk so only the page slice's Status, mismatches and progress are computed.
      */
-    const total = summary[bucket];
+    const refine = {
+      q: args.q,
+      sort: parseSort(args.sort, RELEASE_TRACKING_SORT_FIELDS),
+    };
+    const entries: Array<BucketSortKeys & { row: () => ReleaseTrackingRow }> =
+      bucket === 'direct'
+        ? refineBucket(
+            buckets.direct.map((f, i) => ({
+              rank: i + 1,
+              itemKey: f.itemKey,
+              name: f.name,
+              teamLabel: f.teamName ?? '',
+              row: () =>
+                this.directRow(f, i + 1, childrenByFeature.get(f.id) ?? [], release.id, unit),
+            })),
+            refine,
+          )
+        : bucket === 'derived'
+          ? refineBucket(
+              buckets.derived.map((f, i) => {
+                const cause = buckets.derivedCause.get(f.id) ?? [];
+                return {
+                  rank: i + 1,
+                  itemKey: f.itemKey,
+                  name: f.name,
+                  // A Derived row's Team column is the scoped CAUSE children's teams (§5), not
+                  // the Feature's own, so that is what a Team sort has to order it by.
+                  teamLabel: derivedTeamLabel(cause),
+                  row: () => this.derivedRow(f, i + 1, cause, unit),
+                };
+              }),
+              refine,
+            )
+          : refineBucket(
+              unparented.map((c, i) => ({
+                rank: i + 1,
+                itemKey: c.itemKey,
+                name: c.title,
+                teamLabel: c.teamName ?? '',
+                row: () => this.unparentedRow(c, i + 1, unit),
+              })),
+              refine,
+            );
+
+    // The page total is the MATCHED count, so paging walks the search results — while `summary`
+    // above stays the three whole-bucket populations §5.1 keeps visible.
+    const total = entries.length;
     const pageCount = Math.max(1, Math.ceil(total / pageSize));
     // Clamp rather than 404 on an out-of-range page: the row count shifts under the reader as
     // work is reassigned, and a stale page number should land on the last page, not an error.
     const page = Math.min(Math.max(args.page ?? 1, 1), pageCount);
     const offset = (page - 1) * pageSize;
-    const slice = <T>(items: readonly T[]): T[] => items.slice(offset, offset + pageSize);
 
-    const rows =
-      bucket === 'direct'
-        ? slice(buckets.direct).map((f, i) =>
-            this.directRow(f, offset + i, childrenByFeature.get(f.id) ?? [], release.id, unit),
-          )
-        : bucket === 'derived'
-          ? slice(buckets.derived).map((f, i) =>
-              this.derivedRow(f, offset + i, buckets.derivedCause.get(f.id) ?? [], unit),
-            )
-          : slice(unparented).map((c, i) => this.unparentedRow(c, offset + i, unit));
+    const rows = entries.slice(offset, offset + pageSize).map((entry) => entry.row());
 
     return {
       context: await this.context(actor, args, settings.timeZone),
@@ -412,13 +464,14 @@ export class ReportingService {
   /** Direct rows: Status over EVERY child, plus the mismatch issues (RT-BR-05, §5). */
   private directRow(
     feature: ReleaseFeature & { state: string },
-    index: number,
+    /** 1-based position in the bucket's own rank order — never the position on this page. */
+    rank: number,
     allChildren: ReleaseChild[],
     releaseId: string,
     unit: ChartUnit,
   ): ReleaseTrackingRow {
     return {
-      rank: index + 1,
+      rank,
       id: feature.id,
       itemKey: feature.itemKey,
       name: feature.name,
@@ -441,14 +494,14 @@ export class ReportingService {
    */
   private derivedRow(
     feature: ReleaseFeature & { state: string },
-    index: number,
+    rank: number,
     cause: ReleaseChild[],
     unit: ChartUnit,
   ): ReleaseTrackingRow {
     const teams = new Map<string | null, string>();
     for (const child of cause) teams.set(child.teamId, child.teamName ?? '--');
     return {
-      rank: index + 1,
+      rank,
       id: feature.id,
       itemKey: feature.itemKey,
       name: feature.name,
@@ -467,9 +520,9 @@ export class ReportingService {
     };
   }
 
-  private unparentedRow(child: ReleaseChild, index: number, unit: ChartUnit): ReleaseTrackingRow {
+  private unparentedRow(child: ReleaseChild, rank: number, unit: ChartUnit): ReleaseTrackingRow {
     return {
-      rank: index + 1,
+      rank,
       id: child.id,
       itemKey: child.itemKey,
       name: child.title,
@@ -551,6 +604,19 @@ export class ReportingService {
       timeZone,
     };
   }
+}
+
+/**
+ * What a Derived row's Team column prints, as one sortable string.
+ *
+ * Its Team cell shows "the scoped child Team(s) that caused inclusion" (§5), which can be several,
+ * so a Team sort has to order it by the same label the reader sees rather than by the Feature's own
+ * team. De-duplicated in first-appearance order, exactly as `derivedRow` builds the chips.
+ */
+function derivedTeamLabel(cause: readonly ReleaseChild[]): string {
+  const names = new Map<string | null, string>();
+  for (const child of cause) names.set(child.teamId, child.teamName ?? '');
+  return [...names.values()].join(', ');
 }
 
 /** Every calendar date from start to end inclusive — the burnup axis. */

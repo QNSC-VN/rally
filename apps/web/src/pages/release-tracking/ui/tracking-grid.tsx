@@ -8,9 +8,9 @@
  * Rank is the row's position INSIDE the active bucket (1, 2, 3…), not the stored lexorank — the
  * server numbers them, and the superseded `D` marker for Derived rows is deliberately absent.
  */
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 
-import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
+import type { SortDir } from '@/shared/lib/hooks/use-table-sort'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 
@@ -51,6 +51,11 @@ export function TrackingGrid({
   pageSize,
   onPageChange,
   onPageSizeChange,
+  search,
+  onSearchChange,
+  sortCol,
+  sortDir,
+  onSort,
 }: {
   report: ReleaseTrackingReport | undefined
   /**
@@ -77,24 +82,23 @@ export function TrackingGrid({
   pageSize: number
   onPageChange: (page: number) => void
   onPageSizeChange: (size: number) => void
+  /**
+   * Search and sort state, owned by the page for the SAME reason paging is: both are query
+   * parameters now.
+   *
+   * They used to be this component's own `useState` + `useTableSort` over `report.rows`, which is
+   * one server page — so `ID ▼` ordered the 25 rank-first rows that happened to have arrived and the
+   * search box had to admit it searched a page. §259 makes search a property of the active bucket,
+   * so it belongs to whoever asks the server for that bucket.
+   */
+  search: string
+  onSearchChange: (value: string) => void
+  sortCol: string
+  sortDir: SortDir
+  onSort: (col: string) => void
 }) {
   const { t } = useTranslation(['release-tracking', 'common'])
   const navigate = useNavigate()
-  const [search, setSearch] = useState('')
-  /**
-   * `useTableSort`, seeded with RT-AC-04's default (`rank`, ascending).
-   *
-   * The local pair it replaces also behaved differently from every other grid: `setSortDir((dir) =>
-   * sortCol === col && dir === 'asc' ? 'desc' : 'asc')` kept the PREVIOUS direction when a new column
-   * was clicked, so clicking Team after descending Rank sorted Team descending — the header's caret and
-   * the rows agreed with each other and disagreed with the rest of the app, where a new column always
-   * starts ascending.
-   */
-  const {
-    sortField: sortCol,
-    sortDir,
-    toggle: toggleSort,
-  } = useTableSort<string>({ field: 'rank', dir: 'asc' })
 
   /**
    * Rank, ID, NAME, Team, Issue, Status.
@@ -229,51 +233,29 @@ export function TrackingGrid({
 
   const table = useDataTable<ReleaseTrackingRow, Ctx, ColKey>(columns, {
     storageKey: 'release-tracking:columns',
-    // `?? 'asc'`: the hook reports a null direction only while nothing is sorted, which cannot happen
-    // here (it is seeded), but the header's contract wants a concrete direction.
-    sort: { col: sortCol, dir: sortDir ?? 'asc', onSort: toggleSort },
+    sort: { col: sortCol, dir: sortDir, onSort },
   })
 
   /**
-   * `report.rows` is ONE SERVER PAGE of the active bucket, not the whole bucket.
+   * `report.rows` is ONE SERVER PAGE of the active bucket, already searched and sorted.
    *
    * The endpoint classifies Direct/Derived/Unparented and computes every total over the full
-   * population, then slices — so `summary` and `totals` are unaffected by which page arrived,
-   * while the rows that travel are bounded. That matters because the population grows with the
-   * PROJECT's feature count: a Derived Feature is by definition one OUTSIDE the release, so the
-   * query cannot be narrowed by the release, and this grid previously mounted every row of it.
+   * population, then applies `q`, `sort` and the page slice — so `summary` and `totals` are
+   * unaffected by which page arrived, while the rows that travel are bounded. That matters because
+   * the population grows with the PROJECT's feature count: a Derived Feature is by definition one
+   * OUTSIDE the release, so the query cannot be narrowed by the release, and this grid once mounted
+   * every row of it.
    *
-   * Search and sort therefore operate on the LOADED PAGE only. Both are page-local refinements,
-   * which is why the search box says so — silently searching one page while looking like it
-   * searches the bucket is the failure worth avoiding. Pushing either into the query is the
-   * natural next step and needs a BA decision, since §5 specifies neither.
+   * Nothing is re-ordered or re-filtered here, deliberately. Doing either would reorder one page
+   * inside a bucket-wide order and put the grid back in disagreement with its own header caret and
+   * its own footer count. `row.rank` is the row's position in the BUCKET's rank order, so a sort on
+   * another column shows those ranks out of sequence — that is what the column means.
    */
-  const rows = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    // Search applies WITHIN the active bucket (§5), never across all three.
-    const filtered = term
-      ? (report?.rows ?? []).filter(
-          (row) =>
-            row.name.toLowerCase().includes(term) || row.itemKey.toLowerCase().includes(term),
-        )
-      : (report?.rows ?? [])
+  const rows = report?.rows ?? []
 
-    const direction = sortDir === 'asc' ? 1 : -1
-    const compare = (a: ReleaseTrackingRow, b: ReleaseTrackingRow) => {
-      if (sortCol === 'id') return a.itemKey.localeCompare(b.itemKey) * direction
-      if (sortCol === 'name') return a.name.localeCompare(b.name) * direction
-      if (sortCol === 'team') {
-        const left = a.teams.map((team) => team.name).join(', ')
-        const right = b.teams.map((team) => team.name).join(', ')
-        return left.localeCompare(right) * direction
-      }
-      return (a.rank - b.rank) * direction
-    }
-    return [...filtered].sort(compare)
-  }, [report, search, sortCol, sortDir])
-
-  // The server's own account of the slice. `total` is the whole bucket, so the footer reports
-  // the population even though only one page of rows is in memory.
+  // The server's own account of the slice. `total` is every row MATCHING in the bucket — the whole
+  // bucket when nothing is searched — so the footer reports the population being paged through
+  // even though only one page of rows is in memory.
   const total = report?.page.total ?? 0
   const pageCount = report?.page.pageCount ?? 1
   const currentPage = report?.page.page ?? page
@@ -316,7 +298,7 @@ export function TrackingGrid({
         titleAccessory={bucketPicker}
         search={{
           value: search,
-          onChange: setSearch,
+          onChange: onSearchChange,
           placeholder: t('searchPlaceholder'),
           ariaLabel: t('searchPlaceholder'),
           width: 280,
@@ -336,9 +318,14 @@ export function TrackingGrid({
         }
         empty={
           rows.length === 0 ? (
+            // "No rows in the bucket" and "no rows matching your search" are different facts, and
+            // §5.1's empty-bucket state asserts the first one. The search is bucket-wide now, so an
+            // empty result really is "nothing in this bucket matches" rather than "not on this page".
             <EmptyState
-              title={t(`empty.${bucket}.title`)}
-              description={t(`empty.${bucket}.description`)}
+              title={search.trim() ? t('empty.noMatch.title') : t(`empty.${bucket}.title`)}
+              description={
+                search.trim() ? t('empty.noMatch.description') : t(`empty.${bucket}.description`)
+              }
               size="sm"
             />
           ) : undefined
@@ -350,8 +337,8 @@ export function TrackingGrid({
               setPageSize={onPageSizeChange}
               currentPage={currentPage}
               rangeStart={rangeStart}
-              // The page's own length, so a search that hides rows on this page narrows the
-              // range rather than claiming rows that are not on screen.
+              // The page's own length, so the last page reports what it actually holds rather than
+              // claiming rows that are not on screen.
               rangeEnd={rangeStart + rows.length - 1}
               total={total}
               pageCount={pageCount}
