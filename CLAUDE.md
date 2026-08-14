@@ -110,6 +110,19 @@ not a function`, so use `AuthService.devLogin` for a bearer token), the **Valida
   `pnpm --filter rally-web codegen` against a running local API, then a commit. The
   `OpenAPI contract` job regenerates from the spec it captured and diffs
   (`codegen:check`), so drift fails CI instead of failing at runtime.
+
+  **`/api/docs-json` can serve a STALE document from a watch-mode restart.** Nest builds the Swagger
+  document once at bootstrap, so `pnpm start:dev` recompiling is not the same thing as the served spec
+  being current — it reported `Found 0 errors`, answered on the port, and still described the DTO as it
+  was before the last edit. Codegen then wrote a client that was *correct for a spec nobody has*, and
+  the only symptom was one absent field: `git diff` on the client was EMPTY, which reads exactly like
+  "no DTO change was needed". **Grep the served spec for a marker before trusting a generated client**
+  (`curl -s localhost:3000/api/docs-json | grep <newField>`), and restart the API rather than relying
+  on the watcher. Worth also knowing the diff is legitimately huge when the module graph changes:
+  `openapi-typescript` emits in spec order, which follows module init order, so adding one module
+  import reordered ~1200 lines with no route added or removed. Compare route INVENTORIES, not the line
+  count, to tell that apart from a real loss — and regenerate twice across a restart if you need to
+  prove the order is deterministic, because a nondeterministic one would flake `codegen:check`.
 - **`waitFor() timed out` in `notification-flow.e2e.spec.ts` is an ENVIRONMENT fault, not a flake.**
   Two independent causes, both seen in one session:
   1. **Email is unconfigured.** `.env` ships `EMAIL_PROVIDER=ses`, but `MAIL_FROM_EMAIL` is
@@ -456,6 +469,28 @@ write reaching the same state left the rule unsatisfied. Both are now pinned by
 
 **The smell to watch for: a value repaired on read.** It makes the defect invisible on exactly the
 screen someone checks, and it leaves every other reader stale.
+
+**Its sibling: a value HIDDEN on read.** Migration 0118 deletes the Workspace Admin's
+`project_members` rows (§2.1/AC-8), and `db/seeds/demo.ts` wrote the same row straight back — and
+`pnpm db:migrate` runs that seed, so every local and CI database undid the migration on the spot. What
+made it invisible is that the fix's own three readers (the roster query, `memberCount`, and the POST
+refusal) all correctly hide such a row, so nothing on screen would ever have shown it coming back. It
+was not cosmetic either: `AccessService.effectiveAssignments` synthesizes a project grant FROM that
+table, so the row is dormant only while the user is a WA — demote them and it becomes a live Project
+Admin grant no roster displays. **Whenever a migration DELETES rows, grep `db/seeds/**` for the writer
+before assuming the deletion holds.**
+
+**And a third: state FROZEN before its source arrived.** The user-access modal's draft materialised
+`teamIds` from its baseline the moment any part of a row was edited, but team memberships come from
+their own query — so choosing `Editor` before `/v1/teams/{id}/members` resolved froze `[]` in, and a
+draft SHADOWS the baseline, so the real memberships could never reach it. §2.2's "an Editor needs a
+Team" guard then stayed true forever: `Review Changes` disabled permanently, the user's own team
+unchecked, no way out but closing the modal. **A draft must hold only what the user TOUCHED** —
+`undefined` meaning "resolve against the baseline when it arrives", the same absent-versus-empty
+distinction a capacity plan's window and an allocation's value already rely on. Diagnosis note, because
+it presented as a flaky test (2 runs in 8): raising the `waitFor` timeout to 5s did NOT help, and that
+is what proves frozen state rather than a slow render. Pin such a case with a DEFERRED promise so the
+ordering is deterministic instead of lucky.
 
 ## Archive ordering cuts both ways
 
