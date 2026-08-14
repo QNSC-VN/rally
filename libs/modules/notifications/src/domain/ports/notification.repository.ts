@@ -7,18 +7,36 @@ import type {
 
 export const NOTIFICATION_REPOSITORY = Symbol('NOTIFICATION_REPOSITORY');
 
+/**
+ * `readableProjectIds` — the Project access fact from
+ * `AccessService.listReadableProjectIds(ws, user, 'work_item:view')`, threaded into every
+ * recipient-scoped read so `Phase 4/02_Roles_Permissions/SRS.md` §7 :199-200 is applied before a
+ * work item's title is displayed. `null` means UNRESTRICTED (a workspace-wide grant, i.e. Workspace
+ * Admin); an array — INCLUDING an empty one — restricts. It is a required parameter on purpose: an
+ * optional one would let a new call site read the whole workspace by omission, which is how the
+ * gap existed in the first place.
+ */
 export interface INotificationRepository {
   findById(id: string): Promise<Notification | null>;
+  /** True when the row exists, belongs to this recipient AND passes the Project access filter. */
+  isVisibleToRecipient(
+    workspaceId: string,
+    recipientId: string,
+    notificationId: string,
+    readableProjectIds: string[] | null,
+  ): Promise<boolean>;
   listForRecipient(
     workspaceId: string,
     recipientId: string,
     filter: NotificationListFilter,
+    readableProjectIds: string[] | null,
   ): Promise<Notification[]>;
   listPageForRecipient(
     workspaceId: string,
     recipientId: string,
     filter: { unreadOnly: boolean; types?: readonly string[] },
     args: { limit: number; cursor: CursorPayload | null },
+    readableProjectIds: string[] | null,
   ): Promise<PagedResult<Notification>>;
   /**
    * Returns unread notifications newer than afterId (exclusive), ordered oldest-first.
@@ -31,10 +49,19 @@ export interface INotificationRepository {
     recipientId: string,
     afterId: string,
     limit: number,
+    readableProjectIds: string[] | null,
   ): Promise<Notification[]>;
   /** Idempotent — returns null when sourceEventId already exists (deduplicated). */
   create(input: CreateNotificationInput): Promise<Notification | null>;
-  countUnread(workspaceId: string, recipientId: string): Promise<number>;
+  countUnread(
+    workspaceId: string,
+    recipientId: string,
+    readableProjectIds: string[] | null,
+  ): Promise<number>;
   markRead(id: string): Promise<void>;
-  markAllRead(workspaceId: string, recipientId: string): Promise<void>;
+  markAllRead(
+    workspaceId: string,
+    recipientId: string,
+    readableProjectIds: string[] | null,
+  ): Promise<void>;
 }

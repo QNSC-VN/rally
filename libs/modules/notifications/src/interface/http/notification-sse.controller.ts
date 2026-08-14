@@ -8,6 +8,11 @@
  *       → NotificationPubSubService delivers message to all subscribed handlers
  *         → this controller writes SSE event to the browser
  *
+ * Authorization: every path out of this controller — the `connected` unread count, the
+ * `Last-Event-ID` replay and the live push — goes through NotificationsService, which applies the
+ * reader's CURRENT per-Project access (SRS §7 :199-200). The stream and the Notification Center
+ * therefore cannot disagree about which notifications exist.
+ *
  * SSE event contract (for the frontend):
  *
  *   Connection established:
@@ -124,10 +129,22 @@ export class NotificationSseController {
 
     // Subscribe to Valkey pub/sub for this user's notifications.
     // Multiple browser tabs / devices each get their own subscription.
+    //
+    // Every pushed event is re-checked against the recipient's CURRENT Project access
+    // (`isVisible`, SRS §7 :199-200) so the stream can never carry a title the Notification Center
+    // and the unread badge both refuse to show. The check is asynchronous and the `id:` field is the
+    // client's `Last-Event-ID` cursor, so the checks are SERIALISED through a promise chain: running
+    // them concurrently could emit ids out of order and make a reconnect replay from the wrong
+    // point. Rejections are swallowed — a failed access read must not tear down the stream, and the
+    // event is dropped rather than emitted on an unknown answer.
+    let pushQueue: Promise<void> = Promise.resolve();
     const unsubscribe = await this.pubSub.subscribeUser(user.sub, (payload) => {
-      if (raw.writable) {
-        writeNotificationEvent(raw, payload);
-      }
+      pushQueue = pushQueue.then(async () => {
+        if (!raw.writable) return;
+        if (!(await this.notificationsService.isVisible(user, payload.notificationId))) return;
+        if (raw.writable) writeNotificationEvent(raw, payload);
+      });
+      pushQueue = pushQueue.catch(() => undefined);
     });
 
     // Heartbeat every 25s.
