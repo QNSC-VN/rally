@@ -33,12 +33,14 @@ function toActivityDto(a: ActivityLog): ActivityResponseDto {
 import {
   CreatePortfolioItemDto,
   PortfolioChildrenQueryDto,
+  PortfolioFeatureOptionsQueryDto,
   PortfolioListQueryDto,
   RankPortfolioItemDto,
   UpdatePortfolioItemDto,
 } from './dto/portfolio-item-request.dto';
 import {
   PortfolioChildResponseDto,
+  PortfolioFeatureOptionResponseDto,
   PortfolioItemDetailResponseDto,
   PortfolioItemResponseDto,
 } from './dto/portfolio-item-response.dto';
@@ -162,10 +164,20 @@ export class PortfolioItemsController {
   // This route USED to carry `@RequirePermission('workspace:view')`. That is the
   // "gate chosen for where the id lives rather than for what the action is" bug this
   // repo has now hit three times (`work-items/by-key`, `report:view`, here):
-  // `workspace:*` is admin-reserved, so a correctly project-scoped Project Admin or
-  // Project Member 403'd at the guard and the narrowing below never ran — while
-  // P5-PI-FR-017 grants Project Member read access. `by-key` set the precedent for
-  // dropping the decorator rather than swapping the code.
+  // `workspace:*` is admin-reserved, so a correctly project-scoped Project ADMIN 403'd at
+  // the guard and the narrowing below never ran. `by-key` set the precedent for dropping
+  // the decorator rather than swapping the code.
+  //
+  // A Project MEMBER is a different matter, and this comment used to get it wrong: it
+  // cited P5-PI-FR-017 as granting one read access. That rule says the opposite on BA
+  // `origin/main` — "WA all Projects; Admin manage assigned Project; Editor/No Access
+  // hidden. (Viewer level removed.)" (`Phase 5/01_Portfolio_Items/SRS.md:224`) — and the
+  // catalogue agrees, withholding `portfolio:view` from the `editor` level. An Editor
+  // reaching this route now gets an EMPTY page, not a 403: the scope is
+  // `listReadableProjectIds`, which returns `[]` for them, and `[]` is a legitimate answer
+  // here rather than a refusal. Until 2026-08-14 they got every Epic and Feature in their
+  // projects, because that method unioned in a roster query it never filtered by the
+  // permission it was asked about.
   // See 09_Gap_Audit/PHASE_5_6_DECISION_MATRIX.md#P5-PI-16
   @ApiOperation({ summary: 'List Epics or Features' })
   @ApiPagedResponse(PortfolioItemResponseDto)
@@ -187,6 +199,47 @@ export class PortfolioItemsController {
       args,
     );
     return { data: page.data.map(toDto), pageInfo: page.pageInfo };
+  }
+
+  /**
+   * The FEATURE REFERENCE feed — the picker behind the `Feature` field on a Story/Defect.
+   *
+   * DECLARED ABOVE `:id` deliberately: Nest matches in declaration order, so below it every
+   * request for `/options` would be a `getItem` call with `id = 'options'` and die in
+   * `ParseUUIDPipe` as a 400.
+   *
+   * WHY IT IS `work_item:view` AND NOT `portfolio:view`. §5.3:130-135 puts a `Feature` field
+   * in the Work Item detail rail, and §5.2:124 makes that field the ONLY way a Story's Feature
+   * membership is ever set ("no 'link existing Story/Defect' … set only at creation or by
+   * editing that Story/Defect's own record elsewhere"). §3.2:79 gives an Editor
+   * Create/View/Edit/Delete over Story/Defect, so gating the field's feed on `portfolio:view`
+   * — which the `editor` level withholds — would remove a capability from the one role that
+   * owns those records, with no alternative path. The Portfolio SURFACE stays hidden from an
+   * Editor (§3.2:85, P5-PI-FR-017); a Feature's key and name on a picker are not that surface.
+   *
+   * The precedent is the BA's own, one field over: `Phase 2/02_Iterations/SRS.md:393` reads
+   * "Editor | Timeboxes hidden; may update Work Item Iteration through approved
+   * Backlog/Iteration Status flows only" — hidden surface, permitted field, therefore a feed.
+   * Release is decided the OTHER way and says so in words ("cannot assign Release", BL §8:294),
+   * which is why that one is refused in `WorkItemsService` instead. The BA is SILENT on
+   * Feature, so this is a declared reading, not a derived rule — recorded in `CLAUDE.md` and
+   * put to the BA. If they rule it like Release, this route and one SPA field are the whole
+   * reversal.
+   *
+   * Project-scoped, so the GUARD checks it: §5.3:133 says "the selectable Feature list is
+   * scoped to the Work Item's Project", which makes `projectId` required, which in turn means
+   * this needs no service-side `listReadableProjectIds` narrowing at all.
+   */
+  @Get('options')
+  @RequirePermission('work_item:view', { from: 'query', field: 'projectId' })
+  @ApiOperation({ summary: "List a project's active Features as picker options" })
+  @ApiResponse({ status: 200, type: PortfolioFeatureOptionResponseDto, isArray: true })
+  @ApiCommonErrors(400, 401, 403)
+  async listFeatureOptions(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: PortfolioFeatureOptionsQueryDto,
+  ): Promise<PortfolioFeatureOptionResponseDto[]> {
+    return this.service.listFeatureOptions(user, query.projectId);
   }
 
   @Get(':id')

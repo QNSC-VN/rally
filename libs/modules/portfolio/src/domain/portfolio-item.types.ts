@@ -100,6 +100,27 @@ export interface PortfolioItemView extends PortfolioItem {
   childFeatureCount: number;
 }
 
+/**
+ * The FEATURE REFERENCE feed: what a picker needs to name a Feature, and nothing else.
+ *
+ * A separate type rather than a `Pick<PortfolioItemView, …>`, for the same reason
+ * `ReleaseOption` and `MilestoneOption` are separate: a field added to the record shape must
+ * not silently join the feed a wider audience reads. There is no rollup, no owner, no
+ * estimate and no team here — those belong to the Portfolio SURFACE, which
+ * `P5-PI-FR-017` hides from an Editor.
+ */
+export interface PortfolioFeatureOption {
+  id: string;
+  itemKey: string;
+  name: string;
+  /**
+   * Echoed back so a client cannot bind options from one project to an item in another. The
+   * feed is single-project by contract (P5-PI-FR-023, §5.3:133), unlike the grid, which is
+   * cross-project and carries a Project column.
+   */
+  projectId: string;
+}
+
 /** What a CALLER may ask for. Deliberately carries no authorization field. */
 export interface PortfolioListRequest {
   /** Epic or Feature — the spec's Type selector has no combined "All". */

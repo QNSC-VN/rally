@@ -341,7 +341,7 @@ describe('authorization cluster (e2e)', () => {
    * `test/route-audience.ratchet.spec.ts` — when the Milestone feed is split the way
    * `GET /releases/options` was, this test and that list change together.
    */
-  it('refuses the admin roster and the two §3.2 grids to an Editor, but not their feeds', async () => {
+  it('refuses the admin roster and the three §3.2 grids to an Editor, but not their feeds', async () => {
     const editor = await tokenFor('dev@qnsc.dev');
 
     /**
@@ -369,27 +369,51 @@ describe('authorization cluster (e2e)', () => {
     expect(releases.statusCode, 'GET /releases (the admin grid) for an Editor').toBe(403);
 
     /**
-     * The parent-Feature picker, which is NOT a gap — recorded because the catalogue says it should
-     * be and that reading is wrong.
+     * The Portfolio Items GRID: 200 with NO ROWS, not a 403 — and this is the assertion that had to
+     * be inverted, so the history matters.
      *
-     * `permissionGrants(editor, 'portfolio:view')` is false, so reasoning from the permission sets
-     * alone (as the static sweep must) predicts an empty list. It is not empty: `GET /portfolio-items`
-     * is `@AuthorizedInService` and narrows by `listReadableProjectIds`, which UNIONS the
-     * permission-derived projects with EVERY project the caller has an active `project_members` row
-     * on — and that half ignores the `permission` argument entirely. So an Editor's own project is
-     * readable here regardless of `portfolio:view`.
+     * It used to assert the list was NON-EMPTY for an Editor, with a docblock explaining that
+     * `listReadableProjectIds` unions in every project the caller has a `project_members` row on
+     * regardless of the permission asked for, and calling that "the only reason the Feature picker
+     * works". Both halves were true and together they were the defect: §3.2:85 and P5-PI-FR-017 make
+     * Portfolio Items Hidden for an Editor, and the whole record — `notes`, `estimate`, `health`,
+     * the owner — was readable by one. The permission-blind union is gone; membership now reaches
+     * that method only through the permission-filtered synthesis.
      *
-     * Worth pinning in both directions: it is the only reason the Feature picker works, it is not
-     * obvious from either the decorator or the catalogue, and `type` is REQUIRED on this query while
-     * the ValidationPipe runs BEFORE the guard — so an incomplete query is a 400 that never reaches
-     * authorization and would make either expectation pass for the wrong reason.
+     * Empty rather than refused because the route's `projectId` is optional (a Workspace Admin lists
+     * across projects), so the scope is a service-side filter and `[]` is its honest answer. Note
+     * the explicit `projectId` here does NOT produce the 403 that
+     * `portfolio-isolation.e2e.spec.ts` asserts for a readable-but-other project: `readable` is
+     * empty, and that branch is checked first.
+     *
+     * `type` is REQUIRED on this query and the ValidationPipe runs BEFORE the guard, so an
+     * incomplete query is a 400 that never reaches authorization — which would make either
+     * expectation pass for the wrong reason.
      */
     const portfolio = await get(`/portfolio-items?type=feature&projectId=${NXP}`, editor);
-    expect(portfolio.statusCode, 'GET /portfolio-items for an Editor').toBe(200);
+    expect(portfolio.statusCode, 'GET /portfolio-items (the §3.2 grid) for an Editor').toBe(200);
     expect(
       (JSON.parse(portfolio.body) as { data: unknown[] }).data.length,
-      'the parent-Feature picker must be non-empty for an Editor — NXP seeds an Epic and seven ' +
-        'Features, and the membership half of listReadableProjectIds is what makes them visible',
+      'the Portfolio grid must be EMPTY for an Editor: NXP seeds an Epic and seven Features, and ' +
+        '§3.2:85 / P5-PI-FR-017 hide Portfolio Items from an Editor',
+    ).toBe(0);
+
+    /**
+     * …and the other half of the same split, which is what keeps the grid's emptiness from being a
+     * regression. The `Feature` field on a Story is the Editor's own (§5.2:124 makes it the ONLY way
+     * membership is ever set; §3.2:79 gives them the Story), so its picker reads a reference feed
+     * gated on `work_item:view`. Without this the Editor would have a writable `featureId` whose
+     * linked value renders as "No Feature" — the same shape as the owner-picker regression.
+     */
+    const featureOptions = await get(`/portfolio-items/options?projectId=${NXP}`, editor);
+    expect(featureOptions.statusCode, 'GET /portfolio-items/options for an Editor').toBe(200);
+    const options = JSON.parse(featureOptions.body) as { id: string; itemKey: string }[];
+    expect(
+      options.length,
+      'the parent-Feature picker must stay populated for an Editor — NXP seeds seven Features',
     ).toBeGreaterThan(0);
+    // The reference projection and nothing more: a record field appearing here would put the
+    // hidden surface back on a feed every Editor reads.
+    expect(Object.keys(options[0]).sort()).toEqual(['id', 'itemKey', 'name', 'projectId']);
   });
 });

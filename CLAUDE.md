@@ -653,6 +653,40 @@ member-visible is a product decision. Separately, `useProjects` fetches `limit: 
 client-side, so past 100 projects the Active/Archived tabs, the search and the metric tiles silently
 truncate — a pagination defect, not an authorization one.
 
+**And the `permission` argument has to actually decide something.** It did not, for the membership half:
+`listReadableProjectIds` unioned a raw `project_members` query in unconditionally, so every project the
+caller held an active row on was readable **regardless of whether that row's access level granted the
+permission being asked about**. It was written when membership was the only per-project fact and it
+survived the move to `access_level`, by which point `effectiveAssignments` already synthesized the same
+rows correctly filtered — so it was duplication for a permission the level grants, and a silent
+over-grant for one it does not. What it opened: `portfolio:view`, which `editor` deliberately withholds,
+so **every project Editor read every field of every Epic and Feature in their projects** — the one
+surface `P5-PI-FR-017` and §3.2:85 hide from them. No other caller was affected, because the rest ask
+for `project:view` or `work_item:view`, which is exactly why it stayed invisible. Membership now reaches
+the result only through the permission-filtered synthesis; the generalisable rule is that **a boundary
+taking a permission must not union in a source that ignores it**, and the failure reads as a boundary in
+review. Two second-order effects, both deliberate: the synthesis filters on `isProjectAccessLevel` where
+the deleted query used `isNotNull`, so an unrecognised level is no longer readable; and it rides the
+5-minute assignment cache, so a membership row written by raw SQL is invisible to cross-project lists
+until `invalidateUser` is called.
+
+**Closing it needed the picker split in the same change**, and that is the pattern now, not a one-off:
+the emptied list was also the only feed for the `Feature` field on a Story/Defect, so the fix is
+`GET /portfolio-items/options` (id, key, name, project) gated on `work_item:view`. The BA is **SILENT**
+on whether an Editor may set a Story's Feature, so this is a **declared reading** and has been put to
+them: §5.2:124 makes that field the only way Feature membership is ever set, §3.2:79 gives an Editor the
+Story, and the closest precedent is the BA's own one field over — `Phase 2/02_Iterations/SRS.md:393`,
+"Timeboxes hidden; may update Work Item Iteration through approved Backlog/Iteration Status flows only"
+— hidden surface, permitted field, therefore a feed. Release is decided the *other* way and says so in
+words ("cannot assign Release", BL §8:294), which is why that one is refused in `WorkItemsService`
+instead. **Where the BA wanted a field withheld from an Editor it wrote a sentence; it wrote none for
+Feature.** If they rule it like Release, the reversal is this route plus one SPA field. The feed is
+single-project per §5.3:133, which is what lets the GUARD check it (`{ from: 'query', field:
+'projectId' }`) instead of a service-side narrowing — so the service deliberately makes **no**
+authorization call, pinned by a spec. Note the API still *accepts* a cross-project Feature link
+(`assertFeatureLinkable` permits it, because Rally's rollup matches `feature_id` alone) while the picker
+no longer offers one: 0 such rows exist, and the BA's field scope wins over offering it.
+
 ## A route's permission code must be one the intended role can hold
 
 `GET /work-items/by-key` carried `workspace:view` — admin-only, since `workspace:*` is

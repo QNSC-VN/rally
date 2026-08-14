@@ -16,8 +16,8 @@ import {
 } from '@/features/work-items/api'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
-import { usePortfolioItems } from '@/features/portfolio/api'
-import { PortfolioItemType } from '@/entities/work-item/model/types'
+import { usePortfolioFeatureOptions } from '@/features/portfolio/api'
+import { listResource } from '@/shared/lib/query/resource'
 import { useMilestoneOptions } from '@/features/milestones/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
@@ -141,8 +141,16 @@ export function DetailSidebar({
   const { data: teams = [] } = useProjectTeams(item.projectId)
   const { data: members = [] } = useProjectMembers(item.projectId)
   const { data: releases = [] } = useReleases(item.projectId)
-  // Cross-project on purpose (see the Feature field below): no projectId filter.
-  const { items: features } = usePortfolioItems({ type: PortfolioItemType.Feature })
+  // The reference feed, NOT the Portfolio grid's: that one takes `portfolio:view`, which
+  // P5-PI-FR-017 withholds from an Editor. Scoped to the ITEM's project per §5.3:133.
+  //
+  // A resource rather than `?? []`, because this select resolves its LABEL from the options
+  // (`searchable-select.tsx` looks the value up) — so on a failed request a Story that IS filed
+  // under a Feature would render the "No Feature" placeholder, stating as fact the thing the
+  // reader came to check. `isError` puts the field in read-only instead, so a fetch failure
+  // cannot become an accidental unlink on the next save.
+  const featureFeed = listResource(usePortfolioFeatureOptions(item.projectId))
+  const features = featureFeed.rows
   const { data: iterations = [] } = useIterationOptions(item.projectId, item.teamId)
   const { data: parentItem } = useWorkItem(item.parentId ?? undefined)
   const { data: taskTotals } = useTaskTotals(item.type !== 'task' ? item.id : undefined)
@@ -479,16 +487,21 @@ export function DetailSidebar({
                 onChange={(v) => onUpdate({ releaseId: v || null })}
               />
             </FormField>
-            {/* Feature — the portfolio link every rollup aggregates by.
+            {/* Feature — the portfolio link every rollup aggregates by, and per §5.2:124 the ONLY
+                place a Story's Feature membership can be set.
                 Only active FEATURES are offered: Rally attaches the story hierarchy to the lowest
-                portfolio level, and an Epic counts this work through its Features. Cross-project
-                Features are deliberately included — Rally lets a team project's Story roll up to a
-                portfolio project's Feature, and the portfolio rollup matches on the link alone. */}
+                portfolio level, and an Epic counts this work through its Features.
+                Options are scoped to THIS item's project, per §5.3:133 ("the selectable Feature
+                list is scoped to the Work Item's Project") and FR-023. The API still ACCEPTS a
+                cross-project link — `assertFeatureLinkable` permits it because Rally's rollup
+                matches on `feature_id` alone — so a link made through the API to another project's
+                Feature is not offered here and reads as unset. Nothing creates one today (0 such
+                rows locally); the BA's field scope wins over offering it. */}
             <FormField label={t('sidebar.feature')}>
               <SearchableSelect
                 variant="field"
                 value={item.featureId ?? ''}
-                readOnly={disabled}
+                readOnly={disabled || featureFeed.isError}
                 ariaLabel={t('sidebar.feature')}
                 placeholder={t('sidebar.noFeature')}
                 options={[

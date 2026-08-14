@@ -41,6 +41,7 @@ import {
 } from '../domain/ports/portfolio-item.repository';
 import type {
   CreatePortfolioItemInput,
+  PortfolioFeatureOption,
   PortfolioItem,
   PortfolioItemView,
   PortfolioListRequest,
@@ -322,6 +323,26 @@ export class PortfolioItemsService {
     const children = await this.repo.listChildFeatures(id, actor.workspaceId);
     const today = new Date();
     return children.map((c) => this.withProgress(c, map, today));
+  }
+
+  /**
+   * A project's active Features, as options for the `Feature` field on a Story/Defect.
+   *
+   * NO authorization call here, and that is deliberate rather than an omission: the route
+   * carries `@RequirePermission('work_item:view', { from: 'query', field: 'projectId' })`, so the
+   * guard has already checked this exact project before the handler runs. Re-checking would be
+   * the double-check the guard's own docblock warns against — and adding a
+   * `listReadableProjectIds` narrowing here would be worse, because it would answer a different
+   * question (which projects are readable) than the one the route asks (may you read THIS one).
+   *
+   * Contrast `listItems` directly above: that list's `projectId` is optional because a Workspace
+   * Admin reads across projects, which is why its authorization has to live in the service.
+   */
+  async listFeatureOptions(
+    actor: JwtPayload,
+    projectId: string,
+  ): Promise<PortfolioFeatureOption[]> {
+    return this.repo.listFeatureOptions(actor.workspaceId, projectId);
   }
 
   // ── Writes ─────────────────────────────────────────────────────────────────

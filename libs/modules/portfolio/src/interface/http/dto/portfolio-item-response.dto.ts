@@ -200,3 +200,16 @@ const PortfolioChildSchema = z.object({
   ownerName: z.string().nullable(),
 });
 export class PortfolioChildResponseDto extends createZodDto(PortfolioChildSchema) {}
+
+/**
+ * The Feature REFERENCE feed's row. A separate schema, not a `.pick()` of
+ * {@link PortfolioItemSchema} — a field added to the record shape must not silently join the
+ * feed a wider audience reads, which is the whole point of splitting the two.
+ */
+export const PortfolioFeatureOptionSchema = z.object({
+  id: z.string().uuid(),
+  itemKey: z.string().describe('FE-<n>, unique across the workspace'),
+  name: z.string(),
+  projectId: z.string().uuid().describe('Always the requested project; echoed for binding'),
+});
+export class PortfolioFeatureOptionResponseDto extends createZodDto(PortfolioFeatureOptionSchema) {}

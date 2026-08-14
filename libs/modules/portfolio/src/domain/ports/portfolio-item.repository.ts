@@ -2,6 +2,7 @@ import type { CursorPayload, DbExecutor, PagedResult } from '@platform';
 import type { WorkItemPriority } from '../../../../../../db/schema/enums';
 import type {
   CreatePortfolioItemInput,
+  PortfolioFeatureOption,
   PortfolioItem,
   PortfolioItemView,
   PortfolioListFilter,
@@ -46,6 +47,21 @@ export interface IPortfolioItemRepository {
 
   /** Active child Features of an Epic, for the list preview and the Children tab. */
   listChildFeatures(epicId: string, workspaceId: string): Promise<PortfolioItemView[]>;
+
+  /**
+   * Active Features of ONE project, as PICKER OPTIONS for the Feature field on a
+   * Story/Defect record.
+   *
+   * `projectId` is required, not optional, because P5-PI-FR-023 and §5.3:133 both scope the
+   * selectable list to the Work Item's own Project — and because a required project is what
+   * lets the ROUTE be gated by the guard (`work_item:view` resolved from the query) instead
+   * of by a service-side `listReadableProjectIds` narrowing. Making it optional would turn a
+   * checkable route back into a resolve-then-check one.
+   *
+   * Archived Features are excluded: §156 says an archived Feature "cannot receive newly
+   * created or newly assigned Story/Defect children".
+   */
+  listFeatureOptions(workspaceId: string, projectId: string): Promise<PortfolioFeatureOption[]>;
 
   /** Milestones assigned to this item, for the detail rail's multi-select. */
   listMilestones(id: string, workspaceId: string): Promise<{ id: string; name: string }[]>;

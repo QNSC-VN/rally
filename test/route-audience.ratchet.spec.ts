@@ -255,6 +255,14 @@ const AUDIENCE: Record<string, Audience> = {
   'PortfolioItemsController.getItem': 'admin',
   'PortfolioItemsController.listChildFeatures': 'admin',
   'PortfolioItemsController.listChildren': 'admin',
+  /**
+   * The ONE Editor-facing route on an otherwise admin controller, and the exception is the point:
+   * this is the `Feature` field's picker feed, not the Portfolio surface. §5.2:124 makes that field
+   * the only way a Story's Feature membership is ever set and §3.2:79 gives an Editor
+   * Create/View/Edit/Delete over Story/Defect, so it is gated on `work_item:view`. Everything else
+   * here stays `portfolio:*`, which P5-PI-FR-017 withholds from an Editor.
+   */
+  'PortfolioItemsController.listFeatureOptions': 'editor',
   'PortfolioItemsController.rankItem': 'admin',
   'PortfolioItemsController.unarchiveItem': 'admin',
   'PortfolioItemsController.updateItem': 'admin',
@@ -453,20 +461,25 @@ const REFERENCE_FEEDS: readonly ReferenceFeed[] = [
     feed: 'GET /milestones/options',
   },
   /**
-   * DELIBERATELY ABSENT: `UpdateWorkItemSchema.featureId` → `GET /portfolio-items`.
+   * `UpdateWorkItemSchema.featureId` → `GET /portfolio-items/options`, and the history is worth
+   * keeping: this slot held a note saying the pair was DELIBERATELY ABSENT because, measured over
+   * HTTP, the parent-Feature picker was populated for an Editor even though they hold no
+   * `portfolio:view`. That measurement was right and its explanation was the defect — the picker
+   * read `GET /portfolio-items`, and `listReadableProjectIds` unioned in every project the caller
+   * had a membership row on WITHOUT filtering by the permission it was asked about. Closing that
+   * over-grant emptied the picker, which is what turned this from "not a gap" into a real one.
    *
-   * It looks like the fourth gap and it is not, which is why this note replaces the entry rather
-   * than deleting it silently. An Editor does not hold `portfolio:view`, so reasoning from the
-   * permission sets — all this file can do — predicts an empty parent-Feature picker. Measured over
-   * HTTP, the picker is populated: the route is `@AuthorizedInService`, and
-   * `listReadableProjectIds` UNIONS the permission-derived projects with every project the caller
-   * has an active `project_members` row on, a half that ignores its own `permission` argument. So
-   * membership alone makes the Editor's project readable there.
-   *
-   * The lesson is the limit of this file: where the narrowing lives in a service, the catalogue is
-   * not the gate. `test/e2e/authz-cluster.e2e.spec.ts` asserts the populated picker in both
-   * directions; do not re-add this pair without measuring it first.
+   * So the note's own instruction ("do not re-add this pair without measuring it first") was
+   * followed: it was measured, it failed, and the answer was a reference feed rather than
+   * re-opening the read. The lesson it recorded still stands, though — where a narrowing lives in
+   * a service, the catalogue is not the gate, and this file cannot see it.
    */
+  {
+    write: 'WorkItemsController.updateWorkItem',
+    via: 'UpdateWorkItemSchema.featureId',
+    feedRoute: 'PortfolioItemsController.listFeatureOptions',
+    feed: 'GET /portfolio-items/options',
+  },
   // ── The pairs that HOLD, kept deliberately: a one-sided check passes just as well when the
   // feed is over-gated, which is the direction that broke the owner picker.
   {
@@ -944,8 +957,10 @@ const READ_AUDIENCE_EXCEPTIONS: Record<string, string> = {
  * LIVE DEFECTS in this dimension, declared so they are counted rather than rediscovered. Same
  * `@AuthzGap` shape as `KNOWN_REFERENCE_FEED_GAPS`, and asserted as an exact set for the same reason.
  *
- * All three are outside this change's reach — they need `libs/modules/{access,iterations}` and a
- * decision about a route with no consumer — and all three are recorded in the hand-off report.
+ * Three are live and outside this change's reach — they need `libs/modules/{access,iterations}` and
+ * a decision about a route with no consumer. The fourth, `PortfolioItemsController.listItems`, is
+ * CLOSED and says so in its own note: the key is still computed by this sweep, so the entry has to
+ * stay even though the defect does not.
  */
 const READ_AUDIENCE_GAPS: Record<string, string> = {
   /**
@@ -958,13 +973,16 @@ const READ_AUDIENCE_GAPS: Record<string, string> = {
     'no code at all; the whole permission matrix is public to any caller',
   /**
    * `GET /workspaces/:id/members` returns a per-person `roleId` and account `status` with no
-   * permission code — narrowed only by `listReadableProjectIds`, whose membership half ignores the
-   * permission argument, so any Editor reads it. **It has NO SPA consumer at all**
-   * (`grep "workspaces/{id}/members'"` finds nothing outside the generated client), so the fix is
-   * probably deletion rather than a gate; that is a contract change and wants its own review.
+   * permission code and NO scope at all — it calls `WorkspaceService.listMembers`, which is a plain
+   * workspace-wide read. (This note used to credit `listReadableProjectIds` with narrowing it; that
+   * method serves `listMemberOptions`, a different route. Worth recording, because a scope named in
+   * prose is exactly the kind of claim that reads as a control and is not one.) **It has NO SPA
+   * consumer at all** (`grep "workspaces/{id}/members'"` finds nothing outside the generated
+   * client), so the fix is probably deletion rather than a gate; that is a contract change and wants
+   * its own review.
    */
   'WorkspaceController.listMembers':
-    'no code, no consumer; roleId + account status readable by any Editor',
+    'no code, no scope, no consumer; roleId + account status readable by any authenticated caller',
   /**
    * `GET /iterations` is `iteration:view`, which an Editor MUST hold — it is the picker feed for
    * Iteration Status, the Backlog filter, Team Status and Quality — while its payload is the timebox
@@ -983,20 +1001,31 @@ const READ_AUDIENCE_GAPS: Record<string, string> = {
   'IterationsController.listIterations':
     'the timebox record (goal, theme, notes, plannedVelocity) on the Editor picker feed; §3.2 hides it',
   /**
-   * `GET /portfolio-items` carries NO permission code — mode `in-service` — and narrows by
-   * `listReadableProjectIds(..., 'portfolio:view')`, whose membership half ignores the permission
-   * argument (see `AccessService.listReadableProjectIds`). So an Editor reads every field of every
-   * Feature and Epic in their own project — `notes`, `estimate`, `health`, the owner — while §5 and
-   * §3.2 mark `Portfolio Items` Hidden for one. The BA audit of 2026-08-14 scored that row NOT
-   * SATISFIED and named the cause exactly: "enforced by a route that never reads it".
+   * NOT A LIVE DEFECT ANY MORE — the entry stays because this file's sweep is decorator- and
+   * payload-only, so it still computes this key and an exact-set assertion would fire on its
+   * removal. Deleting it would also delete the record of what it caught.
    *
-   * The route is ALSO the parent-Feature picker's only feed, which is why it cannot simply be gated —
-   * this is the same dual-audience endpoint, in the leak direction. The fix is the same split
-   * (`GET /portfolio-items/options`), and it needs `libs/modules/portfolio` plus the Work Item
-   * sidebar.
+   * What it described: `GET /portfolio-items` carries NO permission code — mode `in-service` — and
+   * narrows by `listReadableProjectIds(..., 'portfolio:view')`, whose membership half unioned in
+   * every project the caller had a `project_members` row on WITHOUT filtering by that permission. So
+   * an Editor read every field of every Feature and Epic in their own project — `notes`, `estimate`,
+   * `health`, the owner — while §5 and §3.2 mark `Portfolio Items` Hidden for one. The BA audit of
+   * 2026-08-14 scored that row NOT SATISFIED and named the cause exactly: "enforced by a route that
+   * never reads it".
+   *
+   * Closed on 2026-08-14 at the source, in `AccessService.listReadableProjectIds`: membership now
+   * reaches the result only through the permission-filtered synthesis, so an Editor's `readable` is
+   * `[]` here and the list answers 200 with no rows. The route stays undecorated because its
+   * `projectId` is genuinely optional — a Workspace Admin lists across projects — and
+   * `test/e2e/authz-cluster.e2e.spec.ts` measures the emptiness over HTTP, which is the only place
+   * that can.
+   *
+   * The route was ALSO the parent-Feature picker's only feed, which is why gating it alone would
+   * have broken a field §5.2:124 makes an Editor's own. Split into
+   * `GET /portfolio-items/options` in the same change.
    */
   'PortfolioItemsController.listItems':
-    'no code; the full Feature/Epic record readable by an Editor, whom §5 marks Hidden for Portfolio',
+    'no code, by design; the record stays admin-only through the service scope, measured in authz-cluster.e2e',
 };
 
 interface RouteSchema {

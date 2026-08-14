@@ -108,6 +108,7 @@ describe('PortfolioItemsService', () => {
             rollupsFor: vi.fn().mockResolvedValue([]),
             listChildren: vi.fn().mockResolvedValue(emptyPage([])),
             listChildFeatures: vi.fn().mockResolvedValue([]),
+            listFeatureOptions: vi.fn().mockResolvedValue([]),
             childRollupByType: vi.fn().mockResolvedValue([]),
             listMilestones: vi.fn().mockResolvedValue([]),
             setMilestones: vi.fn().mockResolvedValue(undefined),
@@ -459,6 +460,27 @@ describe('PortfolioItemsService', () => {
         NotFoundException,
       );
       expect(repo.listChildFeatures).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The Feature picker feed. What is worth asserting is the ABSENCE of a check: the route carries
+     * `@RequirePermission('work_item:view', { from: 'query', field: 'projectId' })`, so the guard has
+     * already decided this exact project. A `listReadableProjectIds` narrowing here would answer a
+     * different question — which projects are readable — and silently widen a route the guard had
+     * already scoped, while an `assertProjectPermission` would be the double-check the guard's own
+     * docblock warns against. A future reader adding either would fail this test, which is the point.
+     */
+    it('passes the project straight through, with no second authorization call', async () => {
+      repo.listFeatureOptions.mockResolvedValue([
+        { id: 'fe-1', itemKey: 'FE-1', name: 'A feature', projectId: 'proj-a' },
+      ]);
+
+      const options = await service.listFeatureOptions(actor, 'proj-a');
+
+      expect(options).toHaveLength(1);
+      expect(repo.listFeatureOptions).toHaveBeenCalledWith(WORKSPACE, 'proj-a');
+      expect(access.listReadableProjectIds).not.toHaveBeenCalled();
+      expect(access.assertProjectPermission).not.toHaveBeenCalled();
     });
   });
 

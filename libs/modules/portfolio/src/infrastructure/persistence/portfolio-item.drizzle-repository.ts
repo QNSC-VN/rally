@@ -20,6 +20,7 @@ import {
 } from '../../../../../../db/schema/enums';
 import type {
   CreatePortfolioItemInput,
+  PortfolioFeatureOption,
   PortfolioItem,
   PortfolioItemView,
   PortfolioListFilter,
@@ -337,6 +338,33 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
         isNull(portfolioItems.archivedAt),
       ),
       { limit: 200, cursor: null },
+    );
+  }
+
+  async listFeatureOptions(
+    workspaceId: string,
+    projectId: string,
+  ): Promise<PortfolioFeatureOption[]> {
+    return (
+      this.db
+        .select({
+          id: portfolioItems.id,
+          itemKey: portfolioItems.itemKey,
+          name: portfolioItems.name,
+          projectId: portfolioItems.projectId,
+        })
+        .from(portfolioItems)
+        .where(
+          and(
+            eq(portfolioItems.workspaceId, workspaceId),
+            eq(portfolioItems.projectId, projectId),
+            eq(portfolioItems.type, 'feature'),
+            isNull(portfolioItems.archivedAt),
+          ),
+        )
+        // By key, not rank: rank orders a planning grid, while a picker is scanned for a known
+        // `FE-<n>`. Total order, so an unpaged read is stable.
+        .orderBy(asc(portfolioItems.itemKey), asc(portfolioItems.id))
     );
   }
 

@@ -28,6 +28,21 @@ export const PortfolioListQuerySchema = PageQuerySchema.extend({
 });
 export class PortfolioListQueryDto extends createZodDto(PortfolioListQuerySchema) {}
 
+/**
+ * The Feature picker's query. `projectId` is REQUIRED, which is what lets the route be gated by
+ * the guard rather than narrowed in the service — see the route's own docblock. §5.3:133 scopes
+ * the selectable list to the Work Item's Project, so there is no "all projects" form to ask for.
+ *
+ * Not a `PageQuerySchema` extension: a project's active Features are a bounded set a picker reads
+ * whole, and a paged picker silently omits options past the first page.
+ */
+export const PortfolioFeatureOptionsQuerySchema = z.object({
+  projectId: z.string().uuid(),
+});
+export class PortfolioFeatureOptionsQueryDto extends createZodDto(
+  PortfolioFeatureOptionsQuerySchema,
+) {}
+
 export const PortfolioChildrenQuerySchema = PageQuerySchema.extend({
   search: z.string().max(255).trim().optional(),
 });

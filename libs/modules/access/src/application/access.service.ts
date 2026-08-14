@@ -20,8 +20,8 @@ import {
 } from '@shared-kernel';
 import type { JwtPayload, DrizzleDB, DbExecutor, DrizzleTx } from '@platform';
 import { InjectDrizzle } from '@platform';
-import { and, eq, isNotNull } from 'drizzle-orm';
-import { projectMembers, projects } from '../../../../../db/schema/work';
+import { and, eq } from 'drizzle-orm';
+import { projectMembers } from '../../../../../db/schema/work';
 import { workspaceMembers } from '../../../../../db/schema/workspace';
 import type { ScopeType } from '../domain/access.types';
 import { IRoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository';
@@ -727,17 +727,39 @@ export class AccessService {
    * rather than from any per-artifact grant: Rally stores one `ProjectPermission` row
    * per (user, project, workspace) and a Viewer sees everything in that project.
    *
-   * Three sources, unioned:
+   * Two sources, unioned:
    *   1. a workspace-wide grant (`workspace:*` or an explicit workspace-tier `:view`)
    *      sees every project — Rally's Workspace Admin;
-   *   2. project-scoped role assignments (`scope_type='project'`) — Rally's per-project
-   *      Editor/Viewer/Project Admin;
-   *   3. active project membership — the roster equivalent, so a member who holds no
-   *      explicit role assignment still sees their own project.
+   *   2. project-scoped assignments that GRANT `permission` — which covers per-project
+   *      membership too, because {@link effectiveAssignments} synthesizes a project-scoped
+   *      entry from every active `project_members` row using `ACCESS_LEVEL_PERMISSIONS`.
    *
    * Returns `null` to mean UNRESTRICTED, deliberately: an empty array is a legitimate
    * answer ("no projects"), so a sentinel is needed to distinguish it from "all". A
    * caller that treats `null` as empty fails closed, which is the safe direction.
+   *
+   * THE `permission` ARGUMENT IS THE POINT, AND A THIRD SOURCE USED TO IGNORE IT.
+   * ---------------------------------------------------------------------------
+   * A raw `project_members` query sat below, unioned in unconditionally: every project the
+   * caller held an active row for became readable REGARDLESS of whether that row's access
+   * level granted the permission being asked about. It was written when membership was the
+   * only per-project fact, and it survived the move to `access_level` — by which point
+   * `effectiveAssignments` was already synthesizing the same rows, correctly filtered. So
+   * for a permission the level DOES grant it was pure duplication (hence the union's
+   * de-duplication), and for one it does NOT it was a silent over-grant that could not be
+   * seen from any call site: the argument was passed, looked authoritative, and decided
+   * nothing.
+   *
+   * What it actually opened: `PortfolioItemsService.listItems` asks for `portfolio:view`, a
+   * code the `editor` level deliberately withholds (§3.2 marks Portfolio Items Hidden for
+   * an Editor). Every project Editor therefore read every field of every Epic and Feature
+   * in each of their projects — the one surface the access matrix hides from them. No other
+   * caller was affected, because the rest ask for `project:view` or `work_item:view`, which
+   * `editor` holds; that is exactly why this stayed invisible.
+   *
+   * The lesson generalises past this method: a boundary that takes a permission and then
+   * unions in a source not filtered by it is not a boundary, and it reads like one in
+   * review. Any new source added here MUST be filtered by `permissionGrants`.
    */
   async listReadableProjectIds(
     workspaceId: string,
@@ -764,36 +786,20 @@ export class AccessService {
       )
       .map((a) => a.scopeId as string);
 
-    // A membership row counts as readable ONLY with a real access level AND an
-    // active company row: a NULL level (team-derived union shape) or a suspended
-    // member listed the project in every picker while opening it 403'd — two
-    // readers, one row, different answers.
-    const memberships = await this.db
-      .select({ projectId: projectMembers.projectId })
-      .from(projectMembers)
-      .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-      .innerJoin(
-        workspaceMembers,
-        and(
-          eq(workspaceMembers.workspaceId, projectMembers.workspaceId),
-          eq(workspaceMembers.userId, projectMembers.userId),
-          eq(workspaceMembers.status, 'active'),
-        ),
-      )
-      .where(
-        and(
-          eq(projectMembers.workspaceId, workspaceId),
-          eq(projectMembers.userId, userId),
-          eq(projectMembers.status, 'active'),
-          // The "real access level" half of the comment above, as code: an explicit
-          // NULL-level row (legitimately created by addMember with no level) is not
-          // a grant — the synthesis denies it, so listing the project here put it in
-          // every picker while opening it 403'd.
-          isNotNull(projectMembers.accessLevel),
-        ),
-      );
-
-    return [...new Set([...fromAssignments, ...memberships.map((m) => m.projectId)])];
+    // Membership needs no query of its own: the synthesis above already turned every
+    // active `project_members` row into a project-scoped assignment, under the same two
+    // conditions the deleted query re-implemented by hand — an active workspace member
+    // row, and a level `isProjectAccessLevel` recognises (stricter than the old
+    // `isNotNull`, which admitted a level the catalogue does not know). One writer of that
+    // rule, so a picker and the guard can no longer disagree about one row.
+    //
+    // One second-order consequence, deliberate: the deleted query was an uncached live read,
+    // while the synthesis rides `effectiveAssignments`' 5-minute cache. So a membership row
+    // written OUTSIDE `AccessService` — raw SQL, a seed, a fixture — is invisible to every
+    // cross-project list until the TTL expires. Every real writer goes through
+    // `grantProjectAccess`, which invalidates; a test that inserts directly must call
+    // `invalidateUser` rather than expect a live read.
+    return [...new Set(fromAssignments)];
   }
 
   /**

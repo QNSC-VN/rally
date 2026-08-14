@@ -1836,6 +1836,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/portfolio-items/options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List a project's active Features as picker options */
+    get: operations['PortfolioItemsController_listFeatureOptions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/portfolio-items/{id}': {
     parameters: {
       query?: never
@@ -4041,6 +4058,18 @@ export interface components {
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
         }
       }
+    }
+    PortfolioFeatureOptionResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** @description FE-<n>, unique across the workspace */
+      itemKey: string
+      name: string
+      /**
+       * Format: uuid
+       * @description Always the requested project; echoed for binding
+       */
+      projectId: string
     }
     PortfolioItemDetailResponseDto: {
       /** Format: uuid */
@@ -12248,6 +12277,48 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_listFeatureOptions: {
+    parameters: {
+      query: {
+        projectId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioFeatureOptionResponseDto'][]
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }

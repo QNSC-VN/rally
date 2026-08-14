@@ -46,8 +46,10 @@ const makeProjectAccessRepo = () => ({
     .mockImplementation((id: string, accessLevel: string) => Promise.resolve({ id, accessLevel })),
 });
 
-let projectMemberRows: Array<{ projectId: string }> = [];
-// Phase 3: effectiveAssignments reads per-Project access_level rows directly.
+// Phase 3: effectiveAssignments reads per-Project access_level rows directly. There is no second
+// `project_members` variable any more: `listReadableProjectIds` used to query the roster itself,
+// unfiltered by the permission it was asked about, and that half is gone — membership now reaches it
+// only through the synthesis these rows drive.
 let accessLevelRows: Array<{ projectId: string; accessLevel: string | null }> = [];
 
 const WORKSPACE = 'ws-1';
@@ -131,21 +133,15 @@ describe('AccessService — scope-aware permission resolution', () => {
         { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: audit },
         {
-          // `listReadableProjectIds` reads project_members directly (no port exists for
-          // the roster). Chainable stub; `projectMemberRows` is what each test controls.
+          // `effectiveAssignments` reads the per-Project access_level rows directly (no port
+          // exists for the roster). Chainable stub; `accessLevelRows` is what each test controls.
           provide: DRIZZLE,
           useValue: {
             select: () => ({
               from: () => ({
-                // effectiveAssignments access_level query (now 1 join) and
-                // listReadableProjectIds (2 joins) — chainable; tests control
-                // `accessLevelRows` / `projectMemberRows`.
                 where: () => Promise.resolve(accessLevelRows),
                 innerJoin: () => ({
                   where: () => Promise.resolve(accessLevelRows),
-                  innerJoin: () => ({
-                    where: () => Promise.resolve(projectMemberRows),
-                  }),
                 }),
               }),
             }),
@@ -171,7 +167,6 @@ describe('AccessService — scope-aware permission resolution', () => {
     // the ACTOR's own permissions from the database instead of reading the token,
     // so tests that exercise a write need a resolvable actor; the no-escalation
     // cases narrow this deliberately.
-    projectMemberRows = [];
     accessLevelRows = [];
     assignmentRepo.listEffectiveForUser.mockResolvedValue([
       {
@@ -232,7 +227,7 @@ describe('AccessService — scope-aware permission resolution', () => {
       expect(ids).toEqual(['proj-a']);
     });
 
-    it('unions project-scoped roles with active project membership', async () => {
+    it('unions project-scoped roles with membership whose LEVEL grants the permission', async () => {
       assignmentRepo.listEffectiveForUser.mockResolvedValue([
         {
           scopeType: 'project',
@@ -241,10 +236,42 @@ describe('AccessService — scope-aware permission resolution', () => {
           permissions: ['portfolio:view'],
         },
       ] as never);
-      projectMemberRows = [{ projectId: 'proj-c' }];
+      // An `admin` membership row, which reaches the result through the synthesis in
+      // `effectiveAssignments` — not through a roster query of its own.
+      accessLevelRows = [{ projectId: 'proj-c', accessLevel: 'admin' }];
 
       const ids = await service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view');
       expect(ids?.sort()).toEqual(['proj-a', 'proj-c']);
+    });
+
+    it('EXCLUDES a project whose membership level does not grant the permission', async () => {
+      // The over-grant this method shipped with. A raw `project_members` query was unioned in
+      // unconditionally, so an `editor` — a level that deliberately withholds `portfolio:view`
+      // (§3.2 hides Portfolio Items from an Editor) — read every Epic and Feature in each of
+      // their projects. The `permission` argument was passed and decided nothing.
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([] as never);
+      accessLevelRows = [{ projectId: 'proj-e', accessLevel: 'editor' }];
+
+      await expect(
+        service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view'),
+      ).resolves.toEqual([]);
+      // Same row, a code the level DOES grant: the row is not being ignored, it is being
+      // filtered. Both directions, or this test would also pass with the source deleted.
+      await expect(
+        service.listReadableProjectIds(WORKSPACE, USER, 'work_item:view'),
+      ).resolves.toEqual(['proj-e']);
+    });
+
+    it('ignores a membership row whose level the catalogue does not know', async () => {
+      // The synthesis filters on `isProjectAccessLevel`, where the deleted roster query used
+      // `isNotNull` — so a level outside the catalogue (a removed one, a hand-written row) used
+      // to be readable on the strength of being non-null.
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([] as never);
+      accessLevelRows = [{ projectId: 'proj-x', accessLevel: 'viewer' }];
+
+      await expect(
+        service.listReadableProjectIds(WORKSPACE, USER, 'work_item:view'),
+      ).resolves.toEqual([]);
     });
 
     it('de-duplicates a project reachable through both sources', async () => {
@@ -256,10 +283,11 @@ describe('AccessService — scope-aware permission resolution', () => {
           permissions: ['portfolio:view'],
         },
       ] as never);
-      projectMemberRows = [{ projectId: 'proj-a' }];
+      accessLevelRows = [{ projectId: 'proj-a', accessLevel: 'admin' }];
 
       // A duplicate id would make `inArray` redundant rather than wrong, but a caller
-      // counting the result would be misled.
+      // counting the result would be misled. Both sources still exist — a legacy
+      // `scope_type='project'` assignment row AND the synthesized membership one.
       expect(await service.listReadableProjectIds(WORKSPACE, USER, 'portfolio:view')).toEqual([
         'proj-a',
       ]);
@@ -658,21 +686,15 @@ describe('AccessService — cached-permission invalidation', () => {
         { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         {
-          // `listReadableProjectIds` reads project_members directly (no port exists for
-          // the roster). Chainable stub; `projectMemberRows` is what each test controls.
+          // `effectiveAssignments` reads the per-Project access_level rows directly (no port
+          // exists for the roster). Chainable stub; `accessLevelRows` is what each test controls.
           provide: DRIZZLE,
           useValue: {
             select: () => ({
               from: () => ({
-                // effectiveAssignments access_level query (now 1 join) and
-                // listReadableProjectIds (2 joins) — chainable; tests control
-                // `accessLevelRows` / `projectMemberRows`.
                 where: () => Promise.resolve(accessLevelRows),
                 innerJoin: () => ({
                   where: () => Promise.resolve(accessLevelRows),
-                  innerJoin: () => ({
-                    where: () => Promise.resolve(projectMemberRows),
-                  }),
                 }),
               }),
             }),
