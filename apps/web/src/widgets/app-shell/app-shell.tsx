@@ -71,7 +71,11 @@ const NAV_ITEMS: NavItem[] = [
         path: '/timeboxes',
         label: 'Timeboxes',
         featureFlag: 'feature.timeboxes',
-        permission: 'iteration:view',
+        // `timebox:view`, NOT `iteration:view`. §3.2 marks `Plan > Timeboxes` Hidden for
+        // an Editor, but every level holds `iteration:view` (Iteration Status, the Backlog
+        // filter and Team Status all read the iteration list), so gating on it rendered the
+        // entry for a level the BA hides — and its Releases/Milestones modes then 403'd.
+        permission: 'timebox:view',
       },
     ],
   },
@@ -432,7 +436,7 @@ export function AppShell() {
    *  - Otherwise → show as active link
    *
    * Resolved against the SELECTED PROJECT, not the workspace baseline. Every code these items
-   * carry — `work_item:view`, `iteration:view`, `project:view`, `portfolio:view`,
+   * carry — `work_item:view`, `timebox:view`, `project:view`, `portfolio:view`,
    * `capacity:view`, `report:view` — is project-tier, and a normal user holds them through
    * `work.project_members.access_level`, which reaches the client only via
    * `GET /projects/:id/my-permissions`.

@@ -95,9 +95,18 @@ function toIterationActivityDto(a: IterationActivityLog): IterationActivityRespo
 @ApiTags('iterations')
 @Controller('iterations')
 // Iterations are project-owned. Create checks the project in the body via the
-// guard; update/delete/commit/accept check per-project in the service (project
-// known only after loading the iteration). Reads use flat iteration:view.
+// guard; update/delete/commit/accept resolve the project from the iteration id.
 // Guards run in a guaranteed order (JwtAuth → Permission → ProjectPermission).
+//
+// THE READS SPLIT IN TWO, AND THE SPLIT IS THE POINT (§3.2, RBE-09 / P23-08 / P01-11).
+//   • `iteration:view`   — the timebox READ every delivery surface needs: the list, the
+//     `/options` picker feed and `Track > Iteration Status`, which §3.2 grants an Editor as
+//     "View and update in assigned Teams".
+//   • `timebox:view`     — the `Plan > Timeboxes` administration surface: a timebox's own
+//     record and its revision history. §3.2 marks that surface **Hidden** for an Editor.
+// One code used to gate both, so an Editor read the whole timebox inventory on a hidden
+// screen. Do not "simplify" these back to one: whichever code won, one of the two §3.2 rows
+// would be wrong again. See the TIMEBOX_VIEW docblock in db/permissions.catalog.ts.
 @AuthPolicy()
 export class IterationsController {
   constructor(
@@ -106,6 +115,9 @@ export class IterationsController {
   ) {}
 
   @Get()
+  // Stays `iteration:view`. It is the Timeboxes GRID's feed, but it is also the picker feed
+  // for Iteration Status, the Backlog's iteration filter, Team Status and Quality — four
+  // surfaces §3.2 grants an Editor. Gating it on `timebox:view` would 403 all four.
   @RequirePermission('iteration:view', { from: 'query', field: 'projectId' })
   @ApiOperation({ summary: 'List iterations for a project' })
   @ApiPagedResponse(IterationResponseDto)
@@ -170,7 +182,10 @@ export class IterationsController {
   }
 
   @Get(':id')
-  @RequirePermission('iteration:view', { resource: 'iteration', from: 'param', field: 'id' })
+  // The timebox RECORD — goal, theme, notes, planned velocity — read by exactly one screen,
+  // the `Plan > Timeboxes` detail (`IterationDetail`, the only caller of `useIteration`).
+  // §3.2 hides that screen from an Editor, so it takes the administration code.
+  @RequirePermission('timebox:view', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Get iteration details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: IterationResponseDto })
@@ -184,7 +199,9 @@ export class IterationsController {
   }
 
   @Get(':id/activity')
-  @RequirePermission('iteration:view', { resource: 'iteration', from: 'param', field: 'id' })
+  // Who committed, who moved the dates, who changed the goal — the Timeboxes detail's own
+  // Revision History tab, and nothing else calls it. Same gate as the record it belongs to.
+  @RequirePermission('timebox:view', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List the revision history of an iteration' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: IterationActivityResponseDto, isArray: true })
@@ -291,6 +308,8 @@ export class IterationsController {
   // ── Iteration Status read-model (P2.3) ──────────────────────────────────────
 
   @Get(':id/status')
+  // `iteration:view`, NOT `timebox:view`: §3.2 gives an Editor `Iteration Status | View
+  // and update in assigned Teams`. This is the surface the split exists to keep open.
   @RequirePermission('iteration:view', { resource: 'iteration', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Get Iteration Status: metrics + assigned work items' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

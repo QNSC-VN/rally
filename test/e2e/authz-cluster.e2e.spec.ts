@@ -1,19 +1,23 @@
 /**
- * Four authorization boundaries, over REAL HTTP, with the roles that actually hit them.
+ * Five authorization boundaries, over REAL HTTP, with the roles that actually hit them.
  *
- * All four were found by auditing the BA's Phase 0/2/4 SRS against the code, and all four were
+ * All five were found by auditing the BA's Phase 0/2/4 SRS against the code, and all five were
  * invisible in testing for the same reason: the dev principal is a Workspace Admin, whose
  * `workspace:*` grant is the global anchor. That is exactly how the `report:view` bug survived to
  * migration 0092, so these assertions name the ROLE rather than trusting a convenient session.
  */
 import 'reflect-metadata';
+import { randomUUID } from 'node:crypto';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { AuthService, EntraTokenVerifier, type EntraClaims } from '@qnsc-vn/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
-import { NXP_ITER_CURRENT_ID, WORKSPACE_ID } from '../../db/seeds/constants';
+import { NXP_ITER_CURRENT_ID, SEED_PROJECTS, WORKSPACE_ID } from '../../db/seeds/constants';
+import { grantProjectAccess } from './support/flow-harness';
+
+const NXP = SEED_PROJECTS[0].id;
 
 describe('authorization cluster (e2e)', () => {
   let app: NestFastifyApplication;
@@ -101,6 +105,74 @@ describe('authorization cluster (e2e)', () => {
       title: `Authz cluster story ${Date.now()}`,
     });
     expect(response.statusCode, response.body).toBe(201);
+  });
+
+  it('hides Plan > Timeboxes from an Editor while leaving Iteration Status open', async () => {
+    /**
+     * §3.2 marks `Timeboxes / Iterations` **Hidden** for an Editor and `Create, View, Edit, Delete`
+     * for Admin and WA, while the row directly above it grants the Editor `Iteration Status | View
+     * and update in assigned Teams`. `iteration:view` gated BOTH, so an Editor read the whole
+     * timebox inventory — names, dates, states, commitment — on a screen the BA hides
+     * (RBE-09 / P23-08 / P01-11). `timebox:view` is the code that separates them.
+     *
+     * BOTH DIRECTIONS, because either alone passes for the wrong reason. Only the refusal would
+     * also be satisfied by revoking `iteration:view` from the Editor — which 403s Iteration Status,
+     * the Backlog's iteration filter, Team Status and Quality, all of which read `GET /iterations`.
+     * Only the grant is satisfied by the pre-split code.
+     *
+     * `dev@qnsc.dev` is the Editor: the seed gives it `project_members.access_level = 'editor'` on
+     * NXP and NO workspace-scoped tier role (migration 0111/0112 and the comment in `demo.ts`), so
+     * it is a real per-project Editor and not a principal whose baseline masks the check. These are
+     * reads, so nothing here mutates the shared fixture — a spec that needed a GRANT would have to
+     * create its own principal (see `report-authz.e2e.spec.ts`).
+     */
+    const editor = await tokenFor('dev@qnsc.dev');
+
+    for (const url of [
+      `/iterations/${NXP_ITER_CURRENT_ID}`,
+      `/iterations/${NXP_ITER_CURRENT_ID}/activity`,
+    ]) {
+      // 403, not 404: the iteration exists and the caller is identified — it is the PERMISSION
+      // that is missing. A 404 would mean the guard resolved the wrong project from :id.
+      const response = await get(url, editor);
+      expect(response.statusCode, `${url} must be refused to an Editor`).toBe(403);
+    }
+
+    for (const url of [
+      `/iterations?projectId=${NXP}`,
+      `/iterations/options?projectId=${NXP}`,
+      `/iterations/${NXP_ITER_CURRENT_ID}/status`,
+    ]) {
+      const response = await get(url, editor);
+      expect(response.statusCode, `${url} must stay open to an Editor`).toBe(200);
+    }
+
+    /**
+     * And the Admin half of the same two §3.2 rows. On a DEDICATED principal: granting a level to a
+     * shared fixture user is a lasting edit to `work.project_members`, which survives until the
+     * next reset and silently changed what later specs saw — that is how upgrading `dev@qnsc.dev`
+     * once broke `read-scoping.e2e.spec.ts`.
+     */
+    const claims: EntraClaims = {
+      oid: `timebox-admin-${randomUUID()}`,
+      email: `timebox-admin-${randomUUID().slice(0, 8)}@qnsc.vn`,
+      displayName: 'E2E Timebox Admin',
+      externalTenantId: 'dev-tenant',
+      roles: [],
+    };
+    const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
+    const userId = JSON.parse(Buffer.from(login.accessToken.split('.')[1], 'base64url').toString())[
+      'sub'
+    ] as string;
+    await grantProjectAccess(app, userId, NXP, 'admin');
+
+    for (const url of [
+      `/iterations/${NXP_ITER_CURRENT_ID}`,
+      `/iterations/${NXP_ITER_CURRENT_ID}/activity`,
+    ]) {
+      const response = await get(url, login.accessToken);
+      expect(response.statusCode, `${url} must be allowed for a project Admin`).toBe(200);
+    }
   });
 
   it('closes the two workspace reads that were open to every member', async () => {

@@ -112,6 +112,40 @@ describe('per-Project access levels', () => {
       expect(isProjectAccessLevel(other)).toBe(false);
   });
 
+  it('hides the Timeboxes surface from an Editor without taking away the timebox READ', () => {
+    /**
+     * §3.2 marks `Timeboxes / Iterations` **Hidden** for an Editor and `Create, View, Edit,
+     * Delete` for Admin, while the row directly above it grants the Editor `Iteration Status |
+     * View and update in assigned Teams`. `iteration:view` gated BOTH surfaces, so an Editor read
+     * the whole timebox inventory on a screen the BA hides (RBE-09 / P23-08 / P01-11).
+     *
+     * Both directions, because either one alone passes for the wrong reason. Asserting only the
+     * refusal would also pass if `iteration:view` had simply been revoked from the Editor — which
+     * would 403 Iteration Status, the Backlog's iteration filter, Team Status and Quality, all of
+     * which read `GET /iterations`. Asserting only the grant would pass on today's pre-split
+     * catalogue.
+     */
+    expect(ACCESS_LEVEL_PERMISSIONS.editor).not.toContain(PERMISSION.TIMEBOX_VIEW);
+    expect(ACCESS_LEVEL_PERMISSIONS.editor).toContain(PERMISSION.ITERATION_VIEW);
+    expect(ACCESS_LEVEL_PERMISSIONS.admin).toContain(PERMISSION.TIMEBOX_VIEW);
+    expect(ACCESS_LEVEL_PERMISSIONS.admin).toContain(PERMISSION.ITERATION_VIEW);
+
+    /**
+     * A NAMESPACE OF ITS OWN, and these three lines are why that matters.
+     *
+     * `iteration:*` — which a custom role can carry — must NOT reach the administration surface,
+     * because §3.2 hides it independently of iteration CRUD. Its own namespace wildcard does. And
+     * the retired string `iteration:manage` (deleted from every role by migration 0048, when the
+     * coarse create+edit+delete bundle was split) must not grant it either: recycling that code
+     * would let a pre-0048 role or backup silently open a screen nobody granted.
+     */
+    expect(permissionGrants(['iteration:*'], PERMISSION.TIMEBOX_VIEW)).toBe(false);
+    expect(permissionGrants(['timebox:*'], PERMISSION.TIMEBOX_VIEW)).toBe(true);
+    expect(permissionGrants(['iteration:manage'], PERMISSION.TIMEBOX_VIEW)).toBe(false);
+    // …and the Editor's own code does not, which is the whole split.
+    expect(permissionGrants([PERMISSION.ITERATION_VIEW], PERMISSION.TIMEBOX_VIEW)).toBe(false);
+  });
+
   it('gives Admin no permission an Editor lacks unless it is deliberate', () => {
     // Admin ⊇ Editor. The tiers derive from ROLE_PERMISSIONS, so this catches a hand-edit that
     // removes a code from Admin while leaving it with Editor — which would make "promote to Admin"
