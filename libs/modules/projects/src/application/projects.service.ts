@@ -49,7 +49,7 @@ import type {
   ProjectEstimationSettings,
 } from '../domain/project.types';
 import type { ProjectAccessLevel } from '@shared-kernel';
-import { AccessService } from '@modules/access';
+import { AccessService, assertTeamAssignmentForLevel, grantsAllTeams } from '@modules/access';
 import { DEFAULT_WORKFLOW_STATUSES } from '../domain/project.constants';
 import type { Label } from '../domain/label.types';
 import type { WorkItemType } from '../domain/ports/project.repository';
@@ -1014,35 +1014,131 @@ export class ProjectsService {
   }
 
   /**
-   * The Users & Permissions journey's grant — a THIN DELEGATE to the one writer.
+   * The two facts PRJ-08's rule is evaluated against: the project's teams, and the user's teams
+   * among them.
    *
-   * The whole body (existence check, the active-workspace-member rule, the §2.1 Workspace Admin
-   * refusal, the upsert-not-409 rule, both audit events, the cache invalidation) moved to
-   * `AccessService.grantProjectAccess`, unchanged. It had to: §5's closing sentence (AC-9) is that
-   * all three journeys update the same source, and the other two — an invitation's initial access
-   * (§6.4) and team setup (P4-RBAC-010) — live in `WorkspaceModule`, which this module IMPORTS.
-   * They therefore cannot call into here at all, and `forwardRef` does not help because the
-   * failure is a JS module cycle evaluated before Nest sees it.
+   * One helper because BOTH level writes need them — the combined
+   * {@link setProjectAccess} and {@link updateProjectMember} — and the rule itself
+   * (`assertTeamAssignmentForLevel`) takes them as data so it can stay a pure function in the access
+   * domain rather than a second query in each caller.
    *
-   * `onWorkspaceAdmin: 'refuse'` is this journey's answer specifically: an admin used the Users &
-   * Permissions screen to ask for a grant, so a 201 that writes nothing would be a lie. The two
-   * side-effect journeys pass `skip`.
+   * "The project's teams" is the ACTIVE project↔team links, which is exactly the set
+   * `GET /projects/:id/teams` feeds the SPA's Team picker from. Deliberately the same set: a server
+   * that counted a different population than the picker offers would refuse a Team the admin was
+   * just invited to choose.
    */
-  async addProjectMember(
+  private async projectTeamContext(
+    projectId: string,
+    userId: string,
+  ): Promise<{ projectTeamIds: string[]; currentTeamIds: string[] }> {
+    const links = await this.projectTeamRepo.listByProject(projectId);
+    const projectTeamIds = links.map((l) => l.teamId);
+    return {
+      projectTeamIds,
+      currentTeamIds: await this.teamService.listUserTeamIds(userId, projectTeamIds),
+    };
+  }
+
+  /**
+   * Set a user's per-Project access level AND their Teams in that project — ONE write, ONE
+   * transaction (PRJ-08, §5.1/§5.2).
+   *
+   * This is the COMBINED endpoint PRJ-08 needs, and the combination is the point rather than a
+   * convenience. The level and the Teams used to be two requests — grant, then one
+   * `POST /teams/:id/members` per team — so "an Editor must have at least one Team" (§2.2) could not
+   * be refused at grant time without rejecting the first of two calls the screen legitimately makes.
+   * That is why the guard did not exist. With both halves in one body the invariant is decidable
+   * before anything is written, and `assertTeamAssignmentForLevel` in `@modules/access` is the ONE
+   * place it is decided; see its docblock for the two exemptions (an Admin needs no Team; a project
+   * with no Teams still accepts an Editor).
+   *
+   * The level itself still goes through `AccessService.grantProjectAccess`, the ONE writer of a
+   * `work.project_members` grant (§5's closing sentence, AC-9): the existence check, the
+   * active-workspace-member rule, the §2.1 Workspace Admin refusal, the upsert-not-409 rule and both
+   * audit events all live there, and the other two journeys — an invitation's initial access (§6.4)
+   * and a team roster row (P4-RBAC-010) — reach the same writer from `WorkspaceModule`.
+   * `onWorkspaceAdmin: 'refuse'` is this journey's answer specifically: an admin used a permissions
+   * screen to ask for a grant, so a 201 that writes nothing would be a lie.
+   *
+   * ATOMIC, deliberately. The SPA previously wrote the level and then the team rows as separate
+   * requests, and its own comment recorded what that cost: one failed team write left the level
+   * ALREADY landed with no team rows behind it — §2.2's forbidden state, reached through a dropped
+   * connection instead of a click. It mitigated that by ordering the writes (teams first, level last)
+   * so a failure left the PREVIOUS level standing. One transaction removes the need for the
+   * mitigation: if the team write fails, the level did not land.
+   *
+   * `teamIds` OMITTED means "leave the memberships alone", and the rule is then evaluated against the
+   * ones the user already holds — so a bare level change is still refused if it would leave an Editor
+   * with nothing. Absent is not empty here, the same distinction the SPA's draft relies on: `[]`
+   * means "remove them all", which for an Editor is exactly what PRJ-08 refuses.
+   *
+   * A level that `grantsAllTeams` reconciles NOTHING. Existing memberships carry delivery meaning
+   * (assignment, Team Status, capacity) and §5.1's journey shows no Team control for an Admin at all,
+   * so promoting an Editor keeps their rows and a later demotion is lossless. Only `Remove` clears
+   * them (§5.2), through `removeProjectMember`.
+   */
+  async setProjectAccess(
     workspaceId: string,
     projectId: string,
     userId: string,
     actorId: string,
-    accessLevel?: ProjectAccessLevel,
+    input: { accessLevel?: ProjectAccessLevel; teamIds?: string[] },
   ): Promise<ProjectMember> {
-    return this.access.grantProjectAccess({
-      workspaceId,
-      projectId,
-      userId,
-      accessLevel,
-      actorId,
-      onWorkspaceAdmin: 'refuse',
+    // Existence, not writability — access writes stay open on an ARCHIVED project, because revoking
+    // or correcting a grant must never require unarchiving. Same rule as the other member writes.
+    await this.getProject(workspaceId, projectId);
+
+    const { projectTeamIds, currentTeamIds } = await this.projectTeamContext(projectId, userId);
+
+    // A team id from OUTSIDE this project is a mistake, not a request to link it: linking is
+    // `POST /projects/:id/teams`, a `workspace:edit` action, and silently linking here would let a
+    // permissions write reshape the project's delivery model.
+    const requested = input.teamIds ? [...new Set(input.teamIds)] : undefined;
+    if (requested) {
+      const outside = requested.filter((id) => !projectTeamIds.includes(id));
+      if (outside.length > 0) {
+        throw new PreconditionFailedException(
+          'PROJECT_TEAM_NOT_FOUND',
+          'One or more teams are not linked to this project',
+        );
+      }
+    }
+
+    const target = grantsAllTeams(input.accessLevel)
+      ? currentTeamIds
+      : (requested ?? currentTeamIds);
+
+    assertTeamAssignmentForLevel({
+      level: input.accessLevel,
+      teamIds: target,
+      projectHasTeams: projectTeamIds.length > 0,
     });
+
+    const grant = await this.uow.run(async (tx) => {
+      await this.teamService.applyTeamMembershipDiff(tx, {
+        workspaceId,
+        userId,
+        actorId,
+        add: target.filter((id) => !currentTeamIds.includes(id)),
+        remove: currentTeamIds.filter((id) => !target.includes(id)),
+      });
+      return this.access.grantProjectAccess(
+        {
+          workspaceId,
+          projectId,
+          userId,
+          ...(input.accessLevel !== undefined && { accessLevel: input.accessLevel }),
+          actorId,
+          onWorkspaceAdmin: 'refuse',
+        },
+        tx,
+      );
+    });
+    // The caller owns the invalidation when `grantProjectAccess` runs inside a transaction — it
+    // cannot know when that transaction committed. After commit, so a concurrent request cannot
+    // repopulate the cache from pre-commit state.
+    await this.access.invalidateUser(workspaceId, userId);
+    return grant;
   }
 
   async updateProjectMember(
@@ -1058,6 +1154,26 @@ export class ProjectsService {
     const member = await this.projectMemberRepo.findMemberById(memberId);
     if (!member || member.projectId !== projectId) {
       throw new NotFoundException('PROJECT_MEMBER_NOT_FOUND', 'Project member not found');
+    }
+
+    /**
+     * PRJ-08 on the level-ONLY write, against the teams the member already holds.
+     *
+     * This route carries no team list, so there is nothing to combine — but a bare level change can
+     * still reach §2.2's forbidden state, and the SAME named rule decides it (never a second copy
+     * here). {@link setProjectAccess} is where a caller supplies Teams alongside the level; this is
+     * the surface that says "you already have none, so this level is not available yet".
+     */
+    if (input.accessLevel !== undefined) {
+      const { projectTeamIds, currentTeamIds } = await this.projectTeamContext(
+        projectId,
+        member.userId,
+      );
+      assertTeamAssignmentForLevel({
+        level: input.accessLevel,
+        teamIds: currentTeamIds,
+        projectHasTeams: projectTeamIds.length > 0,
+      });
     }
 
     const updated = await this.uow.run(async (tx) => {

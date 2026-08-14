@@ -26,6 +26,7 @@ import {
   ProjectQueryDto,
   CreateLabelDto,
   UpdateLabelDto,
+  SetProjectAccessDto,
   UpdateProjectMemberDto,
   ProjectEstimationSettingsDto,
   UpdateProjectEstimationSettingsDto,
@@ -551,23 +552,35 @@ export class ProjectsController {
     return members.map(toProjectMemberDto);
   }
 
+  /**
+   * The ONE combined access write: level + Teams, in one transaction (PRJ-08).
+   *
+   * Still `POST :id/members` rather than a new route, because it is still the same operation §5.2
+   * names ("Add Existing User or change Access Level") and the underlying grant has always UPSERTED —
+   * so all three §5 journeys can reach one endpoint (AC-9) instead of the level-then-teams pair they
+   * used to issue. `PATCH :id/members/:memberId` survives for the `status` field and for a bare level
+   * change; it enforces the same rule against the teams the member already holds.
+   */
   @Post(':id/members')
   @RequirePermission('project:manage_members', { from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'Add a member to a project' })
+  @ApiOperation({ summary: "Set a user's project access level and Teams" })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: ProjectMemberResponseDto })
   @ApiCommonErrors(400, 401, 404, 409, 422)
   async addProjectMember(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: { userId: string; accessLevel?: ProjectAccessLevel },
+    @Body() dto: SetProjectAccessDto,
   ): Promise<ProjectMemberResponseDto> {
-    const member = await this.projectsService.addProjectMember(
+    const member = await this.projectsService.setProjectAccess(
       user.workspaceId,
       id,
       dto.userId,
       user.sub,
-      dto.accessLevel,
+      {
+        ...(dto.accessLevel !== undefined && { accessLevel: dto.accessLevel }),
+        ...(dto.teamIds !== undefined && { teamIds: dto.teamIds }),
+      },
     );
     return toProjectMemberDto(member);
   }

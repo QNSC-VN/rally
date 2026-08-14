@@ -711,7 +711,7 @@ export interface paths {
     /** List project members */
     get: operations['ProjectsController_listProjectMembers']
     put?: never
-    /** Add a member to a project */
+    /** Set a user's project access level and Teams */
     post: operations['ProjectsController_addProjectMember']
     delete?: never
     options?: never
@@ -3113,6 +3113,13 @@ export interface components {
       avatarUrl: string | null
       /** @description Active team_members rows for Teams linked to this project */
       teamCount: number
+    }
+    SetProjectAccessDto: {
+      /** Format: uuid */
+      userId: string
+      /** @enum {string} */
+      accessLevel?: 'admin' | 'editor'
+      teamIds?: string[]
     }
     UpdateProjectMemberDto: {
       /** @enum {string} */
@@ -7816,7 +7823,11 @@ export interface operations {
       }
       cookie?: never
     }
-    requestBody?: never
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SetProjectAccessDto']
+      }
+    }
     responses: {
       201: {
         headers: {
@@ -7969,6 +7980,9 @@ export interface operations {
         iterationId?: string
         releaseId?: string
         q?: string
+        itemKey?: string
+        title?: string
+        planEstimate?: '' | string
       }
       header?: never
       path?: never
@@ -8094,6 +8108,9 @@ export interface operations {
         iterationId?: string
         releaseId?: string
         q?: string
+        itemKey?: string
+        title?: string
+        planEstimate?: '' | string
       }
       header?: never
       path?: never
@@ -10896,8 +10913,13 @@ export interface operations {
         q?: string
         type?: 'story' | 'task' | 'defect'
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
-        isBlocked?: boolean
-        assigneeId?: string
+        isBlocked?: 'true' | 'false'
+        assigneeId?: string | 'unassigned'
+        itemKey?: string
+        title?: string
+        planEstimate?: '' | string
+        taskEstimate?: '' | string
+        toDo?: '' | string
       }
       header?: never
       path: {

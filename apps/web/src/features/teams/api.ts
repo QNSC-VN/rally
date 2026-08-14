@@ -306,44 +306,58 @@ export function useRemoveTeamMember(teamId?: string) {
   })
 }
 
-// ── Per-Project access level (RBAC migration Phase 7) ─────────────────────────
-
-export function useUpdateProjectAccess(projectId: string) {
-  return useMutation({
-    mutationFn: async ({
-      memberId,
-      accessLevel,
-    }: {
-      memberId: string
-      accessLevel: AccessLevel
-    }) => {
-      const { error, response } = await apiClient.PATCH('/v1/projects/{id}/members/{memberId}', {
-        params: { path: { id: projectId, memberId } },
-        body: { accessLevel },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-    },
-    meta: { invalidates: ['team'] },
-  })
-}
+// ── Per-Project access: level + Teams, ONE write (PRJ-08) ─────────────────────
 
 /**
- * Add an existing workspace user to a Project (creates a project_members row). NOTE:
- * the BE currently ignores `accessLevel` on add (Stage 5 fix) — callers must follow
- * with `useUpdateProjectAccess` to set the level, which is why the Add Existing User
- * flow PATCHes immediately after this resolves.
+ * Set a user's access level for a Project AND the Teams it is scoped to, in one request.
+ *
+ * The ONE level-write path in the SPA, and the ONE endpoint all three §5 journeys use (AC-9: "All
+ * three journeys update the same Project access and Team membership source"). It replaces THREE
+ * separate call shapes that every combined edit used to issue in sequence — `POST
+ * /projects/{id}/members`, `PATCH /projects/{id}/members/{memberId}` and one `POST
+ * /teams/{id}/members` per team — and with them a `useUpdateProjectAccess` hook whose only reason to
+ * exist was that the POST could not carry a level.
+ *
+ * Why one request and not three: §2.2's "an Editor must be assigned to at least one active Team" is
+ * only decidable when the level and the Teams arrive together, so the server could not refuse the
+ * invalid state without rejecting the first of several calls the screen legitimately makes. It can
+ * now, and the write is a single transaction — so a failed team write no longer leaves the level
+ * standing with no teams behind it, the state the Editor Teams dialog had to mitigate by ORDERING its
+ * requests.
+ *
+ * `teamIds` ABSENT means "leave the memberships alone"; `[]` means "remove them all", which for an
+ * Editor is exactly what the server refuses. Do not collapse the two.
+ *
+ * The body used to need an `as never` cast: the handler declared an inline TypeScript type Swagger
+ * could not see, so the generated client typed it `never`. `SetProjectAccessDto` makes it a real
+ * schema, the client has been regenerated, and the cast is gone — which is the point of naming a
+ * removal condition rather than leaving a permanent escape hatch.
  */
-export function useAddProjectMember(projectId: string) {
+export function useSetProjectAccess(projectId: string) {
   return useMutation({
-    mutationFn: async ({ userId, accessLevel }: { userId: string; accessLevel?: AccessLevel }) => {
+    mutationFn: async ({
+      userId,
+      accessLevel,
+      teamIds,
+    }: {
+      userId: string
+      accessLevel?: AccessLevel
+      teamIds?: string[]
+    }) => {
       const { data, error, response } = await apiClient.POST('/v1/projects/{id}/members', {
         params: { path: { id: projectId } },
-        body: { userId, ...(accessLevel ? { accessLevel } : {}) } as never as never,
+        body: {
+          userId,
+          ...(accessLevel ? { accessLevel } : {}),
+          ...(teamIds ? { teamIds } : {}),
+        },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data
     },
-    meta: { invalidates: ['team'] },
+    // 'work-item' as well as 'team': dropping a team membership nulls that member's task
+    // assignments in the team (see `useRemoveTeamMember`), and this write can drop one.
+    meta: { invalidates: ['team', 'work-item'] },
   })
 }
 

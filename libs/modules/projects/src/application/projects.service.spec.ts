@@ -122,6 +122,7 @@ const makeProjectMemberRepo = () => ({
   // §2.1 — no Workspace Admin by default; the RBE-03 tests set this.
   listWorkspaceAdminUserIds: vi.fn().mockResolvedValue([]),
   findMember: vi.fn().mockResolvedValue(null),
+  findMemberById: vi.fn().mockResolvedValue(null),
   updateMember: vi.fn().mockResolvedValue(undefined),
   removeMember: vi.fn().mockResolvedValue(undefined),
 });
@@ -183,7 +184,11 @@ describe('ProjectsService', () => {
   let projectTeamRepo: ReturnType<typeof makeProjectTeamRepo>;
   let projectMemberRepo: ReturnType<typeof makeProjectMemberRepo>;
   let workspaceMemberRepo: ReturnType<typeof makeWorkspaceMemberRepo>;
-  let teamService: { listTeams: ReturnType<typeof vi.fn> };
+  let teamService: {
+    listTeams: ReturnType<typeof vi.fn>;
+    listUserTeamIds: ReturnType<typeof vi.fn>;
+    applyTeamMembershipDiff: ReturnType<typeof vi.fn>;
+  };
   let uow: ReturnType<typeof makeUow>;
   /** Capacity plans that BLOCK an unlink. Empty unless a test is about that refusal. */
   let capacityPlanRows: Array<{ planKey: string; name: string }>;
@@ -202,7 +207,13 @@ describe('ProjectsService', () => {
     projectTeamRepo = makeProjectTeamRepo();
     projectMemberRepo = makeProjectMemberRepo();
     workspaceMemberRepo = makeWorkspaceMemberRepo();
-    teamService = { listTeams: vi.fn().mockResolvedValue([]) };
+    teamService = {
+      listTeams: vi.fn().mockResolvedValue([]),
+      // The user holds NO team by default — the state PRJ-08 refuses for an Editor, so every test
+      // that wants the level accepted has to say which teams it is standing on.
+      listUserTeamIds: vi.fn().mockResolvedValue([]),
+      applyTeamMembershipDiff: vi.fn().mockResolvedValue(undefined),
+    };
     access = makeAccessService();
     uow = makeUow();
 
@@ -501,7 +512,7 @@ describe('ProjectsService', () => {
     });
   });
 
-  // ── addProjectMember ────────────────────────────────────────────────────────
+  // ── setProjectAccess (level + Teams, one write) ──────────────────────────────
 
   /**
    * The rules this block used to assert — the active-workspace-member check, the §2.1 Workspace
@@ -512,31 +523,178 @@ describe('ProjectsService', () => {
    * asserting on `projectMemberRepo` after the writer moved would assert on a repository this
    * method no longer touches.
    *
-   * The delegation and its arguments ARE still worth pinning here, because `onWorkspaceAdmin` is
-   * per-journey: this one refuses (an admin asked for the grant), and the two side-effect journeys
-   * skip. Sending the wrong one from here is a real bug this test would catch.
+   * What IS this method's own is PRJ-08 — "an Editor must be assigned to at least one active Team"
+   * (§2.2, and `mini_rally_usecase_role_mapping.md:81`) — plus the ATOMICITY that makes it
+   * enforceable, and the per-journey `onWorkspaceAdmin: 'refuse'` (an admin asked for the grant; the
+   * two side-effect journeys skip). All four PRJ-08 cases are here, not just the refusal: a test that
+   * only proves the refusal passes just as well when the level has been made unusable.
    */
-  describe('addProjectMember', () => {
-    it('delegates to the one grant writer, refusing a Workspace Admin (§2.1)', async () => {
-      const result = await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin', 'editor');
+  describe('setProjectAccess — PRJ-08: an Editor needs a Team', () => {
+    // Existence, not writability: both level writes call `getProject` first, and access writes stay
+    // open on an ARCHIVED project.
+    beforeEach(() => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+    });
 
-      expect(access.grantProjectAccess).toHaveBeenCalledWith({
-        workspaceId: 'ws-1',
-        projectId: 'proj-1',
-        userId: 'user-2',
+    /** A project WITH a team to assign, which is what makes the rule apply at all. */
+    function projectWithTeam() {
+      projectTeamRepo.listByProject.mockResolvedValue([{ teamId: 'team-1', status: 'active' }]);
+    }
+
+    it('REFUSES an Editor with zero teams', async () => {
+      projectWithTeam();
+
+      await expect(
+        service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+          accessLevel: 'editor',
+          teamIds: [],
+        }),
+      ).rejects.toMatchObject({ code: 'PROJECT_EDITOR_REQUIRES_TEAM' });
+      // Nothing written: the rule is decided before the transaction opens.
+      expect(access.grantProjectAccess).not.toHaveBeenCalled();
+      expect(teamService.applyTeamMembershipDiff).not.toHaveBeenCalled();
+    });
+
+    it('ACCEPTS an Editor with one team, and writes both halves in ONE transaction', async () => {
+      projectWithTeam();
+
+      const result = await service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
         accessLevel: 'editor',
-        actorId: 'admin',
-        onWorkspaceAdmin: 'refuse',
+        teamIds: ['team-1'],
       });
+
+      expect(teamService.applyTeamMembershipDiff).toHaveBeenCalledWith(uow.tx, {
+        workspaceId: 'ws-1',
+        userId: 'user-2',
+        actorId: 'admin',
+        add: ['team-1'],
+        remove: [],
+      });
+      expect(access.grantProjectAccess).toHaveBeenCalledWith(
+        {
+          workspaceId: 'ws-1',
+          projectId: 'proj-1',
+          userId: 'user-2',
+          accessLevel: 'editor',
+          actorId: 'admin',
+          onWorkspaceAdmin: 'refuse',
+        },
+        // The SAME transaction the team rows were written in — see the atomicity test below.
+        uow.tx,
+      );
+      expect(access.invalidateUser).toHaveBeenCalledWith('ws-1', 'user-2');
       expect(result.accessLevel).toBe('editor');
     });
 
-    it('passes an omitted level through as undefined, never a defaulted one', async () => {
-      await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin');
+    it('ACCEPTS an Editor on a project with NO teams at all', async () => {
+      // Decision, stated server-side: otherwise the level is unusable on a new project, and a
+      // Workspace Admin would have to invent a Team before granting anyone delivery access.
+      projectTeamRepo.listByProject.mockResolvedValue([]);
+
+      await service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+        accessLevel: 'editor',
+      });
 
       expect(access.grantProjectAccess).toHaveBeenCalledWith(
-        expect.objectContaining({ accessLevel: undefined }),
+        expect.objectContaining({ accessLevel: 'editor' }),
+        uow.tx,
       );
+    });
+
+    it('ACCEPTS an Admin with zero teams — All Teams is the ABSENCE of a scope', async () => {
+      projectWithTeam();
+
+      await service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+        accessLevel: 'admin',
+      });
+
+      expect(access.grantProjectAccess).toHaveBeenCalledWith(
+        expect.objectContaining({ accessLevel: 'admin' }),
+        uow.tx,
+      );
+    });
+
+    it('leaves an Admin’s existing team rows alone rather than reconciling them', async () => {
+      // §5.1 shows no Team control for an Admin, and the rows carry delivery meaning (assignment,
+      // Team Status, capacity) — so a later demotion is lossless. Only `Remove` clears them.
+      projectWithTeam();
+      teamService.listUserTeamIds.mockResolvedValue(['team-1']);
+
+      await service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+        accessLevel: 'admin',
+        teamIds: [],
+      });
+
+      expect(teamService.applyTeamMembershipDiff).toHaveBeenCalledWith(
+        uow.tx,
+        expect.objectContaining({ add: [], remove: [] }),
+      );
+    });
+
+    it('is ATOMIC: a failed team write means the level did not land', async () => {
+      projectWithTeam();
+      teamService.applyTeamMembershipDiff.mockRejectedValue(new Error('team write exploded'));
+
+      await expect(
+        service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+          accessLevel: 'editor',
+          teamIds: ['team-1'],
+        }),
+      ).rejects.toThrow('team write exploded');
+
+      expect(access.grantProjectAccess).not.toHaveBeenCalled();
+    });
+
+    it('refuses a team that is not linked to this project', async () => {
+      projectWithTeam();
+
+      await expect(
+        service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+          accessLevel: 'editor',
+          teamIds: ['team-elsewhere'],
+        }),
+      ).rejects.toMatchObject({ code: 'PROJECT_TEAM_NOT_FOUND' });
+    });
+
+    it('passes an omitted level through as undefined, never a defaulted one', async () => {
+      await service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {});
+
+      const [input] = access.grantProjectAccess.mock.calls[0] as [Record<string, unknown>];
+      expect('accessLevel' in input).toBe(false);
+    });
+
+    /**
+     * The level-ONLY route (`PATCH :id/members/:memberId`) has no Teams to combine, so it is judged
+     * against the ones the member already holds — and it must reach the SAME rule, not a second copy.
+     */
+    it('refuses a bare PATCH to Editor when the member holds no team', async () => {
+      projectWithTeam();
+      projectMemberRepo.findMemberById.mockResolvedValue({
+        id: 'pm-1',
+        projectId: 'proj-1',
+        userId: 'user-2',
+        accessLevel: null,
+      });
+
+      await expect(
+        service.updateProjectMember('ws-1', 'proj-1', 'pm-1', { accessLevel: 'editor' }, 'admin'),
+      ).rejects.toMatchObject({ code: 'PROJECT_EDITOR_REQUIRES_TEAM' });
+    });
+
+    it('allows a bare PATCH to Editor when the member already holds a team', async () => {
+      projectWithTeam();
+      teamService.listUserTeamIds.mockResolvedValue(['team-1']);
+      projectMemberRepo.findMemberById.mockResolvedValue({
+        id: 'pm-1',
+        projectId: 'proj-1',
+        userId: 'user-2',
+        accessLevel: null,
+      });
+      projectMemberRepo.updateMember.mockResolvedValue({ id: 'pm-1', accessLevel: 'editor' });
+
+      await expect(
+        service.updateProjectMember('ws-1', 'proj-1', 'pm-1', { accessLevel: 'editor' }, 'admin'),
+      ).resolves.toMatchObject({ accessLevel: 'editor' });
     });
   });
 

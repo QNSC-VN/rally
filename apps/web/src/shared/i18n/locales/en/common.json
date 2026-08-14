@@ -18,6 +18,15 @@
     "selectProject": "Select a project to search, or type an item key"
   },
   "filter": "Filter",
+  "manageFilters": {
+    "trigger": "Manage Filters",
+    "heading": "Filter columns",
+    "toggleField": "Filter by {{field}}",
+    "valueLabel": "{{field}} filter value",
+    "any": "Any",
+    "apply": "Apply",
+    "clear": "Clear"
+  },
   "actions": "Actions",
   "confirm": "Confirm",
   "back": "Back",

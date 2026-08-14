@@ -238,6 +238,12 @@ export const ErrorCodes = {
    * member the roster does not list.
    */
   PROJECT_MEMBER_IS_WORKSPACE_ADMIN: 'PROJECT_MEMBER_IS_WORKSPACE_ADMIN',
+  /**
+   * PRJ-08 / §2.2: an Editor is scoped to Teams, so it must hold at least one of the project's.
+   * Refused only where the level and the Teams arrive in ONE write, and never for a project that has
+   * no Team to assign — see `assertTeamAssignmentForLevel` in `@modules/access` for both reasons.
+   */
+  PROJECT_EDITOR_REQUIRES_TEAM: 'PROJECT_EDITOR_REQUIRES_TEAM',
   ASSIGNEE_NOT_WORKSPACE_MEMBER: 'ASSIGNEE_NOT_WORKSPACE_MEMBER',
 
   // Team Status

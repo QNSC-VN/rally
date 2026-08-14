@@ -47,7 +47,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import type { JwtPayload } from '@platform';
 import type { ProjectAccessLevel } from '@shared-kernel';
-import { ProjectsService } from '@modules/projects';
+import { AccessService } from '@modules/access';
 import { PlatformModule } from '@platform';
 import { NotificationsModule } from '@modules/notifications';
 import { AuditModule } from '@modules/audit';
@@ -194,10 +194,17 @@ export const viewerActor = (): JwtPayload => makeActor(VIEWER_ID);
  * `work.project_members.access_level`. Four e2e tests across three files were still calling it and
  * had been red ever since.
  *
- * Goes through `ProjectsService.addProjectMember`, deliberately, rather than writing the row:
+ * Goes through `AccessService.grantProjectAccess`, deliberately, rather than writing the row:
  * that path also invalidates the permission cache for the affected user, so a spec asserting a
  * grant is visible on the NEXT REQUEST is exercising the real invalidation rather than a TTL
  * expiry. It upserts, so repeated runs against the same seeded database stay clean.
+ *
+ * The PRIMITIVE writer, not `ProjectsService.setProjectAccess`, and that is the point: the combined
+ * writer enforces PRJ-08 ("an Editor must have at least one Team", §2.2), and a fixture that wants
+ * `editor` on a SEEDED project — which has teams — is arranging DATA rather than walking the §5
+ * journey that rule belongs to. Routing the harness through the journey would make every such spec
+ * depend on a team roster it never asked about. Use `setProjectAccess` (or the HTTP route) when the
+ * spec is about the rule itself.
  *
  * The level maps onto the same permission sets the retired roles carried —
  * `ACCESS_LEVEL_PERMISSIONS.admin` IS `ROLE_PERMISSIONS[PROJECT_ADMIN]` — so a test that wanted
@@ -209,8 +216,15 @@ export async function grantProjectAccess(
   projectId: string,
   accessLevel: ProjectAccessLevel,
 ): Promise<void> {
-  const projects = app.get(ProjectsService);
-  await projects.addProjectMember(WORKSPACE_ID, projectId, userId, ADMIN_USER_ID, accessLevel);
+  const access = app.get(AccessService);
+  await access.grantProjectAccess({
+    workspaceId: WORKSPACE_ID,
+    projectId,
+    userId,
+    accessLevel,
+    actorId: ADMIN_USER_ID,
+    onWorkspaceAdmin: 'refuse',
+  });
 }
 
 /**

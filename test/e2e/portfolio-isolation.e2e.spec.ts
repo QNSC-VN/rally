@@ -101,11 +101,12 @@ describe('portfolio cross-project isolation (e2e)', () => {
       status: 'active',
     });
     // RBAC migration: project access is now access_level on project_members.
-    const member = await projects.addProjectMember(
+    const member = await projects.setProjectAccess(
       WORKSPACE_ID,
       projectAId,
       scopedUserId,
       admin.sub,
+      {},
     );
     await projects.updateProjectMember(
       WORKSPACE_ID,

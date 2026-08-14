@@ -213,9 +213,17 @@ describe('UserAccessModal Project Access — §5.1 draft, review, confirm', () =
     noWrites()
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm & Save' }))
-    await waitFor(() => expect(mockPATCH).toHaveBeenCalled())
-    expect(mockPATCH.mock.calls[0][0]).toBe('/v1/projects/{id}/members/{memberId}')
-    expect(mockPATCH.mock.calls[0][1]).toMatchObject({ body: { accessLevel: 'editor' } })
+    // ONE request per project, level AND teams together (PRJ-08). It used to be a PATCH for the
+    // level followed by one `POST /v1/teams/{id}/members` per team, which is why §2.2's "an Editor
+    // must have at least one active Team" could not be refused server-side.
+    await waitFor(() => expect(mockPOST).toHaveBeenCalled())
+    expect(mockPOST.mock.calls[0][0]).toBe('/v1/projects/{id}/members')
+    expect(mockPOST.mock.calls[0][1]).toMatchObject({
+      params: { path: { id: 'p-1' } },
+      body: { userId: 'u-1', accessLevel: 'editor', teamIds: ['team-a'] },
+    })
+    expect(mockPOST).toHaveBeenCalledTimes(1)
+    expect(mockPATCH).not.toHaveBeenCalled()
   })
 
   /**

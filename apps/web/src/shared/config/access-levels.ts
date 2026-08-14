@@ -55,9 +55,20 @@ export const accessSelectOptions: { value: string; label: string }[] = ACCESS_LE
   ({ value, label }) => ({ value, label }),
 )
 
+/**
+ * The one level whose authority is measured against TEAMS.
+ *
+ * The FE mirror of `TEAM_ROSTER_ACCESS_LEVEL` in
+ * `libs/modules/access/src/domain/project-access.ts`, and for the same reason it exists there:
+ * derived once, so a surface that has to WRITE that level names it instead of spelling `'editor'`.
+ * The Editor-Teams dialog is exactly that surface — it exists only to satisfy §2.2's Team
+ * requirement, so the level it writes is definitionally this one, not a literal it happens to match.
+ */
+export const TEAM_SCOPED_LEVEL: AccessLevel = 'editor'
+
 /** Only an Editor is team-scoped, so only an Editor's form shows Team selection (SRS §5.2). */
 export function requiresTeamSelection(level: AccessLevel | null | undefined): boolean {
-  return level === 'editor'
+  return level === TEAM_SCOPED_LEVEL
 }
 
 /**
@@ -67,8 +78,10 @@ export function requiresTeamSelection(level: AccessLevel | null | undefined): bo
  * SRS §2.2 ("Admin always receives `All Teams`; individual Team selection is not shown"),
  * §5.1 ("Admin displays `All Teams` automatically") and §5.2 ("Selecting Admin
  * automatically grants `All Teams`") all state it, and it is why an Admin needs no
- * `team_members` row at all: `AccessService.assertTeamScoped` skips team scoping for Admin,
- * so All Teams is the ABSENCE of a scope, never a set of rows some surface has to write.
+ * `team_members` row at all: an Admin covers every team by definition, so All Teams is the
+ * ABSENCE of a scope, never a set of rows some surface has to write. (This used to cite
+ * `AccessService.assertTeamScoped`, which was DELETED by ruling on 2026-08-14 — team scope is not
+ * an authorization boundary. The display rule the sentence states is unaffected.)
  *
  * The exact inverse of {@link requiresTeamSelection} today, and named separately for the
  * reason §2.2 states the two halves separately: one answers "does this level need a Team

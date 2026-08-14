@@ -515,41 +515,127 @@ export class TeamService {
     }
 
     await this.uow.run(async (tx) => {
-      // Unassign this member's tasks IN THIS TEAM before dropping the roster row.
-      // Team Status groups rows by task owner and folds in any user who still owns
-      // a task, so an owned task would keep a removed member visible. Nulling the
-      // assignee drops those tasks to the Unassigned group (SRS P3-TS §8.3:
-      // "unassigned can appear as Unassigned") and the member disappears from every
-      // Team Status / Iteration Status view. Scoped to this team via
-      // coalesce(task team, parent team) so a user on several teams keeps their
-      // tasks elsewhere. Not in the BA SRS (which is silent on removal) — this is
-      // the ruled fix for the fold-in dev gap.
-      const result = await tx.execute(sql`
-        UPDATE work.tasks t
-        SET assignee_id = NULL, updated_by = ${actorId}, updated_at = NOW()
-        WHERE t.assignee_id = ${userId}
-          AND t.deleted_at IS NULL
-          AND COALESCE(
-                t.team_id,
-                (SELECT wi.team_id FROM work.work_items wi WHERE wi.id = t.parent_id),
-                (SELECT it.team_id FROM work.iterations it WHERE it.id = t.iteration_id)
-              ) = ${teamId}
-      `);
-      const unassignedTaskCount = Number(result?.rowCount ?? 0);
+      await this.dropMemberRow(tx, { workspaceId, teamId, userId, actorId, rowId: existing.id });
+    });
+    this.logger.log({ teamId, userId }, 'Team member removed');
+  }
 
-      await this.teamMemberRepo.removeMember(teamId, userId, tx);
+  /**
+   * Drop ONE roster row and the delivery state that hangs off it, inside the caller's transaction.
+   *
+   * Extracted from {@link removeTeamMember} so the combined project-access write
+   * (`ProjectsService.setProjectAccess`) removes a membership by exactly the same rules rather than
+   * by a second `teamMemberRepo.removeMember` call that forgets the task unassignment — the shape of
+   * bug this repo records as "a rule stated as an invariant implemented as one write's hook".
+   */
+  private async dropMemberRow(
+    tx: DrizzleTx,
+    args: { workspaceId: string; teamId: string; userId: string; actorId: string; rowId: string },
+  ): Promise<void> {
+    const { workspaceId, teamId, userId, actorId, rowId } = args;
+    // Unassign this member's tasks IN THIS TEAM before dropping the roster row.
+    // Team Status groups rows by task owner and folds in any user who still owns
+    // a task, so an owned task would keep a removed member visible. Nulling the
+    // assignee drops those tasks to the Unassigned group (SRS P3-TS §8.3:
+    // "unassigned can appear as Unassigned") and the member disappears from every
+    // Team Status / Iteration Status view. Scoped to this team via
+    // coalesce(task team, parent team) so a user on several teams keeps their
+    // tasks elsewhere. Not in the BA SRS (which is silent on removal) — this is
+    // the ruled fix for the fold-in dev gap.
+    const result = await tx.execute(sql`
+      UPDATE work.tasks t
+      SET assignee_id = NULL, updated_by = ${actorId}, updated_at = NOW()
+      WHERE t.assignee_id = ${userId}
+        AND t.deleted_at IS NULL
+        AND COALESCE(
+              t.team_id,
+              (SELECT wi.team_id FROM work.work_items wi WHERE wi.id = t.parent_id),
+              (SELECT it.team_id FROM work.iterations it WHERE it.id = t.iteration_id)
+            ) = ${teamId}
+    `);
+    const unassignedTaskCount = Number(result?.rowCount ?? 0);
+
+    await this.teamMemberRepo.removeMember(teamId, userId, tx);
+    await this.audit.emit(
+      {
+        action: AUDIT_ACTION.TEAM_MEMBER_REMOVED,
+        resourceType: AUDIT_RESOURCE.TEAM_MEMBER,
+        resourceId: rowId,
+        workspaceId,
+        actor: { id: actorId },
+        changes: { before: { teamId, userId }, after: { unassignedTaskCount } },
+      },
+      tx,
+    );
+  }
+
+  /**
+   * The teams AMONG `teamIds` this user is an active member of.
+   *
+   * Narrow on purpose: the caller passes one project's teams, so the answer is the user's team scope
+   * INSIDE that project. `teamMemberRepo.setTeamsForUser` cannot serve this — it reconciles across
+   * the whole workspace, so using it from a project-scoped write would silently drop the user's
+   * memberships in every OTHER project's teams.
+   */
+  async listUserTeamIds(userId: string, teamIds: readonly string[]): Promise<string[]> {
+    const held = await Promise.all(
+      teamIds.map(async (teamId) =>
+        (await this.teamMemberRepo.findMember(teamId, userId)) ? teamId : null,
+      ),
+    );
+    return held.filter((id): id is string => id !== null);
+  }
+
+  /**
+   * Apply an explicit roster diff for ONE user, inside the caller's transaction.
+   *
+   * The tx-joinable half of {@link addTeamMember} / {@link removeTeamMember}, for the one caller that
+   * must write a project access level and its Teams ATOMICALLY
+   * (`ProjectsService.setProjectAccess`): if the team write fails the level must not have landed, and
+   * `UnitOfWork.run` is `db.transaction`, which does not nest — so those two methods' own
+   * transactions could neither be joined nor rolled back with the caller's.
+   *
+   * It deliberately does NOT imply a project access level the way `addTeamMember` does. That
+   * implication reads the user's CURRENT level through `getProjectAccessLevel`
+   * (`teamRosterAccessLevel`), which cannot see this transaction — so on a promotion to Admin it
+   * would resolve the pre-transaction level and write `editor` back over the Admin grant the same
+   * transaction is making. The one caller decides the level itself and passes it to
+   * `grantProjectAccess` in this same transaction, which is a stronger guarantee than the
+   * implication, not a weaker one.
+   *
+   * Adds precede removes so the user is never momentarily left with no team at all — the same
+   * ordering, and for the same reason, as the SPA's Editor Teams dialog.
+   */
+  async applyTeamMembershipDiff(
+    tx: DrizzleTx,
+    args: {
+      workspaceId: string;
+      userId: string;
+      actorId: string;
+      add: readonly string[];
+      remove: readonly string[];
+    },
+  ): Promise<void> {
+    const { workspaceId, userId, actorId, add, remove } = args;
+    for (const teamId of add) {
+      const memberId = uuidv7();
+      await this.teamMemberRepo.addMember(memberId, workspaceId, teamId, userId, tx);
       await this.audit.emit(
         {
-          action: AUDIT_ACTION.TEAM_MEMBER_REMOVED,
+          action: AUDIT_ACTION.TEAM_MEMBER_ADDED,
           resourceType: AUDIT_RESOURCE.TEAM_MEMBER,
-          resourceId: existing.id,
+          resourceId: memberId,
           workspaceId,
           actor: { id: actorId },
-          changes: { before: { teamId, userId }, after: { unassignedTaskCount } },
+          changes: { after: { teamId, userId } },
         },
         tx,
       );
-    });
-    this.logger.log({ teamId, userId }, 'Team member removed');
+    }
+    for (const teamId of remove) {
+      const existing = await this.teamMemberRepo.findMember(teamId, userId);
+      if (!existing) continue;
+      await this.dropMemberRow(tx, { workspaceId, teamId, userId, actorId, rowId: existing.id });
+    }
   }
 }
