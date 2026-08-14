@@ -23,7 +23,9 @@ import { NAV_PERMISSIONS } from '@/shared/config/nav'
  * `02_Roles_Permissions/SRS.md:197`: "A known route without sufficient action permission shows
  * Access Denied." (§198's Not-Found masking is for a specific record id whose existence is
  * sensitive. A top-level surface's absence from the nav already discloses that it exists, so
- * masking buys nothing and costs the reader the reason.)
+ * masking buys nothing and costs the reader the reason. The RECORD routes are gated on their
+ * surface's code for the same reason — see "a RECORD route carries its surface's code" below, which
+ * reverses an earlier assertion in this file that excluded them.)
  *
  * Two halves, both needed
  * -----------------------
@@ -50,10 +52,11 @@ const ROUTER = readFileSync(join(SRC, 'app/router/router.tsx'), 'utf8')
 /**
  * Nav paths gated on a permission but NOT wrapped in the router. **Must stay 0.**
  *
- * Unlike the counting ratchets next door this one has no legitimate residue: all nine surfaces are
- * ordinary page components with nothing to stop them being wrapped. If a future route genuinely
- * cannot be (a redirect-only route, say — `/quality` and `/team-board` have no component at all, and
- * neither is a nav path), name it and its reason HERE rather than raising the number silently.
+ * Unlike the counting ratchets next door this one has no legitimate residue: every surface AND every
+ * record route in the map is an ordinary page component with nothing to stop it being wrapped. If a
+ * future route genuinely cannot be (a redirect-only route, say — `/quality` and `/team-board` have no
+ * component at all, and neither is a nav path), name it and its reason HERE rather than raising the
+ * number silently.
  */
 const MAX_UNGUARDED_NAV_ROUTES = 0
 
@@ -163,10 +166,42 @@ describe('route ↔ nav permission contract', () => {
     expect(NAV_PERMISSIONS.get('/timeboxes')).toBe('timebox:view')
     expect(NAV_PERMISSIONS.get('/releases')).toBe('timebox:view')
     expect(NAV_PERMISSIONS.get('/milestones')).toBe('timebox:view')
-    // The record routes are deliberately NOT aliased: Access Denied on a specific id discloses that
-    // the id exists, and §198 allows Not Found to mask exactly that. Which one they should render is
-    // an open BA question, so nothing here claims an answer.
-    expect(NAV_PERMISSIONS.has('/releases/$releaseId')).toBe(false)
+  })
+
+  it("a RECORD route carries its surface's code — §197, not §198", () => {
+    // This assertion previously said the OPPOSITE, and said so deliberately: the record routes were
+    // left out because §198 lets "a missing item, inaccessible Project or guessed identifier" show
+    // Not Found, and because Access Denied on a SPECIFIC id can disclose that the id exists. That was
+    // wrong about what is being gated. The code here is the SURFACE's, so the guard denies
+    // `/portfolio/<anything>` without ever looking at the id and returns the same answer for a real
+    // one and a fabricated one — it discloses nothing about any id and is decidable without loading
+    // the row. §197 governs ("A known route without sufficient action permission shows Access
+    // Denied") and §199 holds, because the denial renders no record data. Left unaliased these paths
+    // were the bookmark defect with an id on the end: an Editor the nav denies `/portfolio` could
+    // paste a Feature URL and get the record surface.
+    //
+    // §198's case is a different one this guard does not touch: a caller who HOLDS the surface code
+    // but whose record lives in a project they cannot read. The server decides that after loading the
+    // row, and the page's own error state reports it.
+    expect(NAV_PERMISSIONS.get('/portfolio/$itemId')).toBe('portfolio:view')
+    expect(NAV_PERMISSIONS.get('/capacity-planning/$planId')).toBe('capacity:view')
+    expect(NAV_PERMISSIONS.get('/releases/$releaseId')).toBe('timebox:view')
+    expect(NAV_PERMISSIONS.get('/milestones/$milestoneId')).toBe('timebox:view')
+    // A work item's list surface is not one row — Backlog, Iteration Status, Team Status and Quality
+    // all lead here — but all four carry `work_item:view`, so the record's code is unambiguous even
+    // though its alias target had to be chosen. Asserted against the four so that a future divergence
+    // between them fails HERE, where the alias stops being well defined.
+    expect(NAV_PERMISSIONS.get('/item/$itemKey')).toBe('work_item:view')
+    for (const surface of ['/backlog', '/iteration-status', '/team-status', '/quality/defects']) {
+      expect(NAV_PERMISSIONS.get(surface), `${surface} no longer matches /item/$itemKey`).toBe(
+        'work_item:view',
+      )
+    }
+    // `/projects/$projectKey` stays out, and not for §198's reason: `/projects` carries no nav
+    // permission either, so there is no surface code to fold onto the record. The router may not
+    // invent one — the assertion above forbids a literal — so gating that pair needs a nav row.
+    expect(NAV_PERMISSIONS.has('/projects')).toBe(false)
+    expect(NAV_PERMISSIONS.has('/projects/$projectKey')).toBe(false)
   })
 })
 

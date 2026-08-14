@@ -107,6 +107,24 @@ function guardedPage<T extends Record<string, React.ComponentType>>(
 // Both adopters are imported dynamically: everything at this file's top level is in the shell
 // bundle, and each page is deliberately its own chunk. The page's chunk imports the same feature
 // module, so the loader shares it rather than duplicating it.
+//
+// ORDERING vs. THE GUARD — verified, not assumed
+// `RequirePermission` resolves permissions for the SELECTED project, so a record route that both
+// adopts a project AND is guarded has to adopt FIRST: a deep link denied on the permissions of the
+// project the reader happened to have selected before would be a worse defect than the unguarded
+// route it replaces. It does. TanStack Router holds a match at `status: 'pending'` until its loader
+// promise resolves and `Match` SUSPENDS on `loadPromise` while pending, so the component is not
+// rendered at all until the loader has returned (`router-core`'s `runLoader`: `await loaderResult`,
+// then `status: 'success'`). `adoptRecordProject` calls `setProject` synchronously after its own
+// await, so the adopted project is in the store on the guard's FIRST render.
+//
+// The residue, stated because it is not nothing: when the record cannot be resolved the loader
+// swallows the failure and adopts nothing, so the guard decides in the reader's currently selected
+// project. A 403 has already redirected to `/403`; a 404 leaves a caller who cannot open that surface
+// here with Access Denied rather than Not Found for an id that was never resolved — which discloses
+// nothing, since nothing was looked up. `/portfolio/$itemId`, `/capacity-planning/$planId` and
+// `/milestones/$milestoneId` have no adopter at all, so their guard and their page read the one
+// selected project and are incapable of disagreeing.
 
 // ── Public routes ─────────────────────────────────────────────────────────────
 const loginRoute = createRoute({
@@ -187,7 +205,11 @@ const workItemDetailRoute = createRoute({
     import('@/features/work-items/deep-link').then((m) =>
       m.adoptWorkItemProject(context.queryClient, params.itemKey),
     ),
-  component: lazyPage(
+  // Gated on the code its LIST surfaces carry (`work_item:view`), which the alias table folds onto
+  // this path — see there for why a surface code on a record route is §197 and not §198. The loader
+  // above has already adopted the item's project by the time this renders.
+  component: guardedPage(
+    '/item/$itemKey',
     () => import('@/pages/work-item/work-item-detail-page'),
     'WorkItemDetailPage',
   ),
@@ -237,7 +259,13 @@ const releaseDetailRoute = createRoute({
     import('@/features/releases/deep-link').then((m) =>
       m.adoptReleaseProject(context.queryClient, params.releaseId),
     ),
-  component: lazyPage(() => import('@/pages/releases/releases-detail-page'), 'ReleaseDetailPage'),
+  // A record of the Timeboxes surface, so it carries `timebox:view` like the three list modes do.
+  // Unguarded, a caller the nav denies `/timeboxes` to could paste a release URL and get the record.
+  component: guardedPage(
+    '/releases/$releaseId',
+    () => import('@/pages/releases/releases-detail-page'),
+    'ReleaseDetailPage',
+  ),
 })
 
 const milestonesRoute = createRoute({
@@ -256,7 +284,9 @@ const milestoneDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/milestones/$milestoneId',
   staticData: { breadcrumb: 'Milestone Detail' },
-  component: lazyPage(
+  // Timeboxes again: §3.2:83 hides "Releases and Milestones" in the same row as Timeboxes.
+  component: guardedPage(
+    '/milestones/$milestoneId',
     () => import('@/pages/milestones/milestones-detail-page'),
     'MilestoneDetailPage',
   ),
@@ -325,7 +355,11 @@ const portfolioDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/portfolio/$itemId',
   staticData: { breadcrumb: 'Portfolio Item' },
-  component: lazyPage(
+  // `portfolio:view` — the LEAF's code, not the Portfolio menu trigger's `project:view`, which every
+  // access level holds. §5 makes Portfolio Items an admin surface, so an Editor pasting a Feature URL
+  // is exactly the reader this denies.
+  component: guardedPage(
+    '/portfolio/$itemId',
     () => import('@/pages/portfolio/portfolio-detail-page'),
     'PortfolioDetailPage',
   ),
@@ -346,7 +380,10 @@ const capacityPlanDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/capacity-planning/$planId',
   staticData: { breadcrumb: 'Capacity Plan' },
-  component: lazyPage(
+  // `capacity:view`. P5-CAP-AC-010: "Editor/No Access do not access Capacity Planning" — a plan URL
+  // must not be the way around that.
+  component: guardedPage(
+    '/capacity-planning/$planId',
     () => import('@/pages/capacity-planning/capacity-plan-detail-page'),
     'CapacityPlanDetailPage',
   ),

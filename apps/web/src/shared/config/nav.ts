@@ -12,7 +12,8 @@
  * rather than "you cannot see this". Phase 4 `02_Roles_Permissions/SRS.md:197`: "A known route
  * without sufficient action permission shows Access Denied." (§198's Not-Found masking is for a
  * specific record id whose existence is sensitive; a top-level surface's absence from the nav
- * already discloses nothing, so Access Denied is the correct state here.)
+ * already discloses nothing, so Access Denied is the correct state here. The RECORD routes are gated
+ * on their surface's code too, and why that is not §198's case is argued at {@link NAV_PATH_ALIASES}.)
  *
  * It lives in `shared/config` rather than in the widget so that BOTH readers can have it: the shell
  * is a `widgets/` module and the router is `app/`, and while `app → widgets` is a legal FSD edge, a
@@ -185,11 +186,28 @@ export const NAV_ITEMS: NavItem[] = [
  * to close. §3.2:83 puts "Releases and Milestones" Hidden for an Editor in the same row as
  * Timeboxes, so one code covers all three.
  *
- * DELIBERATELY NOT HERE: the record routes `/releases/$releaseId`, `/milestones/$milestoneId`,
- * `/portfolio/$itemId`, `/capacity-planning/$planId`. Those are §198's case — "a missing item,
- * inaccessible Project or guessed identifier may show Not Found to avoid metadata disclosure" — and
- * Access Denied on a specific id discloses that the id EXISTS. Which of the two those should render
- * is a BA read, not a wrapper, and it is open.
+ * THE RECORD ROUTES BELONG HERE, AND LEAVING THEM OUT WAS WRONG
+ * -------------------------------------------------------------
+ * `/portfolio/$itemId`, `/capacity-planning/$planId`, `/releases/$releaseId`,
+ * `/milestones/$milestoneId` and `/item/$itemKey` were deliberately excluded, with a spec assertion
+ * recording the exclusion, on the grounds that §198 lets "a missing item, inaccessible Project or
+ * guessed identifier" show Not Found and that Access Denied on a SPECIFIC id discloses that the id
+ * EXISTS. That reasoning does not survive contact with what is actually being gated here, which is a
+ * SURFACE code and nothing narrower: the guard denies `/portfolio/<anything>` to a caller without
+ * `portfolio:view` and gives the SAME answer for a real id and for a fabricated one, because it never
+ * looks at the id — the decision is reached without loading the row. So it discloses nothing about
+ * any id, §197 governs it ("A known route without sufficient action permission shows Access Denied"),
+ * and §199 is satisfied because the denial renders no record data at all. Unguarded, these paths were
+ * the whole bookmark defect with an id on the end: a caller the nav denies `/portfolio` to could
+ * paste a Feature URL and get the record surface.
+ *
+ * §198's case is a DIFFERENT one, and this guard neither decides it nor may pretend to: a caller who
+ * HOLDS the surface code but whose target record lives in a project they cannot read. Only the server
+ * can answer that, after loading the row, and the page's own error state is what reports it.
+ *
+ * NOT HERE: `/projects/$projectKey`. Its own list surface `/projects` carries no nav permission
+ * either (Manage Projects is not a nav row), so there is no surface code to fold onto it — and the
+ * router is not allowed to invent one. Gating that pair needs a nav row or a BA read, not an alias.
  *
  * Keep this table SMALL. An entry here is a claim that two paths are one surface; anything that is
  * genuinely its own surface belongs in the nav table with its own code.
@@ -197,6 +215,18 @@ export const NAV_ITEMS: NavItem[] = [
 const NAV_PATH_ALIASES: Record<string, string> = {
   '/releases': '/timeboxes',
   '/milestones': '/timeboxes',
+  // Record routes. Each folds onto the LIST surface it is the record of, so the code is the surface's
+  // own and this table still states no code of its own.
+  '/releases/$releaseId': '/timeboxes',
+  '/milestones/$milestoneId': '/timeboxes',
+  '/portfolio/$itemId': '/portfolio',
+  '/capacity-planning/$planId': '/capacity-planning',
+  // The one record whose surface is not a single row: a Story opens from Backlog and Iteration
+  // Status, a Defect from Quality, a Task from Team Status. All FOUR carry `work_item:view`, so the
+  // choice of target cannot change the code — `/backlog` is named because it is the primary one. If
+  // those four ever gate on different codes this entry stops being well defined and must be revisited
+  // rather than re-pointed.
+  '/item/$itemKey': '/backlog',
 }
 
 export const NAV_PERMISSIONS: ReadonlyMap<string, string> = (() => {
