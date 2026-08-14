@@ -191,6 +191,41 @@ export function useProjectTeams(projectId: string | undefined) {
   })
 }
 
+/**
+ * The ASSIGNEE feed for a project — id, name, email, avatar, and nothing else.
+ *
+ * Use this for owner pickers and for resolving an owner's NAME. {@link useProjectMembers} reads the
+ * administrative roster, which is `workspace:view`-equivalent (Workspace Admin or Project Admin only,
+ * §3.1:71) because it carries `accessLevel`, `status` and `teamCount`.
+ *
+ * That mattered more than it looks: the roster was ALSO the only owner feed, so gating it left every
+ * Editor's Backlog and Iteration Status with `members = []` — and both surfaces derive the displayed
+ * owner name from that list, so every owned item read `Unassigned` and the owner could not be changed,
+ * while §3.2:79 grants an Editor exactly that write.
+ */
+export function useProjectMemberOptions(projectId: string | undefined) {
+  return useQuery({
+    queryKey: [...teamKeys.projectMembers(projectId ?? ''), 'options'] as const,
+    queryFn: async () => {
+      if (!projectId) return []
+      const { data, error, response } = await apiClient.GET('/v1/projects/{id}/member-options', {
+        params: { path: { id: projectId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data ?? []
+    },
+    enabled: !!projectId,
+    staleTime: 60_000,
+  })
+}
+
+/**
+ * The ADMINISTRATIVE roster: access level, status and team count per member.
+ *
+ * Workspace Admin / Project Admin only (§3.1:71). For an owner picker or an owner NAME, use
+ * {@link useProjectMemberOptions} — this one 403s for an Editor, and a caller that defaults the error
+ * to `[]` will render every owned item as unassigned.
+ */
 export function useProjectMembers(projectId: string | undefined) {
   return useQuery({
     queryKey: teamKeys.projectMembers(projectId ?? ''),

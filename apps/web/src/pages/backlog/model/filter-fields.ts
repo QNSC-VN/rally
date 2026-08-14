@@ -35,6 +35,7 @@ import {
   SCHEDULE_STATE_VALUES,
 } from '@/entities/work-item/model/types'
 import { COLUMN_LABELS } from './columns'
+import type { OwnerSelectMember } from '@/shared/ui/owner-cell'
 
 /** Server query parameter names — see `WorkItemQuerySchema`. */
 export type BacklogFilterKey =
@@ -64,7 +65,7 @@ export function toBacklogQuery(
 }
 
 export interface BacklogFilterSources {
-  members: Array<{ userId: string; displayName?: string; email?: string }>
+  members: OwnerSelectMember[]
   releases: Array<{ id: string; name: string; releaseKey?: string | null }>
 }
 

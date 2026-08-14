@@ -31,7 +31,7 @@ import {
   type IterationStatusItem,
 } from '@/features/iterations/api'
 import { useUpdateAnyWorkItem, useRankAnyWorkItem } from '@/features/work-items/api'
-import { useProjectMembers } from '@/features/teams/api'
+import { useProjectMemberOptions } from '@/features/teams/api'
 import { useMilestones } from '@/features/milestones/api'
 import { StatusRow } from './ui/status-row'
 import { AddItemModal } from './ui/add-item-modal'
@@ -59,7 +59,9 @@ export function IterationStatusPage() {
   const canCreate = can('work_item:create')
 
   const { data: iterations = [], isLoading: iterationsLoading } = useIterations(projectId)
-  const { data: members = [] } = useProjectMembers(projectId)
+  // The assignee feed, NOT the administrative roster: that one is Admin-only (§3.1:71), and
+  // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
+  const { data: members = [] } = useProjectMemberOptions(projectId)
   const { data: milestoneOptions = [] } = useMilestones(projectId)
 
   const memberMap = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])

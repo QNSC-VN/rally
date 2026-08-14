@@ -103,6 +103,16 @@ beforeEach(() => {
     if (path === '/v1/iterations/{id}/status') {
       return Promise.resolve({ data: STATUS, error: undefined, response: { status: 200 } })
     }
+    // The assignee feed is an ARRAY, unlike the paged shapes below — and it is a DIFFERENT route from
+    // the administrative roster (`/v1/projects/{id}/members`), which is Admin-only (§3.1:71). Without
+    // this branch the catch-all's `{ data: [] }` object reaches `members.map` and the page throws.
+    if (path === '/v1/projects/{id}/member-options') {
+      return Promise.resolve({
+        data: [{ userId: 'u-1', displayName: 'Dev One', email: 'dev@qnsc.dev', avatarUrl: null }],
+        error: undefined,
+        response: { status: 200 },
+      })
+    }
     // /v1/iterations/options, /v1/milestones and anything else the chrome asks for.
     return Promise.resolve({
       data: { data: [] },

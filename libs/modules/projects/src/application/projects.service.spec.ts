@@ -723,6 +723,77 @@ describe('ProjectsService', () => {
   });
 
   /**
+   * The assignee feed, and why it is a SEPARATE method from the roster.
+   *
+   * Gating the roster to Workspace/Project Admin (§3.1:71) was correct — and it broke every Editor's
+   * Backlog and Iteration Status, because that roster was ALSO the only owner-picker feed. Both surfaces
+   * derive the displayed owner NAME from it, so with the request refused every owned item read
+   * `Unassigned` and §3.2:79's owner write was unreachable. Silent wrong data on the two screens an
+   * Editor lives in, caused by a permission fix. No register row ever named it.
+   *
+   * So these tests pin the two properties that keep the fix honest: the feed carries NONE of the
+   * administrative fields the roster is gated for, and it still excludes Workspace Admins (§2.1, and
+   * `AC-16`'s "Workspace Admin is not an assignable owner" — one filter serving both).
+   */
+  describe('the assignee feed is separate from the roster (§3.1:71 / §3.2:79)', () => {
+    beforeEach(() => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      projectMemberRepo.listWorkspaceAdminUserIds.mockResolvedValue(['wa-1']);
+      projectMemberRepo.listByProject.mockResolvedValue([
+        {
+          id: 'pm-1',
+          userId: 'wa-1',
+          accessLevel: 'admin',
+          status: 'active',
+          displayName: 'Admin',
+        },
+        {
+          id: 'pm-2',
+          userId: 'user-2',
+          accessLevel: 'editor',
+          status: 'active',
+          displayName: 'Dev Two',
+          email: 'dev2@qnsc.dev',
+          avatarUrl: null,
+          teamCount: 3,
+        },
+        { id: 'pm-3', userId: 'user-3', accessLevel: 'editor', status: 'removed' },
+      ]);
+    });
+
+    it('carries the picker fields and NONE of the administrative ones', async () => {
+      const options = await service.listProjectMemberOptions('ws-1', 'proj-1');
+
+      expect(options).toEqual([
+        {
+          userId: 'user-2',
+          displayName: 'Dev Two',
+          email: 'dev2@qnsc.dev',
+          avatarUrl: null,
+        },
+      ]);
+      // The fields §3.1 restricts the roster FOR must not ride along on the feed every participant
+      // reads — asserted by key, so a field added to the roster shape later cannot join it silently.
+      expect(Object.keys(options[0])).not.toContain('accessLevel');
+      expect(Object.keys(options[0])).not.toContain('status');
+      expect(Object.keys(options[0])).not.toContain('teamCount');
+    });
+
+    it('excludes Workspace Admins and inactive rows', async () => {
+      const options = await service.listProjectMemberOptions('ws-1', 'proj-1');
+
+      expect(options.map((o) => o.userId)).toEqual(['user-2']);
+    });
+
+    it('takes NO actor and applies no roster gate — the route carries project:view', async () => {
+      // The roster refuses an Editor by design. If this method grew the same check, the defect would
+      // simply move here, so its signature deliberately has nowhere to put an actor.
+      await expect(service.listProjectMemberOptions('ws-1', 'proj-1')).resolves.toHaveLength(1);
+      expect(access.getProjectAccessLevel).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
    * PRJ-03. "Archived Projects are read-only regardless of access level" (PRJ-FR-010) held in four
    * other modules and in NONE of this one's own writes, though `assertProjectWritable` is a
    * sibling method in the same class. Reads stay open — archived means read-only, not invisible —

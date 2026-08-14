@@ -87,7 +87,19 @@ const openChooser = () => fireEvent.click(screen.getByRole('button', { name: /Ma
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockGET.mockResolvedValue(EMPTY_PAGE)
+  // Path-aware, because the assignee feed is an ARRAY while every other route here is paged. A single
+  // `mockResolvedValue` handed `{ data: { data: [] } }` to `members.map` and the page threw. The feed
+  // also has to CONTAIN the member the Owner filter selects, since its options are built from it.
+  mockGET.mockImplementation((path: string) => {
+    if (path === '/v1/projects/{id}/member-options') {
+      return Promise.resolve({
+        data: [{ userId: 'u-1', displayName: 'Dev One', email: 'dev@qnsc.dev', avatarUrl: null }],
+        error: undefined,
+        response: { status: 200 },
+      })
+    }
+    return Promise.resolve(EMPTY_PAGE)
+  })
 })
 
 describe('Backlog Manage Filters', () => {
@@ -128,6 +140,11 @@ describe('Backlog Manage Filters', () => {
     await waitFor(() => expect(mockGET).toHaveBeenCalled())
 
     openBanner()
+    // The Owner control's options come from the assignee FEED, which is its own query — so wait for the
+    // option to exist before selecting it. `TS-014` above happens to be immune because opening the
+    // chooser and ticking a checkbox re-renders after that query lands; relying on that would make this
+    // test pass for an incidental reason.
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Dev One' })).toBeInTheDocument())
     fireEvent.change(screen.getByLabelText('Owner filter value'), { target: { value: 'u-1' } })
     fireEvent.click(screen.getAllByRole('button', { name: 'Apply' })[0])
     await waitFor(() => expect(lastBacklogQuery().assigneeId).toBe('u-1'))

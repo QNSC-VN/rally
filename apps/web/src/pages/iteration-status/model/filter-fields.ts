@@ -36,6 +36,7 @@ import {
 import type { IterationStatusFilters } from '@/features/iterations/api'
 import { SCHEDULE_STATE_LABEL, SCHEDULE_STATE_VALUES } from '@/entities/work-item/model/types'
 import { HEADER_META, type ColKey } from './columns'
+import type { OwnerSelectMember } from '@/shared/ui/owner-cell'
 
 /** Server query parameter names — see `IterationStatusQuerySchema`. */
 export type IterationFilterKey =
@@ -57,7 +58,7 @@ const COLUMN_LABEL = new Map<ColKey, string>(HEADER_META.map((c) => [c.key, c.la
 const label = (key: ColKey): string => COLUMN_LABEL.get(key) ?? key
 
 export interface IterationFilterSources {
-  members: Array<{ userId: string; displayName?: string }>
+  members: OwnerSelectMember[]
 }
 
 export function useIterationFilterFields({

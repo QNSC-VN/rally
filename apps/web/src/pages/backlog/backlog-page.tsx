@@ -25,7 +25,7 @@ import { RowGutter } from '@/shared/ui/row-gutter'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
-import { OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
 import { RankEdgeActions } from '@/features/work-items/ui/rank-edge-actions'
 import { BulkScheduleActions } from '@/features/work-items/ui/bulk-schedule-bar'
@@ -41,7 +41,7 @@ import {
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
-import { useProjectMembers } from '@/features/teams/api'
+import { useProjectMemberOptions } from '@/features/teams/api'
 import { useIterationOptions, useIterations } from '@/features/iterations/api'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
@@ -110,7 +110,9 @@ export function BacklogPage() {
   )
 
   // Reference lists for the P2.1 filters, inline selects and id→name lookups.
-  const { data: members = [] } = useProjectMembers(projectId)
+  // The assignee feed, NOT the administrative roster: that one is Admin-only (§3.1:71), and
+  // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
+  const { data: members = [] } = useProjectMemberOptions(projectId)
   const { data: releases = [] } = useReleases(projectId)
   // Assignable choices only (planning/committed) — used to populate the
   // inline-edit <option> list and the filter dropdown.
@@ -538,7 +540,8 @@ interface BacklogRowProps {
   onOpen: () => void
   colStyles: Record<ColumnKey, React.CSSProperties>
   canEdit: boolean
-  members: Array<{ userId: string; displayName?: string; email?: string }>
+  /** The assignee feed (`useProjectMemberOptions`) — the shared picker shape, which permits null. */
+  members: OwnerSelectMember[]
   releases: Array<{ id: string; name: string; releaseKey?: string | null }>
   iterations: Array<{ id: string; name: string; iterationKey?: string | null }>
   allIterations: Array<{ id: string; name: string; iterationKey?: string | null }>

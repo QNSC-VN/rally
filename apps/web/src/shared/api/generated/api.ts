@@ -719,6 +719,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/projects/{id}/member-options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List this project's assignable owners (id, name, email, avatar) */
+    get: operations['ProjectsController_listProjectMemberOptions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/projects/{id}/members/{memberId}': {
     parameters: {
       query?: never
@@ -3113,6 +3130,13 @@ export interface components {
       avatarUrl: string | null
       /** @description Active team_members rows for Teams linked to this project */
       teamCount: number
+    }
+    ProjectMemberOptionResponseDto: {
+      /** Format: uuid */
+      userId: string
+      displayName: string | null
+      email: string | null
+      avatarUrl: string | null
     }
     SetProjectAccessDto: {
       /** Format: uuid */
@@ -7867,6 +7891,48 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ProjectsController_listProjectMemberOptions: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ProjectMemberOptionResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }

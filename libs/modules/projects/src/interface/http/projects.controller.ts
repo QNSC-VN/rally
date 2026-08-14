@@ -38,6 +38,7 @@ import {
   WorkflowTransitionResponseDto,
   LabelResponseDto,
   ProjectMemberResponseDto,
+  ProjectMemberOptionResponseDto,
 } from './dto/project-response.dto';
 import type {
   Project,
@@ -550,6 +551,29 @@ export class ProjectsController {
   ): Promise<ProjectMemberResponseDto[]> {
     const members = await this.projectsService.listProjectMembers(user.workspaceId, id, user.sub);
     return members.map(toProjectMemberDto);
+  }
+
+  @Get(':id/member-options')
+  /**
+   * The assignee feed, for anyone who can READ the project — `project:view`, scoped to the path id.
+   *
+   * `GET :id/members` is the administrative roster and is Workspace-Admin/Project-Admin only (§3.1:71).
+   * It was also the only owner-picker feed, so gating it left every Editor's Backlog and Iteration
+   * Status with an empty member list — and both surfaces derive the displayed owner NAME from that
+   * list, so every owned item read `Unassigned` and §3.2:79's owner write was unreachable. The check
+   * was correct; the feed was the defect. Same split, and same reasoning, as
+   * `GET /workspaces/:id/member-options`.
+   */
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
+  @ApiOperation({ summary: "List this project's assignable owners (id, name, email, avatar)" })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ProjectMemberOptionResponseDto, isArray: true })
+  @ApiCommonErrors(401, 403, 404)
+  async listProjectMemberOptions(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ProjectMemberOptionResponseDto[]> {
+    return this.projectsService.listProjectMemberOptions(user.workspaceId, id);
   }
 
   /**

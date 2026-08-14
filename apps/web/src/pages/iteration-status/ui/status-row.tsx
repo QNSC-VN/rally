@@ -31,7 +31,7 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
-import { OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { MilestoneSelectCell, TasksProgress } from './status-cells'
 import { useWorkItemFieldCommit } from '../model/use-work-item-field-commit'
@@ -67,7 +67,8 @@ export function StatusRow({
 }: {
   item: IterationStatusItem
   rank: number
-  memberMap: Map<string, import('@/features/teams/api').ProjectMember>
+  /** Keyed assignee feed — the shared picker shape (`OwnerSelectMember`), which permits null. */
+  memberMap: Map<string, OwnerSelectMember>
   milestoneOptions: readonly { id: string; name: string; milestoneKey?: string | null }[]
   iterationOptions: readonly { id: string; name: string; iterationKey?: string | null }[]
   selectedIterationId: string
@@ -564,7 +565,8 @@ function ChildTaskRow({
 }: {
   task: WorkItem
   taskOwner: string
-  membersList: import('@/features/teams/api').ProjectMember[]
+  /** The assignee feed as a list — the shared picker shape, which permits null. */
+  membersList: OwnerSelectMember[]
   canEdit: boolean
   colStyles: Record<string, CSSProperties>
   onOpen: () => void

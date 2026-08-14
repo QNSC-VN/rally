@@ -1014,6 +1014,51 @@ export class ProjectsService {
   }
 
   /**
+   * The ASSIGNEE feed — who this project's work can be owned by.
+   *
+   * Split out from {@link listProjectMembers} because that roster is `Workspace Admin or Project Admin`
+   * only (§3.1:71), and it was ALSO the only owner-picker feed. So closing that hole (correctly) left
+   * every Editor's Backlog and Iteration Status with an empty member list — and both surfaces derive
+   * the displayed owner NAME from that same list, so every owned item read `Unassigned` and no owner
+   * could be set. §3.2:79 grants an Editor exactly that write. Silent wrong data on the two screens an
+   * Editor lives in, caused by a permission fix: the check was right and the FEED was the defect.
+   *
+   * Carries only what a picker needs — id, name, email, avatar. None of `accessLevel`, `status`,
+   * `teamCount` or the timestamps, which are the administrative facts §3.1 restricts. A separate
+   * projection rather than a `.pick()` of the roster type, for the same reason the workspace-level
+   * split (`GET /workspaces/:id/member-options`) is a separate query: a field added to the admin shape
+   * later must not silently join the feed every participant reads.
+   *
+   * Workspace Admins stay excluded, which is the §2.1 rule the roster already applies AND what
+   * `AC-16` wants ("No Access and Workspace Admin are not assignable owners") — one filter, both
+   * requirements. No actor gate here: the route carries `project:view` scoped to the path id, so
+   * anyone who reaches this can already see the project.
+   */
+  async listProjectMemberOptions(
+    workspaceId: string,
+    projectId: string,
+  ): Promise<
+    Array<{
+      userId: string;
+      displayName: string | null;
+      email: string | null;
+      avatarUrl: string | null;
+    }>
+  > {
+    await this.getProject(workspaceId, projectId);
+    const admins = await this.workspaceAdminIds(workspaceId);
+    const members = await this.projectMemberRepo.listByProject(projectId);
+    return members
+      .filter((m) => !admins.has(m.userId) && m.status === 'active')
+      .map((m) => ({
+        userId: m.userId,
+        displayName: m.displayName ?? null,
+        email: m.email ?? null,
+        avatarUrl: m.avatarUrl ?? null,
+      }));
+  }
+
+  /**
    * The two facts PRJ-08's rule is evaluated against: the project's teams, and the user's teams
    * among them.
    *
