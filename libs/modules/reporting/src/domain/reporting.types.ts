@@ -111,7 +111,14 @@ export interface TeamCapacityReport {
 // ── Release Tracking ────────────────────────────────────────────────────────
 
 export interface ReleaseTrackingRow {
-  /** Sequential inside the active bucket (RT-AC-04) — NOT the stored lexorank. */
+  /**
+   * The row's 1-based position in the active bucket's own rank order (RT-AC-04) — NOT the stored
+   * lexorank, and NOT its position in the current view.
+   *
+   * Assigned before `q` and `sort` are applied, because §247 numbers rows "inside the active
+   * bucket": under `ID ▼` these therefore appear out of sequence (which is what a rank column is
+   * for), and a search shows each match's real position rather than renumbering it 1.
+   */
   rank: number;
   id: string;
   itemKey: string;
@@ -154,11 +161,12 @@ export interface ReleaseTrackingReport {
   /**
    * Which slice of the active bucket `rows` is.
    *
-   * `total` is the active bucket's whole-population size, so it always equals
-   * `summary[bucket]`; it is restated here so a client rendering a pagination footer does not
-   * have to know that identity. Classification, `summary` and `totals` are all measured over
-   * the full population before this slice is taken — paging changes which rows travel, never
-   * a number.
+   * `total` is how many rows of the active bucket MATCH the request — the bucket's whole
+   * population, and so exactly `summary[bucket]`, whenever no `q` is given. It is separate from
+   * `summary` precisely because a search narrows what is paged through without touching the three
+   * bucket counts §5.1 keeps visible. Classification, `summary` and `totals` are all measured over
+   * the full population before search, sort or this slice — those change which rows travel and in
+   * what order, never a number above them.
    */
   page: { page: number; pageSize: number; total: number; pageCount: number };
   totals: { planned: number; accepted: number; preliminary: number };

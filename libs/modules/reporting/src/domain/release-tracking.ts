@@ -67,13 +67,37 @@ export interface ReleaseFeature {
   preliminaryCount: number;
 }
 
-/** Does this row's Team ownership fall inside the selected scope? */
+/**
+ * Does this row's Team ownership fall inside the selected scope?
+ *
+ * A row with NO Team is TEAM-AGNOSTIC and therefore inside EVERY scope — the same rule
+ * `teamOrSharedTimebox` applies to `iterations.team_id`: the timebox says which window, the
+ * work says whose it is, and a row that names no team makes no statement to exclude it on.
+ * `portfolio_items.team_id` and `work_items.team_id` are both nullable and `ck_portfolio_epic_shape`
+ * constrains only Epics, so a Feature with a Release and no Team is an ordinary row (`FE-2` in the
+ * demo seed is one).
+ *
+ * Without this a team-less Feature failed RT-BR-01's admission test and, because its own
+ * `releaseId` equals the selected Release, could not be Derived either (RT-BR-02 requires
+ * `releaseId != R`) — so it landed in NO bucket under a selected Team while its children still
+ * fed Planned, Accepted and the Burnup, which are keyed on the LEAF's own team. The reader could
+ * not reconcile the totals against any of the three buckets.
+ *
+ * Applied to Features and to leaves alike, deliberately: eligibility has to be counted in the
+ * same scope as the measurement. It does mean a team-agnostic row is measured under every Team,
+ * so the per-Team totals do not sum to the All Teams total — which is already this report's
+ * contract (`release_daily_snapshots.team_id IS NULL` is a MEASURED All Teams row, never a sum).
+ *
+ * What this does NOT do is admit a Feature owned by a team OUTSIDE the scope. That is a real
+ * divergence from Broadcom Rally, which derives such a Feature, and it is tracked as `P6-RT-9`
+ * pending the live-Rally check the decision matrix asked for; RT-BR-01/02 as written exclude it.
+ */
 export function inScope(teamId: string | null, scope: TeamScope): boolean {
   // All Teams = every Team in the selected Project, including work with no Team yet:
   // excluding it would make the three bucket totals disagree with the project's own
   // backlog, and the page's only scope control is the global one.
   if (scope.kind === 'all') return true;
-  return teamId === scope.teamId;
+  return teamId === null || teamId === scope.teamId;
 }
 
 // ── Buckets ─────────────────────────────────────────────────────────────────
@@ -149,6 +173,99 @@ export function unparentedItems(
       (c) => c.featureId === null && c.releaseId === releaseId && inScope(c.teamId, scope),
     ),
   );
+}
+
+// ── Search and sort over the active bucket ──────────────────────────────────
+
+/**
+ * The columns the list may be sorted on (§246, RT-AC-05 + the `name` divergence).
+ *
+ * `Rank`, `ID` and `Team` are the SRS's three; `name` is the declared Rally-parity addition
+ * (`P6-RT-5`, decided 2026-08-04 — Rally sorts its Features List on Rank, ID and Name). Anything
+ * else is ignored by `parseSort`, which falls the request back to the bucket's own rank order
+ * rather than 400-ing on a column a future grid might offer.
+ */
+export const RELEASE_TRACKING_SORT_FIELDS = ['rank', 'id', 'team', 'name'] as const;
+export type ReleaseTrackingSortField = (typeof RELEASE_TRACKING_SORT_FIELDS)[number];
+
+/**
+ * The four values search and sort are applied over, for one bucket entry.
+ *
+ * Deliberately NOT the assembled `ReleaseTrackingRow`: a Direct row's Status, mismatches and
+ * progress are computed over every one of its children, so building the whole bucket's rows to
+ * sort them would undo the paging this endpoint exists to provide. The caller assembles rows for
+ * the page slice only.
+ */
+export interface BucketSortKeys {
+  /**
+   * The 1-based position in the bucket's OWN rank order, assigned BEFORE search and sort.
+   *
+   * That is what makes `Rank` mean something: §247 numbers rows "inside the active bucket", so a
+   * row's rank is a property of the bucket and not of the current view. Sorting by ID therefore
+   * shows the bucket's ranks out of order (which is the point of having the column), sorting by
+   * Rank shows a strict sequence, and a search shows the matching rows' real positions rather than
+   * renumbering them 1, 2, 3 and claiming a row is first in a bucket it sits 57th in.
+   */
+  rank: number;
+  itemKey: string;
+  name: string;
+  /** What the Team column prints, joined for a Derived row's several cause teams. `''` for none. */
+  teamLabel: string;
+}
+
+/**
+ * Case- and accent-insensitive, digit-aware ordering.
+ *
+ * `numeric: true` because every sortable string here is a KEY or a name with numbers in it, and
+ * `'FE-10' < 'FE-2'` under a plain code-unit comparison — sorting `ID` descending would put FE-9
+ * above FE-10 and read as a broken column rather than a lexicographic one.
+ */
+const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
+/**
+ * Search and sort the ACTIVE bucket — the whole bucket, not the page (§259: "Search applies
+ * within the active bucket"; RT-AC-05: "Rank, ID and Team sort both directions").
+ *
+ * Both used to run in the browser over the 25 rows that had arrived, so `ID ▼` sorted the page
+ * rather than the bucket while the header's caret said otherwise. They run here, after
+ * classification and before the caller's slice: classification already needs the whole population
+ * (a Derived Feature is by definition one OUTSIDE the release, so it cannot be found by a
+ * `WHERE release_id = …`), which is why this costs no extra query.
+ *
+ * The search term matches the row's KEY or its name, the two identifiers the grid prints. The
+ * three summary counts are NOT filtered by it — they are the buckets' populations and §5.1 keeps
+ * all three visible — but the page total is, so paging walks the matches.
+ *
+ * Every comparison falls back to `rank` ascending, so the order is total: a sort on a column where
+ * many rows tie (Team, most of all) would otherwise be free to reshuffle between two page
+ * requests and drop or repeat rows at the boundary.
+ */
+export function refineBucket<T extends BucketSortKeys>(
+  entries: readonly T[],
+  opts: {
+    q?: string | null;
+    sort?: { sortBy: ReleaseTrackingSortField; sortDirection: 'asc' | 'desc' } | null;
+  },
+): T[] {
+  const term = (opts.q ?? '').trim().toLowerCase();
+  const matched = term
+    ? entries.filter(
+        (e) => e.name.toLowerCase().includes(term) || e.itemKey.toLowerCase().includes(term),
+      )
+    : [...entries];
+
+  const sort = opts.sort;
+  if (!sort || sort.sortBy === 'rank') {
+    return sort?.sortDirection === 'desc' ? matched.sort((a, b) => b.rank - a.rank) : matched;
+  }
+
+  const direction = sort.sortDirection === 'desc' ? -1 : 1;
+  const key = (e: T): string =>
+    sort.sortBy === 'id' ? e.itemKey : sort.sortBy === 'name' ? e.name : e.teamLabel;
+  return matched.sort((a, b) => {
+    const primary = collator.compare(key(a), key(b)) * direction;
+    return primary !== 0 ? primary : a.rank - b.rank;
+  });
 }
 
 // ── Status cells ────────────────────────────────────────────────────────────

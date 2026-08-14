@@ -29,6 +29,7 @@ import {
 
 import { ReportSurface } from './report-surface'
 import { useSelectedIteration } from '../model/use-selected-iteration'
+import { EmptyState } from '@/shared/ui/empty-state'
 
 export function IterationBurndownReport({
   projectId,
@@ -42,7 +43,21 @@ export function IterationBurndownReport({
   // The picker offers what the report can serve — the team's own timeboxes plus the shared ones.
   const iterations = iterationsInScope(allIterations, teamId)
   const { selectedId, select } = useSelectedIteration(projectId, iterations)
-  const { data, isLoading } = useIterationBurndown({ projectId, teamId, iterationId: selectedId })
+  /**
+   * `isError` was never read here, so a failed request left `data` undefined and this report fell
+   * through to `burndown.empty.noHistory` — "no daily history has been recorded" — which is a
+   * MEASURED CLAIM about the sprint, not a description of a network fault. §5 makes only missing
+   * SNAPSHOTS unavailable; a 500 is not a missing snapshot.
+   *
+   * Velocity and Team Capacity already fixed exactly this, and this is the third instance of the
+   * same shape: `data` is undefined both while a request is in flight and after it fails, so any
+   * report that branches on `data` alone will state something false about delivery on failure.
+   */
+  const { data, isLoading, isError } = useIterationBurndown({
+    projectId,
+    teamId,
+    iterationId: selectedId,
+  })
 
   const points = data?.points ?? []
   /**
@@ -118,7 +133,18 @@ export function IterationBurndownReport({
         <>
           <span className="text-ui-xs font-semibold text-foreground-subtle">{t('iteration')}</span>
           <IterationPicker iterations={iterations} selectedId={selectedId} onSelect={select} />
-          {data?.status !== 'unknown' && (
+          {/**
+           * `data !== undefined` FIRST, and that is the whole point of the guard.
+           *
+           * This read `data?.status !== 'unknown'`, and on a failed or in-flight request `data` is
+           * undefined — so the comparison is `undefined !== 'unknown'`, which is TRUE. The pill
+           * rendered, `behind` was false, and the report announced "On track" for an iteration it had
+           * no data about. A verdict is the worst thing to synthesise: it is a conclusion, not a
+           * number, so there is nothing for a reader to notice as missing.
+           *
+           * Same family as the `?? 0` rule — an absent value must not be rendered as a measured one.
+           */}
+          {data !== undefined && data.status !== 'unknown' && (
             <span
               className={`flex items-center gap-1 text-ui-xs font-semibold ${
                 behind ? 'text-destructive' : 'text-success'
@@ -131,6 +157,15 @@ export function IterationBurndownReport({
         </>
       }
       padBody
+      /**
+       * On the SHELL, not inside `ChartFrame` — so the status pill in `controls` and the notes go
+       * absent with the chart rather than a "Behind plan"/"On track" verdict sitting above an error.
+       */
+      error={
+        isError ? (
+          <EmptyState title={t('burndown.error.title')} description={t('burndown.error.body')} />
+        ) : undefined
+      }
       loading={isLoading && !data}
     >
       <ChartFrame

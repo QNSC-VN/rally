@@ -1,20 +1,30 @@
-import { TrendingDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { BRAND } from '@/shared/config/brand'
-import { Spinner } from '@/shared/ui/spinner'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { type Release } from '@/features/releases/api'
-import { formatWholePercent } from '@/shared/lib/utils'
 
 type Rollup = NonNullable<Release['taskRollup']>
-type BurndownPoint = {
-  date: string
-  totalPoints: number
-  completedPoints: number
-  remainingPoints: number
+
+/**
+ * Hours, or `--` when the number is genuinely absent. Never a coerced `0`: that would state
+ * that nothing is estimated/remaining/logged, which is a different claim from "we do not know".
+ */
+function formatHours(value: number | null | undefined): string {
+  return value === null || value === undefined ? EMPTY_VALUE : `${value}h`
 }
 
-/** Read-only Task Roll-up metrics (completion bar + Estimate/To Do/Actual + Accepted). */
+/**
+ * Read-only Task Roll-up + Accepted — the two metric fields P3-REL-FR-018 puts in the Release
+ * detail's right panel.
+ *
+ * Task Roll-up is Estimate / To Do / Actual **hours** from the assigned tasks (FR-023). It is
+ * deliberately NOT a completion percentage: P3-REL-FR-037 says "Phase 3 Release list/detail must
+ * not add a Release Progress column/widget; progress/tracking belongs to
+ * `Portfolio > Release Tracking`", and §7.5 defers the release progress percentage, its
+ * zero-state, its formula and its recalculation out of Phase 3.2. A percentage bar and a
+ * Date/Total/Done/Remaining burndown table both used to live here, duplicating the deferred
+ * Phase 6 surface — and the three hour values the BA actually asks for were nowhere on a release.
+ */
 export function TaskRollupPanel({ rollup }: { rollup: Rollup }) {
   const { t } = useTranslation('releases')
   return (
@@ -23,69 +33,29 @@ export function TaskRollupPanel({ rollup }: { rollup: Rollup }) {
         {t('detailPage.rollup.title')}
       </h3>
 
-      <div className="space-y-1">
-        <div className="flex justify-between text-ui-sm font-semibold text-foreground">
-          <span>{t('detailPage.rollup.completion')}</span>
-          <span>{formatWholePercent(rollup.progressPercent)}</span>
-        </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-avatar">
-          <div
-            className="h-full rounded-full transition-all"
-            style={{
-              width: `${rollup.progressPercent ?? 0}%`,
-              // Grey when not computable — an unestimated release must not read as a
-              // release that has made no progress.
-              backgroundColor:
-                rollup.progressPercent === null
-                  ? BRAND.borderSubtle
-                  : rollup.progressPercent === 100
-                    ? BRAND.success
-                    : BRAND.primaryLight,
-            }}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2 pt-1">
-        <div className="grid grid-cols-3 gap-1 text-center">
-          <div className="rounded-sm bg-primary-lighter py-1.5">
-            <div className="text-ui-2xs font-semibold tracking-wider text-primary uppercase">
-              {t('detailPage.rollup.estimate')}
-            </div>
-            <div className="font-mono text-ui-xl font-bold text-foreground">
-              {rollup.totalPoints}
-            </div>
+      <div className="grid grid-cols-3 gap-1 text-center">
+        <div className="rounded-sm bg-primary-lighter py-1.5">
+          <div className="text-ui-2xs font-semibold tracking-wider text-primary uppercase">
+            {t('detailPage.rollup.estimate')}
           </div>
-          <div className="rounded-sm bg-warning-bg py-1.5">
-            <div className="text-ui-2xs font-semibold tracking-wider text-warning uppercase">
-              {t('detailPage.rollup.toDo')}
-            </div>
-            <div className="font-mono text-ui-xl font-bold text-foreground">
-              {rollup.toDoPoints}
-            </div>
-          </div>
-          <div className="rounded-sm bg-success-bg py-1.5">
-            <div className="text-ui-2xs font-semibold tracking-wider text-success uppercase">
-              {t('detailPage.rollup.actual')}
-            </div>
-            <div className="font-mono text-ui-xl font-bold text-foreground">
-              {rollup.completedPoints}
-            </div>
+          <div className="font-mono text-ui-xl font-bold text-foreground">
+            {formatHours(rollup.estimateHours)}
           </div>
         </div>
-
-        <div className="grid grid-cols-3 gap-1 pt-1 text-center font-mono text-ui-xs text-foreground-subtle">
-          <div>
-            {t('detailPage.rollup.items')}{' '}
-            <span className="font-semibold text-foreground">{rollup.totalItems}</span>
+        <div className="rounded-sm bg-warning-bg py-1.5">
+          <div className="text-ui-2xs font-semibold tracking-wider text-warning uppercase">
+            {t('detailPage.rollup.toDo')}
           </div>
-          <div>
-            {t('detailPage.rollup.toDoItems')}{' '}
-            <span className="font-semibold text-foreground">{rollup.toDoItems}</span>
+          <div className="font-mono text-ui-xl font-bold text-foreground">
+            {formatHours(rollup.toDoHours)}
           </div>
-          <div>
-            {t('detailPage.rollup.done')}{' '}
-            <span className="font-semibold text-foreground">{rollup.completedItems}</span>
+        </div>
+        <div className="rounded-sm bg-success-bg py-1.5">
+          <div className="text-ui-2xs font-semibold tracking-wider text-success uppercase">
+            {t('detailPage.rollup.actual')}
+          </div>
+          <div className="font-mono text-ui-xl font-bold text-foreground">
+            {formatHours(rollup.actualHours)}
           </div>
         </div>
       </div>
@@ -96,69 +66,6 @@ export function TaskRollupPanel({ rollup }: { rollup: Rollup }) {
         </span>
         <span className="font-mono text-ui-xl font-bold text-success">{rollup.acceptedItems}</span>
       </div>
-    </div>
-  )
-}
-
-/** Read-only burndown table (Date / Total / Done / Remaining points). */
-export function BurndownPanel({
-  burndown,
-  loading,
-}: {
-  burndown: BurndownPoint[] | undefined
-  loading: boolean
-}) {
-  const { t } = useTranslation('releases')
-  return (
-    <div className="space-y-3 rounded-md border border-border-subtle bg-surface-hover p-4">
-      <h3 className="flex items-center gap-1.5 text-ui-xs font-bold tracking-wider text-muted-foreground uppercase">
-        <TrendingDown size={13} />
-        {t('detailPage.burndown.title')}
-      </h3>
-      {loading ? (
-        <div className="flex h-32 items-center justify-center">
-          <Spinner size="sm" />
-        </div>
-      ) : burndown && burndown.length > 0 ? (
-        <div className="max-h-56 overflow-auto">
-          <table className="w-full text-left text-ui-xs">
-            <thead>
-              <tr className="border-b border-border-subtle">
-                <th className="py-1 pr-2 font-semibold text-muted-foreground">
-                  {t('detailPage.burndown.date')}
-                </th>
-                <th className="py-1 pr-2 text-right font-semibold text-muted-foreground">
-                  {t('detailPage.burndown.total')}
-                </th>
-                <th className="py-1 pr-2 text-right font-semibold text-muted-foreground">
-                  {t('detailPage.burndown.done')}
-                </th>
-                <th className="py-1 text-right font-semibold text-muted-foreground">
-                  {t('detailPage.burndown.remaining')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {burndown.map((pt) => (
-                <tr key={pt.date} className="border-b border-border-subtle">
-                  <td className="py-1 pr-2 font-mono text-foreground">{pt.date}</td>
-                  <td className="py-1 pr-2 text-right font-mono text-foreground">
-                    {pt.totalPoints}
-                  </td>
-                  <td className="py-1 pr-2 text-right font-mono text-success">
-                    {pt.completedPoints}
-                  </td>
-                  <td className="py-1 text-right font-mono text-foreground">
-                    {pt.remainingPoints}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="text-ui-sm text-foreground-subtle">{t('detailPage.burndown.empty')}</p>
-      )}
     </div>
   )
 }

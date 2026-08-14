@@ -61,6 +61,26 @@ export function requiresTeamSelection(level: AccessLevel | null | undefined): bo
 }
 
 /**
+ * Whether the level covers every Team in its Project by itself, so the surface renders the
+ * words `All Teams` where an Editor gets a picker.
+ *
+ * SRS §2.2 ("Admin always receives `All Teams`; individual Team selection is not shown"),
+ * §5.1 ("Admin displays `All Teams` automatically") and §5.2 ("Selecting Admin
+ * automatically grants `All Teams`") all state it, and it is why an Admin needs no
+ * `team_members` row at all: `AccessService.assertTeamScoped` skips team scoping for Admin,
+ * so All Teams is the ABSENCE of a scope, never a set of rows some surface has to write.
+ *
+ * The exact inverse of {@link requiresTeamSelection} today, and named separately for the
+ * reason §2.2 states the two halves separately: one answers "does this level need a Team
+ * picker", the other "what does it display instead". A read-only level — the one that has
+ * been added and removed here before — would answer `false` to both, since it has no writes
+ * to scope and no authority over every team either.
+ */
+export function grantsAllTeams(level: AccessLevel | null | undefined): boolean {
+  return level === 'admin'
+}
+
+/**
  * The levels a TEAM member can hold — SRS §5.3: "Only Admin and Editor are Team-member choices."
  *
  * Identical to {@link ACCESS_LEVELS} today, because those are the only two levels. Kept as its own

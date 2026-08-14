@@ -118,6 +118,8 @@ export class ReportingController {
       bucket: query.bucket,
       page: query.page,
       pageSize: query.pageSize,
+      q: query.q,
+      sort: query.sort,
     });
   }
 

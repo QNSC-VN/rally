@@ -12,17 +12,8 @@ import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platfor
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
-import {
-  capacityPlans,
-  releaseDailySnapshots,
-  workItems,
-  tasks,
-} from '../../../../../db/schema/work';
-import {
-  completedScheduleStatesSql,
-  acceptedScheduleStatesSql,
-  type ReleaseStatus,
-} from '../../../../../db/schema/enums';
+import { capacityPlans, workItems, tasks } from '../../../../../db/schema/work';
+import { acceptedScheduleStatesSql, type ReleaseStatus } from '../../../../../db/schema/enums';
 import { IReleaseRepository, RELEASE_REPOSITORY } from '../domain/ports/release.repository';
 import type { Release, UpdateReleaseInput } from '../domain/release.types';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
@@ -51,30 +42,33 @@ const RELEASE_TRANSITIONS: Record<ReleaseStatus, ReleaseStatus[]> = {
 };
 
 /**
- * A release's Story/Defect roll-up. `progressPercent` is null when it cannot be computed
- * — see `computeTaskRollups`.
+ * A release's right-panel roll-up, exactly as P3-REL-FR-018 fixes it: `Task Roll-up` and
+ * `Accepted`, nothing else.
+ *
+ * Task Roll-up is Estimate / To Do / Actual **HOURS** from the tasks under the release's
+ * assigned Story/Defect items (P3-REL-FR-023), not an item or point count. `acceptedItems` is
+ * FR-024's "accepted work total for the Release".
+ *
+ * There is deliberately NO percentage, no point total and no done/remaining count here.
+ * P3-REL-FR-037: "Phase 3 Release list/detail must not add a Release Progress column/widget;
+ * progress/tracking belongs to `Portfolio > Release Tracking`", and §7.5 defers the progress
+ * percentage, its zero-state, its formula and its recalculation out of Phase 3.2 entirely.
+ * A field on this object is a field a Phase 3 surface can render, which is why the numbers are
+ * not merely hidden in the SPA — they are not computed or served at all.
  */
 export interface TaskRollup {
-  totalItems: number;
-  completedItems: number;
+  estimateHours: number;
+  toDoHours: number;
+  actualHours: number;
   acceptedItems: number;
-  toDoItems: number;
-  totalPoints: number;
-  completedPoints: number;
-  toDoPoints: number;
-  progressPercent: number | null;
 }
 
-/** A release with no linked Story/Defect at all: zero counts, and no computable percent. */
+/** A release with no linked Story/Defect at all: zeroes, not absent values. */
 const EMPTY_TASK_ROLLUP: TaskRollup = {
-  totalItems: 0,
-  completedItems: 0,
+  estimateHours: 0,
+  toDoHours: 0,
+  actualHours: 0,
   acceptedItems: 0,
-  toDoItems: 0,
-  totalPoints: 0,
-  completedPoints: 0,
-  toDoPoints: 0,
-  progressPercent: null,
 };
 
 @Injectable()
@@ -122,95 +116,65 @@ export class ReleasesService {
     await this.projectsService.getProject(actor.workspaceId, projectId);
     const page = await this.releaseRepo.listByProject(projectId, actor.workspaceId, args);
     const ids = page.data.map((r) => r.id);
-    // Both roll-ups are batched over the whole page. `taskRollup` used to be built only
-    // in the detail path, so every list consumer saw `undefined` — the Reports "Release
-    // Progress" widget read `?? 0` off it and painted EVERY release at 0%, including
-    // finished ones. One extra grouped query is the fix; hiding it behind a default was
-    // the bug.
-    const [estimates, rollups] = await Promise.all([
-      this.computeTaskEstimates(ids),
-      this.computeTaskRollups(ids),
-    ]);
+    // Batched over the whole page. `taskRollup` used to be built only in the detail path, so
+    // every list consumer saw `undefined` and read `?? 0` off it. The list's own `taskEstimate`
+    // column (FR-004) is the roll-up's Estimate hours — one number, computed once, so the
+    // column and the detail panel cannot disagree.
+    const rollups = await this.computeTaskRollups(ids);
     return {
       ...page,
-      data: page.data.map((r) => ({
-        ...r,
-        taskEstimate: estimates.get(r.id) ?? 0,
-        taskRollup: rollups.get(r.id) ?? EMPTY_TASK_ROLLUP,
-      })),
+      data: page.data.map((r) => {
+        const taskRollup = rollups.get(r.id) ?? EMPTY_TASK_ROLLUP;
+        return { ...r, taskEstimate: taskRollup.estimateHours, taskRollup };
+      }),
     };
   }
 
   /**
-   * Story/Defect roll-up per release, batched over a page.
+   * The right panel's roll-up per release (FR-018), batched over a page.
    *
-   * `progressPercent` is NULLABLE, and that is the point: `null` means "not computable"
-   * — nothing linked, or nothing estimated and not everything finished. Returning 0 there
-   * would state that none of the work is done, which is a completely different claim from
-   * "we cannot tell", and it is what made an unestimated release render as a confident 0%.
-   * The all-items-done shortcut is kept, because a release whose every item is accepted IS
-   * 100% regardless of whether anyone estimated it.
+   * Two questions with two different populations, so two grouped queries:
+   *  - Task Roll-up hours come from `work.tasks` through the parent Story/Defect (FR-023);
+   *  - `Accepted` counts the release's own Story/Defect items (FR-024).
+   *
+   * A release absent from the map has nothing assigned and resolves to `EMPTY_TASK_ROLLUP`.
    */
   private async computeTaskRollups(releaseIds: string[]): Promise<Map<string, TaskRollup>> {
     if (releaseIds.length === 0) return new Map();
-    const rows = await this.db
-      .select({
-        releaseId: workItems.releaseId,
-        totalItems: sql<number>`COUNT(*)::int`,
-        completedItems: sql<number>`COUNT(*) FILTER (WHERE ${workItems.scheduleState} IN (${completedScheduleStatesSql()}))::int`,
-        acceptedItems: sql<number>`COUNT(*) FILTER (WHERE ${workItems.scheduleState} IN (${acceptedScheduleStatesSql()}))::int`,
-        totalPoints: sql<number>`COALESCE(SUM(${workItems.storyPoints}), 0)`,
-        completedPoints: sql<number>`COALESCE(SUM(${workItems.storyPoints}) FILTER (WHERE ${workItems.scheduleState} IN (${completedScheduleStatesSql()})), 0)`,
-      })
-      .from(workItems)
-      .where(
-        and(
-          inArray(workItems.releaseId, releaseIds),
-          isNull(workItems.deletedAt),
-          sql`${workItems.type} IN ('story', 'defect')`,
-        ),
-      )
-      .groupBy(workItems.releaseId);
-
+    const [hours, accepted] = await Promise.all([
+      this.computeTaskHours(releaseIds),
+      this.computeAcceptedCounts(releaseIds),
+    ]);
     const map = new Map<string, TaskRollup>();
-    for (const r of rows) {
-      if (!r.releaseId) continue;
-      const totalPoints = Number(r.totalPoints);
-      const completedPoints = Number(r.completedPoints);
-      const allItemsDone = r.totalItems > 0 && r.completedItems === r.totalItems;
-      map.set(r.releaseId, {
-        totalItems: r.totalItems,
-        completedItems: r.completedItems,
-        acceptedItems: r.acceptedItems,
-        toDoItems: r.totalItems - r.completedItems,
-        totalPoints,
-        completedPoints,
-        toDoPoints: totalPoints - completedPoints,
-        progressPercent:
-          totalPoints > 0
-            ? Math.min(Math.round((completedPoints / totalPoints) * 100), 100)
-            : allItemsDone
-              ? 100
-              : null,
+    for (const id of new Set([...hours.keys(), ...accepted.keys()])) {
+      map.set(id, {
+        ...(hours.get(id) ?? { estimateHours: 0, toDoHours: 0, actualHours: 0 }),
+        acceptedItems: accepted.get(id) ?? 0,
       });
     }
     return map;
   }
 
   /**
-   * SRS §6.1 / FR-004 — the "Task Estimate" list column is a read-only roll-up:
-   * the summed estimate hours of the child tasks under the stories/defects
-   * assigned to each release. Mirrors the Iteration Status definition
-   * (sum of `tasks.estimate_hours`), so both surfaces report the same number.
-   * Batched to avoid N+1 across a listed page. Releases with no assigned work
-   * (or no task estimates) resolve to 0.
+   * SRS FR-023 / §6.1 FR-004 — Estimate, To Do and Actual hours summed from the child tasks of
+   * the stories/defects assigned to each release. Three independent fields (they never derive
+   * from each other), summed the same way Team Status and the Phase 6 projection sum them, so
+   * every surface reports the same hours. The Estimate column on the list is this Estimate.
+   *
+   * `innerJoin` on the parent WITH `parent.deleted_at IS NULL`: a soft-deleted Story does not
+   * cascade to `work.tasks` (the FK is `ON DELETE cascade`, which a soft delete never fires),
+   * so an orphaned task would otherwise keep charging hours to the release. No team predicate —
+   * a release is not team-scoped, and this panel is the release's own total.
    */
-  private async computeTaskEstimates(releaseIds: string[]): Promise<Map<string, number>> {
-    if (releaseIds.length === 0) return new Map();
+  private async computeTaskHours(
+    releaseIds: string[],
+  ): Promise<Map<string, Omit<TaskRollup, 'acceptedItems'>>> {
     const rows = await this.db
       .select({
         releaseId: workItems.releaseId,
-        estimate: sql<number>`COALESCE(SUM(${tasks.estimateHours}), 0)`,
+        estimateHours: sql<number>`COALESCE(SUM(${tasks.estimateHours}), 0)`,
+        toDoHours: sql<number>`COALESCE(SUM(${tasks.todoHours}), 0)`,
+        actualHours: sql<number>`COALESCE(SUM(${tasks.actualHours}), 0)`,
       })
       .from(tasks)
       .innerJoin(workItems, eq(tasks.parentId, workItems.id))
@@ -222,8 +186,36 @@ export class ReleasesService {
         ),
       )
       .groupBy(workItems.releaseId);
+    const map = new Map<string, Omit<TaskRollup, 'acceptedItems'>>();
+    for (const r of rows) {
+      if (!r.releaseId) continue;
+      map.set(r.releaseId, {
+        estimateHours: Number(r.estimateHours),
+        toDoHours: Number(r.toDoHours),
+        actualHours: Number(r.actualHours),
+      });
+    }
+    return map;
+  }
+
+  /** FR-024 — the accepted work total: the release's Story/Defect items in an accepted state. */
+  private async computeAcceptedCounts(releaseIds: string[]): Promise<Map<string, number>> {
+    const rows = await this.db
+      .select({
+        releaseId: workItems.releaseId,
+        acceptedItems: sql<number>`COUNT(*) FILTER (WHERE ${workItems.scheduleState} IN (${acceptedScheduleStatesSql()}))::int`,
+      })
+      .from(workItems)
+      .where(
+        and(
+          inArray(workItems.releaseId, releaseIds),
+          isNull(workItems.deletedAt),
+          sql`${workItems.type} IN ('story', 'defect')`,
+        ),
+      )
+      .groupBy(workItems.releaseId);
     const map = new Map<string, number>();
-    for (const r of rows) if (r.releaseId) map.set(r.releaseId, Number(r.estimate));
+    for (const r of rows) if (r.releaseId) map.set(r.releaseId, Number(r.acceptedItems));
     return map;
   }
 
@@ -435,14 +427,12 @@ export class ReleasesService {
     const release = await this.getReleaseForView(actor, id);
 
     const rollups = await this.computeTaskRollups([id]);
-    const rollup = rollups.get(id) ?? EMPTY_TASK_ROLLUP;
-
-    const estimates = await this.computeTaskEstimates([id]);
+    const taskRollup = rollups.get(id) ?? EMPTY_TASK_ROLLUP;
 
     return {
       ...release,
-      taskEstimate: estimates.get(id) ?? 0,
-      taskRollup: rollup,
+      taskEstimate: taskRollup.estimateHours,
+      taskRollup,
     };
   }
 
@@ -521,44 +511,6 @@ export class ReleasesService {
       'desc',
       Number(countRow?.total ?? 0),
     );
-  }
-
-  // ── Burndown ─────────────────────────────────────────────────────────────
-
-  async getReleaseBurndown(actor: JwtPayload, releaseId: string) {
-    await this.getReleaseForView(actor, releaseId);
-
-    // The ALL TEAMS row (`team_id IS NULL`) — this panel is the release's own history, not one
-    // Team's slice of it.
-    //
-    // Reads the Phase 6 columns, which is what finally gives this panel data: the legacy
-    // total/completed/remaining columns were only ever written by a method with no caller, so
-    // the table has rendered its empty state since it shipped. The response shape is unchanged
-    // (the panel's Date / Total / Done columns), but `completedPoints` now means ACCEPTED —
-    // {Accepted, Release} — rather than the old `Completed`-inclusive population that RT-AC-08
-    // rules out.
-    const snapshots = await this.db
-      .select({
-        date: releaseDailySnapshots.snapshotDate,
-        plannedPoints: releaseDailySnapshots.plannedPoints,
-        acceptedPoints: releaseDailySnapshots.acceptedPoints,
-        plannedCount: releaseDailySnapshots.plannedCount,
-        acceptedCount: releaseDailySnapshots.acceptedCount,
-      })
-      .from(releaseDailySnapshots)
-      .where(
-        and(eq(releaseDailySnapshots.releaseId, releaseId), isNull(releaseDailySnapshots.teamId)),
-      )
-      .orderBy(releaseDailySnapshots.snapshotDate, asc(releaseDailySnapshots.id));
-
-    return snapshots.map((s) => ({
-      date: s.date,
-      totalPoints: Number(s.plannedPoints),
-      completedPoints: Number(s.acceptedPoints),
-      remainingPoints: Number(s.plannedPoints) - Number(s.acceptedPoints),
-      totalItems: s.plannedCount,
-      completedItems: s.acceptedCount,
-    }));
   }
 
   // The snapshot WRITER deliberately does not live here.

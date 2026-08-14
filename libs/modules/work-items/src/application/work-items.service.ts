@@ -1052,12 +1052,32 @@ export class WorkItemsService {
         await this.watcherRepo
           .watch(updated.id, updated.assigneeId, actor.workspaceId)
           .catch(() => undefined);
-        if (updated.assigneeId !== actor.sub) {
+        /**
+         * FR-019 applies to an ASSIGNMENT too, not only to a mention.
+         *
+         * This passed `[updated.assigneeId]` straight through while the mention path a hundred lines
+         * below already ran `filterByProjectAccess`. The assignee is only validated as an active
+         * WORKSPACE member (`assertAssignmentScope` → `assertWorkspaceMember`), never as someone who
+         * can see this project — so a work item could legitimately be assigned to a colleague with No
+         * Access to it, and the notification then named the item, its key and its title on the one
+         * surface §7 says must disclose nothing.
+         *
+         * Filtered rather than refused: assigning across an access boundary is a real thing an admin
+         * may do deliberately (they may be about to grant access), and failing the whole PATCH because
+         * of a notification would be worse than not sending one. The assignment stands; the
+         * notification does not.
+         */
+        const notifiable = await this.filterByProjectAccess(
+          actor.workspaceId,
+          updated.projectId,
+          updated.assigneeId === actor.sub ? [] : [updated.assigneeId],
+        );
+        if (notifiable.length > 0) {
           await this.emitWorkItemNotification(
             'WORK_ITEM_ASSIGNED',
             updated,
             actor.sub,
-            [updated.assigneeId],
+            notifiable,
             { itemKey: updated.itemKey, itemTitle: updated.title, projectId: updated.projectId },
             updated.assigneeId,
             tx,

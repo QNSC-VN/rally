@@ -40,6 +40,7 @@ import type { NotificationRelayService } from '../../apps/worker/src/notificatio
 import type { EmailRelayService } from '../../apps/worker/src/email/email-relay.service';
 import {
   DEVELOPER_ID,
+  SEEDED,
   WORKSPACE_ID,
   adminActor,
   bootRallyApp,
@@ -91,6 +92,11 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
         name: 'Notify Project',
       });
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Assign me');
+      // The grant is part of the FIXTURE now, not decoration. `createProject` makes a project nobody
+      // but its creator can read, and the producer drops a recipient without `work_item:view` on it
+      // (FR-019). Without this the assertion below passed only while the notification path ignored
+      // access entirely — it would be measuring the leak, not the contract.
+      await grantProjectAccess(app, DEVELOPER_ID, project.id, 'editor');
 
       await workItems.updateWorkItem(admin, story.id, { assigneeId: DEVELOPER_ID });
 
@@ -103,6 +109,27 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
       // into vars so the relay can stamp metadata the client uses to open the item
       // in its OWN project context (notifications are workspace-wide).
       expect(rows[0]?.vars).toMatchObject({ itemKey: story.itemKey, projectId: project.id });
+    });
+
+    it('assigns across an access boundary but sends NO notification', async () => {
+      // FR-019 from the WRITE side. The assignee is validated as an active WORKSPACE member
+      // (`assertAssignmentScope`), never as someone who can read this project — so an admin can
+      // legitimately assign work to a colleague with No Access to it, and the notification would
+      // otherwise name the item's key and title on the one surface §7 says must disclose nothing.
+      //
+      // Filtered, not refused: the assignment is a real thing an admin may do deliberately (they may
+      // be about to grant access), and failing the whole PATCH over a notification would be worse.
+      // So both halves are asserted — the write lands, the notification does not.
+      const project = await projects.createProject(admin, {
+        key: uniqueKey(),
+        name: 'No Access Assign Project',
+      });
+      const story = await workItems.createWorkItem(admin, project.id, 'story', 'Assign outward');
+
+      const updated = await workItems.updateWorkItem(admin, story.id, { assigneeId: DEVELOPER_ID });
+
+      expect(updated.assigneeId).toBe(DEVELOPER_ID);
+      expect(await outboxFor(story.id)).toHaveLength(0);
     });
 
     it('does NOT notify the actor when they assign the item to themselves', async () => {
@@ -171,15 +198,22 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
       expect(await notifications.getUnreadCount(reader)).toBe(0);
     });
 
+    /**
+     * The reader is the seeded Workspace Admin, not a synthetic uuid, because the read model now
+     * applies the reader's per-Project access to the feed (RFE-05 / SRS §7 :199-200) and this row
+     * deliberately NAMES a project. A `randomUUID()` recipient holds no access to any project, so
+     * a project-naming notification addressed to one is correctly invisible — which is the subject
+     * of the E2E-017f block below, not of this metadata round-trip. `workspace:*` makes the admin
+     * unrestricted (`listReadableProjectIds` → null), so the deep-link payload is what is measured
+     * here rather than the filter.
+     */
     it('round-trips deep-link metadata through the read model', async () => {
-      const recipient = freshRecipient();
-      const reader = { ...admin, sub: recipient };
       const metadata = { itemKey: 'NXP-42', projectId: randomUUID() };
 
       const sent = await notifications.send({
         workspaceId: WORKSPACE_ID,
-        recipientId: recipient,
-        actorId: admin.sub,
+        recipientId: admin.sub,
+        actorId: DEVELOPER_ID,
         type: 'WORK_ITEM_ASSIGNED',
         title: 'You were assigned NXP-42',
         resourceType: 'work_item',
@@ -189,7 +223,9 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
       expect(sent!.metadata).toMatchObject(metadata);
 
       // The list read model exposes it too — this is what the client deep-links on.
-      const [listed] = await notifications.listNotifications(reader, { unreadOnly: false });
+      const listed = (await notifications.listNotifications(admin, { unreadOnly: false })).find(
+        (n) => n.id === sent!.id,
+      );
       expect(listed?.metadata).toMatchObject(metadata);
     });
   });
@@ -266,6 +302,136 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
       const recipients = rows.map((r) => r.recipientId);
       expect(recipients).toContain(DEVELOPER_ID);
       expect(recipients).not.toContain(outsider);
+    });
+  });
+
+  // ── E2E-017f: the READ half of the same rule (RFE-05) ───────────────────────
+  //
+  // `Phase 4/02_Roles_Permissions/SRS.md` §7 :200 — "Notifications must apply the CURRENT
+  // Project/Team access before displaying or routing to a Work Item" — and :199 — "Denied states
+  // must not show restricted title, owner, Project, Team or other business data". E2E-017d above
+  // proves the WRITE half (FR-019 drops a recipient at fan-out time); this block proves the read
+  // half, which is the durable one: access is revocable AFTER a notification is stored, and the
+  // stored row keeps naming the item.
+  //
+  // All three branches of `listReadableProjectIds`'s return are exercised, because the sentinel is
+  // the whole subtlety — `null` is UNRESTRICTED and `[]` is "no projects", and confusing them is a
+  // leak in one direction and a blank screen in the other. No project is CREATED here: the seeded
+  // projects plus a uuid that names no project cover every branch.
+  describe('E2E-017f the feed applies the reader current project access (SRS §7 :199-200)', () => {
+    /** A notification that NAMES a project, exactly as the work-item templates render it. */
+    const sendAboutProject = (recipientId: string, projectId: string, itemKey: string) =>
+      notifications.send({
+        workspaceId: WORKSPACE_ID,
+        recipientId,
+        actorId: admin.sub,
+        type: 'WORK_ITEM_ASSIGNED',
+        title: `You were assigned ${itemKey}`,
+        body: 'A title the reader must not see without access',
+        resourceType: 'work_item',
+        metadata: { itemKey, projectId },
+      });
+
+    /** A workspace-scoped notification — no project to authorize against. */
+    const sendWorkspaceWide = (recipientId: string) =>
+      notifications.send({
+        workspaceId: WORKSPACE_ID,
+        recipientId,
+        actorId: admin.sub,
+        type: 'WORKSPACE_INVITATION',
+        title: 'You were invited to Acme',
+        resourceType: 'workspace',
+      });
+
+    it('hides a work-item notification whose project the reader cannot read, and keeps the project-less one', async () => {
+      // A fresh uuid holds no membership and no assignment → readable projects is `[]`, the
+      // restricting sentinel that must NOT be read as "everything".
+      const denied = randomUUID();
+      const reader = { ...admin, sub: denied };
+
+      const restricted = await sendAboutProject(denied, SEEDED.nxp.projectId, 'NXP-501');
+      const workspaceWide = await sendWorkspaceWide(denied);
+      expect(restricted).not.toBeNull();
+      expect(workspaceWide).not.toBeNull();
+
+      const visible = (await notifications.listNotifications(reader, { unreadOnly: false })).map(
+        (n) => n.id,
+      );
+      expect(visible).not.toContain(restricted!.id);
+      expect(visible).toContain(workspaceWide!.id);
+
+      // The badge must agree with the page — a count of rows the list refuses to show is its own
+      // defect. This recipient is fresh, so the count is exactly the project-less notification.
+      expect(await notifications.getUnreadCount(reader)).toBe(1);
+
+      // The SSE live push consults the same fact.
+      expect(await notifications.isVisible(reader, restricted!.id)).toBe(false);
+      expect(await notifications.isVisible(reader, workspaceWide!.id)).toBe(true);
+
+      // …and the cursor-paginated Notification Center page, which is a separate query.
+      const page = await notifications.listNotificationsPage(
+        reader,
+        { unreadOnly: false },
+        { limit: 50, cursor: null },
+      );
+      expect(page.data.map((n) => n.id)).not.toContain(restricted!.id);
+    });
+
+    it('shows a project-scoped notification to a reader who holds access to that project', async () => {
+      // DEVELOPER_ID is a member of the seeded NXP project (see E2E-017d's note: dev has NXP and
+      // not the projects a test creates), so the readable list is a NON-EMPTY array — the third
+      // branch, and the one an over-eager "deny unless unrestricted" fix would break.
+      const reader = { ...admin, sub: DEVELOPER_ID };
+
+      const readable = await sendAboutProject(DEVELOPER_ID, SEEDED.nxp.projectId, 'NXP-502');
+      const foreign = await sendAboutProject(DEVELOPER_ID, randomUUID(), 'PAY-502');
+      expect(readable).not.toBeNull();
+      expect(foreign).not.toBeNull();
+
+      const visible = (
+        await notifications.listNotifications(reader, { unreadOnly: false, limit: 200 })
+      ).map((n) => n.id);
+      expect(visible).toContain(readable!.id);
+      expect(visible).not.toContain(foreign!.id);
+    });
+
+    it('shows both to a Workspace Admin, whose readable-projects answer is the null sentinel', async () => {
+      // `workspace:*` is a workspace-wide grant, so `listReadableProjectIds` returns `null`.
+      // Flattening that to `[]` would empty the admin's bell — the failure in the other direction.
+      const anyProject = await sendAboutProject(admin.sub, randomUUID(), 'NXP-503');
+      expect(anyProject).not.toBeNull();
+
+      const visible = (
+        await notifications.listNotifications(admin, { unreadOnly: false, limit: 200 })
+      ).map((n) => n.id);
+      expect(visible).toContain(anyProject!.id);
+      expect(await notifications.isVisible(admin, anyProject!.id)).toBe(true);
+    });
+
+    it('clears only what the badge counted when the reader marks all read', async () => {
+      const denied = randomUUID();
+      const reader = { ...admin, sub: denied };
+
+      const restricted = await sendAboutProject(denied, SEEDED.nxp.projectId, 'NXP-504');
+      const workspaceWide = await sendWorkspaceWide(denied);
+      expect(await notifications.getUnreadCount(reader)).toBe(1);
+
+      await notifications.markAllRead(reader);
+      expect(await notifications.getUnreadCount(reader)).toBe(0);
+
+      // The hidden row keeps its unread state: it was never displayed, so consuming it would lose
+      // the badge the reader would be owed if their access were restored.
+      const [stillUnread] = await db
+        .select({ isRead: inAppNotifications.isRead })
+        .from(inAppNotifications)
+        .where(eq(inAppNotifications.id, restricted!.id));
+      expect(stillUnread?.isRead).toBe(false);
+
+      const [cleared] = await db
+        .select({ isRead: inAppNotifications.isRead })
+        .from(inAppNotifications)
+        .where(eq(inAppNotifications.id, workspaceWide!.id));
+      expect(cleared?.isRead).toBe(true);
     });
   });
 });

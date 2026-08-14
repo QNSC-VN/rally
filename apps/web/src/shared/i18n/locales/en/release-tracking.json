@@ -2,7 +2,7 @@
   "title": "Release Tracking",
   "selectProject": "Select a project to track a release.",
   "chartUnit": "Chart Unit",
-  "searchPlaceholder": "Search this page...",
+  "searchPlaceholder": "Search this list...",
   "unit": {
     "points": "Points",
     "count": "Count"
@@ -23,7 +23,7 @@
     "derived": "Derived Features",
     "unparented": "Unparented Stories & Defects",
     "help": {
-      "direct": "Features assigned to this release and owned by a team in the current scope.",
+      "direct": "Features assigned to this release and owned by a team in the current scope. A Feature that names no team belongs to every scope.",
       "derived": "Features outside this release that have a story or defect assigned to it. Counted, but not given a percentage: the denominator would be only the children in this release, not the whole Feature.",
       "unparented": "Stories and defects in this release that have no parent Feature."
     }
@@ -68,6 +68,10 @@
     "legend": {
       "toggle": "Hide {{series}}",
       "restore": "Show {{series}}"
+    },
+    "error": {
+      "title": "Could not load the burnup",
+      "body": "The request failed, so no burnup history could be read. This is not a statement about the release — try again."
     }
   },
   "issues": {
@@ -106,6 +110,10 @@
     "unparented": {
       "title": "No unparented items",
       "description": "Every story and defect in this release belongs to a Feature."
+    },
+    "noMatch": {
+      "title": "No matches in this list",
+      "description": "Nothing in the selected list matches your search. Search covers the whole list, not just this page - clear it to see every row."
     }
   },
   "error": {

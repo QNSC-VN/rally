@@ -1,6 +1,23 @@
-# RBAC Migration — Project Access Levels (Admin / Editor / Viewer / No Access)
+# RBAC Migration — Project Access Levels (Admin / Editor)
 
-**Status:** approved plan (2026-08-11). Supersedes the Project Admin / Project Member tier model.
+> **⚠️ HISTORICAL. Do not read the phase table below as status.** Kept for the rationale and the
+> architect rulings; it is wrong about two things and was misleading enough to cost real time during
+> the 2026-08-14 audit.
+>
+> 1. **There is no `Viewer` level and no named `No Access`.** The title said both. `Viewer` was
+>    removed by the BA, restored by ruling, and removed again on the BA's instruction (migrations
+>    0113 then 0115); `No Access` was never a stored value — it is the absence of a
+>    `project_members` row. Current model and the reasoning behind it: `CLAUDE.md` →
+>    "Declared divergences from the BA, in the access model".
+> 2. **The phase table understates what shipped.** #412 landed phases 1–3 *and* the phase-10
+>    contract migration; #424 landed most of 4–9 (No-Access URL deny, `assertTeamScoped`, migrations
+>    0109/0110/0111). Verify against `db/migrations/**` and the code, never against this table.
+>
+> Known still-outstanding work is tracked as audit findings, not here — `RBE-04` (team-scoped Editor
+> covers 3 of ~14 writes), `RBE-05` (custom-role CRUD still live), `RBE-03` (WA is a project member).
+
+**Status:** superseded 2026-08-14. Historical record of an approved plan (2026-08-11) that has since
+been delivered in parts and amended twice by ruling.
 **Source spec:** `product-docs/projects/mini-rally/Phase 4/02_Roles_Permissions/SRS.md` (2026-08-10 model); architecture source of truth `product-docs/.../05_Architecture/DATABASE_SCHEMA.md` §1.1 / R1.
 
 ## Goal
