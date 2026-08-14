@@ -94,7 +94,9 @@ export function TeamCapacityReport({
   const { data, isLoading, isError } = useTeamCapacityReport({
     projectId,
     teamId,
-    iterationId: selectedId,
+    // `null` (nothing selected) means the same thing to this hook as `undefined`, and it takes
+    // the latter — translate at the boundary rather than widening the hook's contract.
+    iterationId: selectedId ?? undefined,
   })
 
   /**

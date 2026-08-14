@@ -33,6 +33,7 @@ import {
 import { useUpdateAnyWorkItem, useRankAnyWorkItem } from '@/features/work-items/api'
 import { useProjectMemberOptions } from '@/features/teams/api'
 import { useMilestoneOptions } from '@/features/milestones/api'
+import { defaultIterationId } from '@/features/iterations/default-iteration'
 import { StatusRow } from './ui/status-row'
 import { AddItemModal } from './ui/add-item-modal'
 import { IterationHeader, MetricsStrip, Toolbar, TableFooterTotals } from './ui/iteration-chrome'
@@ -105,8 +106,13 @@ export function IterationStatusPage() {
     }
   }, [projectId])
 
+  // `defaultIterationId`, NOT `iterations[0]`: the feed is ordered for the reader (newest first), and
+  // a default read off row order opens a sprint that has not started — no rows, which reads as an
+  // empty sprint rather than the wrong one. See that function for the rule.
   const selectedId =
-    chosenId && iterations.some((i) => i.id === chosenId) ? chosenId : (iterations[0]?.id ?? null)
+    chosenId && iterations.some((i) => i.id === chosenId)
+      ? chosenId
+      : defaultIterationId(iterations)
 
   const setSelectedId = useCallback(
     (id: string | null) => {
