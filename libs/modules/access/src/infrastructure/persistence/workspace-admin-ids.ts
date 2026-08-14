@@ -6,7 +6,7 @@ import { workspaceMembers } from '../../../../../../db/schema/workspace';
 
 /**
  * The users whose project authority IS the workspace-wide grant — the ONE home of that
- * predicate for this module (AC-8, §2.1).
+ * predicate (AC-8, §2.1).
  *
  * "A Workspace Admin is not added as a Project user or Team member": their authority comes
  * from the workspace-scoped `workspace_admin` assignment, which the catalogue gives every
@@ -18,9 +18,15 @@ import { workspaceMembers } from '../../../../../../db/schema/workspace';
  * It lives in its own file because THREE readers need it and they must not disagree: the
  * roster (`ProjectMemberDrizzleRepository.listByProject`), the roster's SIZE
  * (`ProjectDrizzleRepository.listByWorkspaceWithStats`, which is rendered beside it), and
- * `ProjectsService.addProjectMember`, which refuses to create the row in the first place. A
+ * `AccessService.grantProjectAccess`, which refuses to create the row in the first place. A
  * roster that hides a WA while the count beside it still counts them is the two-call-sites
  * bug this repo keeps re-learning, so there is one expression of the rule and three callers.
+ *
+ * It lives in the ACCESS module — and is exported from `@modules/access` for the two projects
+ * repositories above — because "who holds authority by workspace grant alone" is an
+ * authorization fact, and because `AccessModule` imports nothing. The grant writer had to move
+ * here to be reachable from `WorkspaceModule` (invitations, teams) without a module cycle, and
+ * this predicate had to come with it or there would be two copies of the rule again.
  *
  * Mirrors `IWorkspaceMemberRepository.isActiveAdmin` exactly — workspace-scoped assignment of
  * the `workspace_admin` slug PLUS an active workspace membership — in set form, because that

@@ -122,9 +122,28 @@ const makeProjectMemberRepo = () => ({
   // §2.1 — no Workspace Admin by default; the RBE-03 tests set this.
   listWorkspaceAdminUserIds: vi.fn().mockResolvedValue([]),
   findMember: vi.fn().mockResolvedValue(null),
-  addMember: vi.fn().mockResolvedValue(undefined),
   updateMember: vi.fn().mockResolvedValue(undefined),
   removeMember: vi.fn().mockResolvedValue(undefined),
+});
+
+/**
+ * `listProjects` asks which projects the caller may read: `null` = UNRESTRICTED, which keeps these
+ * specs' expectations about the unfiltered page intact; the restriction itself is covered
+ * end-to-end in `test/e2e/read-scoping.e2e.spec.ts`.
+ *
+ * `grantProjectAccess` is the ONE per-Project grant writer, and `addProjectMember` is a thin
+ * delegate to it — so what this spec can prove is the DELEGATION and its arguments. The rules the
+ * body used to hold moved to `access.service.spec.ts` with the body.
+ */
+const makeAccessService = () => ({
+  listReadableProjectIds: vi.fn().mockResolvedValue(null),
+  invalidateUser: vi.fn().mockResolvedValue(undefined),
+  // Archive/restore is WA-only; these specs run as one.
+  hasPermission: vi.fn().mockResolvedValue(true),
+  getProjectAccessLevel: vi.fn().mockResolvedValue(null),
+  grantProjectAccess: vi
+    .fn()
+    .mockResolvedValue({ id: 'pm-1', userId: 'user-2', accessLevel: 'editor' }),
 });
 
 const makeWorkspaceMemberRepo = () => ({
@@ -171,6 +190,7 @@ describe('ProjectsService', () => {
   /** work.project_settings rows for the estimation-settings read. Empty by default → fallback. */
   let estimationRows: unknown[];
   let audit: { emit: ReturnType<typeof vi.fn> };
+  let access: ReturnType<typeof makeAccessService>;
 
   beforeEach(async () => {
     capacityPlanRows = [];
@@ -183,6 +203,7 @@ describe('ProjectsService', () => {
     projectMemberRepo = makeProjectMemberRepo();
     workspaceMemberRepo = makeWorkspaceMemberRepo();
     teamService = { listTeams: vi.fn().mockResolvedValue([]) };
+    access = makeAccessService();
     uow = makeUow();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -198,19 +219,7 @@ describe('ProjectsService', () => {
         { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: audit },
         { provide: ActivityLogger, useValue: activityMock() },
-        // `listProjects` now asks which projects the caller may read. `null` = UNRESTRICTED, which
-        // keeps these specs' expectations about the unfiltered page intact; the restriction itself is
-        // covered end-to-end in `test/e2e/read-scoping.e2e.spec.ts`.
-        {
-          provide: AccessService,
-          useValue: {
-            listReadableProjectIds: vi.fn().mockResolvedValue(null),
-            invalidateUser: vi.fn().mockResolvedValue(undefined),
-            // Archive/restore is WA-only; these specs run as one.
-            hasPermission: vi.fn().mockResolvedValue(true),
-            getProjectAccessLevel: vi.fn().mockResolvedValue(null),
-          },
-        },
+        { provide: AccessService, useValue: access },
         {
           provide: DRIZZLE,
           /**
@@ -494,85 +503,39 @@ describe('ProjectsService', () => {
 
   // ── addProjectMember ────────────────────────────────────────────────────────
 
+  /**
+   * The rules this block used to assert — the active-workspace-member check, the §2.1 Workspace
+   * Admin refusal, upsert-not-409, both audit events, the cache invalidation — now live in
+   * `AccessService.grantProjectAccess`, and so do their tests
+   * (`libs/modules/access/src/application/access.service.spec.ts`). They had to move with the body:
+   * `AccessService` is a mock here, so a spec on this side can only observe the delegation, and
+   * asserting on `projectMemberRepo` after the writer moved would assert on a repository this
+   * method no longer touches.
+   *
+   * The delegation and its arguments ARE still worth pinning here, because `onWorkspaceAdmin` is
+   * per-journey: this one refuses (an admin asked for the grant), and the two side-effect journeys
+   * skip. Sending the wrong one from here is a real bug this test would catch.
+   */
   describe('addProjectMember', () => {
-    it('adds a member who is an active workspace member', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
-      projectMemberRepo.findMember.mockResolvedValue(null);
-      projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
-      await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin');
-      expect(projectMemberRepo.addMember).toHaveBeenCalled();
-    });
-
-    it('rejects a user who is not an active workspace member', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue(null);
-      await expect(
-        service.addProjectMember('ws-1', 'proj-1', 'foreign-user', 'admin'),
-      ).rejects.toThrow(PreconditionFailedException);
-      expect(projectMemberRepo.addMember).not.toHaveBeenCalled();
-    });
-
-    it('persists the chosen access level on add (Add Existing User flow)', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
-      projectMemberRepo.findMember.mockResolvedValue(null);
-      projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
-
-      await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin', 'editor');
-
-      expect(projectMemberRepo.addMember).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'user-2', accessLevel: 'editor' }),
-        expect.anything(),
-      );
-    });
-
-    it('upserts: an existing NULL-level row gets the level instead of a 409', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
-      // The team-derived / pre-fix shape: explicit row, no level.
-      projectMemberRepo.findMember.mockResolvedValue({
-        id: 'pm-existing',
-        userId: 'user-2',
-        accessLevel: null,
-      });
-      projectMemberRepo.updateMember.mockResolvedValue({
-        id: 'pm-existing',
-        userId: 'user-2',
-        accessLevel: 'editor',
-      });
-
+    it('delegates to the one grant writer, refusing a Workspace Admin (§2.1)', async () => {
       const result = await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin', 'editor');
 
-      expect(projectMemberRepo.updateMember).toHaveBeenCalledWith(
-        'pm-existing',
-        { accessLevel: 'editor' },
-        expect.anything(),
-      );
+      expect(access.grantProjectAccess).toHaveBeenCalledWith({
+        workspaceId: 'ws-1',
+        projectId: 'proj-1',
+        userId: 'user-2',
+        accessLevel: 'editor',
+        actorId: 'admin',
+        onWorkspaceAdmin: 'refuse',
+      });
       expect(result.accessLevel).toBe('editor');
-      expect(audit.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'project.member.updated',
-          changes: {
-            before: { userId: 'user-2', accessLevel: null },
-            after: { userId: 'user-2', accessLevel: 'editor' },
-          },
-        }),
-        expect.anything(),
-      );
     });
 
-    it('omits accessLevel when none is supplied (lands NULL until a PATCH)', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
-      projectMemberRepo.findMember.mockResolvedValue(null);
-      projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
-
+    it('passes an omitted level through as undefined, never a defaulted one', async () => {
       await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin');
 
-      expect(projectMemberRepo.addMember).toHaveBeenCalledWith(
-        expect.not.objectContaining({ accessLevel: expect.anything() }),
-        expect.anything(),
+      expect(access.grantProjectAccess).toHaveBeenCalledWith(
+        expect.objectContaining({ accessLevel: undefined }),
       );
     });
   });
@@ -597,18 +560,8 @@ describe('ProjectsService', () => {
       expect(roster.map((m) => m.userId)).toEqual(['user-2']);
     });
 
-    it('REFUSES adding a Workspace Admin as a project member', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'wa-1', status: 'active' });
-      projectMemberRepo.listWorkspaceAdminUserIds.mockResolvedValue(['wa-1']);
-
-      // Refused, not silently dropped: the roster now hides these rows, so a row created here
-      // would be an invisible grant the moment the user stops being a Workspace Admin.
-      await expect(
-        service.addProjectMember('ws-1', 'proj-1', 'wa-1', 'admin', 'editor'),
-      ).rejects.toThrow(PreconditionFailedException);
-      expect(projectMemberRepo.addMember).not.toHaveBeenCalled();
-    });
+    // The write half of §2.1 — "REFUSES adding a Workspace Admin" — moved with the writer, to
+    // `access.service.spec.ts`. The roster half stays here because `listProjectMembers` does.
   });
 
   /**

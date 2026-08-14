@@ -347,6 +347,9 @@ export class WorkspaceController {
       dto.email,
       dto.roleId,
       user.sub,
+      // §6.4 — the projects and levels the invitee lands with, so the common path does not produce
+      // a member who can see nothing. Absent means "no initial access", the pre-§6.4 behaviour.
+      dto.projectAccess ?? [],
     );
     return toInvitationDto(invitation);
   }

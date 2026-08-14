@@ -77,6 +77,10 @@ const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> => ({
   create: vi.fn(),
   updateStatus: vi.fn().mockResolvedValue(undefined),
   cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
+  setProjectAccess: vi.fn().mockResolvedValue(undefined),
+  // §6.4 — no initial project access by default; the RBE-11 tests set this.
+  listProjectAccess: vi.fn().mockResolvedValue([]),
+  countProjectsInWorkspace: vi.fn().mockResolvedValue(0),
   rotateForResend: vi.fn(),
 });
 

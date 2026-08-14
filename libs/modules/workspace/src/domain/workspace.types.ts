@@ -1,3 +1,4 @@
+import type { ProjectAccessLevel } from '@shared-kernel';
 import type {
   WorkspaceStatus,
   WorkspaceMemberStatus,
@@ -79,6 +80,19 @@ export interface WorkspaceInvitation {
   acceptedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * One project + level an invitation carries as INITIAL access (§6.4, migration 0119).
+ *
+ * `accessLevel` is typed as the shared catalogue union, not `string`: the CHECK constraint and
+ * `isProjectAccessLevel` are the same two values, and a widened type here is how a level the
+ * model does not have reaches a write (`viewer` was a CHECK value for a week; migrations 0113 and
+ * 0115).
+ */
+export interface InvitationProjectAccess {
+  projectId: string;
+  accessLevel: ProjectAccessLevel;
 }
 
 export interface WorkspaceSettings {

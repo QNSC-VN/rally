@@ -1,4 +1,8 @@
-import type { WorkspaceInvitation, CreateInvitationInput } from '../workspace.types';
+import type {
+  WorkspaceInvitation,
+  CreateInvitationInput,
+  InvitationProjectAccess,
+} from '../workspace.types';
 import type { DbExecutor } from '@platform';
 
 export const WORKSPACE_INVITATION_REPOSITORY = Symbol('WORKSPACE_INVITATION_REPOSITORY');
@@ -21,4 +25,22 @@ export interface IWorkspaceInvitationRepository {
     input: { tokenHash: string; expiresAt: Date; lastSentAt: Date },
     tx?: DbExecutor,
   ): Promise<WorkspaceInvitation>;
+
+  /**
+   * Record the per-Project access an invitation carries (§6.4, migration 0119).
+   *
+   * Written inside the invite transaction, so the intent cannot exist without the invitation that
+   * carries it. `ON DELETE cascade` on both foreign keys is what makes the reverse true.
+   */
+  setProjectAccess(
+    invitationId: string,
+    access: readonly InvitationProjectAccess[],
+    tx?: DbExecutor,
+  ): Promise<void>;
+
+  /** The rows to apply at accept time. Empty for every invitation created before §6.4. */
+  listProjectAccess(invitationId: string, tx?: DbExecutor): Promise<InvitationProjectAccess[]>;
+
+  /** Whether every id is a live project in this workspace — validated before the invite is sent. */
+  countProjectsInWorkspace(workspaceId: string, projectIds: readonly string[]): Promise<number>;
 }

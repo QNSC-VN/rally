@@ -103,6 +103,37 @@ export const workspaceInvitations = workspaceSchema.table(
   }),
 );
 
+// ── workspace_invitation_project_access ──────────────────────────────
+//
+// The per-Project access an invitation carries (Settings §6.4, migration 0119). Applied by
+// `WorkspaceService.acceptInvitation` inside the same transaction as the membership and the role
+// grant — see there for why the email binding is checked BEFORE any of it.
+//
+// A CHILD table rather than columns on `workspace_invitations`: §6.4's list is per project and an
+// invitation may carry several, and the foreign keys are real, so a hard-deleted project drops
+// only its own grant row instead of leaving an invitation half-valid. Both FKs cascade.
+export const workspaceInvitationProjectAccess = workspaceSchema.table(
+  'workspace_invitation_project_access',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    invitationId: uuid('invitation_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    // Same values as `work.project_members.access_level`, enforced by `ck_wipa_access_level`.
+    // NOT NULL: a row naming a project with no level would have to be resolved to something at
+    // accept time, and a defaulted grant is the failure mode migration 0101 exists to remove.
+    accessLevel: varchar('access_level', { length: 10 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // One level per (invitation, project) — two rows would make the grant order-dependent.
+    uniqueInvitationProject: uniqueIndex('uq_wipa_invitation_project').on(
+      t.invitationId,
+      t.projectId,
+    ),
+    invitationIdx: index('ix_wipa_invitation').on(t.invitationId),
+  }),
+);
+
 // ── workspace_settings ───────────────────────────────────────────────
 
 export const workspaceSettings = workspaceSchema.table(

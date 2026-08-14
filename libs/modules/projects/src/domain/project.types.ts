@@ -220,14 +220,8 @@ export interface ProjectMember {
   teamCount?: number;
 }
 
-export interface AddProjectMemberInput {
-  id: string;
-  workspaceId: string;
-  projectId: string;
-  userId: string;
-  /** Persisted up front on create AND on reactivation of a removed row. */
-  accessLevel?: ProjectAccessLevel;
-}
+// `AddProjectMemberInput` is gone with the write it described: creating a grant is
+// `GrantProjectAccessInput` in `@modules/access` now, one shape for all three §5 journeys.
 
 export interface UpdateProjectMemberInput {
   roleId?: string;
