@@ -29,6 +29,8 @@ import { SIMPLIFIED_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
+import { listResource } from '@/shared/lib/query/resource'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
@@ -81,7 +83,15 @@ export function TasksTab({
   readOnly: boolean
 }) {
   const { t } = useTranslation('work-items')
-  const { data: tasks = [], isLoading } = useTasks(workItemId)
+  /**
+   * The task list is a RESOURCE. `data ?? []` made a 403 or a 500 render `tasks.emptyTitle` —
+   * "no tasks" for a Story that may have ten, with an `Add task` button beside it, so the reader's
+   * next action is to re-create work that already exists. `DataTableFrame` has had an `error` slot
+   * all along; this tab simply never filled it.
+   */
+  const tasksQuery = useTasks(workItemId)
+  const taskFeed = listResource(tasksQuery)
+  const tasks = taskFeed.rows
   const { data: totals } = useTaskTotals(workItemId)
   // Row selection (shared pattern with Backlog / Iteration Status): the header
   // checkbox selects every task, each row toggles itself.
@@ -324,10 +334,17 @@ export function TasksTab({
             />
           ) : undefined
         }
-        loading={isLoading}
+        loading={taskFeed.isLoading}
         skeleton={{ rows: 4, cols: 10 }}
+        // Error and empty are mutually exclusive because both read the one `phase` discriminant —
+        // the frame renders `error` first, but that ordering is now belt-and-braces.
+        error={
+          taskFeed.phase === 'error' ? (
+            <LoadErrorState error={taskFeed.error} size="sm" />
+          ) : undefined
+        }
         empty={
-          tasks.length === 0 ? (
+          taskFeed.phase === 'empty' ? (
             <EmptyState
               size="sm"
               icon={<ListChecks size={28} className="text-foreground-subtle" />}

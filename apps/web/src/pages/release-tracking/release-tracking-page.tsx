@@ -18,6 +18,7 @@ import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useReleases } from '@/features/releases/api'
+import { listResource } from '@/shared/lib/query/resource'
 import { useProjectTeams } from '@/features/teams/api'
 import { useReleaseTracking, type ChartUnit, type ReleaseBucket } from '@/features/reporting/api'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -39,10 +40,26 @@ export function ReleaseTrackingPage() {
   const projectId = project?.projectId
   const teamId = team?.teamId
 
-  const { data: releases = [] } = useReleases(projectId)
+  /**
+   * The release feed is a RESOURCE, not `data ?? []`, and this page is the reason the seam exists.
+   *
+   * `const { data: releases = [] } = useReleases(projectId)` discarded both `isError` and
+   * `isLoading`, so a 500, a 403 or a cold load made `releases.length === 0` true and the
+   * `§5.1` branch below asserted *"No releases in this project — Create one under Plan >
+   * Timeboxes to track it here."* That is a fabricated fact AND a wrong call to action, from a
+   * network fault, directly under a comment quoting the requirement it violates. `phase` keeps
+   * "the server said none" and "the server did not answer" apart.
+   */
+  const releasesQuery = useReleases(projectId)
+  const releaseFeed = listResource(releasesQuery)
+  const releases = releaseFeed.rows
   /**
    * Team id → key, for the grid's team chips: the report names teams but carries no keys, and initials
    * would draw a different glyph from the one the same team shows on every other page.
+   *
+   * Left as a plain default deliberately: a failed roster costs a team CHIP its key, which renders
+   * `null` and falls back to the team name the report already carries. Nothing on screen becomes
+   * false, so this is decoration, not a measurement.
    */
   const { data: projectTeams = [] } = useProjectTeams(projectId)
   const teamKeyOf = useCallback(
@@ -133,7 +150,20 @@ export function ReleaseTrackingPage() {
     )
   }
 
-  if (releases.length === 0) {
+  // Before the §5.1 branch, because a failed feed is not an empty project. Note the ORDER is what
+  // makes this safe: `phase` is one discriminant, so `error` cannot also be `empty`.
+  if (releaseFeed.phase === 'error') {
+    return (
+      <div className="flex-1 bg-background p-6">
+        <EmptyState
+          title={t('releaseFeedError.title')}
+          description={t('releaseFeedError.description')}
+        />
+      </div>
+    )
+  }
+
+  if (releaseFeed.phase === 'empty') {
     // "No Release in the selected Project: show an explicit no-Release state; do not reuse
     // another Project's Release" (§5.1).
     return (

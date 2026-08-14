@@ -7,6 +7,8 @@ import { CSS } from '@dnd-kit/utilities'
 import { RankCell, TableRow } from '@/shared/ui/table'
 
 import { BRAND } from '@/shared/config/brand'
+import { listResource } from '@/shared/lib/query/resource'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
 import { RowExpandToggle } from '@/shared/ui/row-expand-toggle'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { notify } from '@/shared/lib/toast'
@@ -95,9 +97,13 @@ export function StatusRow({
   const milestones = item.milestones
 
   const [tasksExpanded, setTasksExpanded] = useState(false)
-  const { data: childTasks = [], isLoading: isLoadingTasks } = useTasks(
-    tasksExpanded ? item.id : undefined,
-  )
+  // A resource: `data ?? []` made a failed task read render `row.noTasks` ("No tasks.") under an
+  // expanded Story — a claim that the Story has no breakdown, which is also the claim the row's own
+  // To Do rollup rests on. The expand affordance is the one place a reader looks to check that.
+  const tasksQuery = useTasks(tasksExpanded ? item.id : undefined)
+  const taskFeed = listResource(tasksQuery)
+  const childTasks = taskFeed.rows
+  const isLoadingTasks = taskFeed.isLoading
 
   const membersList = useMemo(() => Array.from(memberMap.values()), [memberMap])
 
@@ -517,7 +523,10 @@ export function StatusRow({
               <Loader2 size={12} className="animate-spin" /> {t('row.loadingTasks')}
             </div>
           )}
-          {!isLoadingTasks && childTasks.length === 0 && (
+          {taskFeed.phase === 'error' && (
+            <LoadErrorState error={taskFeed.error} size="sm" className="py-3" />
+          )}
+          {taskFeed.phase === 'empty' && (
             <div
               className="text-foreground-subtle"
               style={{
@@ -529,7 +538,7 @@ export function StatusRow({
               {t('row.noTasks')}
             </div>
           )}
-          {!isLoadingTasks &&
+          {taskFeed.phase === 'ready' &&
             childTasks.map((task) => {
               const taskMember = task.assigneeId ? memberMap.get(task.assigneeId) : undefined
               const taskOwner = taskMember?.displayName ?? taskMember?.email ?? 'Unassigned'

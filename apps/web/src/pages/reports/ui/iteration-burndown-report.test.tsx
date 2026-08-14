@@ -43,22 +43,40 @@ const BURNDOWN = {
  * under test. Routed by URL so a failure can be injected into the report's query while the picker
  * still populates; otherwise "no iteration selected" would mask the state being asserted.
  */
-function mockRoutes({ burndownFails }: { burndownFails: boolean }) {
+function mockRoutes({
+  burndownFails,
+  iterationsFail = false,
+}: {
+  burndownFails: boolean
+  /**
+   * Fail the PICKER's endpoint instead of the report's.
+   *
+   * The two tests above keep this healthy, and that is precisely why they could not see the second
+   * half of the same defect: with an empty picker the report short-circuits to
+   * `burndown.empty.noIteration` — "Select an iteration to see its burndown" — which is an
+   * AFFORDANCE INSTRUCTION standing in for a network fault, with no iteration available to obey it
+   * with. This file's own subject docblock claimed the shape was closed while that path was live.
+   */
+  iterationsFail?: boolean
+}) {
+  const failure = {
+    data: undefined,
+    error: { message: 'boom' },
+    response: { status: 500 },
+  }
   mockGET.mockImplementation((url: string) => {
     if (url.includes('burndown')) {
       return burndownFails
-        ? Promise.resolve({
-            data: undefined,
-            error: { message: 'boom' },
-            response: { status: 500 },
-          })
+        ? Promise.resolve(failure)
         : Promise.resolve({ data: BURNDOWN, error: undefined, response: { status: 200 } })
     }
-    return Promise.resolve({
-      data: { data: ITERATIONS, pageInfo: { hasNextPage: false, nextCursor: null, limit: 50 } },
-      error: undefined,
-      response: { status: 200 },
-    })
+    return iterationsFail
+      ? Promise.resolve(failure)
+      : Promise.resolve({
+          data: { data: ITERATIONS, pageInfo: { hasNextPage: false, nextCursor: null, limit: 50 } },
+          error: undefined,
+          response: { status: 200 },
+        })
   })
 }
 
@@ -106,5 +124,36 @@ describe('IterationBurndownReport', () => {
     mockGET.mockReturnValue(new Promise(() => {}))
     renderReport()
     expect(screen.getByText('burndown.title')).toBeInTheDocument()
+  })
+
+  it('reports a failed ITERATION LIST as a failure, not as "select an iteration"', async () => {
+    // The picker's own feed. `const { data: allIterations = [] } = useIterations(projectId)` made a
+    // 500 on `/v1/iterations` indistinguishable from a project with no timeboxes, and the body then
+    // instructed the reader to pick one from an empty picker.
+    mockRoutes({ burndownFails: false, iterationsFail: true })
+    renderReport()
+
+    await waitFor(() => expect(screen.getByText('timeboxFeedError.title')).toBeInTheDocument())
+    expect(screen.queryByText('burndown.empty.noIteration')).not.toBeInTheDocument()
+    // And no verdict about a sprint that was never read.
+    expect(screen.queryByText('burndown.onTrack')).not.toBeInTheDocument()
+    expect(screen.queryByText('burndown.behindPlan')).not.toBeInTheDocument()
+  })
+
+  it('still shows "select an iteration" when the project genuinely has none', async () => {
+    // The other half of the contract: separating error from empty must not delete the empty state.
+    mockGET.mockImplementation((url: string) =>
+      url.includes('burndown')
+        ? Promise.resolve({ data: BURNDOWN, error: undefined, response: { status: 200 } })
+        : Promise.resolve({
+            data: { data: [], pageInfo: { hasNextPage: false, nextCursor: null, limit: 50 } },
+            error: undefined,
+            response: { status: 200 },
+          }),
+    )
+    renderReport()
+
+    await waitFor(() => expect(screen.getByText('burndown.empty.noIteration')).toBeInTheDocument())
+    expect(screen.queryByText('timeboxFeedError.title')).not.toBeInTheDocument()
   })
 })

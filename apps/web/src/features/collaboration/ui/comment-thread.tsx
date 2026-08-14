@@ -19,7 +19,7 @@ import {
   type Comment,
   type CommentSubject,
 } from '@/features/collaboration/api'
-import { useProjectMembers } from '@/features/teams/api'
+import { useProjectMemberOptions } from '@/features/teams/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
@@ -28,6 +28,8 @@ import { IconButton } from '@/shared/ui/icon-button'
 import { Textarea } from '@/shared/ui/textarea'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { cn, formatWith } from '@/shared/lib/utils'
+import { listResource } from '@/shared/lib/query/resource'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
 
 function relativeTime(iso: string): string {
   return formatWith(
@@ -50,8 +52,16 @@ interface CommentThreadProps {
 
 export function CommentThread({ subject, projectId, readOnly = false }: CommentThreadProps) {
   const { t } = useTranslation('work-items')
-  const { data: comments = [], isLoading } = useComments(subject)
-  const { data: members = [] } = useProjectMembers(projectId)
+  // A resource: `data ?? []` rendered "No comments yet." for a failed read, so a discussion the
+  // reader is replying to could vanish and the panel would invite them to start it over.
+  const commentsQuery = useComments(subject)
+  const commentFeed = listResource(commentsQuery)
+  const comments = commentFeed.rows
+  const isLoading = commentFeed.isLoading
+  // The @mention picker resolves NAMES, so it reads the reference feed. The administrative roster
+  // (`useProjectMembers`) is Admin-only and its 403 defaults to `[]`, which would silently reduce
+  // every mention to a truncated user id and offer no one to mention.
+  const { data: members = [] } = useProjectMemberOptions(projectId)
   const createMutation = useCreateComment(subject)
   const updateMutation = useUpdateComment(subject)
   const deleteMutation = useDeleteComment(subject)
@@ -155,7 +165,9 @@ export function CommentThread({ subject, projectId, readOnly = false }: CommentT
 
       {isLoading ? (
         <p className="text-ui-md text-foreground-subtle">Loading…</p>
-      ) : comments.length === 0 ? (
+      ) : commentFeed.phase === 'error' ? (
+        <LoadErrorState error={commentFeed.error} size="sm" />
+      ) : commentFeed.phase === 'empty' ? (
         <p className="text-ui-md text-foreground-subtle">No comments yet.</p>
       ) : (
         <ul className="space-y-3">

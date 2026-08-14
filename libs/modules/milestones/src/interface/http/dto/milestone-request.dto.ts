@@ -8,6 +8,19 @@ export const MilestoneQuerySchema = PageQuerySchema.extend({
 export class MilestoneQueryDto extends createZodDto(MilestoneQuerySchema) {}
 
 /**
+ * Query for `GET /milestones/options` — the reference feed.
+ *
+ * Its own schema rather than {@link MilestoneQuerySchema}: a picker takes the whole set, so there is
+ * no cursor and no page size, and inheriting `PageQuerySchema` would let a caller silently truncate an
+ * option list. The `ValidationPipe` runs before the guard, so a field this route has no reason to
+ * require would be a 400 the picker could never diagnose.
+ */
+export const MilestoneOptionsQuerySchema = z.object({
+  projectId: z.string().uuid(),
+});
+export class MilestoneOptionsQueryDto extends createZodDto(MilestoneOptionsQuerySchema) {}
+
+/**
  * Query for the Artifacts dashboard rows. `q` matches item key or title, because the shared
  * artifacts toolbar puts a search box above that table and has always sent the term.
  */

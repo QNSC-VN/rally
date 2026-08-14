@@ -18,6 +18,7 @@ import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { useTableSort } from '@/shared/lib/hooks/use-table-sort'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { useIterations } from '@/features/iterations/api'
+import { listResource } from '@/shared/lib/query/resource'
 import { useTeamCapacityReport, type TeamCapacityTeam } from '@/features/reporting/api'
 import { iterationsInScope, teamScopeLabel } from '@/features/reporting/scope'
 import { TEAM_STATUS_STYLE } from '@/features/teams/status-colors'
@@ -72,9 +73,19 @@ export function TeamCapacityReport({
   teamId: string | undefined
 }) {
   const { t } = useTranslation(['reports', 'common'])
-  const { data: allIterations = [] } = useIterations(projectId)
+  /**
+   * The PICKER's feed is a resource for the same reason the report's own query is one.
+   *
+   * `const { data: allIterations = [] } = useIterations(projectId)` made a failing
+   * `/v1/iterations` indistinguishable from a project with no timeboxes: the picker emptied,
+   * `selectedId` stayed null, and the surface rendered `capacity.empty.noIteration` **plus four
+   * `--` KPI cards** — which is precisely the "measured absence for a request that never ran"
+   * this file's own docblock claims to have fixed on the report query alone.
+   */
+  const iterationsQuery = useIterations(projectId)
+  const iterationFeed = listResource(iterationsQuery)
   // Same scope rule as the report itself: the team's own timeboxes plus the project's shared ones.
-  const iterations = iterationsInScope(allIterations, teamId)
+  const iterations = iterationsInScope(iterationFeed.rows, teamId)
   const { selectedId, select } = useSelectedIteration(projectId, iterations)
   const { data, isLoading, isError } = useTeamCapacityReport({
     projectId,
@@ -190,7 +201,12 @@ export function TeamCapacityReport({
        * `0h`.
        */
       error={
-        isError ? (
+        iterationFeed.isError ? (
+          <EmptyState
+            title={t('timeboxFeedError.title')}
+            description={t('timeboxFeedError.body')}
+          />
+        ) : isError ? (
           <EmptyState title={t('capacity.error.title')} description={t('capacity.error.body')} />
         ) : undefined
       }

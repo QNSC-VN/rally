@@ -72,46 +72,120 @@ export interface Release {
   taskRollup?: TaskRollup
 }
 
+/**
+ * The RELEASE REFERENCE projection — what a picker needs to label, order and choose a release.
+ *
+ * Mirrors `ReleaseOptionDto` (`GET /v1/releases/options`). Hand-declared rather than taken from
+ * `components['schemas']` because the generated client is regenerated centrally from a running API;
+ * the field names are the contract until then. Same escape hatch `features/workspaces`,
+ * `features/milestones` and `features/quality` already use.
+ *
+ * Deliberately NOT `Pick<Release, …>`: {@link Release} is the administration record, and a shared
+ * base is how a field added there later joins the feed every participant reads.
+ */
+export interface ReleaseOption {
+  id: string
+  projectId: string
+  releaseKey: string | null
+  name: string
+  status: ReleaseStatus
+  startDate: string | null
+  releaseDate: string | null
+}
+
 // ── Keys ─────────────────────────────────────────────────────────────────────
 
 export const releaseKeys = {
   all: ['releases'] as const,
+  /** The ADMINISTRATIVE list — `GET /v1/releases`, `release:view`. Editor cannot read it. */
   list: (projectId: string) => [...releaseKeys.all, 'list', projectId] as const,
+  /** The REFERENCE feed — `GET /v1/releases/options`, `project:view`. Every level can read it. */
+  options: (projectId: string) => [...releaseKeys.all, 'options', projectId] as const,
   detail: (id: string) => [...releaseKeys.all, 'detail', id] as const,
 } as const
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 
-/** Shared fetcher so single- and multi-project hooks stay in lockstep. */
-async function fetchReleases(projectId: string): Promise<Release[]> {
-  const { data, error, response } = await apiClient.GET('/v1/releases', {
+/**
+ * Untyped view of the client for the ONE route newer than the committed
+ * `shared/api/generated/api.ts`; it disappears on the next central `codegen` run.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const optionsClient = apiClient as any
+
+/** Shared fetcher so single- and multi-project reference hooks stay in lockstep. */
+async function fetchReleaseOptions(projectId: string): Promise<ReleaseOption[]> {
+  const { data, error, response } = await optionsClient.GET('/v1/releases/options', {
     params: { query: { projectId } },
   })
   if (error) throw new Error(apiErrorMessage(error, response.status))
-  return ((data as { data?: Release[] } | undefined)?.data ?? []) as Release[]
+  return (data as ReleaseOption[] | undefined) ?? []
 }
 
-export function useReleases(projectId: string | undefined) {
+/**
+ * The RELEASE REFERENCE feed — id, key, name and window. Read this from any picker, filter or
+ * name lookup.
+ *
+ * WHY THIS IS NOT `GET /v1/releases`. That route is the `Plan > Releases` administration grid's
+ * feed and carries the release RECORD (theme, notes, release notes, planned velocity, plan estimate,
+ * task roll-up, version), so it takes `release:view` — a code §3.2 withholds from a project Editor
+ * because it marks the whole `Timeboxes` surface Hidden for one. It was ALSO the only source of a
+ * release's NAME on Backlog, the Work Item detail sidebar, the Backlog summary panel and Quality's
+ * release filter, every one of which defaults a failed request to `[]` — so for an Editor a row
+ * assigned to a real release rendered as `--`, and no release could be chosen at all. Use
+ * {@link useReleaseRecords} only where the administration fields are actually displayed.
+ */
+export function useReleaseOptions(projectId: string | undefined) {
   return useQuery({
-    queryKey: releaseKeys.list(projectId ?? ''),
-    queryFn: () => fetchReleases(projectId as string),
+    queryKey: releaseKeys.options(projectId ?? ''),
+    queryFn: () => fetchReleaseOptions(projectId as string),
     enabled: !!projectId,
     staleTime: 60_000,
   })
 }
 
 /**
- * Union of releases across several projects (deduped by id). Used where an
+ * Transitional alias for {@link useReleaseOptions}, kept because a dozen picker call sites name it.
+ *
+ * `useReleaseOptions` is the name to write. This one is counted by
+ * `apps/web/src/test/fe-consistency.ratchet.test.ts` so the count can only fall.
+ */
+export const useReleases = useReleaseOptions
+
+/**
+ * The ADMINISTRATIVE release list — the whole record, for the `Plan > Releases` grid alone.
+ *
+ * `release:view`, so a project Editor gets a 403 here BY DESIGN (§3.2 hides the surface). Anything
+ * that only needs to name or choose a release must call {@link useReleaseOptions} instead; pointing a
+ * picker back at this hook is the defect the split exists to prevent.
+ */
+export function useReleaseRecords(projectId: string | undefined) {
+  return useQuery({
+    queryKey: releaseKeys.list(projectId ?? ''),
+    queryFn: async () => {
+      const { data, error, response } = await apiClient.GET('/v1/releases', {
+        params: { query: { projectId: projectId as string } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return ((data as { data?: Release[] } | undefined)?.data ?? []) as Release[]
+    },
+    enabled: !!projectId,
+    staleTime: 60_000,
+  })
+}
+
+/**
+ * Union of release OPTIONS across several projects (deduped by id). Used where an
  * entity spans multiple projects — e.g. a milestone linked to more than one
  * project needs every linked project's releases as selectable options.
- * Reuses `releaseKeys.list` so results share cache with `useReleases`.
+ * Reuses `releaseKeys.options` so results share cache with `useReleaseOptions`.
  */
 export function useReleasesForProjects(projectIds: readonly string[]) {
   const ids = useMemo(() => [...new Set(projectIds.filter(Boolean))], [projectIds])
   const results = useQueries({
     queries: ids.map((projectId) => ({
-      queryKey: releaseKeys.list(projectId),
-      queryFn: () => fetchReleases(projectId),
+      queryKey: releaseKeys.options(projectId),
+      queryFn: () => fetchReleaseOptions(projectId),
       staleTime: 60_000,
     })),
   })
@@ -120,7 +194,7 @@ export function useReleasesForProjects(projectIds: readonly string[]) {
   // underlying release data actually changes, not on every render.
   const signature = results.map((r) => r.dataUpdatedAt).join(',')
   const data = useMemo(() => {
-    const byId = new Map<string, Release>()
+    const byId = new Map<string, ReleaseOption>()
     for (const r of results) for (const rel of r.data ?? []) byId.set(rel.id, rel)
     return [...byId.values()]
     // eslint-disable-next-line react-hooks/exhaustive-deps

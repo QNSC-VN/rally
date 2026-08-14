@@ -36,13 +36,20 @@ const MAX_INLINE_STYLE = 173 // `style={{` in pages/features/entities/widgets (r
 const MAX_ARBITRARY_TEXT = 2 // `text-[` app-wide (only text-[0] + one navy placeholder rgba remain)
 const MAX_RAW_FONT_SIZE = 12 // raw Tailwind text-{xs,sm,base,lg,xl,2xl,3xl} in consumer layers; use the text-ui-* scale. Residual = deliberate display text (login hero, big numbers, entity-title inputs)
 const MAX_HARDCODED_TEXT = 51 // capitalized JSX text nodes in consumer layers (RBAC Settings tabs + access/permission surface + Workspaces & Projects tree/detail/teams/overview/edit + user-centric access modal are English-first; i18n deferred). Raised 46→50 for the editable user-centric Project Access modal, then 50→52 when that modal grew a General tab (Status) + inline per-project Teams picker. Lowered 52→49: the standalone Teams settings page (teams-tab.tsx) is gone — its mockup-divergent nav item had no BA-mockup equivalent — and its copy went with it, net of the new Linked Projects field added to project-teams-tab.tsx's team form. Raised 49→53: measured by forcing to -1 (real count 53, not a guess) after `projects-access-tab.tsx`'s Add Existing User modal gained an inline Teams multi-select + "select at least one team" warning copy, matching the BA mockup's single-modal Add Existing User flow. Raised 53→54: measured by forcing to -1 (real count 54) after project-teams-tab.tsx's Create-Team-only Members & Access section became a per-row USER | CURRENT | NEW ACCESS table (mockup parity — a per-row Access Level select replacing one shared level for every selected member), adding the section's own static copy ("Members & access", "Admin joins All Teams; Editor joins this Team.", "User", "Current", "New access", "No Access", "Not added"). Lowered 54→51 (measured by forcing to -1): the user-centric access modal and the Editor Teams step moved their remaining static copy into the `settings` i18n namespace, and `AllTeamsChip` moved to `shared/ui/` (outside the consumer layers this counts).
-const MAX_FILE_LINES = 944 // largest single source file — capacity-planning/capacity-plan-detail-page.tsx
+const MAX_ADMIN_FEED_CALL_SITES = 11 // Picker / name-lookup call sites still reading an ADMINISTRATIVE feed. MEASURED 2026-08-14 by forcing to -1 and reading the count the failure reports (not grepped: an import or a docblock mention would have inflated it). Counting the REFERENCE hooks with the same counter reports 21, so 10 call sites now sit on a reference feed — 7 of them moved by this change (`comment-thread`, `add-task-modal`, `create-work-item-modal`, `projects-detail-page`, `project-parts`, `feature-children-table`, `portfolio-detail-page`) and 3 by the owner-picker fix before it. Each of the remaining 11 is a ONE-LINE hook swap in pages/{work-item,backlog,quality,iterations,milestones,iteration-status}; every one 403s for a project Editor today and renders the 403 as an empty option list. ONLY EVER LOWER.
+const MAX_FILE_LINES = 943 // largest single source file — capacity-planning/capacity-plan-detail-page.tsx
 // Lowered from 1009: `backlog-page.tsx` held the ceiling and sat exactly on it, so it could not take
 // another line. Its column definitions moved to `pages/backlog/model/columns.ts` (the shape Iteration
 // Status already uses), taking the page from 1009 to 921 and handing the ceiling to capacity planning.
 // Counted as `split('\n').length`, i.e. one more than `wc -l`.
 // Lowered 961→944 (measured by forcing to -1): the ceiling holder is unchanged, so 961 was 17 lines of
 // slack that had never been re-measured — exactly the drift this header warns about.
+// Lowered 944→943 (measured by forcing to -1): the ceiling holder still holds it, but the
+// `isError`-seam work needed six lines inside it and had nowhere to put them — so the duplicated
+// expand/collapse Set toggle moved to `pages/capacity-planning/model/expanded-ids.ts` (§1: page-local
+// helpers live in `model/`) and the file came out one line BELOW where it went in. Worth recording
+// that the ratchet is what forced that: at zero headroom, "add a few lines" is not available, and the
+// only way forward was to decompose something. That is the mechanism working, not an obstacle.
 
 // this file lives in src/test/
 const SRC = join(import.meta.dirname, '../')
@@ -177,5 +184,77 @@ describe('FE consistency ratchets (only ever decrease)', () => {
     expect(offenders, `Add withCsrfHeader(method, headers) to:\n${offenders.join('\n')}`).toEqual(
       [],
     )
+  })
+
+  /**
+   * A PICKER must not read an ADMINISTRATIVE feed — see FRONTEND_CONVENTIONS.md §5a.
+   *
+   * Every entity that appears in a dropdown has two reads: a REFERENCE feed (id, key, display name)
+   * on the parent's own view permission, and an ADMINISTRATIVE one behind the surface's own code. The
+   * hooks below are the administrative halves. Reading one from anywhere other than the surface it
+   * belongs to is the defect that has now shipped four times, and it is invisible three ways over:
+   * the response is a 403, `const { data = [] } = useX()` turns that into "there are none", and the
+   * dev principal is a Workspace Admin who holds every code — so it reproduces for nobody who tests
+   * it, and it renders as a legitimate empty state for everyone else.
+   *
+   * The count is the number of call sites OUTSIDE the allowed surfaces. It MAY ONLY DECREASE; each
+   * remaining one is a picker or a name lookup still pointed at a feed its own users cannot read.
+   *
+   * Measured 2026-08-14 by forcing the baseline to -1 and reading the count the failure reports.
+   */
+  it(`administrative member/entity feeds are read only by admin surfaces (<= ${MAX_ADMIN_FEED_CALL_SITES})`, () => {
+    /**
+     * hook → the surfaces that legitimately display the RECORD, so may read it.
+     *
+     * `pages/settings/**` is User Management and the Project Access roster; `pages/releases`,
+     * `pages/milestones` and `pages/iterations` are the §3.2 `Plan > Timeboxes` grids and details,
+     * which the BA hides from an Editor — so a 403 there is the correct outcome, not a defect.
+     */
+    const ADMIN_FEEDS: Record<string, RegExp> = {
+      // `GET /projects/:id/members` — accessLevel, status, teamCount. Narrowed in the service to
+      // Workspace Admin / Project Admin (§3.1:71). Reference feed: `useProjectMemberOptions`.
+      useProjectMembers: /^pages\/settings\//,
+      // `GET /workspaces/:id/members-with-profile` — phone, lastLoginAt, role ids. `workspace:view`.
+      // Reference feed: `useWorkspaceMemberOptions`.
+      useWorkspaceMembers: /^pages\/settings\//,
+      // `GET /releases` — theme, notes, plan estimate, task roll-up, version. `release:view`.
+      // Reference feed: `useReleaseOptions`.
+      useReleaseRecords: /^pages\/releases\//,
+      // `GET /milestones` — description, notes, status, owner, target window, progress.
+      // `milestone:view`. Reference feed: `useMilestoneOptions`.
+      useMilestones: /^pages\/milestones\//,
+      // `GET /iterations` — goal, theme, notes, plannedVelocity: the timebox RECORD, which is why
+      // `timebox:view` exists. NOTE this one is not yet fixable from the client alone — there is no
+      // reference LIST feed to point at, only `GET /iterations/options`, which filters to
+      // planning|committed and so cannot name an accepted iteration. Its call sites are allowed for
+      // now and declared in `test/route-audience.ratchet.spec.ts`'s READ_AUDIENCE_GAPS.
+      useIterations: /^pages\//,
+    }
+
+    const offenders: string[] = []
+    for (const rel of files(() => true)) {
+      // Only the files where these hooks are DEFINED are exempt — not `features/` wholesale.
+      // `features/*/ui/*` holds real pickers (the @mention list, Add Task, Create Work Item), and
+      // excluding the whole layer would have hidden three of them.
+      if (/^features\/(teams|workspaces|releases|milestones|iterations)\/api\.ts$/.test(rel))
+        continue
+      const src = readFileSync(join(SRC, rel), 'utf8')
+      for (const [hook, allowed] of Object.entries(ADMIN_FEEDS)) {
+        if (allowed.test(rel)) continue
+        // Call sites only — `\b<hook>(` — so an import or a docblock mention does not count.
+        const n = (src.match(new RegExp(`\\b${hook}\\(`, 'g')) ?? []).length
+        if (n) offenders.push(`${rel}: ${n}x ${hook}`)
+      }
+    }
+
+    const total = offenders.reduce((sum, line) => sum + Number(line.match(/: (\d+)x/)![1]), 0)
+    expect(
+      total,
+      `${total} picker/name-lookup call site(s) read an ADMINISTRATIVE feed (baseline ` +
+        `${MAX_ADMIN_FEED_CALL_SITES}):\n${offenders.join('\n')}\n\n` +
+        `Point each at the REFERENCE feed (FRONTEND_CONVENTIONS.md §5a). These 403 for a project ` +
+        `Editor, and \`data = []\` renders the 403 as "there are none" — which is how every owned ` +
+        `item came to read "Unassigned" and a scheduled row came to read as unscheduled.`,
+    ).toBeLessThanOrEqual(MAX_ADMIN_FEED_CALL_SITES)
   })
 })

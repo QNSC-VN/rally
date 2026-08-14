@@ -128,7 +128,9 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       displayName: r.displayName ?? r.email ?? r.userId,
       email: r.email ?? '',
       avatarUrl: r.avatarUrl ?? null,
-      status: r.status,
+      // Derived here, so the account state never leaves the repository. See
+      // `WorkspaceMemberOption.assignable`.
+      assignable: r.status === 'active',
     }));
   }
 

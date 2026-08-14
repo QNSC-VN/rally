@@ -4,10 +4,12 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, ArrowUpRight, Clock, Inbox } from 'lucide-react'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { formatWith } from '@/shared/lib/utils'
+import { EMPTY_VALUE, formatWith } from '@/shared/lib/utils'
 import { BRAND } from '@/shared/config/brand'
 import { PageHeader } from '@/shared/ui/page-header'
 import { EmptyState } from '@/shared/ui/empty-state'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
+import { listResource, valueResource } from '@/shared/lib/query/resource'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { KeyChip } from '@/shared/ui/key-chip'
 import { PriorityBadge } from '@/entities/work-item/ui/badges'
@@ -153,32 +155,57 @@ export function HomePage() {
   )
 
   // ── Data fetching — one bounded/aggregate request per widget (no fan-out) ────
-  const { data: summary, isLoading: loadingSummary } = useWorkspaceSummary(enabled)
-  const { data: myItems = [] } = useMyWork(MY_WORK_LIMIT, enabled)
-  const { data: activity = [] } = useNotifications({ limit: ACTIVITY_LIMIT })
-  const { data: health = [], isLoading: loadingHealth } = useProjectHealth(
-    PROJECT_HEALTH_LIMIT,
-    enabled,
-  )
+  /**
+   * Every widget on this page is a resource, because every one of them was a verdict drawn from
+   * `?? 0` / `?? []`.
+   *
+   * The summary strip is the worst of them: six large numbers, and `summary?.activeProjects ?? 0`
+   * reads as *"this workspace has no active projects"* for a request that failed. It is also the
+   * first screen after login, so a cold-start failure was reported as an empty workspace. `--` is
+   * this app's own placeholder for an absent number (`EMPTY_VALUE`); `0` is a measurement.
+   */
+  const summaryQuery = useWorkspaceSummary(enabled)
+  const summaryResource = valueResource(summaryQuery)
+  const summary = summaryResource.value
+  const loadingSummary = summaryResource.isLoading
+  const myWorkQuery = useMyWork(MY_WORK_LIMIT, enabled)
+  const myWorkFeed = listResource(myWorkQuery)
+  const activityQuery = useNotifications({ limit: ACTIVITY_LIMIT })
+  const activityFeed = listResource(activityQuery)
+  const healthQuery = useProjectHealth(PROJECT_HEALTH_LIMIT, enabled)
+  const healthFeed = listResource(healthQuery)
+  const myItems = myWorkFeed.rows
+  const activity = activityFeed.rows
+  const health = healthFeed.rows
   const openNotification = useOpenNotification()
 
+  /** `--` for an absent number, never `0` — the app-wide rule, and here it is load-bearing. */
+  const metric = (value: number | undefined) => (value === undefined ? EMPTY_VALUE : value)
   const summaryMetrics = [
-    { label: t('metrics.activeProjects'), value: summary?.activeProjects ?? 0, path: '/projects' },
-    { label: t('metrics.openWorkItems'), value: summary?.openWorkItems ?? 0, path: '/backlog' },
-    { label: t('metrics.activeSprints'), value: summary?.activeSprints ?? 0, path: '/timeboxes' },
+    {
+      label: t('metrics.activeProjects'),
+      value: metric(summary?.activeProjects),
+      path: '/projects',
+    },
+    { label: t('metrics.openWorkItems'), value: metric(summary?.openWorkItems), path: '/backlog' },
+    {
+      label: t('metrics.activeSprints'),
+      value: metric(summary?.activeSprints),
+      path: '/timeboxes',
+    },
     {
       label: t('metrics.blockedItems'),
-      value: summary?.blockedItems ?? 0,
+      value: metric(summary?.blockedItems),
       path: '/backlog',
       alert: true,
     },
     {
       label: t('metrics.openDefects'),
-      value: summary?.openDefects ?? 0,
+      value: metric(summary?.openDefects),
       path: '/quality',
       alert: true,
     },
-    { label: t('metrics.assignedToMe'), value: summary?.assignedToMe ?? 0, path: '/backlog' },
+    { label: t('metrics.assignedToMe'), value: metric(summary?.assignedToMe), path: '/backlog' },
   ]
 
   return (
@@ -264,7 +291,9 @@ export function HomePage() {
           </div>
 
           {/* Rows */}
-          {myItems.length === 0 ? (
+          {myWorkFeed.phase === 'error' ? (
+            <LoadErrorState error={myWorkFeed.error} size="sm" />
+          ) : myWorkFeed.phase === 'empty' ? (
             <EmptyState
               size="sm"
               icon={<Inbox size={28} className="text-foreground-subtle" />}
@@ -323,7 +352,9 @@ export function HomePage() {
               {t('activity.all')} <ArrowUpRight size={11} />
             </Link>
           </div>
-          {activity.length === 0 ? (
+          {activityFeed.phase === 'error' ? (
+            <LoadErrorState error={activityFeed.error} size="sm" />
+          ) : activityFeed.phase === 'empty' ? (
             <EmptyState
               size="sm"
               icon={<Clock size={28} className="text-foreground-subtle" />}
@@ -377,7 +408,9 @@ export function HomePage() {
             ))}
           </div>
           {/* Rows */}
-          {!loadingHealth && health.length === 0 ? (
+          {healthFeed.phase === 'error' ? (
+            <LoadErrorState error={healthFeed.error} size="sm" />
+          ) : healthFeed.phase === 'empty' ? (
             <EmptyState size="sm" title={t('projectHealth.empty')} />
           ) : (
             health.map((row) => (

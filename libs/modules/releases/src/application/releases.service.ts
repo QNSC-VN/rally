@@ -15,7 +15,7 @@ import { PERMISSION } from '@shared-kernel';
 import { capacityPlans, workItems, tasks } from '../../../../../db/schema/work';
 import { acceptedScheduleStatesSql, type ReleaseStatus } from '../../../../../db/schema/enums';
 import { IReleaseRepository, RELEASE_REPOSITORY } from '../domain/ports/release.repository';
-import type { Release, UpdateReleaseInput } from '../domain/release.types';
+import type { Release, ReleaseOption, UpdateReleaseInput } from '../domain/release.types';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
 import { RELEASE_ACTIVITY_CONFIG } from './release-activity-diff';
 
@@ -128,6 +128,29 @@ export class ReleasesService {
         return { ...r, taskEstimate: taskRollup.estimateHours, taskRollup };
       }),
     };
+  }
+
+  /**
+   * The REFERENCE feed — every release in the project, projected to what a picker needs.
+   *
+   * Split out of {@link listReleases} because that one is the `Plan > Releases` administration grid's
+   * feed and takes `release:view`, which §3.2 withholds from an Editor — and it was ALSO the only
+   * source of a release's NAME on Backlog, the Work Item detail sidebar, the Backlog summary panel
+   * and Quality. See {@link ReleaseOptionSchema} for the full account; the short version is that a
+   * 403 there rendered a scheduled row as unscheduled and left the picker empty, which is the
+   * `member-options` regression one column across.
+   *
+   * No roll-up computed here: `computeTaskRollups` is three grouped aggregates over `work.tasks` for
+   * numbers a picker does not show, and `taskEstimate` is administration data an Editor must not
+   * read. So this is also the cheaper call, which is the one every grid makes.
+   *
+   * No actor gate beyond the route's: `project:view` scoped to the query's `projectId` is the
+   * parent's own view permission, held by every level, and `getProject` still refuses a project
+   * outside the caller's workspace.
+   */
+  async listReleaseOptions(actor: JwtPayload, projectId: string): Promise<ReleaseOption[]> {
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    return this.releaseRepo.listOptionsByProject(projectId, actor.workspaceId);
   }
 
   /**

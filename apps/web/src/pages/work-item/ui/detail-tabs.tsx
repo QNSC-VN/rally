@@ -8,16 +8,13 @@ import { useTranslation } from 'react-i18next'
 
 import { useActivityLog } from '@/features/work-items/api'
 import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
+import { listResource } from '@/shared/lib/query/resource'
 
 export function HistoryTab({ workItemId }: { workItemId: string }) {
   const { t } = useTranslation('work-items')
-  const { data: logs = [], isLoading } = useActivityLog(workItemId)
+  const activityQuery = useActivityLog(workItemId)
+  const logs = listResource(activityQuery)
   return (
-    <ActivityHistoryTab
-      logs={logs}
-      isLoading={isLoading}
-      title={t('tabs.history')}
-      subtitle={t('history.subtitle')}
-    />
+    <ActivityHistoryTab logs={logs} title={t('tabs.history')} subtitle={t('history.subtitle')} />
   )
 }

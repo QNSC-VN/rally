@@ -100,9 +100,14 @@ beforeEach(() => {
     if (path === '/v1/work-items/by-key') {
       return Promise.resolve({ data: ITEM, error: undefined, response: { status: 200 } })
     }
-    if (path === '/v1/releases') {
+    // `/v1/releases/options`, NOT `/v1/releases`: the summary panel resolves a release NAME, so it
+    // reads the REFERENCE feed (`project:view`). The administrative list is `release:view`, which a
+    // project Editor does not hold — and this panel would render `--` for a real release.
+    // A bare array, not `{ data }`: the options feed is unpaged, because a picker offering a page of
+    // a project's releases is the defect it exists to fix.
+    if (path === '/v1/releases/options') {
       return Promise.resolve({
-        data: { data: [{ id: 'rel-1', name: 'R1' }] },
+        data: [{ id: 'rel-1', name: 'R1' }],
         error: undefined,
         response: { status: 200 },
       })

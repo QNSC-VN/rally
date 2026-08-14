@@ -1,6 +1,8 @@
 {
   "loading": "Loading...",
   "error": "Something went wrong",
+  "loadFailed": "Could not load this data.",
+  "loadFailedHint": "This is a load failure, not an empty result. Try again.",
   "retry": "Try again",
   "cancel": "Cancel",
   "save": "Save",

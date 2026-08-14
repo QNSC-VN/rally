@@ -13,9 +13,20 @@ import { Test } from '@nestjs/testing';
 import { AuthService, EntraTokenVerifier, type EntraClaims } from '@qnsc-vn/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { AccessService } from '@modules/access';
+import { ACCESS_LEVEL_PERMISSIONS, permissionGrants } from '@shared-kernel';
+
 import { AppModule } from '../../apps/api/src/app.module';
-import { NXP_ITER_CURRENT_ID, SEED_PROJECTS, WORKSPACE_ID } from '../../db/seeds/constants';
-import { grantProjectAccess } from './support/flow-harness';
+import {
+  ADMIN_USER_ID,
+  DEVELOPER_ID,
+  NXP_ITER_CURRENT_ID,
+  PAY_PROJECT_ID,
+  SEED_PROJECTS,
+  VIEWER_ID,
+  WORKSPACE_ID,
+} from '../../db/seeds/constants';
+import { grantProjectAccess, SEEDED } from './support/flow-harness';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -83,10 +94,15 @@ describe('authorization cluster (e2e)', () => {
      * project). This pins the thing that would make that a mistake: authentication must still be
      * required, so dropping the decorator cannot have opened the route.
      *
-     * The DENY direction is deliberately not asserted with a role here: every seeded principal holds
-     * `work_item:view` — `viewer@qnsc.dev` has it at WORKSPACE scope through `e2e_read_only` — so a
-     * 403 case would need a fixture invented for this test, and a fabricated principal proves less
-     * than the real inner assertion it would be standing in for.
+     * The DENY direction is asserted on ANONYMOUS access only, and the reason has changed since
+     * this was written. The old note claimed "every seeded principal holds `work_item:view` —
+     * `viewer@qnsc.dev` has it at WORKSPACE scope through `e2e_read_only`". That is no longer true
+     * and nothing failed when it stopped being true: the custom role went with the AC-11 ruling and
+     * `ensureViewerGrant` with it, so `viewer@qnsc.dev` now holds NOTHING anywhere — queried, and
+     * pinned by the principal-matrix test at the bottom of this file. A role-based 403 case is
+     * therefore available, and `report-authz.e2e.spec.ts` already uses that principal for exactly
+     * that. Kept here as the anonymous check because it pins the thing that would make dropping the
+     * decorator a mistake: authentication must still be required.
      */
     const anonymous = await app.inject({ method: 'GET', url: '/work-items/by-key?itemKey=US-1' });
     expect(anonymous.statusCode).toBe(401);
@@ -192,5 +208,188 @@ describe('authorization cluster (e2e)', () => {
       expect((await get(url, member)).statusCode, `${url} must be refused`).toBe(403);
       expect((await get(url, admin)).statusCode, `${url} for an admin`).toBe(200);
     }
+  });
+
+  /**
+   * THE FIXTURE ITSELF, asserted — because the fixture is what hid the whole class.
+   *
+   * `demo.ts` used to grant DEVELOPER_ID `project_member` at `scopeType: 'workspace'`, which is the
+   * row migration 0111 DELETEs as "pure legacy over-grant" and the seed then re-created on every
+   * run. With it in place the project-scoped path was unreachable in testing, so there was nothing
+   * left to observe — `read-scoping.e2e.spec.ts` said so in a comment ("the honest expectation here
+   * is not 'fewer projects'"). That is the same masking as the Workspace Admin's `workspace:*`,
+   * from a second direction, and it is what made the two P0 access defects of 2026-08-14 invisible.
+   *
+   * Nothing prevented it coming back. `pnpm db:migrate` RUNS the seed, so a re-added grant would
+   * undo the migration on every local and CI database on the spot — exactly how `db/seeds/demo.ts`
+   * re-wrote the `project_members` row that migration 0118 deletes. A comment cannot fail; this can.
+   *
+   * The matrix the rest of the suite depends on:
+   *   admin@qnsc.dev   Workspace Admin  — `workspace:*`, the global anchor. Must EXIST (bootstrap
+   *                                       needs one and every admin surface is tested through it).
+   *   dev@qnsc.dev     Editor on NXP    — via `work.project_members.access_level`, and NO
+   *                                       workspace-tier baseline at all.
+   *   viewer@qnsc.dev  No Access        — no assignment anywhere, which is what makes it usable as
+   *                                       the negative principal.
+   */
+  it('keeps the seeded principals a Workspace Admin, an Editor on ONE project, and No Access', async () => {
+    const access = app.get(AccessService);
+
+    const wa = await access.getWorkspacePermissions(ADMIN_USER_ID, WORKSPACE_ID);
+    expect(permissionGrants(wa, 'workspace:*'), 'admin@qnsc.dev must stay a Workspace Admin').toBe(
+      true,
+    );
+
+    /**
+     * The Editor's WORKSPACE baseline must be empty. This is the assertion that fails if the
+     * workspace-scoped tier grant is ever re-added: `getProjectPermissions` UNIONS the baseline, so
+     * a baseline holding the delivery set makes every project look granted and no project-tier gate
+     * can be observed to deny anything.
+     */
+    const editorBaseline = await access.getWorkspacePermissions(DEVELOPER_ID, WORKSPACE_ID);
+    expect(
+      editorBaseline,
+      'dev@qnsc.dev must hold NO workspace-tier grant — see db/seeds/demo.ts and migration 0111',
+    ).toEqual([]);
+
+    // Editor on NXP, exactly the catalogue's Editor set…
+    const onNxp = await access.getProjectPermissions(DEVELOPER_ID, WORKSPACE_ID, NXP);
+    for (const code of ACCESS_LEVEL_PERMISSIONS.editor) {
+      expect(permissionGrants(onNxp, code), `Editor on NXP must hold ${code}`).toBe(true);
+    }
+    // …and NOT the Admin-only codes, or the level is not the level the BA describes.
+    for (const code of ['timebox:view', 'release:view', 'portfolio:view', 'report:view'] as const) {
+      expect(permissionGrants(onNxp, code), `an Editor must NOT hold ${code}`).toBe(false);
+    }
+
+    // ONE project, not the workspace. PAY exists precisely so this has something to be false on.
+    const onPay = await access.getProjectPermissions(DEVELOPER_ID, WORKSPACE_ID, PAY_PROJECT_ID);
+    expect(
+      permissionGrants(onPay, 'work_item:view'),
+      'dev@qnsc.dev must be No Access on PAY — a grant on one project must not open another',
+    ).toBe(false);
+
+    // And a principal with no row anywhere, for the negative direction.
+    const none = await access.getProjectPermissions(VIEWER_ID, WORKSPACE_ID, NXP);
+    expect(none, 'viewer@qnsc.dev must resolve to No Access').toEqual([]);
+  });
+
+  /**
+   * EVERY FEED an Editor's own screens load, over real HTTP.
+   *
+   * The second shape in this class, and the one a decorator test structurally cannot see: each gate
+   * is individually correct, and the COMBINATION leaves a surface the Editor may open reading a
+   * feed the Editor may not. It has now happened three times — the workspace roster (RBE-07), the
+   * project roster (this week: every Editor saw `Unassigned` on every owned item), and
+   * `GET /releases` labelling the Backlog's Release column. Every one of them renders as an empty
+   * state rather than an error, because the SPA defaults query data to `[]`.
+   *
+   * A 200 here is not "the feed is correct" — it is "the Editor is not locked out of their own
+   * screen", which is the property that kept breaking. `test/route-audience.ratchet.spec.ts` holds
+   * the write-without-read half statically, including the two gaps that remain open.
+   */
+  it("serves every feed the Editor's own surfaces load", async () => {
+    const editor = await tokenFor('dev@qnsc.dev');
+
+    for (const url of [
+      // Backlog
+      `/work-items/backlog?projectId=${NXP}`,
+      `/projects/${NXP}`,
+      `/projects/${NXP}/statuses`,
+      `/projects/${NXP}/transitions`,
+      `/projects/${NXP}/labels`,
+      `/projects/${NXP}/estimation-settings`,
+      // The owner / assignee picker split out of the project roster. `:id/members` is deliberately
+      // NOT here: its decorator is `project:view`, which an Editor holds, and `ProjectsService`
+      // then narrows it to "Workspace Admin or Project Admin" — see the refusal asserted below.
+      // That divergence between the decorator and the effective audience is precisely what a
+      // decorator-metadata sweep cannot see, and why this file exists alongside it.
+      `/projects/${NXP}/member-options`,
+      `/projects/${NXP}/teams`,
+      // The Release and Milestone columns and pickers. `GET /releases` is `release:view` and
+      // `GET /milestones` is `milestone:view` — both Admin-only §3.2 grids — so these two
+      // reference feeds are what an Editor reads, and an Editor may already WRITE both references
+      // (`PATCH bulk-release`, `PUT :id/milestones`, both `work_item:edit`).
+      `/releases/options?projectId=${NXP}`,
+      `/milestones/options?projectId=${NXP}`,
+      // Work item detail
+      `/work-items/${SEEDED.nxp.storyId}`,
+      `/work-items/${SEEDED.nxp.storyId}/tasks`,
+      `/work-items/${SEEDED.nxp.storyId}/relations`,
+      `/work-items/${SEEDED.nxp.storyId}/attachments`,
+      `/work-items/${SEEDED.nxp.storyId}/watchers`,
+      `/work-items/${SEEDED.nxp.storyId}/labels`,
+      `/work-items/${SEEDED.nxp.storyId}/milestones`,
+      `/work-items/${SEEDED.nxp.storyId}/activity`,
+      `/work-items/${SEEDED.nxp.storyId}/comments`,
+      // Quality and Team Status — §5 Editor rows.
+      `/quality/defects?projectId=${NXP}`,
+      `/team-status?projectId=${NXP}&iterationId=${SEEDED.nxp.iterationCurrentId}`,
+    ]) {
+      const response = await get(url, editor);
+      expect(
+        response.statusCode,
+        `${url} must be readable by an Editor — ${response.body.slice(0, 200)}`,
+      ).toBe(200);
+    }
+  });
+
+  /**
+   * The reads an Editor is REFUSED, and the one I expected to be refused and is not.
+   *
+   * The refusals are declared gaps, mirroring `KNOWN_REFERENCE_FEED_GAPS` in
+   * `test/route-audience.ratchet.spec.ts` — when the Milestone feed is split the way
+   * `GET /releases/options` was, this test and that list change together.
+   */
+  it('refuses the admin roster and the two §3.2 grids to an Editor, but not their feeds', async () => {
+    const editor = await tokenFor('dev@qnsc.dev');
+
+    /**
+     * The administrative half of the project roster split (RBE-07), refused in the SERVICE. Asserted
+     * here because the route's own decorator is `project:view` — Editor-holdable — so nothing at the
+     * decorator layer records that the effective audience is narrower. Its picker feed
+     * `:id/member-options` is in the allow list above; both halves, or the next "gate the roster"
+     * breaks the picker again.
+     */
+    const roster = await get(`/projects/${NXP}/members`, editor);
+    expect(roster.statusCode, 'GET /projects/:id/members for an Editor').toBe(403);
+
+    /**
+     * The §3.2 Milestones GRID stays refused, and that is the correct half of the split: the BA
+     * hides `Plan > Milestones` from an Editor. What must NOT be refused is the reference feed
+     * `GET /milestones/options`, asserted in the test above — an Editor may already LINK a
+     * milestone (`PUT :id/milestones` is `work_item:edit`), so a picker it cannot populate is the
+     * roster regression again. Both halves, or "hide the grid" breaks the picker.
+     */
+    const milestones = await get(`/milestones?projectId=${NXP}`, editor);
+    expect(milestones.statusCode, 'GET /milestones (the admin grid) for an Editor').toBe(403);
+
+    // Same shape, same reason, for the Releases grid.
+    const releases = await get(`/releases?projectId=${NXP}`, editor);
+    expect(releases.statusCode, 'GET /releases (the admin grid) for an Editor').toBe(403);
+
+    /**
+     * The parent-Feature picker, which is NOT a gap — recorded because the catalogue says it should
+     * be and that reading is wrong.
+     *
+     * `permissionGrants(editor, 'portfolio:view')` is false, so reasoning from the permission sets
+     * alone (as the static sweep must) predicts an empty list. It is not empty: `GET /portfolio-items`
+     * is `@AuthorizedInService` and narrows by `listReadableProjectIds`, which UNIONS the
+     * permission-derived projects with EVERY project the caller has an active `project_members` row
+     * on — and that half ignores the `permission` argument entirely. So an Editor's own project is
+     * readable here regardless of `portfolio:view`.
+     *
+     * Worth pinning in both directions: it is the only reason the Feature picker works, it is not
+     * obvious from either the decorator or the catalogue, and `type` is REQUIRED on this query while
+     * the ValidationPipe runs BEFORE the guard — so an incomplete query is a 400 that never reaches
+     * authorization and would make either expectation pass for the wrong reason.
+     */
+    const portfolio = await get(`/portfolio-items?type=feature&projectId=${NXP}`, editor);
+    expect(portfolio.statusCode, 'GET /portfolio-items for an Editor').toBe(200);
+    expect(
+      (JSON.parse(portfolio.body) as { data: unknown[] }).data.length,
+      'the parent-Feature picker must be non-empty for an Editor — NXP seeds an Epic and seven ' +
+        'Features, and the membership half of listReadableProjectIds is what makes them visible',
+    ).toBeGreaterThan(0);
   });
 });

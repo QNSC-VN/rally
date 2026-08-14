@@ -12,6 +12,7 @@ import {
 } from '../../../../../../db/schema/work';
 import type {
   Milestone,
+  MilestoneOption,
   CreateMilestoneInput,
   UpdateMilestoneInput,
 } from '../../domain/milestone.types';
@@ -75,6 +76,47 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
     }));
 
     return buildPageResult(withReleases as Milestone[], limit, (r) => [r.createdAt.toISOString()]);
+  }
+
+  /**
+   * The reference feed. Its own `select` of four columns plus the release links, deliberately —
+   * `select()` would read the whole record and put the administration fields one `map` away from the
+   * widest-audience response. Unpaged: a picker that offers a page of a project's milestones is the
+   * defect this feed exists to fix.
+   */
+  async listOptionsByProject(projectId: string, workspaceId: string): Promise<MilestoneOption[]> {
+    const rows = await this.db
+      .select({
+        id: milestones.id,
+        projectId: milestones.projectId,
+        milestoneKey: milestones.milestoneKey,
+        name: milestones.name,
+      })
+      .from(milestones)
+      .where(and(eq(milestones.projectId, projectId), eq(milestones.workspaceId, workspaceId)))
+      .orderBy(asc(milestones.name), asc(milestones.id));
+    if (rows.length === 0) return [];
+
+    // One batched link query, the same shape `listByProject` uses — never per row.
+    const links = await this.db
+      .select({
+        milestoneId: milestoneReleases.milestoneId,
+        releaseId: milestoneReleases.releaseId,
+      })
+      .from(milestoneReleases)
+      .where(
+        inArray(
+          milestoneReleases.milestoneId,
+          rows.map((r) => r.id),
+        ),
+      );
+    const byMilestone = new Map<string, string[]>();
+    for (const link of links) {
+      const list = byMilestone.get(link.milestoneId) ?? [];
+      list.push(link.releaseId);
+      byMilestone.set(link.milestoneId, list);
+    }
+    return rows.map((r) => ({ ...r, releaseIds: byMilestone.get(r.id) ?? [] }));
   }
 
   async create(input: CreateMilestoneInput): Promise<Milestone> {

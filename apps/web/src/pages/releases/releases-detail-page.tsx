@@ -22,6 +22,7 @@ import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ReleaseArtifactsTab } from './ui/release-artifacts-tab'
 import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
+import { listResource } from '@/shared/lib/query/resource'
 import { TaskRollupPanel } from './ui/release-detail-panels'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from './model/release-states'
 import { useProjectPermissions } from '@/features/access/api'
@@ -59,7 +60,8 @@ export function ReleaseDetailPage() {
   const { can } = useProjectPermissions(release?.projectId)
   const releaseProject = useRecordProject(release?.projectId)
   const canManage = can('release:create') || can('release:edit') || can('release:delete')
-  const { data: activityLogs = [], isLoading: activityLoading } = useReleaseActivityLog(releaseId)
+  const activityQuery = useReleaseActivityLog(releaseId)
+  const activityLogs = listResource(activityQuery)
   const update = useUpdateRelease(releaseId)
 
   const [activeTab, setActiveTab] = useState<TabKey>('details')
@@ -165,7 +167,6 @@ export function ReleaseDetailPage() {
         <div className="flex-1 overflow-y-auto bg-card p-6">
           <ActivityHistoryTab
             logs={activityLogs}
-            isLoading={activityLoading}
             title={t('detailPage.historyTitle', 'Revision History')}
             subtitle={t(
               'detailPage.historySubtitle',

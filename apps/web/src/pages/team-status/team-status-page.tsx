@@ -11,6 +11,8 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronRight, Inbox } from 'lucide-react'
 import { EmptyState } from '@/shared/ui/empty-state'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
+import { listResource } from '@/shared/lib/query/resource'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -134,7 +136,13 @@ export function TeamStatusPage() {
 
   // Team Status measures ONE team: offer its own team-scoped iterations plus the
   // shared (team_id IS NULL) ones — not every team's iterations in the project.
-  const { data: allIterations = [] } = useIterations(projectId)
+  // A resource, not `data ?? []`: the `!iterations.length` guard below prints "No iterations in
+  // this project/team yet." **plus a "Go to Timeboxes →" call to action**, so a failed
+  // `/v1/iterations` sent the reader off to create a sprint that already exists. Same defect,
+  // same sentence shape, as Release Tracking's §5.1 branch.
+  const iterationsQuery = useIterations(projectId)
+  const iterationFeed = listResource(iterationsQuery)
+  const allIterations = iterationFeed.rows
   const iterations = teamId
     ? allIterations.filter((i) => i.teamId === teamId || i.teamId == null)
     : allIterations
@@ -178,7 +186,11 @@ export function TeamStatusPage() {
         }
       }
     },
-    [projectId],
+    // `setChosenId` is listed because the React Compiler infers it as a dependency and refuses to
+    // preserve the memo otherwise (`Compilation Skipped: Existing memoization could not be
+    // preserved`). A `useState` setter is referentially stable, so naming it costs nothing and the
+    // manual deps now match the inferred ones.
+    [projectId, setChosenId],
   )
 
   const {
@@ -213,7 +225,13 @@ export function TeamStatusPage() {
     )
   }
 
-  if (!iterations.length) {
+  // Error before absence, and before the picker's own empty state: the copy below is a claim about
+  // the project plus an instruction, and neither survives a request that did not land.
+  if (iterationFeed.phase === 'error') {
+    return <LoadErrorState error={iterationFeed.error} />
+  }
+
+  if (!iterations.length && !iterationFeed.isLoading) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-ui-lg text-foreground-subtle">
         <span>No iterations in this project/team yet.</span>

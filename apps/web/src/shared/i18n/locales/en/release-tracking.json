@@ -119,5 +119,9 @@
   "error": {
     "title": "Could not load release tracking",
     "description": "The list failed to load. This is not an empty release - retry, and check the connection if it persists."
+  },
+  "releaseFeedError": {
+    "title": "Could not load this project’s releases",
+    "description": "The release list failed to load, so there is nothing to track yet. This is not a statement about the project - retry, and check the connection if it persists."
   }
 }

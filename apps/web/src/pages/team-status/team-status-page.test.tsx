@@ -29,19 +29,31 @@ vi.mock('@/features/access/api', () => ({
   useProjectPermissions: () => ({ can: () => true }),
 }))
 
+/**
+ * The iteration feed, mutable per test.
+ *
+ * Fixed-healthy is why this file could not see the third defect on this page: the guard
+ * `if (!iterations.length)` printed "No iterations in this project/team yet." **plus a
+ * "Go to Timeboxes →" button**, so a failed `/v1/iterations` sent the reader off to create a sprint
+ * that already exists — a fabricated fact AND a wrong call to action, the same pair Release
+ * Tracking shipped.
+ */
+const ITERATION = {
+  id: 'it-1',
+  name: 'Sprint 26.1',
+  teamId: 't-1',
+  startDate: '2026-07-01',
+  endDate: '2026-07-14',
+  state: 'committed',
+}
+const iterationFeed: {
+  data?: (typeof ITERATION)[]
+  isError?: boolean
+  error?: unknown
+  isLoading?: boolean
+} = { data: [ITERATION] }
 vi.mock('@/features/iterations/api', () => ({
-  useIterations: () => ({
-    data: [
-      {
-        id: 'it-1',
-        name: 'Sprint 26.1',
-        teamId: 't-1',
-        startDate: '2026-07-01',
-        endDate: '2026-07-14',
-        state: 'committed',
-      },
-    ],
-  }),
+  useIterations: () => iterationFeed,
 }))
 
 import { apiClient } from '@/shared/api/http-client'
@@ -119,7 +131,33 @@ async function expandAlice() {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  iterationFeed.data = [ITERATION]
+  iterationFeed.isError = false
+  iterationFeed.error = undefined
+  iterationFeed.isLoading = false
   mockGET.mockResolvedValue({ data: TEAM_STATUS, error: undefined, response: { status: 200 } })
+})
+
+describe('Team Status — a failed iteration feed is not an empty project', () => {
+  it('reports the failure and does NOT claim there are no iterations, nor send the reader to Timeboxes', async () => {
+    iterationFeed.data = undefined
+    iterationFeed.isError = true
+    iterationFeed.error = new Error('boom')
+    renderPage()
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // The fabricated fact and its wrong call to action must both be ABSENT, not accompanied.
+    expect(screen.queryByText('No iterations in this project/team yet.')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Go to Timeboxes/)).not.toBeInTheDocument()
+  })
+
+  it('still says there are no iterations when the server really answered with none', async () => {
+    iterationFeed.data = []
+    renderPage()
+
+    expect(await screen.findByText('No iterations in this project/team yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
 })
 
 describe('Team Status read-only fields', () => {

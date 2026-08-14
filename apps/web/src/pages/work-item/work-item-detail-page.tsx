@@ -73,6 +73,8 @@ import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
 import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
 import { useUploadPastedImages } from '@/features/collaboration/use-upload-pasted-images'
+import { listResource } from '@/shared/lib/query/resource'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -205,8 +207,12 @@ export function WorkItemDetailPage() {
   // and roll-up read, so the badge always matches the persisted child tasks and
   // refreshes after a create/delete (both invalidate the ['work-items'] root).
   const showsTasks = itemByKey != null && itemByKey.type !== 'task'
-  const { data: tasksForCount = [] } = useTasks(showsTasks ? itemByKey.id : undefined)
-  const taskCount = tasksForCount.length
+  const tasksForCountQuery = useTasks(showsTasks ? itemByKey.id : undefined)
+  const tasksForCount = listResource(tasksForCountQuery)
+  // `null` when the count is not KNOWN, so the badge renders `--` rather than a measured `0`. A `0`
+  // on this badge is a claim that the Story has no breakdown, and it is the number a reader uses to
+  // decide whether to open the tab at all.
+  const taskCount = tasksForCount.phase === 'error' ? null : tasksForCount.rows.length
 
   // Connections tab badge = linked pull requests + changesets (matches Rally,
   // e.g. 11 connections + 12 changesets → "23"). Both queries live under the
@@ -290,7 +296,9 @@ export function WorkItemDetailPage() {
             icon: (
               <span className="flex items-center gap-1.5">
                 <ListChecks size={19} />
-                <span className="text-ui-xs font-semibold tabular-nums">{taskCount}</span>
+                <span className="text-ui-xs font-semibold tabular-nums">
+                  {taskCount ?? EMPTY_VALUE}
+                </span>
               </span>
             ),
             label: t('tabs.tasks'),

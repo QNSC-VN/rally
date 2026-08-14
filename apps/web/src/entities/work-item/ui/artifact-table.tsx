@@ -6,6 +6,8 @@ import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import type { ScheduleState } from '@/entities/work-item/model/types'
 import { BRAND } from '@/shared/config/brand'
+import type { ListResource } from '@/shared/lib/query/resource'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { SkeletonList } from '@/shared/ui/skeleton'
 
@@ -82,15 +84,21 @@ function ArtifactRow({
 }
 
 export function ArtifactTable({
-  items,
-  isLoading,
+  artifacts,
   search,
   entityNoun,
   startIndex,
   onOpenItem,
 }: {
-  items: ArtifactTableItem[]
-  isLoading: boolean
+  /**
+   * The page's artifacts query, wrapped with `listResource(...)`.
+   *
+   * Was `items: ArtifactTableItem[]` + `isLoading`, with no way to say "the request failed" — so
+   * both callers passed `data?.data ?? []` and the zero-row branch below printed
+   * "No artifacts linked to this release" for EVERY record while one of the two endpoints was
+   * 400ing on every request. Keep this a resource; an array prop cannot carry the difference.
+   */
+  artifacts: ListResource<ArtifactTableItem>
   search: string
   /** Noun used in the empty state, e.g. "milestone" or "release". */
   entityNoun: string
@@ -98,7 +106,12 @@ export function ArtifactTable({
   startIndex: number
   onOpenItem: (item: ArtifactTableItem) => void
 }) {
-  if (isLoading) return <SkeletonList rows={8} />
+  const items = artifacts.rows
+
+  if (artifacts.isLoading) return <SkeletonList rows={8} />
+
+  // Error BEFORE empty. A 403/500 is not evidence that nothing is linked.
+  if (artifacts.phase === 'error') return <LoadErrorState error={artifacts.error} size="sm" />
 
   if (items.length === 0) {
     return (

@@ -53,7 +53,13 @@ export interface WorkspaceMemberOption {
   displayName: string
   email: string
   avatarUrl: string | null
-  status: string
+  /**
+   * Whether a picker may OFFER this person as a new owner. It used to be the raw
+   * `workspace_members.status`, which put a colleague's account state on the one feed in the product
+   * with no permission code — read by everyone, read BY nobody. An inactive member is still returned
+   * so an item they already own resolves to a name.
+   */
+  assignable: boolean
 }
 
 /**

@@ -18,11 +18,16 @@ import { RequirePermission, AuthPolicy } from '@modules/access';
 import { ReleasesService } from '../../application/releases.service';
 import {
   ReleaseQueryDto,
+  ReleaseOptionsQueryDto,
   ReleaseArtifactQueryDto,
   CreateReleaseDto,
   UpdateReleaseDto,
 } from './dto/release-request.dto';
-import { ReleaseResponseDto, ReleaseArtifactDto } from './dto/release-response.dto';
+import {
+  ReleaseResponseDto,
+  ReleaseOptionDto,
+  ReleaseArtifactDto,
+} from './dto/release-response.dto';
 import type { Release } from '../../domain/release.types';
 import {
   ActivityQueryDto,
@@ -121,6 +126,36 @@ export class ReleasesController {
       releaseNotes: dto.releaseNotes ?? undefined,
     });
     return toReleaseDto(release);
+  }
+
+  // ── Reference feed (declared before `:id` so the static path is not captured as an id) ──
+
+  /**
+   * The RELEASE REFERENCE feed: what a picker needs to label, order and choose a release.
+   *
+   * `project:view` — the PARENT's own view permission, which all three tier roles hold. The route
+   * above keeps `release:view` and stays the `Plan > Releases` administration grid's feed, which is
+   * right: §3.2 marks that surface Hidden for an Editor. But it was also the only source of a
+   * release's NAME for the Backlog Release column, the Work Item detail sidebar, the Backlog summary
+   * panel and Quality's release filter — all Editor surfaces — and every one of them defaults a
+   * failed request to `[]`, so a row assigned to a real release read as unscheduled and the picker
+   * offered nothing. The gate was correct; the FEED was the defect. Identical split, and identical
+   * reasoning, to `GET /projects/:id/member-options` and `GET /workspaces/:id/member-options`.
+   *
+   * Not `release:view` with a service-side level check, and not an undecorated resolve-then-check:
+   * the project id is right there in the query, so the tier-safe decorator can express the whole
+   * decision and `PolicyGuard` makes it before the handler runs.
+   */
+  @Get('options')
+  @RequirePermission('project:view', { from: 'query', field: 'projectId' })
+  @ApiOperation({ summary: "List this project's releases for a picker (id, key, name, window)" })
+  @ApiResponse({ status: 200, type: ReleaseOptionDto, isArray: true })
+  @ApiCommonErrors(400, 401, 403, 404)
+  async listReleaseOptions(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ReleaseOptionsQueryDto,
+  ): Promise<ReleaseOptionDto[]> {
+    return this.releasesService.listReleaseOptions(user, query.projectId);
   }
 
   @Get(':id')

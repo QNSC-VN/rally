@@ -7,6 +7,7 @@ import { useReleaseArtifacts, useSetReleaseArtifacts } from '@/features/releases
 import { useWorkItems } from '@/features/work-items/api'
 import { useProjectPermissions } from '@/features/access/api'
 import { ArtifactsTabView } from '@/entities/work-item/ui/artifacts-tab'
+import { listResource } from '@/shared/lib/query/resource'
 import { useArtifactPagination } from '@/entities/work-item/ui/use-artifact-pagination'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { Button } from '@/shared/ui/button'
@@ -55,10 +56,13 @@ export function ReleaseArtifactsTab({
   const { can } = useProjectPermissions(projectId || undefined)
   const mayEdit = canManage && can('work_item:edit')
 
-  const { data, isLoading } = useReleaseArtifacts(releaseId, {
+  const artifactsQuery = useReleaseArtifacts(releaseId, {
     pageSize: pagination.pageSize,
     search: pagination.search || undefined,
   })
+  // The rows and the page cursor come out of one response; `listResource` keeps the FAILURE with
+  // the rows so the table cannot print "No artifacts linked to this release" for a 400.
+  const artifacts = listResource({ ...artifactsQuery, data: artifactsQuery.data?.data })
 
   // One feed for both halves of the picker: the project's stories/defects are the candidates, and the
   // subset already pointing at this release is the current selection. Reading membership from the
@@ -100,9 +104,8 @@ export function ReleaseArtifactsTab({
       )}
 
       <ArtifactsTabView
-        items={data?.data ?? []}
-        isLoading={isLoading}
-        pageInfo={data?.pageInfo}
+        artifacts={artifacts}
+        pageInfo={artifactsQuery.data?.pageInfo}
         entityNoun="release"
         pagination={pagination}
         onOpenItem={(item) => navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })}

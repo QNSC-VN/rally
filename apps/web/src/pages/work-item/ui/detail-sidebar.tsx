@@ -18,7 +18,7 @@ import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
 import { usePortfolioItems } from '@/features/portfolio/api'
 import { PortfolioItemType } from '@/entities/work-item/model/types'
-import { useMilestones } from '@/features/milestones/api'
+import { useMilestoneOptions } from '@/features/milestones/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import {
@@ -151,7 +151,7 @@ export function DetailSidebar({
   const isDefect = item.type === 'defect'
   const disabled = updating || readOnly
   // Milestones apply to Story/Defect only (Tasks inherit via their parent).
-  const { data: milestoneOptions = [] } = useMilestones(!isTask ? item.projectId : undefined)
+  const { data: milestoneOptions = [] } = useMilestoneOptions(!isTask ? item.projectId : undefined)
   const { data: itemMilestones = [] } = useWorkItemMilestones(!isTask ? item.id : undefined)
   const setMilestones = useSetWorkItemMilestones(item.id)
   // Reconciliation C01: with a Release selected, *new* add options are limited

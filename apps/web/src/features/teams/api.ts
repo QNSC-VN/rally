@@ -60,6 +60,21 @@ export interface ProjectMember {
   teamCount: number
 }
 
+/**
+ * The REFERENCE projection of a project member — what a picker or a name lookup needs.
+ *
+ * Mirrors `ProjectMemberOptionResponseDto`. A type of its own, not `Pick<ProjectMember, …>`: the
+ * roster type carries `accessLevel`, `status` and `teamCount`, and a shared base is how a field added
+ * for User Management joins the feed every delivery participant reads. Structurally this is
+ * `OwnerSelectMember` (`shared/ui/owner-cell`), which is what every owner picker already accepts.
+ */
+export interface ProjectMemberOption {
+  userId: string
+  displayName?: string | null
+  email?: string | null
+  avatarUrl?: string | null
+}
+
 // ── Query keys ────────────────────────────────────────────────────────────────
 
 export const teamKeys = {

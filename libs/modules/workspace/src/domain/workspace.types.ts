@@ -84,8 +84,19 @@ export interface WorkspaceMemberOption {
   displayName: string;
   email: string;
   avatarUrl: string | null;
-  /** The pickers filter on `active`; an inactive member must still RESOLVE for display. */
-  status: string;
+  /**
+   * Whether a picker may OFFER this person as a new owner — the DECISION, not the account state it
+   * is derived from.
+   *
+   * It used to be `status: 'active' | 'suspended' | 'removed'`, verbatim off `workspace_members`, and
+   * that was a person's account state on the widest-audience feed in the product: no permission code,
+   * read by every delivery participant, and no client ever looked at it. The requirement behind it is
+   * real and is kept — an inactive member who still OWNS something must resolve to a name, or the
+   * grid claims the item is unowned — so the row stays and only the disclosure goes. A boolean cannot
+   * say WHY someone is unassignable, which is the point: whether a colleague is suspended or removed
+   * is User Management's business (`GET :id/members-with-profile`, `workspace:view`).
+   */
+  assignable: boolean;
 }
 
 export interface WorkspaceInvitation {

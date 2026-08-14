@@ -56,16 +56,28 @@ export class WorkspaceSettingsResponseDto extends createZodDto(WorkspaceSettings
 /**
  * The ASSIGNEE / OWNER PICKER feed (`GET :id/member-options`).
  *
- * Four display fields and nothing else. It is NOT declared as a `.pick()` of the administrative
- * schema below on purpose: a shared base is how a field added for User Management ends up on the
- * feed every delivery participant reads, which is the defect (RBE-07) this split closes.
+ * Four display fields plus one DECISION, and nothing else. It is NOT declared as a `.pick()` of the
+ * administrative schema below on purpose: a shared base is how a field added for User Management ends
+ * up on the feed every delivery participant reads, which is the defect (RBE-07) this split closes.
+ *
+ * That is not hypothetical here — it happened on this very schema. The fifth field shipped as
+ * `status: 'active' | 'suspended' | 'removed'`, taken straight off `workspace_members`, while this
+ * docblock still said "four display fields and nothing else": a person's account state, on the one
+ * feed in the product with no permission code, read by every participant, and consumed by no client at
+ * all. `assignable` keeps the behaviour the field was added for (a picker must not OFFER an inactive
+ * member, but their name must still resolve for an item they already own) and drops the disclosure.
+ * The project-level twin, `ProjectMemberOptionResponseSchema`, carries no status field either.
  */
 export const MemberOptionResponseSchema = z.object({
   userId: z.string().uuid(),
   displayName: z.string(),
   email: z.string(),
   avatarUrl: z.string().nullable(),
-  status: z.string().describe('Workspace membership status: active | suspended | removed'),
+  assignable: z
+    .boolean()
+    .describe(
+      'Whether a picker may offer this person as a new owner (derived, not the raw status)',
+    ),
 });
 
 export class MemberOptionResponseDto extends createZodDto(MemberOptionResponseSchema) {}

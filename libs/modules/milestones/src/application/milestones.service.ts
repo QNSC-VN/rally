@@ -22,7 +22,12 @@ import {
 } from '../../../../../db/schema/work';
 import { completedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IMilestoneRepository, MILESTONE_REPOSITORY } from '../domain/ports/milestone.repository';
-import type { Milestone, MilestoneStatus, UpdateMilestoneInput } from '../domain/milestone.types';
+import type {
+  Milestone,
+  MilestoneOption,
+  MilestoneStatus,
+  UpdateMilestoneInput,
+} from '../domain/milestone.types';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
 import { MILESTONE_ACTIVITY_CONFIG } from './milestone-activity-diff';
 
@@ -158,6 +163,25 @@ export class MilestonesService {
       ...page,
       data: page.data.map((m) => ({ ...m, progress: progressByMilestone.get(m.id) ?? undefined })),
     };
+  }
+
+  /**
+   * The REFERENCE feed — every milestone in the project, projected to what a picker needs.
+   *
+   * Split out of {@link listMilestones} because that one is the `Plan > Milestones` administration
+   * grid's feed and takes `milestone:view`, which §3.2 withholds from an Editor (it marks the whole
+   * `Timeboxes` surface Hidden for one) — and it was ALSO the only feed for the Milestones column and
+   * picker on Iteration Status and on the Work Item detail sidebar, both Editor surfaces. Every one of
+   * those consumers defaults a failed request to `[]`, so an item's real milestones rendered as none
+   * and none could be added. Same defect, same split and same reasoning as
+   * `GET /releases/options` and `GET /projects/:id/member-options`.
+   *
+   * No progress computed here: `computeProgressBatch` aggregates work items for a number a picker does
+   * not show, and it is administration data an Editor must not read. So this is also the cheap call.
+   */
+  async listMilestoneOptions(actor: JwtPayload, projectId: string): Promise<MilestoneOption[]> {
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    return this.milestoneRepo.listOptionsByProject(projectId, actor.workspaceId);
   }
 
   /**

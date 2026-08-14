@@ -365,7 +365,9 @@ describe('WorkspaceService', () => {
         displayName: 'Ada',
         email: 'ada@example.com',
         avatarUrl: null,
-        status: 'active',
+        // The DECISION a picker needs, never the raw `workspace_members.status` — see
+        // `WorkspaceMemberOption.assignable`.
+        assignable: true,
       },
     ];
 

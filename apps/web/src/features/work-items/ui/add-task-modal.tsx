@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useCreateTask } from '@/features/work-items/api'
-import { useProjectMembers } from '@/features/teams/api'
+import { useProjectMemberOptions } from '@/features/teams/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -24,7 +24,8 @@ interface Props {
 export function AddTaskModal({ workItemId, onClose }: Props) {
   const { t } = useTranslation('work-items')
   const { project } = useAppContext()
-  const { data: members = [] } = useProjectMembers(project?.projectId)
+  // Owner PICKER — the reference feed, not the Admin-only roster.
+  const { data: members = [] } = useProjectMemberOptions(project?.projectId)
   const navigate = useNavigate()
 
   const [name, setName] = useState('')

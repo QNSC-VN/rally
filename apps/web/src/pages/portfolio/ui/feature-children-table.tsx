@@ -40,8 +40,8 @@ import {
   ScheduleState,
 } from '@/entities/work-item/model/types'
 import { useTableSort, type SortDir } from '@/shared/lib/hooks/use-table-sort'
-import { useReleases, type Release } from '@/features/releases/api'
-import { useProjectMembers, type ProjectMember } from '@/features/teams/api'
+import { useReleaseOptions, type ReleaseOption } from '@/features/releases/api'
+import { useProjectMemberOptions, type ProjectMemberOption } from '@/features/teams/api'
 import {
   useRankAnyWorkItem,
   useTasks,
@@ -51,6 +51,8 @@ import {
 } from '@/features/work-items/api'
 import type { PortfolioChild } from '@/features/portfolio/api'
 import { PORTFOLIO_CHILD_COLUMNS, type ChildColKey } from '../model/children-columns'
+import { listResource } from '@/shared/lib/query/resource'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
 
 /** Which field each sortable column compares on. */
 type ChildSortField =
@@ -175,8 +177,12 @@ export function FeatureChildrenTable({
 
   // Option lists for the editable cells, scoped to the Feature's own project — the same two
   // queries the Backlog row uses, so the choices offered here are the choices offered there.
-  const { data: releases = [] } = useReleases(projectId)
-  const { data: members = [] } = useProjectMembers(projectId)
+  // The REFERENCE feed, not `useReleaseRecords`: this table only labels and chooses a release,
+  // and the administrative list is `release:view` — which a project Editor does not hold.
+  const { data: releases = [] } = useReleaseOptions(projectId)
+  // Owner PICKER + name lookup, so the reference feed. This table is reached through a surface that
+  // happens to be Admin-gated today, which is exactly the coincidence the split refuses to rely on.
+  const { data: members = [] } = useProjectMemberOptions(projectId)
 
   /**
    * Drag-to-rank over the WORK ITEM's rank, through the endpoint the Backlog uses.
@@ -402,11 +408,11 @@ function ChildRow({
   expanded: boolean
   onToggleExpand: () => void
   expandLabel: string
-  // The real query types, not structural stand-ins: `OwnerSelectCell` takes `ProjectMember[]`, and
-  // a hand-written `{ userId; displayName?; email? }` would silently accept a roster missing the
-  // fields that component reads.
-  releases: Release[]
-  members: ProjectMember[]
+  // The real query types, not structural stand-ins: a hand-written `{ userId; displayName?; email? }`
+  // would silently accept a feed missing the fields `OwnerSelectCell` reads. `ProjectMemberOption` is
+  // the REFERENCE projection — `ProjectMember` is the administrative roster and must not reach a picker.
+  releases: ReleaseOption[]
+  members: ProjectMemberOption[]
   onOpen: () => void
   /** Opens a disclosed Task's own detail — same destination as any other ID cell in the app. */
   onOpenTask: (itemKey: string) => void
@@ -626,11 +632,16 @@ function ChildTaskRows({
   workItemId: string
   colStyles: Record<ChildColKey, CSSProperties>
   /** A task carries `assigneeId`, not a name — the roster resolves it, as the Tasks tab does. */
-  members: ProjectMember[]
+  members: ProjectMemberOption[]
   onOpenTask: (itemKey: string) => void
 }) {
   const { t } = useTranslation('portfolio')
-  const { data: tasks = [], isLoading } = useTasks(workItemId)
+  const tasksQuery = useTasks(workItemId)
+  // A resource: `data ?? []` printed `detail.children.noTasks` for a failed read, under a Feature
+  // child whose own hour rollup rests on that same list.
+  const taskFeed = listResource(tasksQuery)
+  const tasks = taskFeed.rows
+  const isLoading = taskFeed.isLoading
 
   if (isLoading) {
     return (
@@ -642,7 +653,15 @@ function ChildTaskRows({
     )
   }
 
-  if (tasks.length === 0) {
+  if (taskFeed.phase === 'error') {
+    return (
+      <div className="border-b border-border-inner bg-surface-subtle">
+        <LoadErrorState error={taskFeed.error} size="sm" className="py-3" />
+      </div>
+    )
+  }
+
+  if (taskFeed.phase === 'empty') {
     return (
       <div className="border-b border-border-inner bg-surface-subtle px-3 py-2">
         <span className={`text-ui-xs text-foreground-subtle ${NESTED_ROW_INDENT}`}>
@@ -694,7 +713,7 @@ function ChildTaskRow({
 }: {
   task: WorkItem
   colStyles: Record<ChildColKey, CSSProperties>
-  members: ProjectMember[]
+  members: ProjectMemberOption[]
   onOpen: () => void
 }) {
   const owner = members.find((m) => m.userId === task.assigneeId)

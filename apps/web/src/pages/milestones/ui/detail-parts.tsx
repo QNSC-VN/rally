@@ -10,6 +10,7 @@ import {
   useSetMilestoneArtifacts,
 } from '@/features/milestones/api'
 import { ArtifactsTabView } from '@/entities/work-item/ui/artifacts-tab'
+import { listResource } from '@/shared/lib/query/resource'
 import { useArtifactPagination } from '@/entities/work-item/ui/use-artifact-pagination'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { Button } from '@/shared/ui/button'
@@ -53,10 +54,13 @@ export function ArtifactsTab({
   const pagination = useArtifactPagination()
   const [pickerOpen, setPickerOpen] = useState(false)
 
-  const { data, isLoading } = useMilestoneArtifacts(milestoneId, {
+  const artifactsQuery = useMilestoneArtifacts(milestoneId, {
     pageSize: pagination.pageSize,
     search: pagination.search || undefined,
   })
+  // See the release tab: the failure travels with the rows, so an unreachable endpoint reads as a
+  // failure rather than as "no artifacts linked to this milestone".
+  const artifacts = listResource({ ...artifactsQuery, data: artifactsQuery.data?.data })
 
   // The full link set, not the visible page: the write REPLACES the list, so a set built from one
   // page would unlink everything past the page boundary.
@@ -90,9 +94,8 @@ export function ArtifactsTab({
       )}
 
       <ArtifactsTabView
-        items={data?.data ?? []}
-        isLoading={isLoading}
-        pageInfo={data?.pageInfo}
+        artifacts={artifacts}
+        pageInfo={artifactsQuery.data?.pageInfo}
         entityNoun="milestone"
         pagination={pagination}
         onOpenItem={(item) => navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })}

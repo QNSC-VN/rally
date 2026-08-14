@@ -20,6 +20,7 @@ import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { DateField } from '@/shared/ui/date-field'
 import { ArtifactsTab } from './ui/detail-parts'
 import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
+import { listResource } from '@/shared/lib/query/resource'
 import { MILESTONE_STATUS_STYLE } from '@/features/milestones/status-colors'
 import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
 import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
@@ -68,8 +69,8 @@ export function MilestoneDetailPage() {
   const workspaceId = workspace?.workspaceId ?? ''
 
   const { data: milestone, isLoading, isError } = useMilestone(milestoneId)
-  const { data: activityLogs = [], isLoading: activityLoading } =
-    useMilestoneActivityLog(milestoneId)
+  const activityQuery = useMilestoneActivityLog(milestoneId)
+  const activityLogs = listResource(activityQuery)
   const update = useUpdateMilestone()
 
   // Relation data (arrays of linked entity IDs)
@@ -214,7 +215,6 @@ export function MilestoneDetailPage() {
         <div className="flex-1 overflow-y-auto bg-card p-6">
           <ActivityHistoryTab
             logs={activityLogs}
-            isLoading={activityLoading}
             title={t('detail.historyTitle', 'Revision History')}
             subtitle={t('detail.historySubtitle', 'Every change to this milestone, newest first.')}
           />

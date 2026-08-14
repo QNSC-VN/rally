@@ -64,7 +64,13 @@ interface MemberOption {
   displayName: string;
   email: string;
   avatarUrl: string | null;
-  status: string;
+  /**
+   * The DECISION a picker needs — whether this person may be offered as a new owner — not the
+   * `workspace_members.status` it derives from. See the field's docblock on `WorkspaceMemberOption`:
+   * the raw status put a colleague's account state (`active | suspended | removed`) on the one feed in
+   * the product with no permission code, read by every delivery participant and consumed by no client.
+   */
+  assignable: boolean;
 }
 interface TeamRow {
   id: string;
@@ -155,7 +161,7 @@ describe('user directory and team reads: authorization over HTTP (e2e)', () => {
     expect(rows[0]).toHaveProperty('roleSlug');
   });
 
-  it('ALLOWS the picker feed to an Editor, at the four display fields ONLY', async () => {
+  it('ALLOWS the picker feed to an Editor, at the four display fields and no more', async () => {
     /**
      * The assertion that stops this fix from being "gate the roster and move on". Every owner and
      * assignee picker on Portfolio and Projects reads this feed, and an Editor must be able to
@@ -169,11 +175,19 @@ describe('user directory and team reads: authorization over HTTP (e2e)', () => {
     expect(response.statusCode).toBe(200);
     const rows = response.json<MemberOption[]>();
     expect(rows.length).toBeGreaterThan(0);
+    /**
+     * An EXACT key set, both directions — the assertion that catches a field JOINING the feed, which
+     * is how this one drifted: it shipped with a fifth field, the raw `workspace_members.status`,
+     * while the schema's own docblock said "four display fields and nothing else". `assignable` is
+     * that field's replacement — the decision (may a picker offer this person?) rather than the
+     * account state it comes from, so an inactive member still resolves to a NAME for an item they
+     * already own without their status being disclosed to everyone who can see a project.
+     */
     expect(Object.keys(rows[0]).sort()).toEqual([
+      'assignable',
       'avatarUrl',
       'displayName',
       'email',
-      'status',
       'userId',
     ]);
   });

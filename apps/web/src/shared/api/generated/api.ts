@@ -1275,6 +1275,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/milestones/options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List this project's milestones for a picker (id, key, name, releases) */
+    get: operations['MilestonesController_listMilestoneOptions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/milestones/{id}': {
     parameters: {
       query?: never
@@ -1568,6 +1585,23 @@ export interface paths {
     put?: never
     /** Create a release */
     post: operations['ReleasesController_createRelease']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/releases/options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List this project's releases for a picker (id, key, name, window) */
+    get: operations['ReleasesController_listReleaseOptions']
+    put?: never
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -2835,8 +2869,8 @@ export interface components {
       displayName: string
       email: string
       avatarUrl: string | null
-      /** @description Workspace membership status: active | suspended | removed */
-      status: string
+      /** @description Whether a picker may offer this person as a new owner (derived, not the raw status) */
+      assignable: boolean
     }
     MemberWithProfileResponseDto: {
       /** Format: uuid */
@@ -3555,6 +3589,15 @@ export interface components {
       /** Format: date-time */
       updatedAt: string
     }
+    MilestoneOptionDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      projectId: string
+      milestoneKey: string | null
+      name: string
+      releaseIds: string[]
+    }
     UpdateMilestoneDto: {
       name?: string
       description?: string | null
@@ -3806,6 +3849,20 @@ export interface components {
        */
       state: 'planning' | 'active' | 'accepted'
       releaseNotes?: string | null
+    }
+    ReleaseOptionDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      projectId: string
+      releaseKey: string | null
+      name: string
+      /** @enum {string} */
+      status: 'planning' | 'active' | 'accepted'
+      /** @description YYYY-MM-DD */
+      startDate: string | null
+      /** @description YYYY-MM-DD */
+      releaseDate: string | null
     }
     UpdateReleaseDto: {
       name?: string
@@ -9881,6 +9938,55 @@ export interface operations {
       }
     }
   }
+  MilestonesController_listMilestoneOptions: {
+    parameters: {
+      query: {
+        projectId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MilestoneOptionDto'][]
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   MilestonesController_getMilestone: {
     parameters: {
       query?: never
@@ -11180,6 +11286,55 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ReleasesController_listReleaseOptions: {
+    parameters: {
+      query: {
+        projectId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ReleaseOptionDto'][]
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }

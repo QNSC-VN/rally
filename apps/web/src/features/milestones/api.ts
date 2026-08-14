@@ -63,6 +63,13 @@ export const milestoneKeys = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const client = apiClient as any
 
+/**
+ * The ADMINISTRATIVE milestone list — the whole record, for the `Plan > Milestones` grid and detail.
+ *
+ * `milestone:view`, so a project Editor gets a 403 here BY DESIGN (§3.2 hides the surface). Anything
+ * that only needs to name, choose or scope a milestone must call {@link useMilestoneOptions};
+ * pointing a picker back at this hook is the defect the split exists to prevent.
+ */
 export function useMilestones(projectId: string | undefined) {
   return useQuery({
     queryKey: milestoneKeys.list(projectId ?? ''),
@@ -73,6 +80,53 @@ export function useMilestones(projectId: string | undefined) {
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return ((data as { data?: Milestone[] } | undefined)?.data ?? []) as Milestone[]
+    },
+    enabled: !!projectId,
+    staleTime: 60_000,
+  })
+}
+
+/**
+ * The MILESTONE REFERENCE projection — what a picker needs to label, choose and scope one.
+ *
+ * Mirrors `MilestoneOptionDto` (`GET /v1/milestones/options`). Hand-declared until the next central
+ * `codegen` run; the field names are the contract. Deliberately NOT `Pick<Milestone, …>`:
+ * {@link Milestone} is the administration record, and a shared base is how a field added there later
+ * joins the feed every participant reads.
+ */
+export interface MilestoneOption {
+  id: string
+  projectId: string
+  milestoneKey: string | null
+  name: string
+  releaseIds: string[]
+}
+
+/**
+ * The MILESTONE REFERENCE feed. Read this from any picker, filter or name lookup.
+ *
+ * WHY NOT {@link useMilestones}. That hook reads `GET /v1/milestones`, the `Plan > Milestones`
+ * administration grid's feed: it carries the milestone RECORD (description, notes, status, owner,
+ * target window, linked projects and teams, computed progress) and takes `milestone:view` — a code
+ * §3.2 withholds from a project Editor. It was ALSO the only feed for the Milestones column and
+ * picker on Iteration Status and the Work Item detail sidebar, both of which an Editor may use and
+ * both of which default a failed request to `[]`, so an item's real milestones rendered as none.
+ *
+ * Every picker now reads this feed; `useMilestones` is left only to `pages/milestones/`, its own
+ * administration grid, which `test/fe-consistency.ratchet.test.ts` pins by path. The SERVER half is
+ * closed too — `test/route-audience.ratchet.spec.ts` and `test/e2e/authz-cluster.e2e.spec.ts` both
+ * assert an Editor can read this route.
+ */
+export function useMilestoneOptions(projectId: string | undefined) {
+  return useQuery({
+    queryKey: [...milestoneKeys.all, 'options', projectId ?? ''] as const,
+    queryFn: async () => {
+      if (!projectId) return []
+      const { data, error, response } = await client.GET('/v1/milestones/options', {
+        params: { query: { projectId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as MilestoneOption[] | undefined) ?? []
     },
     enabled: !!projectId,
     staleTime: 60_000,

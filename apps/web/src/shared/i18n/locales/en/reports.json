@@ -2,6 +2,10 @@
   "title": "Reports",
   "type": "Type",
   "iteration": "Iteration",
+  "timeboxFeedError": {
+    "title": "Could not load the iteration list",
+    "body": "The timebox request failed, so no iteration can be selected. This is not a statement about the project - try again."
+  },
   "selectProject": "Select a project to see its reports.",
   "types": {
     "burndown": "Iteration Burndown",
