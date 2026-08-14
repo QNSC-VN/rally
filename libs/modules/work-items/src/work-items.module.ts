@@ -3,6 +3,9 @@ import { ProjectsModule } from '@modules/projects';
 import { AccessModule } from '@modules/access';
 import { AttachmentsModule } from '@modules/attachments';
 import { ActivityModule } from '@modules/activity';
+// The milestone-artifact scope rule lives with the milestones module — both write paths into
+// `milestone_artifacts` go through it. Safe to import: MilestonesModule does not import this one.
+import { MilestonesModule } from '@modules/milestones';
 import { WorkItemsService } from './application/work-items.service';
 import { WorkItemsController } from './interface/http/work-items.controller';
 import { WorkItemDrizzleRepository } from './infrastructure/persistence/work-item.drizzle-repository';
@@ -15,7 +18,7 @@ import { TIME_LOG_REPOSITORY } from './domain/ports/time-log.repository';
 import { WATCHER_REPOSITORY } from './domain/ports/watcher.repository';
 
 @Module({
-  imports: [ProjectsModule, AccessModule, AttachmentsModule, ActivityModule],
+  imports: [ProjectsModule, AccessModule, AttachmentsModule, ActivityModule, MilestonesModule],
   controllers: [WorkItemsController],
   providers: [
     WorkItemsService,

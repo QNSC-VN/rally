@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, isNull } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
-import type { DrizzleDB } from '@platform';
+import type { DrizzleDB, DbExecutor } from '@platform';
 import { files } from '../../../../../../db/schema/storage';
 import type { StoredFile, CreateFileInput } from '../../domain/file.types';
 import type { IFileRepository } from '../../domain/ports/file.repository';
@@ -51,7 +51,7 @@ export class FileDrizzleRepository implements IFileRepository {
     return rows[0];
   }
 
-  async softDelete(id: string): Promise<void> {
-    await this.db.update(files).set({ deletedAt: new Date() }).where(eq(files.id, id));
+  async softDelete(id: string, tx?: DbExecutor): Promise<void> {
+    await (tx ?? this.db).update(files).set({ deletedAt: new Date() }).where(eq(files.id, id));
   }
 }

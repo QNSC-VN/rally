@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, count, eq, isNull } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
-import type { DrizzleDB } from '@platform';
+import type { DrizzleDB, DbExecutor } from '@platform';
 import { attachments } from '../../../../../../db/schema/work';
 import { files } from '../../../../../../db/schema/storage';
 import type { AttachmentRef, EntityAttachment } from '../../domain/attachment.types';
@@ -99,18 +99,26 @@ export class AttachmentDrizzleRepository implements IAttachmentRepository {
     return rows[0] ?? null;
   }
 
-  async link(input: {
-    entityType: AttachmentRef['entityType'];
-    entityId: string;
-    fileId: string;
-    workspaceId: string;
-    attachedBy: string;
-  }): Promise<void> {
-    await this.db.insert(attachments).values(input).onConflictDoNothing();
+  async link(
+    input: {
+      entityType: AttachmentRef['entityType'];
+      entityId: string;
+      fileId: string;
+      workspaceId: string;
+      attachedBy: string;
+    },
+    tx?: DbExecutor,
+  ): Promise<void> {
+    await (tx ?? this.db).insert(attachments).values(input).onConflictDoNothing();
   }
 
-  async unlink(ref: AttachmentRef, fileId: string, workspaceId: string): Promise<void> {
-    await this.db
+  async unlink(
+    ref: AttachmentRef,
+    fileId: string,
+    workspaceId: string,
+    tx?: DbExecutor,
+  ): Promise<void> {
+    await (tx ?? this.db)
       .delete(attachments)
       .where(
         and(AttachmentDrizzleRepository.subject(ref, workspaceId), eq(attachments.fileId, fileId)),

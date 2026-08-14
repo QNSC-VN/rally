@@ -226,6 +226,13 @@ export const ErrorCodes = {
   PROJECT_TEAM_NOT_FOUND: 'PROJECT_TEAM_NOT_FOUND',
   PROJECT_MEMBER_NOT_FOUND: 'PROJECT_MEMBER_NOT_FOUND',
   PROJECT_MEMBER_ALREADY_EXISTS: 'PROJECT_MEMBER_ALREADY_EXISTS',
+  /**
+   * §2.1: a Workspace Admin is not added as a Project user — its authority is the
+   * workspace-wide grant, so the `project_members` row grants it nothing and only
+   * misrepresents the model. Refused rather than silently dropped, so a UI cannot show a
+   * member the roster does not list.
+   */
+  PROJECT_MEMBER_IS_WORKSPACE_ADMIN: 'PROJECT_MEMBER_IS_WORKSPACE_ADMIN',
   ASSIGNEE_NOT_WORKSPACE_MEMBER: 'ASSIGNEE_NOT_WORKSPACE_MEMBER',
 
   // Team Status

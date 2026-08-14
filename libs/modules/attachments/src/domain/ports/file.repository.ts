@@ -1,3 +1,4 @@
+import type { DbExecutor } from '@platform';
 import type { StoredFile, CreateFileInput } from '../file.types';
 
 export const FILE_REPOSITORY = Symbol('FILE_REPOSITORY');
@@ -25,5 +26,6 @@ export interface IFileRepository {
   /** Mark completed after the object was verified in the bucket. */
   confirm(id: string, checksumSha256: string | null): Promise<StoredFile>;
 
-  softDelete(id: string): Promise<void>;
+  /** `tx` enlists the soft delete in the caller's unit of work (see EntityAttachmentsService). */
+  softDelete(id: string, tx?: DbExecutor): Promise<void>;
 }

@@ -70,6 +70,63 @@ export interface CreateProjectRequest {
   startDate?: string | null;
   endDate?: string | null;
   teamIds?: string[];
+  /**
+   * The per-project estimate scale (§4.2, §6.2). Part of the CREATE, not a follow-up write:
+   * §4.2 lists every one of these as a required Create Project field, and they used to reach the
+   * database through a second, best-effort `PATCH :id/estimation-settings` that the SPA SKIPPED
+   * whenever the six values equalled the defaults and swallowed on failure — so a required
+   * setting was optional in practice and, on the common path, no `work.project_settings` row
+   * existed at all.
+   *
+   * OPTIONAL here on purpose, and it is the OVERRIDE that is optional, never the row:
+   * `createProject` writes the row unconditionally, from these values or from
+   * `DEFAULT_PROJECT_ESTIMATION_SETTINGS`. Machine callers and fixtures that predate the field
+   * therefore keep working and still end up with a row.
+   *
+   * Accepting it here does not widen who may set it: the route carries `project:create`, which
+   * the catalogue grants to `workspace_admin` alone — the same principal
+   * `PATCH :id/estimation-settings` requires via `workspace:edit`.
+   */
+  estimationSettings?: ProjectEstimationSettings;
+}
+
+/**
+ * Per-project T-shirt → points scale + hours/point (SRS §6.2), persisted in
+ * `work.project_settings`. The HTTP DTO in `project-request.dto.ts` mirrors it for the wire +
+ * codegen; `ProjectsService` re-exports it, which is where callers outside the module read it
+ * from. It lives in the domain because `CreateProjectRequest` carries it — one shape, not two.
+ */
+export interface ProjectEstimationSettings {
+  xsPoints: number;
+  sPoints: number;
+  mPoints: number;
+  lPoints: number;
+  xlPoints: number;
+  /**
+   * Stored, validated, displayed, editable by a Workspace Admin — and read by NO calculation,
+   * deliberately. An audit asked whether PM-FR-008 leaves this unwired; it does not.
+   *
+   * PM-FR-008 is a SCOPE constraint, not a formula: "Point-to-hour conversion is used only by
+   * Capacity Planning and Reports", and §2.2's Not Included is explicit that "Capacity Planning
+   * and Report calculations" are outside this module — "This module stores only the Project
+   * estimation configuration they consume." Storing it, enforcing `> 0` and restricting the edit
+   * to a Workspace Admin (§6.2) is the whole of what PM-FR-008 asks for here.
+   *
+   * Neither named consumer has anywhere to put it, and each says so in its own SRS. Team
+   * Capacity's four measures are `SUM(memberCapacity.capacityHours)` and
+   * `SUM(task.{estimate,todo,actuals})` — hours drawn from hours columns, with no points on
+   * either side of any comparison. A capacity plan's `unit` is fixed at creation to `points` or
+   * `count`, and `measureSql` compares demand against the team's capacity in that SAME unit
+   * precisely so a stored number can never be reinterpreted. §6.2 closes it: "Saving
+   * configuration does not populate or change Task Estimate hours."
+   *
+   * So there is no dormant conversion to wire up and no hardcoded 8 standing in for one — every
+   * literal 8 in this feature is this field's own default. Deriving hours from points would be
+   * new product against two SRSs; it needs a requirement first (an hours-unit plan, or an hours
+   * column on a report), then a consumer. Equally, do not delete the field: §4.2 and §6.2 make
+   * it a required, editable, displayed setting.
+   */
+  hoursPerPoint: number;
 }
 
 export interface UpdateProjectInput {

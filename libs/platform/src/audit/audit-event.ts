@@ -29,6 +29,11 @@ export const AUDIT_ACTION = {
   PROJECT_CREATED: 'project.created',
   PROJECT_UPDATED: 'project.updated',
   PROJECT_ARCHIVED: 'project.archived',
+  // §8 makes archive, RESTORE and DELETE administrative audit events. `project.deleted` did not
+  // exist at all, so the most destructive write in the module was the one mutation the Audit Log
+  // could not show; restore was landing as `project.updated`, indistinguishable from a rename.
+  PROJECT_RESTORED: 'project.restored',
+  PROJECT_DELETED: 'project.deleted',
   // Per-project access grants are the most sensitive administrative write in the
   // 3-level model — the identical team-membership action is fully logged, and access
   // changes were the one mutation invisible in the Audit Log.

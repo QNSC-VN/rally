@@ -4,6 +4,38 @@ import { createZodDto } from 'nestjs-zod';
 import { ISO_DATE, PageQuerySchema } from '@platform';
 import { projectStatusEnum, projectMemberStatusEnum } from '../../../../../../../db/schema/enums';
 
+// ── Estimation Settings (SRS §6.2) ───────────────────────────────────────────
+//
+// Declared BEFORE CreateProjectSchema because the create body embeds it (§4.2 lists the scale
+// among the Create Project fields) — a `const` referenced before its initialiser is a
+// runtime TDZ error, not a type error, so the order here is load-bearing.
+//
+// The per-PROJECT T-shirt → points scale + hours/point, stored in work.project_settings.
+// Write side is WA-admin only (`PATCH :id/estimation-settings` carries `workspace:edit`, and
+// `POST /projects` carries `project:create`, which the catalogue grants to `workspace_admin`
+// alone — so embedding it in the create body widens nothing); readable by anyone who can view
+// the project, because every progress bar and capacity figure already derives from it via
+// PreliminaryEstimateMapService.forProject(). The full schema is the GET response (defaults
+// filled when no row exists); the partial is the PATCH body, so omitted fields keep their
+// current value rather than resetting to the default.
+export const ProjectEstimationSettingsSchema = z.object({
+  xsPoints: z.number().int().min(1),
+  sPoints: z.number().int().min(1),
+  mPoints: z.number().int().min(1),
+  lPoints: z.number().int().min(1),
+  xlPoints: z.number().int().min(1),
+  // numeric(8,2), CHECK > 0 in migration 0106; the FE steps by 0.5 from 8, but the BE
+  // enforces the column's own rule, not the input's UX convenience.
+  hoursPerPoint: z.number().positive(),
+});
+
+export class ProjectEstimationSettingsDto extends createZodDto(ProjectEstimationSettingsSchema) {}
+
+export const UpdateProjectEstimationSettingsSchema = ProjectEstimationSettingsSchema.partial();
+export class UpdateProjectEstimationSettingsDto extends createZodDto(
+  UpdateProjectEstimationSettingsSchema,
+) {}
+
 // ── Create Project ───────────────────────────────────────────────────────────
 
 export const CreateProjectSchema = z.object({
@@ -18,6 +50,19 @@ export const CreateProjectSchema = z.object({
   startDate: ISO_DATE.optional(),
   endDate: ISO_DATE.optional(),
   teamIds: z.array(z.string().uuid()).optional(),
+  /**
+   * §4.2: the Estimation Settings are Create Project fields. They used to reach the database
+   * through a SECOND request — a best-effort `PATCH :id/estimation-settings` the SPA skipped
+   * whenever the six values still equalled the defaults, and swallowed on failure — so the
+   * common path wrote no `work.project_settings` row at all.
+   *
+   * Optional, and it is the OVERRIDE that is optional rather than the row: `createProject`
+   * writes the row unconditionally, from these values or from
+   * `DEFAULT_PROJECT_ESTIMATION_SETTINGS`. Present-but-partial is refused (the object is the
+   * full schema, not `.partial()`) — a half-specified scale is a mistake, not a merge, and the
+   * PATCH route is where partial edits belong.
+   */
+  estimationSettings: ProjectEstimationSettingsSchema.optional(),
 });
 
 export class CreateProjectDto extends createZodDto(CreateProjectSchema) {}
@@ -72,29 +117,3 @@ export const UpdateProjectMemberSchema = z.object({
 });
 
 export class UpdateProjectMemberDto extends createZodDto(UpdateProjectMemberSchema) {}
-
-// ── Estimation Settings (SRS §6.2) ───────────────────────────────────────────
-//
-// The per-PROJECT T-shirt → points scale + hours/point, stored in work.project_settings.
-// Write side is WA-admin only (the route carries `workspace:edit`); readable by anyone
-// who can view the project, because every progress bar and capacity figure already
-// derives from it via PreliminaryEstimateMapService.forProject(). The full schema is the
-// GET response (defaults filled when no row exists); the partial is the PATCH body, so
-// omitted fields keep their current value rather than resetting to the default.
-export const ProjectEstimationSettingsSchema = z.object({
-  xsPoints: z.number().int().min(1),
-  sPoints: z.number().int().min(1),
-  mPoints: z.number().int().min(1),
-  lPoints: z.number().int().min(1),
-  xlPoints: z.number().int().min(1),
-  // numeric(8,2), CHECK > 0 in migration 0106; the FE steps by 0.5 from 8, but the BE
-  // enforces the column's own rule, not the input's UX convenience.
-  hoursPerPoint: z.number().positive(),
-});
-
-export class ProjectEstimationSettingsDto extends createZodDto(ProjectEstimationSettingsSchema) {}
-
-export const UpdateProjectEstimationSettingsSchema = ProjectEstimationSettingsSchema.partial();
-export class UpdateProjectEstimationSettingsDto extends createZodDto(
-  UpdateProjectEstimationSettingsSchema,
-) {}

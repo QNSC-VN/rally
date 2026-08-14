@@ -52,6 +52,13 @@ export interface CreateProjectInput {
   startDate?: string
   endDate?: string
   teamIds?: string[]
+  /**
+   * §4.2 makes the estimate scale part of Create Project, so it travels in the create body.
+   * It used to be a SECOND request — a best-effort PATCH the modal skipped whenever the six
+   * values still equalled the defaults, and swallowed on failure — which left the common path
+   * with no `project_settings` row at all. The API writes the row in the create transaction now.
+   */
+  estimationSettings?: ProjectEstimationSettings
 }
 
 export interface UpdateProjectInput {

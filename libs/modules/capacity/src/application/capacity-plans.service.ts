@@ -48,6 +48,7 @@ import type {
   CapacityPlanTeamView,
   CapacityPlanView,
   CreateCapacityPlanInput,
+  PlanWindow,
   UpdateCapacityPlanInput,
 } from '../domain/capacity-plan.types';
 
@@ -166,6 +167,11 @@ export interface PublishSkip {
   itemKey: string;
   /**
    * `unallocated` — the allocation names no team, so there is no plan to inherit.
+   * `no_window` — the PLAN states no planned start/end, so there is no window to stamp. Nothing is
+   * written at all: with no window the span question is unanswerable too, so AC-019 already refuses
+   * the Release field, which leaves this publish with no field it is allowed to touch. Reported per
+   * row like `release_span_mismatch` (also a plan-level fact) because the rows are what the planner
+   * is looking at — but the fix is on the PLAN, in `Edit Plan Details`.
    * `release_span_mismatch` — the plan's window reaches outside its release, so Rally writes
    * the dates but not the Release field.
    * `other_release` — the Feature is already committed to a DIFFERENT release. §226 lets the Team
@@ -175,7 +181,7 @@ export interface PublishSkip {
    * the plan still holds the allocation, and a planner who sees "3 Features updated" for two writes
    * has no way to find the third.
    */
-  reason: 'unallocated' | 'release_span_mismatch' | 'archived' | 'other_release';
+  reason: 'unallocated' | 'no_window' | 'release_span_mismatch' | 'archived' | 'other_release';
 }
 
 export interface PublishResult {
@@ -470,9 +476,12 @@ export class CapacityPlansService {
     const writtenFeatures = new Set<string>();
 
     if (options.updateFields) {
-      // Read once, outside the loop: every Feature takes the same release decision.
+      // Read once, outside the loop: every Feature takes the same window and the same release
+      // decision. `window` is null when the plan states no window of its own, which is not a window
+      // of nulls — see the `no_window` skip below.
       const releaseWindow = await this.repo.releaseWindow(plan.releaseId, actor.workspaceId);
-      const spansReleases = !windowsMatch(plan, releaseWindow);
+      const window = planWindow(plan);
+      const spansReleases = !windowsMatch(window, releaseWindow);
 
       await this.uow.run(async (tx) => {
         for (const row of rows) {
@@ -481,6 +490,31 @@ export class CapacityPlansService {
               portfolioItemId: row.portfolioItemId,
               itemKey: row.itemKey,
               reason: 'unallocated',
+            });
+            continue;
+          }
+
+          /**
+           * A plan with NO window of its own writes NOTHING — it does not write emptiness.
+           *
+           * This was the shape of the bug: the window came straight off the plan's two nullable
+           * columns, so publishing a plan that stated no window set `planned_start_date` and
+           * `planned_end_date` to NULL on every assigned Feature — a plan write reaching outside the
+           * plan to erase a value nobody asked it to clear. And it was the DEFAULT case, not an edge
+           * one: SRS §5 gives the New Capacity Plan dialog six fields and no dates, so a plan has a
+           * window only if a planner opened `Edit Plan Details` and set one.
+           *
+           * `continue` rather than a dateless write, because there is nothing left to write: with no
+           * window `windowsMatch` cannot answer the span question either, so AC-019 has already
+           * refused the Release field. Calling the repository here would bump `updated_at` on every
+           * allocated Feature and count them as updated for no change at all — the same lie the
+           * `archived` skip exists to avoid.
+           */
+          if (window === null) {
+            skipped.push({
+              portfolioItemId: row.portfolioItemId,
+              itemKey: row.itemKey,
+              reason: 'no_window',
             });
             continue;
           }
@@ -506,8 +540,7 @@ export class CapacityPlansService {
             // plan's Release, which is the state `assertReferences` rejects on the next save.
             plan.projectId,
             {
-              plannedStartDate: plan.plannedStartDate,
-              plannedEndDate: plan.plannedEndDate,
+              window,
               ...(spansReleases || ownsOtherRelease ? {} : { releaseId: plan.releaseId }),
             },
             tx,
@@ -645,7 +678,7 @@ export class CapacityPlansService {
     return forecastCapacity({
       samples,
       unit: plan.unit,
-      windowDays: windowDays(plan.plannedStartDate, plan.plannedEndDate),
+      windowDays: windowDays(planWindow(plan)),
       availabilityPct: options.availabilityPct,
       complexity: options.complexity,
       velocityPerIteration: options.velocityPerIteration ?? null,
@@ -1854,12 +1887,31 @@ export function mergeParked(
  * window nobody defined — a plan with no dates is a real state, and inventing 90 days would
  * put a confident number on the screen for a question nobody asked.
  */
-function windowDays(start: string | null, end: string | null): number {
-  if (start === null || end === null) return 0;
-  const from = Date.parse(`${start}T00:00:00Z`);
-  const to = Date.parse(`${end}T00:00:00Z`);
+function windowDays(window: PlanWindow | null): number {
+  if (window === null) return 0;
+  const from = Date.parse(`${window.start}T00:00:00Z`);
+  const to = Date.parse(`${window.end}T00:00:00Z`);
   if (Number.isNaN(from) || Number.isNaN(to)) return 0;
   return Math.max(0, Math.round((to - from) / 86_400_000) + 1);
+}
+
+/**
+ * The plan's window, or null when it does not have one — the ONE place that decision is made.
+ *
+ * A plan's two date columns are independently nullable, and "has a window" is not the same question
+ * as "has a start date": every consumer needs both ends or neither. It had been re-decided in three
+ * places with three different answers — the forecast treated a half window as no window, `windowsMatch`
+ * treated it as unanswerable, and the publish writer treated it as a window whose ends were NULL and
+ * stamped that onto Features. One resolver, returning a type that cannot hold a null end, is what
+ * stops the third answer from existing.
+ */
+function planWindow(plan: {
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
+}): PlanWindow | null {
+  const { plannedStartDate: start, plannedEndDate: end } = plan;
+  if (start === null || end === null) return null;
+  return { start, end };
 }
 
 /**
@@ -1874,16 +1926,17 @@ function windowDays(start: string | null, end: string | null): number {
  *
  * Unknown dates on either side mean the question cannot be answered, and an unanswerable check
  * must not authorise the write — a plan or release with no dates skips the Release field and says
- * so.
+ * so. The plan side of that is already decided by `planWindow`, which is why this takes a resolved
+ * window: a `null` here is "the plan states no window", not "one end is missing".
  */
 function windowsMatch(
-  plan: { plannedStartDate: string | null; plannedEndDate: string | null },
+  window: PlanWindow | null,
   release: { startDate: string | null; endDate: string | null } | null,
 ): boolean {
-  if (release === null) return false;
-  const { plannedStartDate: ps, plannedEndDate: pe } = plan;
+  if (window === null || release === null) return false;
+  const { start: ps, end: pe } = window;
   const { startDate: rs, endDate: re } = release;
-  if (ps === null || pe === null || rs === null || re === null) return false;
+  if (rs === null || re === null) return false;
   // ISO `YYYY-MM-DD` compares correctly as a string, so no parsing (and no timezone) is
   // involved.
   return ps === rs && pe === re;

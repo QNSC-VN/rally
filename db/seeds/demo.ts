@@ -152,18 +152,21 @@ async function seedProject(project: {
       .onConflictDoNothing();
   }
 
-  // 3. Add the lead as the first active project member if not already present
-  await db
-    .insert(projectMembers)
-    .values({
-      id: uuidv7(),
-      workspaceId: WORKSPACE_ID,
-      projectId: actualId,
-      userId: ADMIN_USER_ID,
-      accessLevel: 'admin',
-      status: 'active',
-    })
-    .onConflictDoNothing();
+  // 3. NO project_members row for the lead.
+  //
+  // The lead of both seeded projects is the Workspace Admin, and §2.1/AC-8 say a Workspace Admin is
+  // not added as a Project user — its authority is the workspace-wide grant, not a `project_members`
+  // row. This block used to write exactly the row migration 0118 deletes, and `pnpm db:migrate` runs
+  // this seed, so the fixture undid the migration on every local and CI database. A fixture that
+  // reverses a migration is worse than either alone: the roster filter, `memberCount` and the POST
+  // refusal all hide the row, so nothing on screen would have shown it coming back.
+  //
+  // It is not merely cosmetic. `AccessService.effectiveAssignments` synthesizes a project grant FROM
+  // this table, so the row is dormant only while the user is a Workspace Admin — demote them and it
+  // becomes a live Project Admin grant that no roster displays.
+  //
+  // NXP still has a real member (DEVELOPER_ID, `editor`, added below for the seeded assigneeId);
+  // PAY deliberately has none, which is the honest picture of a project whose only principal is a WA.
 
   // 4. Seed default workflow statuses only if none exist yet for this project
   //    (avoids duplicating the 4 default statuses on re-seed)

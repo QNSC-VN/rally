@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle } from '@platform';
-import type { DrizzleDB } from '@platform';
+import type { DrizzleDB, DbExecutor } from '@platform';
 import { workItemRelations, workItems } from '../../../../../../db/schema/work';
 import type { WorkItemRelationType } from '../../../../../../db/schema/enums';
 import { IWorkItemRelationRepository } from '../../domain/ports/work-item-relation.repository';
@@ -127,8 +127,12 @@ export class WorkItemRelationDrizzleRepository implements IWorkItemRelationRepos
     return rows.length > 0;
   }
 
-  async create(input: CreateWorkItemRelationInput, workspaceId: string): Promise<WorkItemRelation> {
-    const [row] = await this.db
+  async create(
+    input: CreateWorkItemRelationInput,
+    workspaceId: string,
+    tx?: DbExecutor,
+  ): Promise<WorkItemRelation> {
+    const [row] = await (tx ?? this.db)
       .insert(workItemRelations)
       .values({
         workspaceId,
@@ -150,8 +154,8 @@ export class WorkItemRelationDrizzleRepository implements IWorkItemRelationRepos
     return rows[0] ?? null;
   }
 
-  async delete(id: string, workspaceId: string): Promise<void> {
-    await this.db
+  async delete(id: string, workspaceId: string, tx?: DbExecutor): Promise<void> {
+    await (tx ?? this.db)
       .delete(workItemRelations)
       .where(and(eq(workItemRelations.id, id), eq(workItemRelations.workspaceId, workspaceId)));
   }

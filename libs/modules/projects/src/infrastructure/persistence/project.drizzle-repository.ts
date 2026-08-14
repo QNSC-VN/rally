@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
@@ -21,6 +21,7 @@ import type {
   UpdateProjectInput,
 } from '../../domain/project.types';
 import { IProjectRepository } from '../../domain/ports/project.repository';
+import { selectWorkspaceAdminUserIds } from './workspace-admin-ids';
 
 @Injectable()
 export class ProjectDrizzleRepository implements IProjectRepository {
@@ -108,15 +109,29 @@ export class ProjectDrizzleRepository implements IProjectRepository {
       return { ...page, data: [] };
     }
 
-    // Count active members per project (no N+1: single query)
+    // Count active members per project (no N+1: single query).
+    //
+    // Workspace Admins are excluded, because this number is rendered as the SIZE of the roster
+    // `listProjectMembers` returns and §2.1 keeps a WA out of that roster — a count that includes
+    // a member the list beside it omits is the two-readers-disagreeing bug, not a rounding
+    // difference. One shared predicate, so the two cannot drift; see
+    // `selectWorkspaceAdminUserIds`.
     const projectIds = page.data.map((p) => p.id);
+    const adminUserIds = await selectWorkspaceAdminUserIds(this.db, workspaceId);
     const memberCountRows = await this.db
       .select({
         projectId: projectMembers.projectId,
         count: sql<number>`SUM(CASE WHEN ${projectMembers.status} = 'active' THEN 1 ELSE 0 END)::int`,
       })
       .from(projectMembers)
-      .where(inArray(projectMembers.projectId, projectIds))
+      .where(
+        and(
+          inArray(projectMembers.projectId, projectIds),
+          // `notInArray(col, [])` is not portable as "match everything", so the empty case —
+          // a workspace with no admin — is skipped rather than emitted.
+          ...(adminUserIds.length > 0 ? [notInArray(projectMembers.userId, adminUserIds)] : []),
+        ),
+      )
       .groupBy(projectMembers.projectId);
 
     const countMap: Record<string, number> = {};
@@ -314,8 +329,8 @@ export class ProjectDrizzleRepository implements IProjectRepository {
     return rows[0] as Project;
   }
 
-  async softDelete(id: string, workspaceId: string): Promise<void> {
-    await this.db
+  async softDelete(id: string, workspaceId: string, tx?: DbExecutor): Promise<void> {
+    await (tx ?? this.db)
       .update(projects)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(projects.id, id), eq(projects.workspaceId, workspaceId)));

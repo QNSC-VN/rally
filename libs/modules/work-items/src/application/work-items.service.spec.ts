@@ -10,9 +10,15 @@ import { WORK_ITEM_RELATION_REPOSITORY } from '../domain/ports/work-item-relatio
 import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
 import { AttachmentsService } from '@modules/attachments';
 import type { WorkItem } from '../domain/work-item.types';
-import { NotFoundException, PreconditionFailedException, UnitOfWork } from '@platform';
+import {
+  NotFoundException,
+  PermissionDeniedException,
+  PreconditionFailedException,
+  UnitOfWork,
+} from '@platform';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
+import { MilestonesService } from '@modules/milestones';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -118,7 +124,6 @@ const makeWorkItemRepo = () => ({
   listLabels: vi.fn(),
   listMilestones: vi.fn().mockResolvedValue([]),
   setMilestones: vi.fn().mockResolvedValue(undefined),
-  countMilestonesInProject: vi.fn().mockResolvedValue(0),
   areAllTasksComplete: vi.fn().mockResolvedValue(false),
   autoAcceptIterationIfComplete: vi.fn().mockResolvedValue(false),
 });
@@ -202,10 +207,25 @@ const makeProjectsService = () => {
 };
 
 // Grants everything by default; individual tests override to assert denial.
+//
+// `getWorkspacePermissions` and `getProjectAccessLevel` are the two the attachment DELETE rule
+// reads, and they default to the WEAKEST principal (no workspace grant, no project access level)
+// so a test that wants admin authority has to say so.
 const makeAccessService = () => ({
   assertProjectPermission: vi.fn().mockResolvedValue(undefined),
   assertTeamScoped: vi.fn().mockResolvedValue(undefined),
   getProjectPermissions: vi.fn().mockResolvedValue(['work_item:*']),
+  getWorkspacePermissions: vi.fn().mockResolvedValue([]),
+  getProjectAccessLevel: vi.fn().mockResolvedValue(null),
+});
+
+/**
+ * The milestone-artifact scope rule lives on MilestonesService — it reads the MILESTONE's project
+ * and team scope, which this module cannot see. So the unit under test here is the DELEGATION; the
+ * rule's own three conditions are pinned in milestones.service.spec.ts.
+ */
+const makeMilestonesService = () => ({
+  assertArtifactsAssignable: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeTimeLogRepo = () => ({
@@ -233,6 +253,10 @@ const makeAttachmentRepo = () => ({
   findByEntityAndFile: vi.fn().mockResolvedValue(null),
   link: vi.fn().mockResolvedValue(undefined),
   unlink: vi.fn().mockResolvedValue(undefined),
+});
+
+const makeNotificationScheduler = () => ({
+  schedule: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeAttachmentsService = () => ({
@@ -270,6 +294,8 @@ describe('WorkItemsService', () => {
   let attachmentRepo: ReturnType<typeof makeAttachmentRepo>;
   let attachmentsService: ReturnType<typeof makeAttachmentsService>;
   let relationRepo: ReturnType<typeof makeRelationRepo>;
+  let notificationScheduler: ReturnType<typeof makeNotificationScheduler>;
+  let milestonesService: ReturnType<typeof makeMilestonesService>;
 
   beforeEach(async () => {
     workItemRepo = makeWorkItemRepo();
@@ -282,6 +308,8 @@ describe('WorkItemsService', () => {
     attachmentRepo = makeAttachmentRepo();
     attachmentsService = makeAttachmentsService();
     relationRepo = makeRelationRepo();
+    notificationScheduler = makeNotificationScheduler();
+    milestonesService = makeMilestonesService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -293,13 +321,11 @@ describe('WorkItemsService', () => {
         EntityAttachmentsService,
         { provide: ATTACHMENT_REPOSITORY, useValue: attachmentRepo },
         { provide: WORK_ITEM_RELATION_REPOSITORY, useValue: relationRepo },
-        {
-          provide: NotificationSchedulerService,
-          useValue: { schedule: vi.fn().mockResolvedValue(undefined) },
-        },
+        { provide: NotificationSchedulerService, useValue: notificationScheduler },
         { provide: AttachmentsService, useValue: attachmentsService },
         { provide: ProjectsService, useValue: projectsService },
         { provide: AccessService, useValue: accessService },
+        { provide: MilestonesService, useValue: milestonesService },
         { provide: UnitOfWork, useValue: uow },
       ],
     }).compile();
@@ -486,6 +512,52 @@ describe('WorkItemsService', () => {
         }),
       ).rejects.toThrow('NOT_MEMBER');
       expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
+    // ── "assign on create" is the same event as "assign later" ───────────────
+    //
+    // The update path emitted WORK_ITEM_ASSIGNED and this one emitted nothing, so an item
+    // created already assigned notified nobody. Both paths go through `notifyAssignee` now, and
+    // these three cases are the rules that helper owns.
+
+    it('notifies an assignee named at CREATE time (P45-02)', async () => {
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ assigneeId: 'user-2' }));
+
+      await service.createWorkItem(mockActor, 'proj-1', 'story', 'My story', {
+        assigneeId: 'user-2',
+      });
+
+      expect(notificationScheduler.schedule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          template: 'WORK_ITEM_ASSIGNED',
+          recipientId: 'user-2',
+          actorId: 'user-1',
+        }),
+        // On the create transaction, so a rolled-back create leaves no ghost notification.
+        expect.anything(),
+      );
+    });
+
+    it('does not notify the actor who assigns an item to themselves', async () => {
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ assigneeId: mockActor.sub }));
+
+      await service.createWorkItem(mockActor, 'proj-1', 'story', 'My story', {
+        assigneeId: mockActor.sub,
+      });
+
+      expect(notificationScheduler.schedule).not.toHaveBeenCalled();
+    });
+
+    it('drops an assignee who cannot see the project (FR-019)', async () => {
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ assigneeId: 'user-2' }));
+      // Assignment only proves active WORKSPACE membership; this user holds no project grant.
+      accessService.getProjectPermissions.mockResolvedValue([]);
+
+      await service.createWorkItem(mockActor, 'proj-1', 'story', 'My story', {
+        assigneeId: 'user-2',
+      });
+
+      expect(notificationScheduler.schedule).not.toHaveBeenCalled();
     });
   });
 
@@ -1138,6 +1210,8 @@ describe('WorkItemsService', () => {
           relationType: 'depends_on',
         }),
         'ws-1',
+        // The insert now runs on the caller's transaction, alongside its activity entry.
+        expect.anything(),
       );
       expect(result).toEqual([{ id: 'rel-1' }]);
     });
@@ -1161,7 +1235,7 @@ describe('WorkItemsService', () => {
         relationType: 'blocks',
       });
       await service.unlinkWorkItem(mockActor, 'wi-1', 'rel-1');
-      expect(relationRepo.delete).toHaveBeenCalledWith('rel-1', 'ws-1');
+      expect(relationRepo.delete).toHaveBeenCalledWith('rel-1', 'ws-1', expect.anything());
     });
   });
 
@@ -1246,6 +1320,123 @@ describe('WorkItemsService', () => {
     it('removeLabelFromWorkItem removes label', async () => {
       await service.removeLabelFromWorkItem(mockActor, 'wi-1', 'l1');
       expect(workItemRepo.removeLabel).toHaveBeenCalledWith('wi-1', 'l1', 'ws-1');
+    });
+  });
+
+  // ── Milestones (the artifact-link rule has ONE home) ──────────────────────
+  //
+  // `PUT /work-items/:id/milestones` and `PUT /milestones/:id/artifacts` write the same
+  // `milestone_artifacts` rows. This side used to run its own project-only check, so a Task
+  // could be made an artifact and a Team-scoped Milestone would take any item — refusals the
+  // other endpoint had always enforced. It now delegates to the rule's owner.
+
+  describe('setWorkItemMilestones', () => {
+    it('hands the item to the milestone-artifact scope rule (P23-07)', async () => {
+      const item = mockWorkItem({ id: 'wi-1', projectId: 'proj-1', teamId: 'team-a' });
+      workItemRepo.findById.mockResolvedValue(item);
+
+      await service.setWorkItemMilestones(mockActor, 'wi-1', ['ms-1', 'ms-1', 'ms-2']);
+
+      expect(milestonesService.assertArtifactsAssignable).toHaveBeenCalledWith(
+        'ws-1',
+        ['ms-1', 'ms-2'],
+        [item],
+      );
+      expect(workItemRepo.setMilestones).toHaveBeenCalledWith('wi-1', ['ms-1', 'ms-2']);
+    });
+
+    it('writes nothing when the rule refuses (task, team scope or project scope)', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ type: 'task', parentId: 'wi-9' }));
+      milestonesService.assertArtifactsAssignable.mockRejectedValueOnce(
+        new PreconditionFailedException('MILESTONE_INVALID_ARTIFACT_TYPE', 'not an artifact type'),
+      );
+
+      await expect(service.setWorkItemMilestones(mockActor, 'wi-1', ['ms-1'])).rejects.toThrow(
+        PreconditionFailedException,
+      );
+      expect(workItemRepo.setMilestones).not.toHaveBeenCalled();
+    });
+
+    it('clears the set without consulting the rule (nothing to scope)', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      await service.setWorkItemMilestones(mockActor, 'wi-1', []);
+      expect(milestonesService.assertArtifactsAssignable).not.toHaveBeenCalled();
+      expect(workItemRepo.setMilestones).toHaveBeenCalledWith('wi-1', []);
+    });
+  });
+
+  // ── Attachments: the link, the file and the history are one write ──────────
+
+  describe('attachment writes', () => {
+    beforeEach(() => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-1' }));
+    });
+
+    it('records attachment.uploaded INSIDE the confirm transaction (P01-04)', async () => {
+      await service.confirmAttachment(mockActor, 'wi-1', 'file-1');
+
+      expect(attachmentRepo.link).toHaveBeenCalledWith(
+        expect.objectContaining({ fileId: 'file-1', entityType: 'work_item' }),
+        expect.anything(),
+      );
+      expect(activityRepo.log).toHaveBeenCalledWith(
+        [expect.objectContaining({ action: 'attachment.uploaded' })],
+        { tx: expect.anything() },
+      );
+      // Fire-and-forget is the defect: a lost history entry must fail the write, not warn.
+      expect(activityRepo.logSafe).not.toHaveBeenCalled();
+    });
+
+    it('records attachment.deleted INSIDE the delete transaction (P01-04)', async () => {
+      attachmentRepo.findByEntityAndFile.mockResolvedValue({
+        id: 'file-1',
+        uploadedBy: mockActor.sub,
+        filename: 'f.txt',
+      });
+
+      await service.deleteAttachment(mockActor, 'wi-1', 'file-1');
+
+      expect(attachmentRepo.unlink).toHaveBeenCalledWith(
+        { entityType: 'work_item', entityId: 'wi-1' },
+        'file-1',
+        'ws-1',
+        expect.anything(),
+      );
+      expect(attachmentsService.softDelete).toHaveBeenCalledWith('file-1', expect.anything());
+      expect(activityRepo.log).toHaveBeenCalledWith(
+        [expect.objectContaining({ action: 'attachment.deleted' })],
+        { tx: expect.anything() },
+      );
+      expect(activityRepo.logSafe).not.toHaveBeenCalled();
+    });
+
+    it("lets a per-Project Admin delete a teammate's attachment (P01-03)", async () => {
+      attachmentRepo.findByEntityAndFile.mockResolvedValue({
+        id: 'file-1',
+        uploadedBy: 'someone-else',
+        filename: 'f.txt',
+      });
+      // No workspace grant — the authority is the project access level alone.
+      accessService.getProjectAccessLevel.mockResolvedValue('admin');
+
+      await service.deleteAttachment(mockActor, 'wi-1', 'file-1');
+
+      expect(accessService.getProjectAccessLevel).toHaveBeenCalledWith('ws-1', 'user-1', 'proj-1');
+      expect(attachmentRepo.unlink).toHaveBeenCalled();
+    });
+
+    it("refuses an Editor deleting someone else's attachment", async () => {
+      attachmentRepo.findByEntityAndFile.mockResolvedValue({
+        id: 'file-1',
+        uploadedBy: 'someone-else',
+        filename: 'f.txt',
+      });
+      accessService.getProjectAccessLevel.mockResolvedValue('editor');
+
+      await expect(service.deleteAttachment(mockActor, 'wi-1', 'file-1')).rejects.toThrow(
+        PermissionDeniedException,
+      );
+      expect(attachmentRepo.unlink).not.toHaveBeenCalled();
     });
   });
 

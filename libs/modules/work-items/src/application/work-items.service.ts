@@ -36,6 +36,7 @@ import type {
 } from '@platform/notifications/notification.templates';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
+import { MilestonesService } from '@modules/milestones';
 import { IWorkItemRepository, WORK_ITEM_REPOSITORY } from '../domain/ports/work-item.repository';
 import {
   ActivityLogger,
@@ -133,6 +134,8 @@ export class WorkItemsService {
     private readonly entityAttachments: EntityAttachmentsService,
     private readonly projectsService: ProjectsService,
     private readonly accessService: AccessService,
+    // Owns the milestone-artifact scope rule; see setWorkItemMilestones.
+    private readonly milestonesService: MilestonesService,
     private readonly uow: UnitOfWork,
   ) {}
 
@@ -169,11 +172,6 @@ export class WorkItemsService {
   /** Batched append participating in the caller's transaction (shared logger). */
   private appendMany(inputs: CreateActivityInput[], tx?: DbExecutor): Promise<void> {
     return this.activity.log(inputs, { tx });
-  }
-
-  /** Best-effort single append — a revision-log failure must never fail the mutation. */
-  private append(input: CreateActivityInput): Promise<void> {
-    return this.activity.logSafe([input]);
   }
 
   /** Single entry — used for created/deleted events where there is only one entry. */
@@ -434,6 +432,22 @@ export class WorkItemsService {
               ? { parentId: created.parentId, title }
               : { title, type, projectId, teamId: opts.teamId ?? null },
           );
+
+          /**
+           * "Assign on create" must notify exactly like "assign after create".
+           *
+           * `updateWorkItem` emitted `WORK_ITEM_ASSIGNED` on an assignee change and this path
+           * emitted nothing, so an item created ALREADY assigned — which every Add-Item dialog
+           * and the Tasks tab do, and which `createTask` does implicitly by inheriting the
+           * parent's assignee — told the assignee nothing at all. Same event, same taxonomy
+           * (SRS §5: `assigned` + `mention`), reached by a different verb; the notification is a
+           * property of the assignment, not of the endpoint.
+           *
+           * On the same `tx` as the insert, so a rolled-back create leaves no ghost
+           * notification — and inside the retry loop, so a duplicate-key retry re-emits with
+           * the row that actually committed.
+           */
+          await this.notifyAssignee(actor, created, tx);
 
           return created;
         });
@@ -1052,37 +1066,7 @@ export class WorkItemsService {
         await this.watcherRepo
           .watch(updated.id, updated.assigneeId, actor.workspaceId)
           .catch(() => undefined);
-        /**
-         * FR-019 applies to an ASSIGNMENT too, not only to a mention.
-         *
-         * This passed `[updated.assigneeId]` straight through while the mention path a hundred lines
-         * below already ran `filterByProjectAccess`. The assignee is only validated as an active
-         * WORKSPACE member (`assertAssignmentScope` → `assertWorkspaceMember`), never as someone who
-         * can see this project — so a work item could legitimately be assigned to a colleague with No
-         * Access to it, and the notification then named the item, its key and its title on the one
-         * surface §7 says must disclose nothing.
-         *
-         * Filtered rather than refused: assigning across an access boundary is a real thing an admin
-         * may do deliberately (they may be about to grant access), and failing the whole PATCH because
-         * of a notification would be worse than not sending one. The assignment stands; the
-         * notification does not.
-         */
-        const notifiable = await this.filterByProjectAccess(
-          actor.workspaceId,
-          updated.projectId,
-          updated.assigneeId === actor.sub ? [] : [updated.assigneeId],
-        );
-        if (notifiable.length > 0) {
-          await this.emitWorkItemNotification(
-            'WORK_ITEM_ASSIGNED',
-            updated,
-            actor.sub,
-            notifiable,
-            { itemKey: updated.itemKey, itemTitle: updated.title, projectId: updated.projectId },
-            updated.assigneeId,
-            tx,
-          );
-        }
+        await this.notifyAssignee(actor, updated, tx);
       }
 
       // NOTE: schedule-state changes intentionally do NOT notify. The Phase 4.1
@@ -1147,6 +1131,46 @@ export class WorkItemsService {
       }),
     );
     return results.filter((id): id is string => id !== null);
+  }
+
+  /**
+   * The ONE place an assignment notification is produced — both the create and the update path
+   * call this, because "assigned on create" and "assigned later" are the same event and had
+   * already drifted into being two different products.
+   *
+   * Two rules are enforced here rather than at either call site, so a third write path cannot
+   * lose one of them:
+   *
+   *   • the ACTOR is never notified of their own assignment. Self-assignment is the normal way
+   *     someone picks up work, and a notification about a click you just made is noise.
+   *   • FR-019 applies to an ASSIGNMENT, not only to a mention. The assignee is validated as an
+   *     active WORKSPACE member (`assertAssignmentScope` → `assertWorkspaceMember`), never as
+   *     someone who can SEE this project — so an item may legitimately be assigned to a colleague
+   *     with No Access, and an unfiltered notification would name the item, its key and its title
+   *     on the one surface §7 says must disclose nothing.
+   *
+   * Filtered rather than refused: assigning across an access boundary is a real thing an admin may
+   * do deliberately (they may be about to grant access), and failing the whole write because of a
+   * notification would be worse than not sending one. The assignment stands; the notification does
+   * not.
+   */
+  private async notifyAssignee(actor: JwtPayload, item: WorkItem, tx: DbExecutor): Promise<void> {
+    if (!item.assigneeId) return;
+    const notifiable = await this.filterByProjectAccess(
+      item.workspaceId,
+      item.projectId,
+      item.assigneeId === actor.sub ? [] : [item.assigneeId],
+    );
+    if (notifiable.length === 0) return;
+    await this.emitWorkItemNotification(
+      'WORK_ITEM_ASSIGNED',
+      item,
+      actor.sub,
+      notifiable,
+      { itemKey: item.itemKey, itemTitle: item.title, projectId: item.projectId },
+      item.assigneeId,
+      tx,
+    );
   }
 
   /**
@@ -1295,18 +1319,32 @@ export class WorkItemsService {
       }
     }
 
-    await this.relationRepo.create(
-      { sourceItemId: sourceId, targetItemId: targetId, relationType, createdBy: actor.sub },
-      actor.workspaceId,
-    );
-
+    /**
+     * The link and its history are ONE write.
+     *
+     * This was a bare `create` followed by a `void`-ed best-effort append: the row landed and the
+     * `work_item.relation_added` entry was fire-and-forget outside any transaction, so a failed
+     * append left a relation with no trace of who added it or when — on the surface (Revision
+     * History) whose entire purpose is to answer that. Every other activity write in this service
+     * takes the transaction handle; these two were the exceptions.
+     */
     const source = await this.getWorkItem(actor.workspaceId, sourceId);
-    void this.append(
-      this.buildActivityInput(source, 'work_item', actor.sub, 'work_item.relation_added', null, {
-        relationType,
-        targetId,
-      }),
-    );
+    await this.uow.run(async (tx) => {
+      await this.relationRepo.create(
+        { sourceItemId: sourceId, targetItemId: targetId, relationType, createdBy: actor.sub },
+        actor.workspaceId,
+        tx,
+      );
+      await this.appendActivity(
+        tx,
+        source,
+        'work_item',
+        actor.sub,
+        'work_item.relation_added',
+        null,
+        { relationType, targetId },
+      );
+    });
 
     return this.relationRepo.listForItem(sourceId, actor.workspaceId);
   }
@@ -1325,15 +1363,20 @@ export class WorkItemsService {
         'Relation does not belong to this work item',
       );
     }
-    await this.relationRepo.delete(relationId, actor.workspaceId);
-
+    // Unlink + history in one transaction, for the reason given in `linkWorkItem`.
     const source = await this.getWorkItem(actor.workspaceId, sourceId);
-    void this.append(
-      this.buildActivityInput(source, 'work_item', actor.sub, 'work_item.relation_removed', null, {
-        relationType: relation.relationType,
-        relationId,
-      }),
-    );
+    await this.uow.run(async (tx) => {
+      await this.relationRepo.delete(relationId, actor.workspaceId, tx);
+      await this.appendActivity(
+        tx,
+        source,
+        'work_item',
+        actor.sub,
+        'work_item.relation_removed',
+        null,
+        { relationType: relation.relationType, relationId },
+      );
+    });
   }
 
   // ── Move (board transition) ───────────────────────────────────────────────
@@ -1760,8 +1803,14 @@ export class WorkItemsService {
   }
 
   /**
-   * Replace-set of the milestones assigned to a work item. Every id must belong
-   * to the work item's project (same-project guard, mirrors label validation).
+   * Replace-set of the milestones assigned to a work item.
+   *
+   * The TWIN write is `PUT /milestones/:id/artifacts`, and it writes the same `milestone_artifacts`
+   * rows from the other end. It enforced three conditions; this one enforced a weaker version of
+   * the first and neither of the other two — so a Task could become a Milestone artifact, and any
+   * item could join a Team-scoped Milestone, purely by choosing this endpoint. The rule now has one
+   * home (`assertArtifactsInMilestoneScope`, reached through `MilestonesService`), so the two
+   * endpoints cannot answer differently again.
    */
   async setWorkItemMilestones(
     actor: JwtPayload,
@@ -1771,13 +1820,7 @@ export class WorkItemsService {
     const item = await this.getWorkItem(actor.workspaceId, id);
     const uniqueIds = [...new Set(milestoneIds)];
     if (uniqueIds.length > 0) {
-      const inProject = await this.workItemRepo.countMilestonesInProject(uniqueIds, item.projectId);
-      if (inProject !== uniqueIds.length) {
-        throw new PreconditionFailedException(
-          'MILESTONE_PROJECT_MISMATCH',
-          'One or more milestones do not belong to this work item\u2019s project',
-        );
-      }
+      await this.milestonesService.assertArtifactsAssignable(actor.workspaceId, uniqueIds, [item]);
     }
     await this.workItemRepo.setMilestones(id, uniqueIds);
     return this.workItemRepo.listMilestones(id);

@@ -19,6 +19,7 @@ import { AttachmentsService } from '@modules/attachments';
 import { NotFoundException, PreconditionFailedException, UnitOfWork } from '@platform';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
+import { MilestonesService } from '@modules/milestones';
 
 // Workspace isolation is enforced at the application layer via `getWorkItem`'s
 // `item.workspaceId !== workspaceId` guard. These tests exercise that boundary
@@ -152,7 +153,6 @@ const makeScopedWorkItemRepo = (items: WorkItem[]) => ({
   listLabels: vi.fn().mockResolvedValue([]),
   listMilestones: vi.fn().mockResolvedValue([]),
   setMilestones: vi.fn().mockResolvedValue(undefined),
-  countMilestonesInProject: vi.fn().mockResolvedValue(0),
 });
 
 const makeScopedTimeLogRepo = (logs: TimeLog[]) => ({
@@ -321,7 +321,15 @@ describe('WorkItemsService — workspace isolation', () => {
             assertProjectPermission: vi.fn().mockResolvedValue(undefined),
             assertTeamScoped: vi.fn().mockResolvedValue(undefined),
             getProjectPermissions: vi.fn().mockResolvedValue(['work_item:*']),
+            getWorkspacePermissions: vi.fn().mockResolvedValue([]),
+            getProjectAccessLevel: vi.fn().mockResolvedValue(null),
           },
+        },
+        {
+          // Owns the milestone-artifact scope rule (see setWorkItemMilestones); the isolation
+          // tests only need it to be present and permissive.
+          provide: MilestonesService,
+          useValue: { assertArtifactsAssignable: vi.fn().mockResolvedValue(undefined) },
         },
         { provide: UnitOfWork, useValue: makeUnitOfWork() },
       ],
