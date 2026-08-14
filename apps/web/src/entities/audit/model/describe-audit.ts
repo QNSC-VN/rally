@@ -158,6 +158,45 @@ function describeTeamUpdate(c: RenderCtx): string {
   return describeEntityUpdate(c, 'team')
 }
 
+/**
+ * A per-project access grant, change or removal.
+ *
+ * `project_members.access_level` is the whole of the per-Project model (Workspace Admin aside), so
+ * these three rows are the most sensitive administrative write the log carries — `AUDIT_ACTION` says
+ * so itself. They had no template at all, and the fallback rendered "Project Member Added — Project
+ * 019f742b": the actor, the level and even the person granted were all absent from the sentence.
+ *
+ * A `null` level is not "No Access". It is a team-DERIVED roster row — someone reachable through a
+ * linked team with no explicit grant — and calling that a level would misreport how they got in.
+ */
+function describeProjectAccess(c: RenderCtx, verb: 'granted' | 'changed' | 'removed'): string {
+  const who = c.user(c.after.userId ?? c.before.userId)
+  const before = str(c.before.accessLevel)
+  const after = str(c.after.accessLevel)
+  // No trailing noun: every sentence below supplies its own ("… access to project X",
+  // "… from Editor to Admin"), so returning "team-derived access" here read "access access".
+  const level = (v: string | undefined): string => (v ? humanizeToken(v) : 'team-derived')
+
+  if (verb === 'removed') return `Removed ${who}’s access to project ${entityRef(c)}`
+  if (verb === 'changed') {
+    return `Changed ${who}’s access to project ${entityRef(c)} from ${level(before)} to ${level(after)}`
+  }
+  return `Granted ${who} ${level(after)} access to project ${entityRef(c)}`
+}
+
+/**
+ * A sign-in, sign-out or workspace switch, written by `@qnsc-vn/identity` (`auth.*`).
+ *
+ * These are the highest-VOLUME rows in the log and had no templates, so every one of them rendered
+ * through the fallback as "Auth Login Sso — Workspace 019f742b" — the workspace id repeated on rows
+ * whose subject is the actor already named in the Actor column. The method matters (SSO versus the
+ * dev-only password path) because one of them must never appear in a deployed environment.
+ */
+function describeAuth(c: RenderCtx, sentence: string): string {
+  const method = str(c.after.authMethod) ?? str(c.before.authMethod)
+  return method ? `${sentence} (${humanizeToken(method)})` : sentence
+}
+
 function describePermissionsUpdate(c: RenderCtx): string {
   const role = c.role(c.event.resourceId)
   const before = Array.isArray(c.before.permissions) ? c.before.permissions : []
@@ -188,18 +227,37 @@ const ACTION_TEMPLATES: Record<string, (c: RenderCtx) => string> = {
     `Cancelled the invitation for ${str(c.before.email) ?? str(c.after.email) ?? 'a user'}`,
   'workspace.invitation.accepted': (c) =>
     `${str(c.after.email) ?? c.user(c.after.userId)} accepted the workspace invitation`,
+  'workspace.invitation.resent': (c) =>
+    `Resent the invitation for ${str(c.after.email) ?? str(c.before.email) ?? 'a user'}`,
 
   // ── Access / RBAC ──
   'role.assigned': (c) =>
     `Assigned the ${c.role(c.after.roleId ?? c.event.resourceId)} role to ${c.user(c.after.userId)}`,
   'role.revoked': (c) =>
     `Revoked the ${c.role(c.before.roleId ?? c.event.resourceId)} role from ${c.user(c.before.userId)}`,
+  'role.created': (c) => `Created the ${entityName(c) ?? c.role(c.event.resourceId)} role`,
+  'role.deleted': (c) => `Deleted the ${entityName(c) ?? c.role(c.event.resourceId)} role`,
   'role.permissions.updated': describePermissionsUpdate,
 
   // ── Projects ──
   'project.created': (c) => `Created project ${entityRef(c)}`,
   'project.updated': (c) => describeEntityUpdate(c, 'project'),
   'project.archived': (c) => `Archived project ${entityRef(c)}`,
+  'project.deleted': (c) => `Deleted project ${entityRef(c)}`,
+  'project.restored': (c) => `Restored project ${entityRef(c)}`,
+  'project.member.added': (c) => describeProjectAccess(c, 'granted'),
+  'project.member.updated': (c) => describeProjectAccess(c, 'changed'),
+  'project.member.removed': (c) => describeProjectAccess(c, 'removed'),
+
+  // ── Authentication (written by @qnsc-vn/identity, not by AUDIT_ACTION) ──
+  'auth.login.sso': (c) => describeAuth(c, 'Signed in through SSO'),
+  'auth.login.dev': (c) => describeAuth(c, 'Signed in through the developer login'),
+  'auth.logout': (c) => describeAuth(c, 'Signed out'),
+  'auth.switch_workspace': (c) => describeAuth(c, 'Switched workspace'),
+  // Not a login event: the refresh-token reuse detector fired, which revokes the family. Worded as a
+  // security finding rather than an action the actor chose, because they may not be the one who did it.
+  'auth.token_theft_detected': (c) =>
+    describeAuth(c, 'Refresh-token reuse detected — the session family was revoked'),
 
   // ── Teams ──
   'team.created': (c) => `Created team ${entityRef(c)}`,
@@ -209,6 +267,15 @@ const ACTION_TEMPLATES: Record<string, (c: RenderCtx) => string> = {
   'team.member.removed': (c) =>
     `Removed ${c.user(c.before.userId)} from the ${c.team(c.before.teamId)} team`,
 }
+
+/**
+ * The registry, exposed for the cross-boundary contract test ONLY
+ * (`libs/platform/src/audit/fe-audit-describer-contract.spec.ts` asserts every `AUDIT_ACTION` code has
+ * an entry). Not for rendering — callers use {@link describeAuditEvent}, which supplies the context
+ * and the fallback. Read-only so a consumer cannot register a template at runtime and make the
+ * contract test's answer depend on import order.
+ */
+export const ACTION_TEMPLATES_FOR_CONTRACT: Readonly<Record<string, unknown>> = ACTION_TEMPLATES
 
 /** Readable sentence for an action code the FE does not (yet) have a template for. */
 function describeFallback(c: RenderCtx): string {
