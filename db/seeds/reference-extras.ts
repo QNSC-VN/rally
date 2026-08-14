@@ -237,6 +237,13 @@ async function seedFilesAndAttachments(db: Db): Promise<void> {
  * One read and one unread, because the bell's badge counts unread and "all read" is a different
  * screen from "nothing has happened". Preferences are seeded for both users so the relay's
  * email-cascade branch has a real row to read rather than falling back to a default.
+ *
+ * `metadata.projectId` is REQUIRED on a work-item row, not decoration. Every recipient-scoped read
+ * filters on `metadata->>'projectId'` (SRS §7 :199-200) and a notification naming NO project is
+ * deliberately always visible — that branch exists for `WORKSPACE_INVITATION`. These two rows had
+ * only `itemKey`, so they landed in the always-visible branch and anything leaning on them exercised
+ * the BYPASS instead of the filter. Every work-item template threads the project
+ * (`notification.templates.ts` :102-129), so a fixture without it is not what production writes.
  */
 async function seedNotifications(db: Db): Promise<void> {
   await db
@@ -252,7 +259,7 @@ async function seedNotifications(db: Db): Promise<void> {
         body: 'Migrate the workspace to NX v21',
         resourceType: 'work_item',
         resourceId: NXP_STORY_1_ID,
-        metadata: { itemKey: 'US-1' },
+        metadata: { itemKey: 'US-1', projectId: NXP_ID },
         isRead: false,
       },
       {
@@ -265,7 +272,7 @@ async function seedNotifications(db: Db): Promise<void> {
         body: 'Windows CI checkout is flaky again',
         resourceType: 'work_item',
         resourceId: NXP_DEFECT_1_ID,
-        metadata: { itemKey: 'DE-1' },
+        metadata: { itemKey: 'DE-1', projectId: NXP_ID },
         isRead: true,
         readAt: new Date('2026-06-26T09:15:00Z'),
       },

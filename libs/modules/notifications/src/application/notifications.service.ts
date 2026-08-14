@@ -81,13 +81,30 @@ export class NotificationsService {
     );
   }
 
+  /**
+   * `POST /notifications/:id/read` is the SEVENTH recipient seam, and the only one that WRITES.
+   *
+   * It used to check recipient + workspace alone, so the unread state of a notification the reader
+   * is not allowed to see could be consumed by id alone. That state is reachable: the write side's
+   * own recipient filter (`filterByProjectAccess`, FR-019) is applied to mentions and NOT to
+   * assignments, so a notification can exist for a principal with no `work_item:view` on the item's
+   * project. The consequence is the one `markAllRead`'s repository docblock refuses in the same
+   * words — the row comes back already-read if access is later granted, so the unread badge the
+   * reader would then be owed is gone for good. §7 :200 governs this write for the same reason it
+   * governs the six reads.
+   *
+   * Gated on `isVisibleToRecipient`, the predicate the list, the page, the badge, the SSE replay,
+   * the live push and `mark all read` all share — never a second definition of "visible" restated
+   * in TypeScript over a fetched row, which is how a feed and its badge start disagreeing.
+   *
+   * NOT visible throws the SAME `NOTIFICATION_NOT_FOUND` this method already threw for a missing row
+   * or another recipient's row, deliberately matching the sibling shape: it keeps "denied"
+   * indistinguishable from "absent" (:199 — a denied state discloses no business data, and mere
+   * existence under a known id is business data), and unlike a silent no-op it does not report a
+   * write as having succeeded when nothing was written.
+   */
   async markRead(actor: JwtPayload, notificationId: string): Promise<void> {
-    const notification = await this.notificationRepo.findById(notificationId);
-    if (
-      !notification ||
-      notification.recipientId !== actor.sub ||
-      notification.workspaceId !== actor.workspaceId
-    ) {
+    if (!(await this.isVisible(actor, notificationId))) {
       throw new NotFoundException('NOTIFICATION_NOT_FOUND', 'Notification not found');
     }
     await this.notificationRepo.markRead(notificationId);

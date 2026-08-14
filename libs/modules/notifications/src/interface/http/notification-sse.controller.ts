@@ -35,7 +35,8 @@
  *   Heartbeat (every 25s — prevents proxy/LB from closing idle connections):
  *     : heartbeat
  *
- *   Reconnect hint (on server restart / graceful shutdown):
+ *   Reconnect hint (on server restart / graceful shutdown, or when a live push's access check
+ *   fails and the event must be replayed rather than dropped — see the push queue below):
  *     event: reconnect
  *     data: { "retryMs": 3000 }
  *
@@ -51,7 +52,7 @@
  *   Fastify does not interfere with the long-lived streaming response.
  *   reply.raw is the underlying Node.js http.ServerResponse.
  */
-import { Controller, Get, Req, Res } from '@nestjs/common';
+import { Controller, Get, Logger, Req, Res } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Auth, ApiCommonErrors } from '@platform';
@@ -65,6 +66,8 @@ import { SelfScoped } from '@modules/access';
 @Controller('notifications')
 @Auth()
 export class NotificationSseController {
+  private readonly logger = new Logger(NotificationSseController.name);
+
   constructor(
     private readonly pubSub: NotificationPubSubService,
     private readonly notificationsService: NotificationsService,
@@ -135,16 +138,47 @@ export class NotificationSseController {
     // and the unread badge both refuse to show. The check is asynchronous and the `id:` field is the
     // client's `Last-Event-ID` cursor, so the checks are SERIALISED through a promise chain: running
     // them concurrently could emit ids out of order and make a reconnect replay from the wrong
-    // point. Rejections are swallowed — a failed access read must not tear down the stream, and the
-    // event is dropped rather than emitted on an unknown answer.
+    // point. A denied answer still drops the event silently — that is the rule, not a failure.
+    //
+    // A FAILED check ENDS THE STREAM. It used to be swallowed (`.catch(() => undefined)`), and that
+    // loses the notification permanently: `id:` — the client's cursor — only advances on a DELIVERED
+    // event, and the replay is strictly `id > afterId`, so an event dropped here is newer than the
+    // cursor the client will send and is never replayed on this stream. One transient Postgres or
+    // Valkey blip therefore ate a notification with no trace. Ending the response instead makes the
+    // browser reconnect from its last DELIVERED id (`useNotificationSse` keeps `lastEventId` across
+    // reconnects) and `listMissed` replays the gap through the same access predicate, so nothing is
+    // emitted on an unknown answer either way — the event is deferred, not disclosed.
+    //
+    // Retrying in place was NOT chosen: the fault may be an outage outliving any retry budget, the
+    // chain is serialised so a retry stalls every later event behind it, and reconnect-with-replay is
+    // recovery the client already implements. No new metric name either — this repo asserts that
+    // every declared name is actually recorded — so the signal is a WARN log, which is the live
+    // signal here anyway (`OTEL_ENABLED` is false everywhere).
     let pushQueue: Promise<void> = Promise.resolve();
     const unsubscribe = await this.pubSub.subscribeUser(user.sub, (payload) => {
-      pushQueue = pushQueue.then(async () => {
-        if (!raw.writable) return;
-        if (!(await this.notificationsService.isVisible(user, payload.notificationId))) return;
-        if (raw.writable) writeNotificationEvent(raw, payload);
-      });
-      pushQueue = pushQueue.catch(() => undefined);
+      pushQueue = pushQueue
+        .then(async () => {
+          if (!raw.writable) return;
+          if (!(await this.notificationsService.isVisible(user, payload.notificationId))) return;
+          if (raw.writable) writeNotificationEvent(raw, payload);
+        })
+        // The catch itself stays: an unhandled rejection left on this chain would be a process-level
+        // fault, and every event queued behind it must still be able to run.
+        .catch((err: unknown) => {
+          // `recipientId` is logged by hand here, against the usual rule, because this callback runs
+          // in the Valkey subscriber and not in the request — the pino mixin's ALS context is not
+          // available, so without it the line names no user.
+          this.logger.warn(
+            { err, notificationId: payload.notificationId, recipientId: payload.recipientId },
+            'Notification visibility check failed; ending SSE stream so the client reconnects and replays from its last delivered id',
+          );
+          if (raw.writable) {
+            // The documented reconnect hint (3s) rather than waiting out the client's 5s
+            // stream-ended path; it carries no `id:`, so the cursor stays where it was.
+            writeEvent(raw, 'reconnect', { retryMs: 3000 });
+            raw.end();
+          }
+        });
     });
 
     // Heartbeat every 25s.

@@ -70,15 +70,6 @@ export class NotificationDrizzleRepository implements INotificationRepository {
     return conditions;
   }
 
-  async findById(id: string): Promise<Notification | null> {
-    const rows = await this.db
-      .select()
-      .from(inAppNotifications)
-      .where(eq(inAppNotifications.id, id))
-      .limit(1);
-    return (rows[0] as Notification | undefined) ?? null;
-  }
-
   /**
    * Existence check for ONE row under the same access predicate as the list, so the SSE live push
    * can refuse a notification the Notification Center would not show. Deliberately reuses

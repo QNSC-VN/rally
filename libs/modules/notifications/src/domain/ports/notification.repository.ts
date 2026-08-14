@@ -17,8 +17,14 @@ export const NOTIFICATION_REPOSITORY = Symbol('NOTIFICATION_REPOSITORY');
  * gap existed in the first place.
  */
 export interface INotificationRepository {
-  findById(id: string): Promise<Notification | null>;
-  /** True when the row exists, belongs to this recipient AND passes the Project access filter. */
+  /**
+   * True when the row exists, belongs to this recipient AND passes the Project access filter.
+   *
+   * This is deliberately the ONLY single-row read on the port. An unfiltered `findById` used to sit
+   * beside it and was `markRead`'s gate, which is how that seam came to authorize a write on
+   * recipient + workspace with no access check; a by-id read that cannot express the access fact is
+   * the same footgun as an optional `readableProjectIds`.
+   */
   isVisibleToRecipient(
     workspaceId: string,
     recipientId: string,

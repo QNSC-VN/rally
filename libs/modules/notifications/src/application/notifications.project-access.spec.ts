@@ -9,6 +9,9 @@
  * notification for that project in the bell — each naming the item — while clicking one 403'd in the
  * item-key resolver.
  *
+ * `markRead` is covered here too: it is the seventh recipient seam and the only WRITE, and it was
+ * missed the first time — a notification could have its unread state consumed by id alone.
+ *
  * Two things are pinned here, because the bug can come back in either place:
  *   1. the SENTINEL is passed through untouched at the service seam — `null` (UNRESTRICTED) and `[]`
  *      ("no projects") are different answers, and every read seam gets the same one;
@@ -45,7 +48,6 @@ describe('notification feed — per-Project access filter (SRS §7 :199-200)', (
 
     beforeEach(() => {
       repo = {
-        findById: vi.fn().mockResolvedValue(null),
         isVisibleToRecipient: vi.fn().mockResolvedValue(true),
         listForRecipient: vi.fn().mockResolvedValue([]),
         listPageForRecipient: vi.fn().mockResolvedValue({ data: [], pageInfo: {} }),
@@ -86,6 +88,7 @@ describe('notification feed — per-Project access filter (SRS §7 :199-200)', (
       await service.getUnreadCount(actor);
       await service.listMissed(actor, 'after-id');
       await service.markAllRead(actor);
+      await service.markRead(actor, 'notification-id');
       await service.isVisible(actor, 'notification-id');
 
       expect(repo.listForRecipient).toHaveBeenCalledWith(WORKSPACE, USER, expect.anything(), null);
@@ -105,6 +108,36 @@ describe('notification feed — per-Project access filter (SRS §7 :199-200)', (
         'notification-id',
         null,
       );
+    });
+
+    /**
+     * `markRead` is the seventh seam and the only WRITE. Ungated it consumed the unread state of a
+     * notification the reader may never see — the loss `markAllRead`'s own docblock refuses, since
+     * the row returns already-read if access is later granted.
+     */
+    describe('markRead is gated on the same visibility predicate', () => {
+      it('marks read when the notification is visible to this recipient', async () => {
+        access.listReadableProjectIds.mockResolvedValue([READABLE]);
+        repo.isVisibleToRecipient.mockResolvedValue(true);
+
+        await service.markRead(actor, 'notification-id');
+
+        expect(repo.isVisibleToRecipient).toHaveBeenCalledWith(WORKSPACE, USER, 'notification-id', [
+          READABLE,
+        ]);
+        expect(repo.markRead).toHaveBeenCalledWith('notification-id');
+      });
+
+      /** Same `NOTIFICATION_NOT_FOUND` as an absent row: denied must not be distinguishable (:199). */
+      it('refuses with NOTIFICATION_NOT_FOUND and writes nothing when it is not visible', async () => {
+        access.listReadableProjectIds.mockResolvedValue([]);
+        repo.isVisibleToRecipient.mockResolvedValue(false);
+
+        await expect(service.markRead(actor, 'notification-id')).rejects.toMatchObject({
+          code: 'NOTIFICATION_NOT_FOUND',
+        });
+        expect(repo.markRead).not.toHaveBeenCalled();
+      });
     });
 
     it('passes a restricted list — including the empty one — through unchanged', async () => {
