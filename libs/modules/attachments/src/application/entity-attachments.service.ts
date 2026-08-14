@@ -4,6 +4,7 @@ import {
   NotFoundException,
   PermissionDeniedException,
   PreconditionFailedException,
+  UnitOfWork,
 } from '@platform';
 import type { JwtPayload } from '@platform';
 import { PERMISSION, permissionGrants } from '@shared-kernel';
@@ -31,9 +32,11 @@ import type { AttachmentRef, EntityAttachment } from '../domain/attachment.types
  * exactly the "owner-type registry lookup" `AttachmentsModule`'s own doc comment warns
  * against, and it is where cross-entity authorization bugs hide.
  *
- * The one authorization decision that DOES live here is the delete-owner rule — only the
- * uploader or a workspace admin may remove a file. That rule is about the FILE, not about the
- * entity it hangs off, so it is the same rule everywhere and belongs in one place.
+ * The one authorization decision that DOES live here is the delete rule — the uploader, the
+ * owning project's Admin, or a workspace admin may remove a file. That rule is about the FILE,
+ * not about the entity it hangs off, so it is the same rule everywhere and belongs in one place.
+ * It takes the caller's resolved `projectId` for the level lookup, in the same argument it
+ * already passed for the activity log — this service still resolves no entity of its own.
  */
 @Injectable()
 export class EntityAttachmentsService {
@@ -44,6 +47,7 @@ export class EntityAttachmentsService {
     private readonly attachments: AttachmentsService,
     private readonly accessService: AccessService,
     private readonly activity: ActivityLogger,
+    private readonly uow: UnitOfWork,
   ) {}
 
   async list(actor: JwtPayload, ref: AttachmentRef): Promise<EntityAttachment[]> {
@@ -86,28 +90,54 @@ export class EntityAttachmentsService {
       );
     }
 
-    await this.links.link({
-      entityType: ref.entityType,
-      entityId: ref.entityId,
-      fileId: attachmentId,
-      workspaceId: actor.workspaceId,
-      attachedBy: actor.sub,
+    /**
+     * The link row and its history are ONE write.
+     *
+     * Both of these were a repository call followed by a `void`-ed `logSafe`, so
+     * `attachment.uploaded` was fire-and-forget OUTSIDE any transaction: the file became visible
+     * and its Revision History entry could vanish with nothing but a warning in the log. Every
+     * other activity and audit emit in this codebase takes the transaction handle
+     * (`WorkItemsService`, `AccessService.assignRole`, …); these two were the exceptions, and an
+     * attachment is exactly the kind of change a reader later needs attributed.
+     *
+     * `log`, not `logSafe`: inside a transaction a failed INSERT has already aborted it, so
+     * swallowing the error would only move the failure to COMMIT and hide its cause.
+     *
+     * What stays outside, deliberately: `attachments.confirm` above verifies the object in the
+     * bucket and flips `storage.files` to completed. Those are an S3 HEAD plus a write on a
+     * different aggregate, and holding a Postgres transaction open across a network round-trip to
+     * object storage is worse than the gap it would close — a file confirmed but unlinked is
+     * already the reaper's job.
+     */
+    await this.uow.run(async (tx) => {
+      await this.links.link(
+        {
+          entityType: ref.entityType,
+          entityId: ref.entityId,
+          fileId: attachmentId,
+          workspaceId: actor.workspaceId,
+          attachedBy: actor.sub,
+        },
+        tx,
+      );
+      await this.activity.log(
+        [
+          {
+            id: uuidv7(),
+            workspaceId: actor.workspaceId,
+            projectId,
+            contextId: ref.entityId,
+            entityType: 'attachment',
+            entityId: attachmentId,
+            actorId: actor.sub,
+            action: 'attachment.uploaded',
+            changes: null,
+            metadata: { filename: file.filename },
+          },
+        ],
+        { tx },
+      );
     });
-
-    void this.activity.logSafe([
-      {
-        id: uuidv7(),
-        workspaceId: actor.workspaceId,
-        projectId,
-        contextId: ref.entityId,
-        entityType: 'attachment',
-        entityId: attachmentId,
-        actorId: actor.sub,
-        action: 'attachment.uploaded',
-        changes: null,
-        metadata: { filename: file.filename },
-      },
-    ]);
     this.logger.log({ ...ref, attachmentId, filename: file.filename }, 'Attachment confirmed');
 
     return {
@@ -150,36 +180,70 @@ export class EntityAttachmentsService {
     const link = await this.links.findByEntityAndFile(ref, attachmentId, actor.workspaceId);
     if (!link) throw new NotFoundException('ATTACHMENT_NOT_FOUND', 'Attachment not found');
 
-    const isAdmin = permissionGrants(
+    /**
+     * Who may remove someone ELSE's file: a Workspace Admin, or the owning project's own Admin.
+     *
+     * It used to be the uploader or a Workspace Admin, full stop — so a per-Project Admin could not
+     * clear a teammate's mis-uploaded or wrong-content file from their own project's work item, and
+     * the only remedy was to escalate to a workspace-wide principal. §3.1's own summary is that
+     * "`Admin` is powerful for delivery management", and an attachment on a work item is delivery
+     * data: the same reason `project:edit` stays in the Admin set.
+     *
+     * The level is resolved through `AccessService.getProjectAccessLevel`, which filters the
+     * synthesized assignments with `isProjectAccessLevel` — never a hand-written level list here.
+     * A hand-written `'admin' | 'editor'` pair in two places is what once made a granted row read
+     * as No Access, and the levels are one CHECK constraint, one permission map and one SPA mirror
+     * that must move together.
+     *
+     * Written as an ALLOW-list (`=== 'admin'`), like `ProjectsService.listProjectMembers`: naming
+     * the levels to REFUSE would admit every level added later by default, and a third level has
+     * already been added and removed inside one week (migrations 0113, 0115).
+     *
+     * `null` here means the actor has no `project_members` row — a Workspace Admin (whose authority
+     * is the workspace-wide grant) or No Access. The workspace check above already answers the
+     * first, and the route's `work_item:view`/`:edit` gate refuses the second before this runs.
+     */
+    const isWorkspaceAdmin = permissionGrants(
       await this.accessService.getWorkspacePermissions(actor.sub, actor.workspaceId),
       PERMISSION.WORKSPACE_EDIT,
     );
-    if (!isAdmin && link.uploadedBy !== actor.sub) {
+    const level = await this.accessService.getProjectAccessLevel(
+      actor.workspaceId,
+      actor.sub,
+      projectId,
+    );
+    const mayDeleteAnyFile = isWorkspaceAdmin || level === 'admin';
+    if (!mayDeleteAnyFile && link.uploadedBy !== actor.sub) {
       throw new PermissionDeniedException(
         'ATTACHMENT_NOT_OWNER',
-        'Only the uploader or a workspace admin may delete this attachment',
+        'Only the uploader, a project admin or a workspace admin may delete this attachment',
       );
     }
 
-    await this.links.unlink(ref, attachmentId, actor.workspaceId);
-    // Soft-delete the file too. The object itself is removed by the worker reaper, which is
-    // the only place that can see whether some other link row still references it.
-    await this.attachments.softDelete(attachmentId);
-
-    void this.activity.logSafe([
-      {
-        id: uuidv7(),
-        workspaceId: actor.workspaceId,
-        projectId,
-        contextId: ref.entityId,
-        entityType: 'attachment',
-        entityId: attachmentId,
-        actorId: actor.sub,
-        action: 'attachment.deleted',
-        changes: null,
-        metadata: { filename: link.filename },
-      },
-    ]);
+    // Unlink + retire the file + record the history as ONE write — see `confirm` for why.
+    // The object itself is removed by the worker reaper, which is the only place that can see
+    // whether some other link row still references it.
+    await this.uow.run(async (tx) => {
+      await this.links.unlink(ref, attachmentId, actor.workspaceId, tx);
+      await this.attachments.softDelete(attachmentId, tx);
+      await this.activity.log(
+        [
+          {
+            id: uuidv7(),
+            workspaceId: actor.workspaceId,
+            projectId,
+            contextId: ref.entityId,
+            entityType: 'attachment',
+            entityId: attachmentId,
+            actorId: actor.sub,
+            action: 'attachment.deleted',
+            changes: null,
+            metadata: { filename: link.filename },
+          },
+        ],
+        { tx },
+      );
+    });
     this.logger.log({ ...ref, attachmentId, filename: link.filename }, 'Attachment deleted');
   }
 }

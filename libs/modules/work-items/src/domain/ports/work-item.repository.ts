@@ -134,6 +134,4 @@ export interface IWorkItemRepository {
   listLabels(workItemId: string): Promise<Array<{ id: string; name: string; color: string }>>;
   listMilestones(workItemId: string): Promise<Array<{ id: string; name: string }>>;
   setMilestones(workItemId: string, milestoneIds: string[]): Promise<void>;
-  /** Count of the given milestone ids that belong to `projectId` (same-project guard). */
-  countMilestonesInProject(milestoneIds: string[], projectId: string): Promise<number>;
 }

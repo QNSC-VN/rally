@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { NotFoundException, PreconditionFailedException, Span, StorageService } from '@platform';
-import type { JwtPayload } from '@platform';
+import type { JwtPayload, DbExecutor } from '@platform';
 import { FILE_REPOSITORY, type IFileRepository } from '../domain/ports/file.repository';
 import type { UploadPolicy } from '../domain/attachment-policy';
 import type { PresignedUpload, StoredFile } from '../domain/file.types';
@@ -184,10 +184,13 @@ export class AttachmentsService {
    * Soft-delete the file row. The object itself is removed by the worker reaper
    * rather than here: a file may be referenced by more than one link row, and
    * only the reaper can see that the last reference is gone.
+   *
+   * `tx` lets the owning context retire the file in the SAME transaction as its link row and
+   * its activity entry — see `EntityAttachmentsService.delete`.
    */
   @Span('attachments.soft-delete')
-  async softDelete(fileId: string): Promise<void> {
-    await this.fileRepo.softDelete(fileId);
+  async softDelete(fileId: string, tx?: DbExecutor): Promise<void> {
+    await this.fileRepo.softDelete(fileId, tx);
   }
 
   async findById(workspaceId: string, fileId: string): Promise<StoredFile | null> {

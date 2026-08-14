@@ -1,3 +1,4 @@
+import type { DbExecutor } from '@platform';
 import type { AttachmentRef, EntityAttachment } from '../attachment.types';
 
 export const ATTACHMENT_REPOSITORY = Symbol('ATTACHMENT_REPOSITORY');
@@ -32,13 +33,20 @@ export interface IAttachmentRepository {
     workspaceId: string,
   ): Promise<EntityAttachment | null>;
 
-  link(input: {
-    entityType: AttachmentRef['entityType'];
-    entityId: string;
-    fileId: string;
-    workspaceId: string;
-    attachedBy: string;
-  }): Promise<void>;
+  /**
+   * `tx` enlists the link write in the caller's unit of work. The attachment's activity entry
+   * is written on the same handle, so a file cannot become visible without its history.
+   */
+  link(
+    input: {
+      entityType: AttachmentRef['entityType'];
+      entityId: string;
+      fileId: string;
+      workspaceId: string;
+      attachedBy: string;
+    },
+    tx?: DbExecutor,
+  ): Promise<void>;
 
-  unlink(ref: AttachmentRef, fileId: string, workspaceId: string): Promise<void>;
+  unlink(ref: AttachmentRef, fileId: string, workspaceId: string, tx?: DbExecutor): Promise<void>;
 }
