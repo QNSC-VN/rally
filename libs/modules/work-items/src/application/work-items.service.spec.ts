@@ -1857,4 +1857,80 @@ describe('WorkItemsService', () => {
       await expect(service.listAttachments(mockActor, 'wi-1')).resolves.toEqual([]);
     });
   });
+  /**
+   * BL §8:294 — "Editor may manage US/DE/Task only in explicitly assigned Teams and cannot assign
+   * Release." Field-level, because the route is gated on `work_item:edit`, which an Editor legitimately
+   * holds for every other field in the same body.
+   *
+   * This is asserted NOW because it only just became reachable. `GET /releases` required
+   * `release:view`, which an Editor does not hold, so the release picker resolved to `[]` and the UI
+   * could not produce a `releaseId` — the rule was failing closed BY ACCIDENT. Splitting off a
+   * reference feed an Editor can read (so a released item stops rendering as unscheduled) removed the
+   * accident, and a change that turns a latent over-permissive write into a live one has to close it.
+   */
+  describe('assigning a Release is admin-only (BL §8:294)', () => {
+    it('refuses the field when the actor cannot see releases, and does not write', async () => {
+      const denied = new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'no release:view');
+      accessService.assertProjectPermission.mockImplementation(
+        async (_actor: unknown, _projectId: string, code: string) => {
+          if (code === 'release:view') throw denied;
+        },
+      );
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ releaseId: null }));
+
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { releaseId: 'rel-1' }),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses CLEARING a release too — an Editor does not decide release membership either', async () => {
+      const denied = new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'no release:view');
+      accessService.assertProjectPermission.mockImplementation(
+        async (_actor: unknown, _projectId: string, code: string) => {
+          if (code === 'release:view') throw denied;
+        },
+      );
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ releaseId: 'rel-1' }));
+
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { releaseId: null }),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses the BULK path too, and before the release is even resolved', async () => {
+      // Two write paths reach the same field, so a gate on one is not a gate. Ordered ahead of
+      // `assertReleaseAssignable` deliberately: a denied caller must not learn which release ids exist
+      // from a RELEASE_NOT_FOUND.
+      const denied = new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'no release:view');
+      accessService.assertProjectPermission.mockImplementation(
+        async (_actor: unknown, _projectId: string, code: string) => {
+          if (code === 'release:view') throw denied;
+        },
+      );
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'wi-1' })]);
+
+      await expect(
+        service.bulkAssignRelease(mockActor, 'proj-1', ['wi-1'], 'rel-1'),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+      expect(workItemRepo.assignRelease).not.toHaveBeenCalled();
+      expect(workItemRepo.findReleaseProject).not.toHaveBeenCalled();
+    });
+
+    it('does NOT consult the rule when the patch leaves the release alone', async () => {
+      // The half a denial-only test cannot see: an ordinary edit on an item that already sits in a
+      // release must not be refused, or every Editor loses the rest of the form.
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ releaseId: 'rel-1' }));
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ releaseId: 'rel-1', title: 'Renamed' }));
+
+      await service.updateWorkItem(mockActor, 'wi-1', { title: 'Renamed' });
+
+      expect(accessService.assertProjectPermission).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'release:view',
+      );
+    });
+  });
 });

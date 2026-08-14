@@ -630,6 +630,14 @@ export class WorkItemsService {
     const item = await this.getWorkItem(actor.workspaceId, id);
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
 
+    // BL §8:294 — an Editor "cannot assign Release". Field-level, because the route is gated on
+    // `work_item:edit`, which an Editor holds for every other field in the same body. Only when the
+    // patch actually MOVES the release: an unrelated edit on an item that already sits in one must not
+    // be refused. See `assertMayAssignRelease` for why this lands now rather than earlier.
+    if (input.releaseId !== undefined && input.releaseId !== item.releaseId) {
+      await this.assertMayAssignRelease(actor, item.projectId);
+    }
+
     // TASK-FR-012: a task's Work Product (parent) can be reassigned, but the new
     // parent must be a valid work product (US/DE, never a task) in the SAME
     // project — the same scope rules enforced at task creation. A task always
@@ -1502,6 +1510,9 @@ export class WorkItemsService {
     releaseId: string | null,
   ): Promise<number> {
     const items = await this.loadBulkItems(actor, projectId, itemIds);
+    // Before the project scope check, and for a CLEAR as well as an assign — see
+    // `assertMayAssignRelease`.
+    await this.assertMayAssignRelease(actor, projectId);
     if (releaseId) {
       await this.assertReleaseAssignable(actor.workspaceId, projectId, releaseId);
     }
@@ -1693,6 +1704,32 @@ export class WorkItemsService {
         'That Feature is archived',
       );
     }
+  }
+
+  /**
+   * Assigning — or clearing — a Release is an ADMIN action, per BL §8:294: "Editor may manage
+   * US/DE/Task only in explicitly assigned Teams and **cannot assign Release**."
+   *
+   * The route can't express this: `PATCH /work-items/:id` and `PATCH /work-items/bulk-release` are
+   * gated on `work_item:edit`, which an Editor legitimately holds for every other field in the same
+   * body. So the rule is a FIELD-level check, and it lives here in one place rather than at each of the
+   * three call sites that can move a release.
+   *
+   * **This was failing closed BY ACCIDENT until now**, and that is why it is being added at this moment
+   * rather than earlier: `GET /releases` required `release:view`, which an Editor does not hold, so the
+   * release picker resolved to `[]` and the UI could not produce a `releaseId` to send. Splitting off
+   * `GET /releases/options` (a reference feed an Editor CAN read, so a released item stops rendering as
+   * unscheduled) removed that accident and made the write reachable. A fix that turns a latent
+   * over-permissive write into a live one has to close it in the same change.
+   *
+   * `release:view` is the code, not a new one: the authority to schedule work into a release is the
+   * authority to see releases at all, and `ACCESS_LEVEL_PERMISSIONS` already gives it to `admin` and
+   * withholds it from `editor` — which is exactly §294's line. Clearing is gated too: §294 says an
+   * Editor does not decide release membership, and removing an item from a release decides it just as
+   * much as adding one.
+   */
+  private async assertMayAssignRelease(actor: JwtPayload, projectId: string): Promise<void> {
+    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.RELEASE_VIEW);
   }
 
   private async assertReleaseAssignable(
