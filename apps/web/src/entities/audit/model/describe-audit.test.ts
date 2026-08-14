@@ -230,3 +230,91 @@ describe('describeAuditEvent — workspace settings & fallback', () => {
     ).toBe('Added user abcdef12 to the workspace')
   })
 })
+
+/**
+ * The six actions that had no template, plus the `auth.*` codes the identity package writes.
+ *
+ * `fe-audit-describer-contract.spec.ts` proves a template EXISTS for every action; these prove the
+ * sentence is worth reading. Both matter: the fallback never failed and never rendered blank, so a
+ * missing describer was invisible — the log simply said less than §8 requires.
+ */
+describe('describeAuditEvent — project access and authentication', () => {
+  const projectEvent = (partial: Partial<AuditEventView> & { action: string }) =>
+    event({ resourceType: 'project', ...partial })
+
+  it('names the person, the level and the project on a grant', () => {
+    expect(
+      describeAuditEvent(
+        projectEvent({
+          action: 'project.member.added',
+          changes: { after: { userId: 'u1', accessLevel: 'editor', name: 'NextGen Platform' } },
+        }),
+        resolver,
+      ),
+    ).toBe('Granted Ada Lovelace Editor access to project NextGen Platform')
+  })
+
+  it('reports both levels on a change', () => {
+    expect(
+      describeAuditEvent(
+        projectEvent({
+          action: 'project.member.updated',
+          changes: {
+            before: { userId: 'u2', accessLevel: 'editor' },
+            after: { userId: 'u2', accessLevel: 'admin', name: 'Payments' },
+          },
+        }),
+        resolver,
+      ),
+    ).toBe('Changed Grace Hopper’s access to project Payments from Editor to Admin')
+  })
+
+  it('calls a null level team-derived, not No Access', () => {
+    // A null `access_level` is a roster row reached through a linked team, NOT the No Access state
+    // (which is the absence of a row). Calling it No Access would misreport how the person got in.
+    expect(
+      describeAuditEvent(
+        projectEvent({
+          action: 'project.member.added',
+          changes: { after: { userId: 'u1', accessLevel: null, name: 'Payments' } },
+        }),
+        resolver,
+      ),
+    ).toBe('Granted Ada Lovelace team-derived access to project Payments')
+  })
+
+  it('describes a removal without inventing a level', () => {
+    expect(
+      describeAuditEvent(
+        projectEvent({
+          action: 'project.member.removed',
+          changes: { before: { userId: 'u2', accessLevel: 'admin', name: 'Payments' } },
+        }),
+        resolver,
+      ),
+    ).toBe('Removed Grace Hopper’s access to project Payments')
+  })
+
+  it('describes delete and restore distinctly, not as an update', () => {
+    const changes = { before: { name: 'Payments' }, after: { name: 'Payments' } }
+    expect(describeAuditEvent(projectEvent({ action: 'project.deleted', changes }), resolver)).toBe(
+      'Deleted project Payments',
+    )
+    expect(
+      describeAuditEvent(projectEvent({ action: 'project.restored', changes }), resolver),
+    ).toBe('Restored project Payments')
+  })
+
+  it('describes a sign-in without repeating the workspace id', () => {
+    expect(describeAuditEvent(event({ action: 'auth.login.sso' }), resolver)).toBe(
+      'Signed in through SSO',
+    )
+    expect(describeAuditEvent(event({ action: 'auth.logout' }), resolver)).toBe('Signed out')
+  })
+
+  it('words token-theft detection as a finding, not an action the actor chose', () => {
+    expect(describeAuditEvent(event({ action: 'auth.token_theft_detected' }), resolver)).toBe(
+      'Refresh-token reuse detected — the session family was revoked',
+    )
+  })
+})
