@@ -300,3 +300,49 @@ export function useReleaseArtifacts(
     staleTime: 15_000,
   })
 }
+
+/**
+ * Add and remove Release artifacts from the Release detail surface (P3-REL-FR-029, Q02 "support both
+ * Backlog/Work Item Detail AND Release detail/artifact surface").
+ *
+ * A release owns no join table — its artifacts ARE the work items whose `release_id` points at it —
+ * so this writes through `PATCH /work-items/bulk-release`, the endpoint that already owns that
+ * column. Deliberate reuse rather than a new `PUT /releases/:id/artifacts`: the SRS specifies no
+ * write route here, and the bulk path already enforces the project scope, the archived-project guard
+ * (`loadBulkItems` → `assertProjectWritable`) and `assertReleaseAssignable`. Assigning an item that
+ * belongs to another release REPLACES that assignment, which is FR-031; clearing is `releaseId: null`,
+ * the mockup's "Unscheduled". Neither touches iteration or milestone assignment (§7.5:
+ * "Reassignment must not alter Iteration or Milestone assignment").
+ *
+ * Tagged `release` as well as `work-item` because `work-item` alone does NOT fan out to `['release']`
+ * — and the old and new Artifacts views plus the detail roll-ups are exactly what FR-036/FR-038
+ * require to refresh.
+ */
+export function useSetReleaseArtifacts() {
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      releaseId,
+      add,
+      remove,
+    }: {
+      projectId: string
+      releaseId: string
+      add: string[]
+      remove: string[]
+    }) => {
+      const assign = async (itemIds: string[], target: string | null) => {
+        if (itemIds.length === 0) return
+        const { error, response } = await apiClient.PATCH('/v1/work-items/bulk-release', {
+          body: { projectId, itemIds, releaseId: target },
+        })
+        if (error) throw new Error(apiErrorMessage(error, response.status))
+      }
+      // Unassign first: an item cannot be in two releases, so the order only matters for the failure
+      // mode, and dropping before adding keeps a partial failure from over-filling the release.
+      await assign(remove, null)
+      await assign(add, releaseId)
+    },
+    meta: { invalidates: ['release', 'work-item'] },
+  })
+}

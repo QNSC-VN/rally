@@ -421,6 +421,53 @@ describe('MilestonesService', () => {
     });
   });
 
+  // ── listMilestoneArtifacts — the DASHBOARD read (P3-MS-FR-019/020) ─────────
+  //
+  // Separate from `getMilestoneArtifacts` (which answers with link IDS) because the two shapes used
+  // to share one route: the SPA read `{ data, pageInfo }` off a bare `string[]`, got `undefined` for
+  // both, and every Milestone Artifacts tab rendered its empty state — including the seeded `MS-1`,
+  // which has a linked story. The empty state is a legitimate answer, so nothing looked wrong.
+
+  describe('listMilestoneArtifacts', () => {
+    const row = {
+      id: 'wi-1',
+      itemKey: 'US-1',
+      type: 'story',
+      title: 'Upgrade the platform',
+      scheduleState: 'defined',
+      priority: 'high',
+      assigneeId: 'user-1',
+      assigneeName: 'Dev One',
+      storyPoints: 5,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    it('returns the linked work items as dashboard ROWS, with the footer total', async () => {
+      // Two selects: the page, then the COUNT. `makeDb` serves one result to every call, so the
+      // order is pinned here rather than left to whichever query happens to run first.
+      db.select
+        .mockReturnValueOnce(makeChain([row]))
+        .mockReturnValueOnce(makeChain([{ total: 1 }]));
+
+      const page = await service.listMilestoneArtifacts(actor, 'ms-1', { limit: 25, cursor: null });
+
+      expect(page.data).toEqual([row]);
+      expect(page.pageInfo.total).toBe(1);
+      expect(page.pageInfo.hasNextPage).toBe(false);
+    });
+
+    it('loads the milestone first, so an unknown id is a 404 and not an empty page', async () => {
+      // Route-level `milestone:view` resolves the project from `:id`; this read additionally proves
+      // the row exists in the actor's workspace, which is what stops a cross-workspace id from
+      // answering "this milestone has no artifacts".
+      repo.findById.mockResolvedValue(null);
+      await expect(
+        service.listMilestoneArtifacts(actor, 'ms-1', { limit: 25, cursor: null }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   // ── assertArtifactsAssignable — the WORK-ITEM side of the same link ────────
   //
   // `PUT /work-items/:id/milestones` writes these rows too and used to apply only its own

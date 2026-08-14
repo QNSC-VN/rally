@@ -141,7 +141,14 @@ export function ReleaseDetailPage() {
       onTabChange={(key) => setActiveTab(key as TabKey)}
     >
       {activeTab === 'artifacts' ? (
-        <ReleaseArtifactsTab releaseId={releaseId} />
+        /* The RELEASE's own project, not the app-context one: the bulk write validates the selection
+           against it, and a release opened from a notification need not belong to the selected
+           project. */
+        <ReleaseArtifactsTab
+          releaseId={releaseId}
+          projectId={release.projectId}
+          canManage={canManage}
+        />
       ) : activeTab === 'history' ? (
         <div className="flex-1 overflow-y-auto bg-card p-6">
           <ActivityHistoryTab

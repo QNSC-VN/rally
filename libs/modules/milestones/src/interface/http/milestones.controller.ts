@@ -19,6 +19,7 @@ import { RequirePermission, AuthPolicy } from '@modules/access';
 import { MilestonesService, type MilestoneProgress } from '../../application/milestones.service';
 import {
   MilestoneQueryDto,
+  MilestoneArtifactQueryDto,
   CreateMilestoneDto,
   UpdateMilestoneDto,
   SetMilestoneProjectsDto,
@@ -26,7 +27,11 @@ import {
   SetMilestoneArtifactsDto,
   SetMilestoneReleasesDto,
 } from './dto/milestone-request.dto';
-import { MilestoneResponseDto, MilestoneListItemDto } from './dto/milestone-response.dto';
+import {
+  MilestoneResponseDto,
+  MilestoneListItemDto,
+  MilestoneArtifactDto,
+} from './dto/milestone-response.dto';
 import type { Milestone } from '../../domain/milestone.types';
 import {
   ActivityQueryDto,
@@ -180,15 +185,38 @@ export class MilestonesController {
 
   @Get(':id/artifacts')
   @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'List milestone artifacts (US/DE work items)' })
+  @ApiOperation({ summary: 'List milestone artifact LINKS (work item IDs)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Array of work item IDs' })
   @ApiCommonErrors(401, 404)
-  async listMilestoneArtifacts(
+  async listMilestoneArtifactIds(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<string[]> {
     return this.milestonesService.getMilestoneArtifacts(user, id);
+  }
+
+  /**
+   * The Artifacts DASHBOARD (P3-MS-FR-019/020) — Backlog-shaped rows, paged and searchable.
+   *
+   * A separate resource from the link list above on purpose: `PUT :id/artifacts` takes ids back, so
+   * that pair speaks ids, and this one speaks rows. Serving both shapes from one path is what left
+   * the tab reading `{ data, pageInfo }` off a bare array and rendering "No artifacts linked to this
+   * milestone" for every milestone in every environment.
+   */
+  @Get(':id/artifacts/items')
+  @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'List milestone artifacts (US/DE work items) as dashboard rows' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiPagedResponse(MilestoneArtifactDto)
+  @ApiCommonErrors(400, 401, 404)
+  async listMilestoneArtifacts(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: MilestoneArtifactQueryDto,
+  ) {
+    const args = buildPageArgs(query);
+    return this.milestonesService.listMilestoneArtifacts(user, id, { ...args, q: query.q });
   }
 
   @Put(':id/artifacts')

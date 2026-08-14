@@ -247,6 +247,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/workspaces/{id}/member-options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Assignee / owner picker feed — workspace members at display fields only */
+    get: operations['WorkspaceController_listMemberOptions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/workspaces/{id}/members-with-profile': {
     parameters: {
       query?: never
@@ -254,7 +271,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** List workspace members with user profile and role details */
+    /** User Management roster — profile, contact details and roles (Workspace Admin only) */
     get: operations['WorkspaceController_listMembersWithProfile']
     put?: never
     post?: never
@@ -392,7 +409,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** List teams in a workspace */
+    /** List teams linked to a project the caller can read */
     get: operations['TeamController_listTeams']
     put?: never
     /** Create a team in a workspace */
@@ -1284,10 +1301,27 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** List milestone artifacts (US/DE work items) */
-    get: operations['MilestonesController_listMilestoneArtifacts']
+    /** List milestone artifact LINKS (work item IDs) */
+    get: operations['MilestonesController_listMilestoneArtifactIds']
     /** Set milestone artifacts (replace all) */
     put: operations['MilestonesController_setMilestoneArtifacts']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/milestones/{id}/artifacts/items': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List milestone artifacts (US/DE work items) as dashboard rows */
+    get: operations['MilestonesController_listMilestoneArtifacts']
+    put?: never
     post?: never
     delete?: never
     options?: never
@@ -1395,7 +1429,7 @@ export interface paths {
     get: operations['IterationsController_getIteration']
     put?: never
     post?: never
-    /** Delete a planning-state iteration */
+    /** Delete a planning-state iteration that has no recorded Burndown history */
     delete: operations['IterationsController_deleteIteration']
     options?: never
     head?: never
@@ -1429,7 +1463,7 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Commit an iteration (planning → committed) */
+    /** Commit an iteration (→ committed) */
     post: operations['IterationsController_commitIteration']
     delete?: never
     options?: never
@@ -1446,7 +1480,7 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Accept an iteration (committed → accepted). Requires ≥1 assigned Story/Defect and all of them accepted. */
+    /** Accept an iteration (→ accepted). Requires ≥1 assigned Story/Defect and all of them accepted. */
     post: operations['IterationsController_acceptIteration']
     delete?: never
     options?: never
@@ -2271,7 +2305,7 @@ export interface paths {
     delete?: never
     options?: never
     head?: never
-    /** Update a task from Team Status (title/state) */
+    /** Update a task from Team Status (title and/or state only — SRS §9.3) */
     patch: operations['TeamStatusController_updateTask']
     trace?: never
   }
@@ -2777,6 +2811,15 @@ export interface components {
       joinedAt: string
       /** Format: date-time */
       createdAt: string
+    }
+    MemberOptionResponseDto: {
+      /** Format: uuid */
+      userId: string
+      displayName: string
+      email: string
+      avatarUrl: string | null
+      /** @description Workspace membership status: active | suspended | removed */
+      status: string
     }
     MemberWithProfileResponseDto: {
       /** Format: uuid */
@@ -3494,6 +3537,22 @@ export interface components {
       projectIds?: string[]
       teamIds?: string[]
     }
+    MilestoneArtifactDto: {
+      /** Format: uuid */
+      id: string
+      itemKey: string
+      type: string
+      title: string
+      scheduleState: string
+      priority: string
+      assigneeId: string | null
+      assigneeName: string | null
+      storyPoints: number | null
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
+    }
     SetMilestoneArtifactsDto: {
       workItemIds: string[]
     }
@@ -3730,6 +3789,24 @@ export interface components {
       /** @enum {string} */
       state?: 'planning' | 'active' | 'accepted'
       releaseNotes?: string | null
+    }
+    ReleaseArtifactDto: {
+      /** Format: uuid */
+      id: string
+      itemKey: string
+      type: string
+      title: string
+      scheduleState: string
+      priority: string
+      assigneeId: string | null
+      assigneeName: string | null
+      iterationId: string | null
+      releaseId: string | null
+      storyPoints: number | null
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
     }
     CreateWorkflowStatusDto: {
       name: string
@@ -4379,10 +4456,6 @@ export interface components {
       title?: string
       /** @enum {string} */
       state?: 'Defined' | 'In-Progress' | 'Completed'
-      estimateHours?: number | null
-      todoHours?: number | null
-      actualHours?: number | null
-      assigneeId?: string | null
     }
     CapacityPlanResponseDto: {
       /** Format: uuid */
@@ -6018,6 +6091,41 @@ export interface operations {
       }
     }
   }
+  WorkspaceController_listMemberOptions: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MemberOptionResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   WorkspaceController_listMembersWithProfile: {
     parameters: {
       query?: never
@@ -6039,6 +6147,13 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }
@@ -9864,7 +9979,7 @@ export interface operations {
       }
     }
   }
-  MilestonesController_listMilestoneArtifacts: {
+  MilestonesController_listMilestoneArtifactIds: {
     parameters: {
       query?: never
       header?: never
@@ -9936,6 +10051,65 @@ export interface operations {
       }
       /** @description Forbidden — insufficient permissions */
       403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_listMilestoneArtifacts: {
+    parameters: {
+      query?: {
+        limit?: number
+        cursor?: string
+        sort?: string
+        q?: string
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['MilestoneArtifactDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
+              total?: number
+            }
+          }
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
         headers: {
           [name: string]: unknown
         }
@@ -11108,11 +11282,11 @@ export interface operations {
   }
   ReleasesController_listReleaseArtifacts: {
     parameters: {
-      query: {
+      query?: {
         limit?: number
         cursor?: string
         sort?: string
-        projectId: string
+        q?: string
       }
       header?: never
       path: {
@@ -11129,7 +11303,7 @@ export interface operations {
         }
         content: {
           'application/json': {
-            data?: components['schemas']['ReleaseResponseDto'][]
+            data?: components['schemas']['ReleaseArtifactDto'][]
             pageInfo?: {
               /** @description Opaque cursor token for the next page */
               nextCursor: string | null

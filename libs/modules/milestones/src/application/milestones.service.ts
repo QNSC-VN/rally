@@ -1,13 +1,20 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { InjectDrizzle, NotFoundException, PreconditionFailedException } from '@platform';
+import {
+  InjectDrizzle,
+  NotFoundException,
+  PreconditionFailedException,
+  buildPageResult,
+  keysetCondition,
+} from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
-import { and, eq, isNull, sql, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql, inArray } from 'drizzle-orm';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import {
   workItems,
   milestones,
+  milestoneArtifacts,
   milestoneReleases,
   releases,
   projects,
@@ -41,6 +48,27 @@ export interface MilestoneProgress {
   completedPoints: number;
   /** Null when not computable — nothing estimated and not everything finished. */
   progressPercent: number | null;
+}
+
+/**
+ * One row of the Milestone Artifacts dashboard.
+ *
+ * Deliberately the same column set `ReleasesService.listReleaseArtifacts` returns plus
+ * `assigneeName`: the SPA renders both through one shared table, whose Owner column had nothing to
+ * read on either surface.
+ */
+export interface MilestoneArtifactRow {
+  id: string;
+  itemKey: string;
+  type: string;
+  title: string;
+  scheduleState: string;
+  priority: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  storyPoints: number | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 interface ReleaseStats {
@@ -523,6 +551,84 @@ export class MilestonesService {
   async getMilestoneArtifacts(actor: JwtPayload, milestoneId: string): Promise<string[]> {
     await this.getMilestoneForView(actor, milestoneId);
     return this.milestoneRepo.getArtifactIds(milestoneId);
+  }
+
+  /**
+   * The Artifacts dashboard's ROWS — the same shape `ReleasesService.listReleaseArtifacts` serves,
+   * because both feed the one shared `ArtifactsTabView`/`ArtifactTable` on the SPA side.
+   *
+   * `getMilestoneArtifacts` above answers with link IDS, which is what the replace-set picker needs
+   * and what this route used to return. The tab cannot render an id: it wants key, title, schedule
+   * state, priority, owner and estimate, paged and searchable. So the SPA read the ids response as
+   * `{ data, pageInfo }`, got `undefined` for both, and the Milestone Artifacts tab rendered "No
+   * artifacts linked to this milestone" for every milestone — including the seeded `MS-1`, which has
+   * had a linked story since the demo fixture was written. Two shapes, one route, and the mismatch
+   * was invisible because the empty state is a legitimate answer.
+   *
+   * `q` is honoured here (item key or title), unlike on the release side, because the shared toolbar
+   * puts a search box above this table and sends the term.
+   */
+  async listMilestoneArtifacts(
+    actor: JwtPayload,
+    milestoneId: string,
+    args: { limit: number; cursor: CursorPayload | null; q?: string },
+  ): Promise<PagedResult<MilestoneArtifactRow>> {
+    await this.getMilestoneForView(actor, milestoneId);
+
+    const conditions = [
+      eq(milestoneArtifacts.milestoneId, milestoneId),
+      eq(milestoneArtifacts.entityType, 'work_item'),
+      eq(workItems.workspaceId, actor.workspaceId),
+      isNull(workItems.deletedAt),
+    ];
+    const term = args.q?.trim();
+    if (term) {
+      const like = `%${term}%`;
+      conditions.push(
+        sql`(${workItems.itemKey} ilike ${like} or ${workItems.title} ilike ${like})`,
+      );
+    }
+
+    // Total before the cursor/limit, for the footer count.
+    const baseConditions = [...conditions];
+    if (args.cursor) {
+      conditions.push(keysetCondition(workItems.createdAt, workItems.id, args.cursor));
+    }
+
+    const rows = await this.db
+      .select({
+        id: workItems.id,
+        itemKey: workItems.itemKey,
+        type: workItems.type,
+        title: workItems.title,
+        scheduleState: workItems.scheduleState,
+        priority: workItems.priority,
+        assigneeId: workItems.assigneeId,
+        assigneeName: sql<string | null>`assignee_user.display_name`,
+        storyPoints: sql<number | null>`${workItems.storyPoints}::float8`,
+        createdAt: workItems.createdAt,
+        updatedAt: workItems.updatedAt,
+      })
+      .from(milestoneArtifacts)
+      .innerJoin(workItems, eq(workItems.id, milestoneArtifacts.entityId))
+      .leftJoin(sql`identity.users assignee_user`, sql`assignee_user.id = work_items.assignee_id`)
+      .where(and(...conditions))
+      .orderBy(desc(workItems.createdAt), asc(workItems.id))
+      .limit(args.limit + 1);
+
+    const [countRow] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(milestoneArtifacts)
+      .innerJoin(workItems, eq(workItems.id, milestoneArtifacts.entityId))
+      .where(and(...baseConditions));
+
+    return buildPageResult(
+      rows,
+      args.limit,
+      (w) => [w.createdAt.toISOString()],
+      'desc',
+      Number(countRow?.total ?? 0),
+    );
   }
 
   async setMilestoneArtifacts(

@@ -7,6 +7,15 @@ export const MilestoneQuerySchema = PageQuerySchema.extend({
 });
 export class MilestoneQueryDto extends createZodDto(MilestoneQuerySchema) {}
 
+/**
+ * Query for the Artifacts dashboard rows. `q` matches item key or title, because the shared
+ * artifacts toolbar puts a search box above that table and has always sent the term.
+ */
+export const MilestoneArtifactQuerySchema = PageQuerySchema.extend({
+  q: z.string().trim().max(255).optional(),
+});
+export class MilestoneArtifactQueryDto extends createZodDto(MilestoneArtifactQuerySchema) {}
+
 export const CreateMilestoneSchema = z.object({
   projectId: z.string().uuid(),
   name: z.string().min(1).max(255).trim(),

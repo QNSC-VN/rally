@@ -43,3 +43,28 @@ export class MilestoneResponseDto extends createZodDto(MilestoneResponseSchema) 
 
 export const MilestoneListItemSchema = MilestoneResponseSchema;
 export class MilestoneListItemDto extends createZodDto(MilestoneListItemSchema) {}
+
+/**
+ * One row of the Milestone Artifacts dashboard (P3-MS-FR-019/020: "the same presentation pattern as
+ * Backlog", with search and pagination).
+ *
+ * `GET :id/artifacts` answers with the LINK ids — what the replace-set write in §5.2 takes back — so
+ * the dashboard reads `:id/artifacts/items` instead. The two are deliberately separate resources
+ * rather than one route with two shapes; that is what the SPA was already assuming, and getting the
+ * ids where it expected rows is why the tab rendered its empty state for every milestone.
+ */
+export const MilestoneArtifactSchema = z.object({
+  id: z.string().uuid(),
+  itemKey: z.string(),
+  type: z.string(),
+  title: z.string(),
+  scheduleState: z.string(),
+  priority: z.string(),
+  assigneeId: z.string().uuid().nullable(),
+  assigneeName: z.string().nullable(),
+  storyPoints: z.number().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export class MilestoneArtifactDto extends createZodDto(MilestoneArtifactSchema) {}

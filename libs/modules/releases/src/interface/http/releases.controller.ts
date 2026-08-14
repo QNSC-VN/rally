@@ -16,8 +16,13 @@ import type { JwtPayload, PagedResult } from '@platform';
 import { CurrentUser } from '@modules/identity';
 import { RequirePermission, AuthPolicy } from '@modules/access';
 import { ReleasesService } from '../../application/releases.service';
-import { ReleaseQueryDto, CreateReleaseDto, UpdateReleaseDto } from './dto/release-request.dto';
-import { ReleaseResponseDto } from './dto/release-response.dto';
+import {
+  ReleaseQueryDto,
+  ReleaseArtifactQueryDto,
+  CreateReleaseDto,
+  UpdateReleaseDto,
+} from './dto/release-request.dto';
+import { ReleaseResponseDto, ReleaseArtifactDto } from './dto/release-response.dto';
 import type { Release } from '../../domain/release.types';
 import {
   ActivityQueryDto,
@@ -202,14 +207,14 @@ export class ReleasesController {
   @RequirePermission('release:view', { resource: 'release', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'List artifacts (stories/defects) in a release' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiPagedResponse(ReleaseResponseDto)
+  @ApiPagedResponse(ReleaseArtifactDto)
   @ApiCommonErrors(400, 401, 404)
   async listReleaseArtifacts(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Query() query: ReleaseQueryDto,
+    @Query() query: ReleaseArtifactQueryDto,
   ) {
     const args = buildPageArgs(query);
-    return this.releasesService.listReleaseArtifacts(user, id, args);
+    return this.releasesService.listReleaseArtifacts(user, id, { ...args, q: query.q });
   }
 }

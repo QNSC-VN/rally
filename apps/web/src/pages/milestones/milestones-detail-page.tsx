@@ -84,9 +84,9 @@ export function MilestoneDetailPage() {
   const { can } = useProjectPermissions(milestoneProjectId || undefined)
   const canManage = can('milestone:create') || can('milestone:edit') || can('milestone:delete')
 
-  // A milestone may span multiple projects; offer releases from every linked
-  // project (unioned with its home project) as selectable options.
-  const releaseProjectIds = useMemo(
+  // The milestone's PROJECT SCOPE: its home project unioned with every linked one (FR-021/023). It
+  // bounds both the selectable releases and the artifacts the picker may offer.
+  const scopeProjectIds = useMemo(
     () => [...new Set([milestoneProjectId, ...linkedProjectIds].filter(Boolean))],
     [milestoneProjectId, linkedProjectIds],
   )
@@ -94,7 +94,7 @@ export function MilestoneDetailPage() {
   // Available items for selection modals
   const { data: allProjects = [] } = useProjects(workspaceId || undefined)
   const { data: allTeams = [] } = useWorkspaceTeams(workspaceId || undefined)
-  const { data: allReleases = [] } = useReleasesForProjects(releaseProjectIds)
+  const { data: allReleases = [] } = useReleasesForProjects(scopeProjectIds)
   const { data: members = [] } = useProjectMembers(milestoneProjectId || undefined)
 
   const [activeTab, setActiveTab] = useState<TabKey>('details')
@@ -198,7 +198,18 @@ export function MilestoneDetailPage() {
       onTabChange={(key) => setActiveTab(key as TabKey)}
     >
       {activeTab === 'artifacts' ? (
-        <ArtifactsTab milestoneId={milestoneId} />
+        /* The picker's eligibility mirrors the server's scope rule, so it is fed the SAVED scope
+           (`linked*`, not the `eff*` pending draft): an unsaved Projects/Teams edit is not yet the
+           scope `assertArtifactsInMilestoneScope` will check the write against. */
+        <ArtifactsTab
+          milestoneId={milestoneId}
+          projectIds={scopeProjectIds}
+          teamIds={linkedTeamIds}
+          /* `milestone:edit` specifically, which is what `PUT :id/artifacts` requires — not the
+             page's create-or-edit-or-delete `canManage`, which would show the control to a
+             create-only principal and hand them a 403. */
+          canManage={can('milestone:edit')}
+        />
       ) : activeTab === 'history' ? (
         <div className="flex-1 overflow-y-auto bg-card p-6">
           <ActivityHistoryTab

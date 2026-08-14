@@ -441,11 +441,16 @@ export class ReleasesService {
   /**
    * List work items (stories/defects) linked to a release.
    * Reuses the same shape as the backlog list.
+   *
+   * `assigneeName` is joined because the shared artifact table renders an Owner column and had
+   * nothing to fill it with — the SPA's own row type declared the field, the feed never sent it.
+   * `q` (item key or title) is honoured for the same reason: the toolbar above this table has always
+   * had a search box and has always sent the term (P3-REL-FR-033).
    */
   async listReleaseArtifacts(
     actor: JwtPayload,
     releaseId: string,
-    args: { limit: number; cursor: CursorPayload | null },
+    args: { limit: number; cursor: CursorPayload | null; q?: string },
   ): Promise<
     PagedResult<{
       id: string;
@@ -455,6 +460,7 @@ export class ReleasesService {
       scheduleState: string;
       priority: string;
       assigneeId: string | null;
+      assigneeName: string | null;
       iterationId: string | null;
       releaseId: string | null;
       storyPoints: number | null;
@@ -472,6 +478,14 @@ export class ReleasesService {
       sql`type IN ('story', 'defect')`,
     ];
 
+    const term = args.q?.trim();
+    if (term) {
+      const like = `%${term}%`;
+      conditions.push(
+        sql`(${workItems.itemKey} ilike ${like} or ${workItems.title} ilike ${like})`,
+      );
+    }
+
     // Total artifacts on this release (before cursor/limit) for the footer count.
     const baseConditions = [...conditions];
 
@@ -488,6 +502,7 @@ export class ReleasesService {
         scheduleState: workItems.scheduleState,
         priority: workItems.priority,
         assigneeId: workItems.assigneeId,
+        assigneeName: sql<string | null>`assignee_user.display_name`,
         iterationId: workItems.iterationId,
         releaseId: workItems.releaseId,
         storyPoints: sql<number | null>`${workItems.storyPoints}::float8`,
@@ -495,6 +510,7 @@ export class ReleasesService {
         updatedAt: workItems.updatedAt,
       })
       .from(workItems)
+      .leftJoin(sql`identity.users assignee_user`, sql`assignee_user.id = work_items.assignee_id`)
       .where(and(...conditions))
       .orderBy(desc(workItems.createdAt), asc(workItems.id))
       .limit(args.limit + 1);
