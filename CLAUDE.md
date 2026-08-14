@@ -32,6 +32,19 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   run unattended, so `db/migrations/*.sql` are authored by hand and must match
   `db/schema/*`. CI proves a new migration applies on top of `main`'s schema, not
   just a fresh database — see the `migrations` job in `backend-ci.yml`.
+
+  **Applying a HIGHER-numbered migration first strands the lower one on that database, silently.**
+  Drizzle records the journal's `when` as `created_at` and applies only entries past the newest
+  recorded value, so if `0120` is applied while `0119` is still being written, `pnpm db:migrate`
+  afterwards reports "Migrations applied" and `0119` never runs — its table simply does not exist.
+  Fresh databases and CI are fine, because the journal's array order is still ascending; this bites the
+  local database you are testing on, which is the one you would trust. Two ways in: writing two
+  migrations in parallel (do not — one at a time, even across parallel work), or a `when` that is not
+  strictly greater than its predecessor's. Verify with
+  `select count(*) from drizzle.__drizzle_migrations` against the journal's entry count; recover by
+  applying the stranded file by hand or recreating the database. (Two historical pairs — 0005/0006 and
+  0018/0019 — have non-ascending `when` values and ARE applied, so a non-monotonic journal is not by
+  itself proof of a skip; count the rows.)
 - **`db/permissions.catalog.ts` is the single source of truth** for permission
   codes and role→permission mappings, imported via the `@db/*` path. It lives
   outside `libs/` because the standalone migrator image ships `db/**` only.

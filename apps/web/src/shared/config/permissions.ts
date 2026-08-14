@@ -31,10 +31,18 @@ export const PERMISSION = {
   PROJECT_EDIT: 'project:edit',
   PROJECT_MANAGE_MEMBERS: 'project:manage_members',
 
+  // The timebox READ every delivery surface needs (Backlog filter, Team Status and Quality
+  // pickers, Iteration Status). Every access level holds it, so it gates nothing on its own.
   ITERATION_VIEW: 'iteration:view',
   ITERATION_CREATE: 'iteration:create',
   ITERATION_EDIT: 'iteration:edit',
   ITERATION_DELETE: 'iteration:delete',
+  // The `Plan > Timeboxes` SURFACE, which §3.2 marks Hidden for an Editor. This is the code
+  // the nav entry and the switcher's `Iterations` type gate on — gating them on
+  // ITERATION_VIEW showed an Editor a screen the BA hides and then offered a Releases mode
+  // that 403'd. Its own namespace on purpose: the screen hosts all three timebox types, and
+  // `iteration:manage` is a retired string (migration 0048) that must not be recycled.
+  TIMEBOX_VIEW: 'timebox:view',
   RELEASE_VIEW: 'release:view',
   RELEASE_CREATE: 'release:create',
   RELEASE_EDIT: 'release:edit',

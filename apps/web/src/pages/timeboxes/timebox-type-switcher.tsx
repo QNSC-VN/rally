@@ -13,8 +13,17 @@
  * routes are an implementation detail behind one logical screen. Switching TYPE
  * navigates between them.
  *
- * Only types the actor may view are offered, mirroring the per-type permissions
- * the Plan nav used to gate on (iteration:view / project:view / milestone:view).
+ * Only types the actor may open are offered, and each type is gated on the code
+ * its OWN surface requires. Both halves of that used to be wrong (RBE-09 /
+ * P23-08): `Releases` was gated on `project:view`, which every access level
+ * holds, so an Editor was offered a type whose list endpoint requires
+ * `release:view` and answered 403 the moment it was chosen — a gate chosen for
+ * what was convenient rather than for what the action is. And `Iterations` was
+ * gated on `iteration:view`, which every level also holds because Iteration
+ * Status, the Backlog filter and Team Status all read the iteration list; §3.2
+ * marks the whole `Plan > Timeboxes` surface Hidden for an Editor, so it takes
+ * `timebox:view`. All three types are now Admin/WA-only, which is what §3.2
+ * says for Iterations, Releases and Milestones alike.
  */
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -30,10 +39,13 @@ const ROUTE: Record<TimeboxType, string> = {
   milestones: '/milestones',
 }
 
-/** Which permission each type requires to be offered — matches the old nav. */
+/**
+ * The permission each type's own surface requires. Keep these equal to the code the
+ * type's LIST endpoint carries — that is the invariant the previous values broke.
+ */
 const VIEW_PERMISSION: Record<TimeboxType, string> = {
-  iterations: 'iteration:view',
-  releases: 'project:view',
+  iterations: 'timebox:view',
+  releases: 'release:view',
   milestones: 'milestone:view',
 }
 
