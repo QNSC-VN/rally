@@ -421,6 +421,53 @@ describe('MilestonesService', () => {
     });
   });
 
+  // ── listMilestoneArtifacts — the DASHBOARD read (P3-MS-FR-019/020) ─────────
+  //
+  // Separate from `getMilestoneArtifacts` (which answers with link IDS) because the two shapes used
+  // to share one route: the SPA read `{ data, pageInfo }` off a bare `string[]`, got `undefined` for
+  // both, and every Milestone Artifacts tab rendered its empty state — including the seeded `MS-1`,
+  // which has a linked story. The empty state is a legitimate answer, so nothing looked wrong.
+
+  describe('listMilestoneArtifacts', () => {
+    const row = {
+      id: 'wi-1',
+      itemKey: 'US-1',
+      type: 'story',
+      title: 'Upgrade the platform',
+      scheduleState: 'defined',
+      priority: 'high',
+      assigneeId: 'user-1',
+      assigneeName: 'Dev One',
+      storyPoints: 5,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    it('returns the linked work items as dashboard ROWS, with the footer total', async () => {
+      // Two selects: the page, then the COUNT. `makeDb` serves one result to every call, so the
+      // order is pinned here rather than left to whichever query happens to run first.
+      db.select
+        .mockReturnValueOnce(makeChain([row]))
+        .mockReturnValueOnce(makeChain([{ total: 1 }]));
+
+      const page = await service.listMilestoneArtifacts(actor, 'ms-1', { limit: 25, cursor: null });
+
+      expect(page.data).toEqual([row]);
+      expect(page.pageInfo.total).toBe(1);
+      expect(page.pageInfo.hasNextPage).toBe(false);
+    });
+
+    it('loads the milestone first, so an unknown id is a 404 and not an empty page', async () => {
+      // Route-level `milestone:view` resolves the project from `:id`; this read additionally proves
+      // the row exists in the actor's workspace, which is what stops a cross-workspace id from
+      // answering "this milestone has no artifacts".
+      repo.findById.mockResolvedValue(null);
+      await expect(
+        service.listMilestoneArtifacts(actor, 'ms-1', { limit: 25, cursor: null }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   // ── assertArtifactsAssignable — the WORK-ITEM side of the same link ────────
   //
   // `PUT /work-items/:id/milestones` writes these rows too and used to apply only its own
@@ -596,6 +643,71 @@ describe('MilestonesService', () => {
     it('throws when milestone not found', async () => {
       repo.findById.mockResolvedValue(null);
       await expect(service.deleteMilestone(actor, 'bad')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  /**
+   * PRJ-03. Create, update and delete carried `assertProjectWritable`; the four replace-SET writes
+   * did not, so an archived project's milestones kept their artifacts, Projects, Teams and Releases
+   * fully editable — and `setMilestoneReleases` additionally rewrites the milestone's own target
+   * window, which FR-011/012 derive from the linked releases.
+   *
+   * `assertArtifactsAssignable` is included because `milestone_artifacts` has TWO write paths and
+   * they must enforce the same set of rules. It is the milestone half of
+   * `PUT /work-items/:id/milestones`: `WorkItemsService` checks the WORK ITEM's project, this
+   * checks the MILESTONE's, and the two genuinely differ — a milestone's artifact scope spans
+   * `milestone_projects`. Without it, the row `setMilestoneArtifacts` refuses could be written from
+   * the other end, which is exactly the asymmetry that method's docblock was written about.
+   */
+  describe('an archived project refuses the link-set writes (PRJ-FR-010)', () => {
+    beforeEach(() => {
+      repo.findById.mockResolvedValue(mockMilestone());
+      projects.assertProjectWritable.mockRejectedValue(
+        new PreconditionFailedException('PROJECT_ARCHIVED', 'archived'),
+      );
+    });
+
+    it('refuses an artifact set', async () => {
+      await expect(service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1'])).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setArtifactLinks).not.toHaveBeenCalled();
+    });
+
+    it('refuses a project set', async () => {
+      await expect(service.setMilestoneProjects(actor, 'ms-1', ['proj-2'])).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setProjectLinks).not.toHaveBeenCalled();
+    });
+
+    it('refuses a team set', async () => {
+      await expect(service.setMilestoneTeams(actor, 'ms-1', ['team-1'])).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setTeamLinks).not.toHaveBeenCalled();
+    });
+
+    it('refuses a release set, which would also rewrite the target window', async () => {
+      await expect(service.setMilestoneReleases(actor, 'ms-1', ['rel-1'])).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setReleaseLinks).not.toHaveBeenCalled();
+    });
+
+    it('refuses the WORK-ITEM side of the same artifact link', async () => {
+      await expect(
+        service.assertArtifactsAssignable(
+          'ws-1',
+          ['ms-1'],
+          [{ projectId: 'proj-1', teamId: null, type: 'story' }],
+        ),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+    });
+
+    it('still READS its links — archived is read-only, not invisible', async () => {
+      await expect(service.getMilestoneArtifacts(actor, 'ms-1')).resolves.toEqual([]);
+      await expect(service.getMilestoneReleases(actor, 'ms-1')).resolves.toEqual([]);
     });
   });
 });

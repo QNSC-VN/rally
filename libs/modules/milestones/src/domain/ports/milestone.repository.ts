@@ -1,5 +1,10 @@
 import type { CursorPayload, PagedResult } from '@platform';
-import type { Milestone, CreateMilestoneInput, UpdateMilestoneInput } from '../milestone.types';
+import type {
+  Milestone,
+  MilestoneOption,
+  CreateMilestoneInput,
+  UpdateMilestoneInput,
+} from '../milestone.types';
 
 export const MILESTONE_REPOSITORY = Symbol('MILESTONE_REPOSITORY');
 
@@ -10,6 +15,13 @@ export interface IMilestoneRepository {
     workspaceId: string,
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<Milestone>>;
+  /**
+   * The REFERENCE feed behind `GET /milestones/options`: every milestone in the project, projected to
+   * what a picker needs. A separate query rather than a projection of {@link listByProject}, so the
+   * record's columns are never read for a participant's request — and so no page cursor can truncate
+   * an option list.
+   */
+  listOptionsByProject(projectId: string, workspaceId: string): Promise<MilestoneOption[]>;
   create(input: CreateMilestoneInput): Promise<Milestone>;
   update(id: string, input: UpdateMilestoneInput): Promise<Milestone>;
   delete(id: string): Promise<void>;

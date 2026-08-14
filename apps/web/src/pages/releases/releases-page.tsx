@@ -31,7 +31,7 @@ import { RELEASE_STATES, RELEASE_STATUS_STYLE } from './model/release-states'
 import { CreateReleaseModal } from './ui/create-release-modal'
 import { ReleaseRow } from './ui/release-row'
 import {
-  useReleases,
+  useReleaseRecords,
   useDeleteRelease,
   type Release,
   type ReleaseStatus,
@@ -55,7 +55,11 @@ export function ReleasesPage() {
     [table],
   )
 
-  const { data: releases = [], isLoading, isError } = useReleases(projectId)
+  // The ADMINISTRATIVE feed, deliberately: this grid is the one surface that displays the release
+  // RECORD (theme, plan estimate, task estimate, version), so `release:view` is the right gate and
+  // a project Editor's 403 here is correct — §3.2 hides `Plan > Releases` from one. Every picker and
+  // name lookup reads `useReleaseOptions` instead.
+  const { data: releases = [], isLoading, isError } = useReleaseRecords(projectId)
   const deleteRelease = useDeleteRelease()
 
   const [search, setSearch] = useState('')

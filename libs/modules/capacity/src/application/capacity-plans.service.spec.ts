@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DRIZZLE, NotFoundException, UnitOfWork } from '@platform';
+import { DRIZZLE, NotFoundException, PreconditionFailedException, UnitOfWork } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
 import { PortfolioItemsService, PreliminaryEstimateMapService } from '@modules/portfolio';
+import { ProjectsService } from '@modules/projects';
 import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '@db/schema/enums';
 import { CapacityPlansService } from './capacity-plans.service';
 import {
@@ -55,6 +56,7 @@ describe('CapacityPlansService', () => {
   let access: Mocked<AccessService>;
   let portfolio: Mocked<PortfolioItemsService>;
   let maps: Mocked<PreliminaryEstimateMapService>;
+  let projects: Mocked<ProjectsService>;
   /** Rows the stubbed Drizzle returns — drives the release/team existence checks. */
   let lookupRows: unknown[];
 
@@ -144,6 +146,16 @@ describe('CapacityPlansService', () => {
           },
         },
         {
+          provide: ProjectsService,
+          // The archived-project rule (PRJ-FR-010) lives in ONE place and this module calls it.
+          // Resolves by default — the block that is about it rejects deliberately.
+          useValue: {
+            assertProjectWritable: vi
+              .fn()
+              .mockResolvedValue({ id: 'proj-a', workspaceId: WORKSPACE, status: 'active' }),
+          },
+        },
+        {
           provide: DRIZZLE,
           useValue: {
             // `innerJoin` is part of the chain because the team guard now joins `project_teams`: a
@@ -169,6 +181,7 @@ describe('CapacityPlansService', () => {
     access = module.get(AccessService);
     portfolio = module.get(PortfolioItemsService);
     maps = module.get(PreliminaryEstimateMapService);
+    projects = module.get(ProjectsService);
   });
 
   describe('createPlan', () => {
@@ -2484,6 +2497,130 @@ describe('CapacityPlansService', () => {
       expect(result.skipped).toEqual([
         { portfolioItemId: 'fe-1', itemKey: 'FE-1', reason: 'archived' },
       ]);
+    });
+  });
+
+  /**
+   * PRJ-03. "Archived Projects are read-only regardless of access level" (PRJ-FR-010) held in five
+   * other modules and in NONE of this one — the whole service was unguarded.
+   *
+   * The worst path is `publishPlan`: it writes `releaseId`, `plannedStartDate` and
+   * `plannedEndDate` onto an archived project's `portfolio_items` transactionally, so archiving
+   * stopped nothing on the one write that mutates another aggregate's rows. Note the mock rejects
+   * unconditionally, which is deliberate — these tests prove the guard is CALLED before anything is
+   * written, not that `ProjectsService` decides correctly, which is its own spec's job.
+   */
+  describe('an archived project refuses every capacity write (PRJ-FR-010)', () => {
+    beforeEach(() => {
+      projects.assertProjectWritable.mockRejectedValue(
+        new PreconditionFailedException('PROJECT_ARCHIVED', 'archived'),
+      );
+    });
+
+    // ── Reached through `requireDraft`, the one load every plan write funnels through ──
+
+    it('refuses a publish before it can write a single Feature', async () => {
+      const window = { plannedStartDate: '2026-07-01', plannedEndDate: '2026-07-31' };
+      repo.findById.mockResolvedValue(plan(window));
+      repo.findViewById.mockResolvedValue(view(window));
+
+      await expect(
+        service.publishPlan(actor, 'plan-1', { updateFields: true }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(repo.applyPlanToFeature).not.toHaveBeenCalled();
+      expect(repo.setStatus).not.toHaveBeenCalled();
+    });
+
+    it('refuses an allocation', async () => {
+      await expect(
+        service.allocate(actor, 'plan-1', { portfolioItemId: 'fe-1', teamId: 'team-1' }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(repo.createAllocation).not.toHaveBeenCalled();
+    });
+
+    it('refuses adding a team', async () => {
+      await expect(service.addTeam(actor, 'plan-1', 'team-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.addTeam).not.toHaveBeenCalled();
+    });
+
+    it('refuses a team capacity edit', async () => {
+      await expect(service.setTeamCapacity(actor, 'plan-1', 'team-1', '40')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setTeamCapacity).not.toHaveBeenCalled();
+    });
+
+    it('refuses moving a Feature to another plan', async () => {
+      await expect(
+        service.moveItemToPlan(actor, 'plan-1', {
+          portfolioItemId: 'fe-1',
+          targetPlanId: 'plan-2',
+          updateRelease: false,
+          republish: false,
+        }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(repo.createAllocation).not.toHaveBeenCalled();
+    });
+
+    // ── The three writes that do NOT take a draft precondition and call the guard themselves ──
+
+    it('refuses a new plan', async () => {
+      await expect(
+        service.createPlan(actor, {
+          projectId: 'proj-a',
+          releaseId: 'rel-1',
+          name: 'Q3 plan',
+          unit: 'points',
+        }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses a delete, even though a PUBLISHED state would not block one', async () => {
+      // The two conditions are unrelated: Rally lets a planner delete a published plan, which is
+      // why this path skips `requireDraft` — not because deleting is exempt from PRJ-FR-010.
+      repo.findById.mockResolvedValue(plan({ status: 'published' }));
+      await expect(service.deletePlan(actor, 'plan-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.delete).not.toHaveBeenCalled();
+    });
+
+    it('refuses a revert — it unlocks editing rather than undoing the archive', async () => {
+      repo.findById.mockResolvedValue(plan({ status: 'published' }));
+      await expect(service.revertPlan(actor, 'plan-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setStatus).not.toHaveBeenCalled();
+    });
+
+    // ── Reads stay open: archived means read-only, not invisible ──
+
+    it('still FORECASTS a team capacity — it computes a number and writes nothing', async () => {
+      repo.findTeam.mockResolvedValue({
+        id: 'pt-1',
+        planId: 'plan-1',
+        teamId: 'team-1',
+        capacity: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      repo.findViewById.mockResolvedValue(
+        view({ plannedStartDate: '2026-01-01', plannedEndDate: '2026-02-25' }),
+      );
+      await expect(
+        service.forecastTeamCapacity(actor, 'plan-1', 'team-1', {
+          availabilityPct: 100,
+          complexity: 'typical',
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it('still opens the plan', async () => {
+      repo.findViewById.mockResolvedValue(view({ status: 'published' }));
+      await expect(service.getPlan(actor, 'plan-1')).resolves.toMatchObject({ id: 'plan-1' });
     });
   });
 });

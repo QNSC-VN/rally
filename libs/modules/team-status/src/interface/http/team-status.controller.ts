@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Get,
-  Param,
-  Patch,
-  ParseUUIDPipe,
-  Query,
-  Body,
-} from '@nestjs/common';
+import { Controller, Get, Param, Patch, ParseUUIDPipe, Query, Body } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiCommonErrors } from '@platform';
 import type { JwtPayload } from '@platform';
@@ -56,10 +48,7 @@ export class TeamStatusController {
   @ApiOperation({ summary: 'Update member capacity for an iteration' })
   @ApiResponse({ status: 200, description: 'Updated capacity' })
   @ApiCommonErrors(400, 401, 403)
-  async updateCapacity(
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: UpdateCapacityDto,
-  ) {
+  async updateCapacity(@CurrentUser() user: JwtPayload, @Body() dto: UpdateCapacityDto) {
     const input: UpdateCapacityInput = {
       projectId: dto.projectId,
       teamId: dto.teamId,
@@ -74,7 +63,7 @@ export class TeamStatusController {
 
   @Patch('tasks/:taskId')
   @RequirePermission('team_status:edit', { resource: 'work_item', from: 'param', field: 'taskId' })
-  @ApiOperation({ summary: 'Update a task from Team Status (title/state)' })
+  @ApiOperation({ summary: 'Update a task from Team Status (title and/or state only — SRS §9.3)' })
   @ApiParam({ name: 'taskId', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Updated task' })
   @ApiCommonErrors(400, 401, 403, 404)
@@ -86,10 +75,6 @@ export class TeamStatusController {
     const input: UpdateTaskFromTeamStatusInput = {
       ...(dto.title !== undefined && { title: dto.title }),
       ...(dto.state !== undefined && { state: dto.state }),
-      ...(dto.estimateHours !== undefined && { estimateHours: dto.estimateHours }),
-      ...(dto.todoHours !== undefined && { todoHours: dto.todoHours }),
-      ...(dto.actualHours !== undefined && { actualHours: dto.actualHours }),
-      ...(dto.assigneeId !== undefined && { assigneeId: dto.assigneeId }),
     };
     return this.teamStatusService.updateTask(user, taskId, input);
   }

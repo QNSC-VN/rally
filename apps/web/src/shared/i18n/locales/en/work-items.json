@@ -40,6 +40,12 @@
     "createButton": "Create Item",
     "createWithDetails": "Create with details"
   },
+  "summary": {
+    "collapse": "Collapse to summary panel",
+    "label": "Work item summary",
+    "expand": "Open full detail",
+    "close": "Close summary panel"
+  },
   "notFound": "Work item \"{{key}}\" not found.",
   "backToBacklog": "← Back to Backlog",
   "watch": {

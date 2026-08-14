@@ -17,7 +17,7 @@ import {
   type PortfolioItemState,
   type PreliminaryEstimateSize,
 } from '@/features/portfolio/api'
-import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjects } from '@/features/projects/api'
@@ -113,7 +113,7 @@ export function CreatePortfolioItemModal({
   const activeProjectId = fixedParentId ? projectId : projectIdValue
 
   const { workspace } = useAppContext()
-  const { data: members = [] } = useWorkspaceMembers(workspace?.workspaceId)
+  const { data: members = [] } = useWorkspaceMemberOptions(workspace?.workspaceId)
   // The SAME per-project Release/Team lists the grid's inline cells offer, so the dialog cannot
   // propose a target the row editor would refuse — both are scoped by the API to the item's project.
   const optionsFor = usePortfolioCellOptions(workspace?.workspaceId, [activeProjectId])

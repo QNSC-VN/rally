@@ -21,6 +21,25 @@ export interface Milestone {
   updatedAt: Date;
 }
 
+/**
+ * The reference projection of a milestone: what a picker needs to label, choose and scope one.
+ *
+ * `releaseIds` is here because the Work Item detail sidebar narrows the ADD options to milestones
+ * related to the item's selected release (Reconciliation C01) — that is a picker rule, not
+ * administration data. `status`, `ownerId`, `description`, `notes`, the target window and `progress`
+ * are the milestone RECORD and stay on {@link Milestone}.
+ *
+ * A type of its own, not `Pick<Milestone, …>`: a shared base is how a field added to the record joins
+ * the feed every delivery participant reads.
+ */
+export interface MilestoneOption {
+  id: string;
+  projectId: string;
+  milestoneKey: string | null;
+  name: string;
+  releaseIds: string[];
+}
+
 export interface CreateMilestoneInput {
   id: string;
   workspaceId: string;

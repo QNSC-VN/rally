@@ -512,7 +512,7 @@ describe('portfolio write paths (e2e)', () => {
       status: 'active',
     });
     // RBAC migration: project access is now access_level on project_members.
-    const member = await projects.addProjectMember(WORKSPACE_ID, projectAId, userId, admin.sub);
+    const member = await projects.setProjectAccess(WORKSPACE_ID, projectAId, userId, admin.sub, {});
     await projects.updateProjectMember(
       WORKSPACE_ID,
       projectAId,

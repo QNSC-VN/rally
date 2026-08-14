@@ -129,17 +129,18 @@ export function useUpdateCapacity(
   })
 }
 
+/**
+ * Team Status edits Task Name and Task State only.
+ *
+ * SRS §9.3 accepts a patch of "`title` and/or `state`", and §11 gives this surface three editable
+ * things: Capacity, Task Name, Task State. Estimate / ToDo / Actuals / Owner are reads here
+ * (P3-TS-FR-026/027) and are edited on the Task Dashboard through `useUpdateWorkItem`. The route now
+ * REFUSES the other four (`.strict()` on `UpdateTeamTaskSchema`), so keeping them in this type would
+ * only buy a 400 at runtime instead of a compile error.
+ */
 export function useUpdateTeamTask() {
   return useMutation({
-    mutationFn: async (input: {
-      taskId: string
-      title?: string
-      state?: TeamTaskState
-      estimateHours?: number | null
-      todoHours?: number | null
-      actualHours?: number | null
-      assigneeId?: string | null
-    }) => {
+    mutationFn: async (input: { taskId: string; title?: string; state?: TeamTaskState }) => {
       const { taskId, ...patch } = input
       const { data, error, response } = await client.PATCH('/v1/team-status/tasks/{taskId}', {
         params: { path: { taskId } },

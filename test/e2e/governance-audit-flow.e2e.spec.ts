@@ -175,6 +175,49 @@ describe('BA flows: Phase 4 governance — RBAC + audit (real AppModule + seeded
       expect(archivedOnly.data).toHaveLength(1);
       expect(archivedOnly.data[0]?.action).toBe('project.archived');
     });
+
+    /**
+     * P45-04 — the filter must reach a row the loaded page does not contain, and the page must
+     * report the size of the whole matching set.
+     *
+     * Paged to one row deliberately: a filter proved only against a page that already holds the
+     * answer is proved against nothing, which is how a page-local search on the Audit Log screen
+     * looked correct for as long as the seeded log fitted in one window. `total` is the other half
+     * — without it the screen cannot tell "three events matched" from "three of this page's fifty
+     * matched", and it is counted under the SAME predicates as the rows (one builder in
+     * `AuditDrizzleRepository`), so the two cannot disagree.
+     */
+    it('reaches a row beyond the first page and reports the whole matching set', async () => {
+      const resourceId = randomUUID();
+      await audit.record({
+        workspaceId: WORKSPACE_ID,
+        actorId: admin.sub,
+        action: 'project.archived',
+        resourceType: 'project',
+        resourceId,
+      });
+      await audit.record({
+        workspaceId: WORKSPACE_ID,
+        actorId: admin.sub,
+        action: 'project.restored',
+        resourceType: 'project',
+        resourceId,
+      });
+
+      const firstPage = await audit.listAuditLogs(admin, { resourceId }, 1, 0);
+      expect(firstPage.data).toHaveLength(1);
+      expect(firstPage.pageInfo.total).toBe(2);
+      expect(firstPage.pageInfo.hasNextPage).toBe(true);
+
+      // Whichever of the two the newest-first page did NOT show — findable in one request,
+      // without paging, and its own total is 1.
+      const absent =
+        firstPage.data[0]?.action === 'project.archived' ? 'project.restored' : 'project.archived';
+      const found = await audit.listAuditLogs(admin, { resourceId, action: absent }, 1, 0);
+      expect(found.data.map((l) => l.action)).toEqual([absent]);
+      expect(found.pageInfo.total).toBe(1);
+      expect(found.pageInfo.hasNextPage).toBe(false);
+    });
   });
 
   // ── E2E-019: RBAC boundary (read-only principal) ────────────────────────────

@@ -46,9 +46,8 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import type { JwtPayload } from '@platform';
-import { AccessService } from '@modules/access';
 import type { ProjectAccessLevel } from '@shared-kernel';
-import { ProjectsService } from '@modules/projects';
+import { AccessService } from '@modules/access';
 import { PlatformModule } from '@platform';
 import { NotificationsModule } from '@modules/notifications';
 import { AuditModule } from '@modules/audit';
@@ -168,50 +167,22 @@ export function makeActor(userId: string, permissions: string[] = []): JwtPayloa
 export const adminActor = (): JwtPayload => makeActor(ADMIN_USER_ID, ['workspace:*']);
 
 /**
- * Read-only actor — a view-only principal.
+ * A seeded user holding NO project grant — the No Access principal.
  *
- * The permission list on a principal is INERT: authorization resolves from the
- * database on every check, so a fixture cannot grant itself anything by declaring
- * it here. This actor therefore needs a real grant in the database — call
- * {@link ensureViewerGrant} in a spec's `beforeAll` before using it.
+ * Named `viewer` for the seeded fixture user it wraps, not for a level: §2.2 lists two levels (`Admin`
+ * and `Editor`) and makes No Access the ABSENCE of an active `project_members` row. The BA removed
+ * `Viewer` (`product-docs` 55e7dbb).
  *
- * (It used to work the other way: the token carried
- * `['project:view', 'work_item:view']` and the guard read that list, which is
- * exactly the snapshot authority that was removed.)
+ * It used to be a read-only principal backed by a workspace-owned CUSTOM ROLE assigned at WORKSPACE
+ * scope, arranged by an `ensureViewerGrant` helper. Both halves are gone — custom roles by ruling
+ * (AC-11), and the workspace-scoped shape because one row granting project-tier codes across every
+ * project IS the over-grant migration 0111 removed. So there is nothing to arrange: use this actor for
+ * the denied case, and `grantProjectAccess` when a spec needs a principal that CAN do something.
+ *
+ * The permission list on a principal is INERT either way — authorization resolves from the database on
+ * every check, so a fixture cannot grant itself anything by declaring a list here.
  */
 export const viewerActor = (): JwtPayload => makeActor(VIEWER_ID);
-
-/** Slug of the workspace-owned custom role that backs {@link viewerActor}. */
-const VIEWER_ROLE_NAME = 'E2E Read Only';
-
-/**
- * Give {@link viewerActor} a REAL read-only grant: a workspace-owned custom role
- * holding `project:view` + `work_item:view` and nothing else, assigned at
- * workspace scope. Idempotent, so every spec can call it and repeated runs
- * against the same seeded database stay clean.
- *
- * `project_viewer` was removed in the Phase 4.2 reconciliation (#183), and no
- * canonical role is read-only — a custom role is the supported way to express one,
- * so this exercises the real mechanism rather than a fixture shortcut.
- */
-export async function ensureViewerGrant(app: INestApplication): Promise<void> {
-  const access = app.get(AccessService);
-  const admin = adminActor();
-
-  const roles = await access.listRoles(WORKSPACE_ID);
-  const existing = roles.find((r) => r.name === VIEWER_ROLE_NAME);
-  const role =
-    existing ??
-    (await access.createRole(admin, {
-      name: VIEWER_ROLE_NAME,
-      permissions: ['project:view', 'work_item:view'],
-    }));
-
-  const assignments = await access.getUserAssignments(WORKSPACE_ID, VIEWER_ID);
-  if (assignments.some((a) => a.roleId === role.id && a.scopeType === 'workspace')) return;
-
-  await access.assignRole(admin, VIEWER_ID, role.id, 'workspace');
-}
 
 /**
  * Grant a user per-Project access at `admin` or `editor` — the ONLY supported way to give someone
@@ -223,10 +194,17 @@ export async function ensureViewerGrant(app: INestApplication): Promise<void> {
  * `work.project_members.access_level`. Four e2e tests across three files were still calling it and
  * had been red ever since.
  *
- * Goes through `ProjectsService.addProjectMember`, deliberately, rather than writing the row:
+ * Goes through `AccessService.grantProjectAccess`, deliberately, rather than writing the row:
  * that path also invalidates the permission cache for the affected user, so a spec asserting a
  * grant is visible on the NEXT REQUEST is exercising the real invalidation rather than a TTL
  * expiry. It upserts, so repeated runs against the same seeded database stay clean.
+ *
+ * The PRIMITIVE writer, not `ProjectsService.setProjectAccess`, and that is the point: the combined
+ * writer enforces PRJ-08 ("an Editor must have at least one Team", §2.2), and a fixture that wants
+ * `editor` on a SEEDED project — which has teams — is arranging DATA rather than walking the §5
+ * journey that rule belongs to. Routing the harness through the journey would make every such spec
+ * depend on a team roster it never asked about. Use `setProjectAccess` (or the HTTP route) when the
+ * spec is about the rule itself.
  *
  * The level maps onto the same permission sets the retired roles carried —
  * `ACCESS_LEVEL_PERMISSIONS.admin` IS `ROLE_PERMISSIONS[PROJECT_ADMIN]` — so a test that wanted
@@ -238,8 +216,15 @@ export async function grantProjectAccess(
   projectId: string,
   accessLevel: ProjectAccessLevel,
 ): Promise<void> {
-  const projects = app.get(ProjectsService);
-  await projects.addProjectMember(WORKSPACE_ID, projectId, userId, ADMIN_USER_ID, accessLevel);
+  const access = app.get(AccessService);
+  await access.grantProjectAccess({
+    workspaceId: WORKSPACE_ID,
+    projectId,
+    userId,
+    accessLevel,
+    actorId: ADMIN_USER_ID,
+    onWorkspaceAdmin: 'refuse',
+  });
 }
 
 /**

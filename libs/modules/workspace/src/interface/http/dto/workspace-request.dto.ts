@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
+import { PROJECT_ACCESS_LEVEL } from '@shared-kernel';
 import { workspaceMemberStatusEnum } from '../../../../../../../db/schema/enums';
 
 // ── Create Workspace ─────────────────────────────────────────────────────────
@@ -50,9 +51,34 @@ export class UpdateMemberDto extends createZodDto(UpdateMemberSchema) {}
 
 // ── Invite Member ─────────────────────────────────────────────────────────────
 
+/**
+ * One project + level the invitation grants on acceptance (Settings §6.4, RBE-11).
+ *
+ * `PROJECT_ACCESS_LEVEL` from the catalogue, not a hand-written enum: this is the fourth place the
+ * level set appears (CHECK constraint, `ACCESS_LEVEL_PERMISSIONS`, the SPA mirror), and the week a
+ * third level existed and was removed again (migrations 0113, 0115) is what a literal here would
+ * have got wrong.
+ */
+export const InvitationProjectAccessSchema = z.object({
+  projectId: z.string().uuid(),
+  accessLevel: z.enum(PROJECT_ACCESS_LEVEL),
+});
+
 export const InviteMemberSchema = z.object({
   email: z.string().email(),
   roleId: z.string().min(1).max(100).optional(),
+  /**
+   * Optional, and an empty list is legal — that is the pre-§6.4 behaviour: the invitee lands with
+   * no project access and stays No Access until someone grants a level. Making it required would
+   * break every existing caller and force a choice on an inviter who has not made one.
+   *
+   * Deliberately a plain object schema with NO `superRefine`. The duplicate-project rule lives in
+   * `WorkspaceService.assertInvitationProjectAccess` instead: wrapping this schema in a refinement
+   * makes it a `ZodEffects`, and the committed API client is generated from the OpenAPI document
+   * these DTOs produce (`pnpm --filter rally-web codegen`, diffed by the `OpenAPI contract` job) —
+   * so a shape change here is a client change, for a rule the service enforces anyway.
+   */
+  projectAccess: z.array(InvitationProjectAccessSchema).optional(),
 });
 
 export class InviteMemberDto extends createZodDto(InviteMemberSchema) {}

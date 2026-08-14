@@ -25,6 +25,8 @@ import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { InlineSelect } from '@/shared/ui/native-select'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { formatWith } from '@/shared/lib/utils'
+import { listResource } from '@/shared/lib/query/resource'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
 
 // ── Shared cell helpers ───────────────────────────────────────────────────────
 
@@ -248,7 +250,11 @@ function sortRows<T>(
 
 function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
   const { t } = useTranslation('work-items')
-  const { data, isLoading } = useWorkItemConnections(workItemId)
+  const connectionsQuery = useWorkItemConnections(workItemId)
+  // A resource: `data?.data ?? []` printed `connections.empty` for a failed read, i.e. "this item has
+  // no linked repositories" about a request that never landed. `ListPageScaffold` has had an `error`
+  // slot all along — this tab simply never filled it.
+  const feed = listResource({ ...connectionsQuery, data: connectionsQuery.data?.data })
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<'all' | ScmConnection['type']>('all')
   const { sortCol, sortDir, sort } = useColumnSort()
@@ -257,13 +263,13 @@ function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
   })
 
   const filtered = useMemo(() => {
-    const rows = data?.data ?? []
+    const rows = feed.rows
     return rows.filter(
       (c) =>
         (typeFilter === 'all' || c.type === typeFilter) &&
         (search.trim() === '' || includesCI(`${c.name} ${c.url}`, search)),
     )
-  }, [data, search, typeFilter])
+  }, [feed.rows, search, typeFilter])
 
   const sorted = useMemo(
     () =>
@@ -315,10 +321,11 @@ function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
       sort={sort}
       padClassName="gap-2 px-3"
       items={sorted}
-      loading={isLoading}
+      loading={feed.isLoading}
       skeleton={{ rows: 6 }}
+      error={feed.phase === 'error' ? <LoadErrorState error={feed.error} size="sm" /> : undefined}
       empty={
-        sorted.length === 0 ? (
+        feed.phase !== 'error' && sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-ui-sm text-foreground-subtle">
             {t('connections.empty')}
           </div>
@@ -337,7 +344,9 @@ function ConnectionsSubTab({ workItemId }: { workItemId: string }) {
 
 function ChangesetsSubTab({ workItemId }: { workItemId: string }) {
   const { t } = useTranslation('work-items')
-  const { data, isLoading } = useWorkItemChangesets(workItemId)
+  const changesetsQuery = useWorkItemChangesets(workItemId)
+  // Same shape as the connections list above: a 403/500 must not read as "no commits".
+  const feed = listResource({ ...changesetsQuery, data: changesetsQuery.data?.data })
   const [search, setSearch] = useState('')
   const [authorFilter, setAuthorFilter] = useState('all')
   const { sortCol, sortDir, sort } = useColumnSort()
@@ -345,7 +354,7 @@ function ChangesetsSubTab({ workItemId }: { workItemId: string }) {
     storageKey: STORAGE_KEYS.SCM_CHANGESETS_COLUMNS,
   })
 
-  const rows = useMemo(() => data?.data ?? [], [data])
+  const rows = feed.rows
   // Distinct authors present on this item's commits — the changeset filter facet.
   const authors = useMemo(
     () => [...new Set(rows.map((c) => c.authorName).filter((a): a is string => !!a))].sort(),
@@ -417,10 +426,11 @@ function ChangesetsSubTab({ workItemId }: { workItemId: string }) {
       sort={sort}
       padClassName="gap-2 px-3"
       items={sorted}
-      loading={isLoading}
+      loading={feed.isLoading}
       skeleton={{ rows: 6 }}
+      error={feed.phase === 'error' ? <LoadErrorState error={feed.error} size="sm" /> : undefined}
       empty={
-        sorted.length === 0 ? (
+        feed.phase !== 'error' && sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-ui-sm text-foreground-subtle">
             {t('connections.emptyChangesets')}
           </div>

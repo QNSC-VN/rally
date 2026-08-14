@@ -1701,4 +1701,236 @@ describe('WorkItemsService', () => {
       ).rejects.toThrow(PreconditionFailedException);
     });
   });
+
+  /**
+   * PRJ-03. Create, update and delete reached the archived-project rule through a PRIVATE COPY of
+   * `ProjectsService.assertProjectWritable` in this class; the ~17 secondary writes below reached
+   * neither the copy nor the original. So on an archived project a Story could not be edited but
+   * could still be relinked, reranked, relabelled, bulk-assigned to another release or iteration,
+   * given time logs, and have files attached and deleted.
+   *
+   * The copy is now a one-line delegation, which is the actual fix: a second home for one rule is
+   * what let the two drift for as long as they did.
+   *
+   * `watch` / `unwatch` are deliberately EXCLUDED — see the note above them in the service. A
+   * watcher row is the reader's own subscription, and the withdrawal has to keep working.
+   */
+  describe('an archived project refuses every secondary write (PRJ-FR-010)', () => {
+    beforeEach(() => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1', projectId: 'proj-1' }));
+      projectsService.assertProjectWritable.mockRejectedValue(
+        new PreconditionFailedException('PROJECT_ARCHIVED', 'archived'),
+      );
+    });
+
+    it('refuses a relation link', async () => {
+      await expect(service.linkWorkItem(mockActor, 'wi-1', 'wi-2', 'blocks')).rejects.toMatchObject(
+        { code: 'PROJECT_ARCHIVED' },
+      );
+      expect(relationRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unlink', async () => {
+      relationRepo.findById.mockResolvedValue({
+        id: 'rel-1',
+        sourceItemId: 'wi-1',
+        targetItemId: 'wi-2',
+        relationType: 'blocks',
+      });
+      await expect(service.unlinkWorkItem(mockActor, 'wi-1', 'rel-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(relationRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('refuses a backlog reorder', async () => {
+      await expect(
+        service.reorderWorkItems(mockActor, [{ id: 'wi-1', rank: 'b' }]),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(workItemRepo.reorderItems).not.toHaveBeenCalled();
+    });
+
+    it('refuses a single-item rank change', async () => {
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'before', rank: 'a' })]);
+      await expect(
+        service.rankWorkItem(mockActor, 'wi-1', { projectId: 'proj-1', beforeId: 'before' }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses a bulk release assignment', async () => {
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'wi-1' })]);
+      await expect(
+        service.bulkAssignRelease(mockActor, 'proj-1', ['wi-1'], 'rel-1'),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(workItemRepo.assignRelease).not.toHaveBeenCalled();
+    });
+
+    it('refuses a bulk iteration assignment', async () => {
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'wi-1', type: 'story' })]);
+      await expect(
+        service.bulkAssignIteration(mockActor, 'proj-1', ['wi-1'], 'it-1'),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(workItemRepo.assignIteration).not.toHaveBeenCalled();
+    });
+
+    it('refuses adding and removing a label', async () => {
+      // The label CATALOGUE was already guarded in `ProjectsService`; the ASSIGNMENT was not, so
+      // labels could not be created on an archived project but could still be applied.
+      await expect(service.addLabelToWorkItem(mockActor, 'wi-1', 'lbl-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      await expect(
+        service.removeLabelFromWorkItem(mockActor, 'wi-1', 'lbl-1'),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(workItemRepo.addLabel).not.toHaveBeenCalled();
+      expect(workItemRepo.removeLabel).not.toHaveBeenCalled();
+    });
+
+    it('refuses a milestone-artifact set', async () => {
+      await expect(
+        service.setWorkItemMilestones(mockActor, 'wi-1', ['ms-1']),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(workItemRepo.setMilestones).not.toHaveBeenCalled();
+    });
+
+    it('refuses logging, editing and deleting time', async () => {
+      timeLogRepo.findById.mockResolvedValue({
+        id: 'tl-1',
+        workItemId: 'wi-1',
+        userId: 'user-1',
+      });
+      await expect(
+        service.logTime(mockActor, 'wi-1', { loggedDate: '2026-08-14', hours: '2.00' }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      await expect(
+        service.updateTimeLog(mockActor, 'wi-1', 'tl-1', { hours: '3.00' }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      await expect(service.deleteTimeLog(mockActor, 'wi-1', 'tl-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(timeLogRepo.create).not.toHaveBeenCalled();
+      expect(timeLogRepo.update).not.toHaveBeenCalled();
+      expect(timeLogRepo.softDelete).not.toHaveBeenCalled();
+    });
+
+    it('refuses an attachment at PRESIGN, not only at confirm', async () => {
+      // Letting presign through would put bytes in the bucket for a project that accepts no
+      // content and leave the reserved `storage.files` row to the reaper.
+      await expect(
+        service.presignAttachment(mockActor, 'wi-1', {
+          filename: 'f.txt',
+          mimeType: 'text/plain',
+          sizeBytes: 10,
+          checksumSha256: 'abc',
+        }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(attachmentsService.presign).not.toHaveBeenCalled();
+    });
+
+    it('refuses an attachment confirm and delete', async () => {
+      attachmentRepo.findByEntityAndFile.mockResolvedValue({
+        fileId: 'file-1',
+        uploadedBy: 'user-1',
+        filename: 'f.txt',
+      });
+      await expect(service.confirmAttachment(mockActor, 'wi-1', 'file-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      await expect(service.deleteAttachment(mockActor, 'wi-1', 'file-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(attachmentRepo.link).not.toHaveBeenCalled();
+      expect(attachmentRepo.unlink).not.toHaveBeenCalled();
+    });
+
+    it('still lets a reader UNWATCH — the subscription is theirs, not the content', async () => {
+      // Deliberate exception, same judgement as the three project MEMBER writes: revocation must
+      // stay possible or a user receives an archived project's notifications with no way to stop.
+      await expect(service.unwatch(mockActor, 'wi-1')).resolves.toBeUndefined();
+      expect(watcherRepo.unwatch).toHaveBeenCalledWith('wi-1', 'user-1');
+      await expect(service.watch(mockActor, 'wi-1')).resolves.toBeUndefined();
+    });
+
+    it('still READS the item and its attachments — read-only, not invisible', async () => {
+      await expect(service.getWorkItem('ws-1', 'wi-1')).resolves.toMatchObject({ id: 'wi-1' });
+      await expect(service.listAttachments(mockActor, 'wi-1')).resolves.toEqual([]);
+    });
+  });
+  /**
+   * BL §8:294 — "Editor may manage US/DE/Task only in explicitly assigned Teams and cannot assign
+   * Release." Field-level, because the route is gated on `work_item:edit`, which an Editor legitimately
+   * holds for every other field in the same body.
+   *
+   * This is asserted NOW because it only just became reachable. `GET /releases` required
+   * `release:view`, which an Editor does not hold, so the release picker resolved to `[]` and the UI
+   * could not produce a `releaseId` — the rule was failing closed BY ACCIDENT. Splitting off a
+   * reference feed an Editor can read (so a released item stops rendering as unscheduled) removed the
+   * accident, and a change that turns a latent over-permissive write into a live one has to close it.
+   */
+  describe('assigning a Release is admin-only (BL §8:294)', () => {
+    it('refuses the field when the actor cannot see releases, and does not write', async () => {
+      const denied = new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'no release:view');
+      accessService.assertProjectPermission.mockImplementation(
+        async (_actor: unknown, _projectId: string, code: string) => {
+          if (code === 'release:view') throw denied;
+        },
+      );
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ releaseId: null }));
+
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { releaseId: 'rel-1' }),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses CLEARING a release too — an Editor does not decide release membership either', async () => {
+      const denied = new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'no release:view');
+      accessService.assertProjectPermission.mockImplementation(
+        async (_actor: unknown, _projectId: string, code: string) => {
+          if (code === 'release:view') throw denied;
+        },
+      );
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ releaseId: 'rel-1' }));
+
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { releaseId: null }),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses the BULK path too, and before the release is even resolved', async () => {
+      // Two write paths reach the same field, so a gate on one is not a gate. Ordered ahead of
+      // `assertReleaseAssignable` deliberately: a denied caller must not learn which release ids exist
+      // from a RELEASE_NOT_FOUND.
+      const denied = new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'no release:view');
+      accessService.assertProjectPermission.mockImplementation(
+        async (_actor: unknown, _projectId: string, code: string) => {
+          if (code === 'release:view') throw denied;
+        },
+      );
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'wi-1' })]);
+
+      await expect(
+        service.bulkAssignRelease(mockActor, 'proj-1', ['wi-1'], 'rel-1'),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+      expect(workItemRepo.assignRelease).not.toHaveBeenCalled();
+      expect(workItemRepo.findReleaseProject).not.toHaveBeenCalled();
+    });
+
+    it('does NOT consult the rule when the patch leaves the release alone', async () => {
+      // The half a denial-only test cannot see: an ordinary edit on an item that already sits in a
+      // release must not be refused, or every Editor loses the rest of the form.
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ releaseId: 'rel-1' }));
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ releaseId: 'rel-1', title: 'Renamed' }));
+
+      await service.updateWorkItem(mockActor, 'wi-1', { title: 'Renamed' });
+
+      expect(accessService.assertProjectPermission).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'release:view',
+      );
+    });
+  });
 });

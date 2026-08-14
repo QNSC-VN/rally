@@ -60,6 +60,21 @@ export interface ProjectMember {
   teamCount: number
 }
 
+/**
+ * The REFERENCE projection of a project member — what a picker or a name lookup needs.
+ *
+ * Mirrors `ProjectMemberOptionResponseDto`. A type of its own, not `Pick<ProjectMember, …>`: the
+ * roster type carries `accessLevel`, `status` and `teamCount`, and a shared base is how a field added
+ * for User Management joins the feed every delivery participant reads. Structurally this is
+ * `OwnerSelectMember` (`shared/ui/owner-cell`), which is what every owner picker already accepts.
+ */
+export interface ProjectMemberOption {
+  userId: string
+  displayName?: string | null
+  email?: string | null
+  avatarUrl?: string | null
+}
+
 // ── Query keys ────────────────────────────────────────────────────────────────
 
 export const teamKeys = {
@@ -191,6 +206,41 @@ export function useProjectTeams(projectId: string | undefined) {
   })
 }
 
+/**
+ * The ASSIGNEE feed for a project — id, name, email, avatar, and nothing else.
+ *
+ * Use this for owner pickers and for resolving an owner's NAME. {@link useProjectMembers} reads the
+ * administrative roster, which is `workspace:view`-equivalent (Workspace Admin or Project Admin only,
+ * §3.1:71) because it carries `accessLevel`, `status` and `teamCount`.
+ *
+ * That mattered more than it looks: the roster was ALSO the only owner feed, so gating it left every
+ * Editor's Backlog and Iteration Status with `members = []` — and both surfaces derive the displayed
+ * owner name from that list, so every owned item read `Unassigned` and the owner could not be changed,
+ * while §3.2:79 grants an Editor exactly that write.
+ */
+export function useProjectMemberOptions(projectId: string | undefined) {
+  return useQuery({
+    queryKey: [...teamKeys.projectMembers(projectId ?? ''), 'options'] as const,
+    queryFn: async () => {
+      if (!projectId) return []
+      const { data, error, response } = await apiClient.GET('/v1/projects/{id}/member-options', {
+        params: { path: { id: projectId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data ?? []
+    },
+    enabled: !!projectId,
+    staleTime: 60_000,
+  })
+}
+
+/**
+ * The ADMINISTRATIVE roster: access level, status and team count per member.
+ *
+ * Workspace Admin / Project Admin only (§3.1:71). For an owner picker or an owner NAME, use
+ * {@link useProjectMemberOptions} — this one 403s for an Editor, and a caller that defaults the error
+ * to `[]` will render every owned item as unassigned.
+ */
 export function useProjectMembers(projectId: string | undefined) {
   return useQuery({
     queryKey: teamKeys.projectMembers(projectId ?? ''),
@@ -306,44 +356,58 @@ export function useRemoveTeamMember(teamId?: string) {
   })
 }
 
-// ── Per-Project access level (RBAC migration Phase 7) ─────────────────────────
-
-export function useUpdateProjectAccess(projectId: string) {
-  return useMutation({
-    mutationFn: async ({
-      memberId,
-      accessLevel,
-    }: {
-      memberId: string
-      accessLevel: AccessLevel
-    }) => {
-      const { error, response } = await apiClient.PATCH('/v1/projects/{id}/members/{memberId}', {
-        params: { path: { id: projectId, memberId } },
-        body: { accessLevel },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-    },
-    meta: { invalidates: ['team'] },
-  })
-}
+// ── Per-Project access: level + Teams, ONE write (PRJ-08) ─────────────────────
 
 /**
- * Add an existing workspace user to a Project (creates a project_members row). NOTE:
- * the BE currently ignores `accessLevel` on add (Stage 5 fix) — callers must follow
- * with `useUpdateProjectAccess` to set the level, which is why the Add Existing User
- * flow PATCHes immediately after this resolves.
+ * Set a user's access level for a Project AND the Teams it is scoped to, in one request.
+ *
+ * The ONE level-write path in the SPA, and the ONE endpoint all three §5 journeys use (AC-9: "All
+ * three journeys update the same Project access and Team membership source"). It replaces THREE
+ * separate call shapes that every combined edit used to issue in sequence — `POST
+ * /projects/{id}/members`, `PATCH /projects/{id}/members/{memberId}` and one `POST
+ * /teams/{id}/members` per team — and with them a `useUpdateProjectAccess` hook whose only reason to
+ * exist was that the POST could not carry a level.
+ *
+ * Why one request and not three: §2.2's "an Editor must be assigned to at least one active Team" is
+ * only decidable when the level and the Teams arrive together, so the server could not refuse the
+ * invalid state without rejecting the first of several calls the screen legitimately makes. It can
+ * now, and the write is a single transaction — so a failed team write no longer leaves the level
+ * standing with no teams behind it, the state the Editor Teams dialog had to mitigate by ORDERING its
+ * requests.
+ *
+ * `teamIds` ABSENT means "leave the memberships alone"; `[]` means "remove them all", which for an
+ * Editor is exactly what the server refuses. Do not collapse the two.
+ *
+ * The body used to need an `as never` cast: the handler declared an inline TypeScript type Swagger
+ * could not see, so the generated client typed it `never`. `SetProjectAccessDto` makes it a real
+ * schema, the client has been regenerated, and the cast is gone — which is the point of naming a
+ * removal condition rather than leaving a permanent escape hatch.
  */
-export function useAddProjectMember(projectId: string) {
+export function useSetProjectAccess(projectId: string) {
   return useMutation({
-    mutationFn: async ({ userId, accessLevel }: { userId: string; accessLevel?: AccessLevel }) => {
+    mutationFn: async ({
+      userId,
+      accessLevel,
+      teamIds,
+    }: {
+      userId: string
+      accessLevel?: AccessLevel
+      teamIds?: string[]
+    }) => {
       const { data, error, response } = await apiClient.POST('/v1/projects/{id}/members', {
         params: { path: { id: projectId } },
-        body: { userId, ...(accessLevel ? { accessLevel } : {}) } as never as never,
+        body: {
+          userId,
+          ...(accessLevel ? { accessLevel } : {}),
+          ...(teamIds ? { teamIds } : {}),
+        },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data
     },
-    meta: { invalidates: ['team'] },
+    // 'work-item' as well as 'team': dropping a team membership nulls that member's task
+    // assignments in the team (see `useRemoveTeamMember`), and this write can drop one.
+    meta: { invalidates: ['team', 'work-item'] },
   })
 }
 

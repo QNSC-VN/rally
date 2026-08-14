@@ -77,19 +77,40 @@ describe('capacity forecast (e2e)', () => {
     points: number;
     scheduleState?: 'accepted' | 'completed' | 'in_progress';
   }): Promise<string> {
+    /**
+     * Committed at birth, then ACCEPTED through the real transition — not created `accepted`.
+     *
+     * `createIteration` now refuses `state: 'accepted'` with `ITERATION_EMPTY` (§10.1: "Auto-accept
+     * requires at least one assigned Story/Defect item; an empty Iteration must not auto-accept"), and
+     * a brand-new iteration has no members. This fixture wants FINISHED history, which is a different
+     * thing from a row that starts in the finished state — so it now earns it the way a real sprint
+     * does: commit, assign the work, then accept.
+     *
+     * `autoAcceptIterationIfComplete` usually does the last step for free once every assigned item is
+     * accepted, but this helper also builds `completed` and `in_progress` history, where auto-accept
+     * correctly declines. The explicit accept keeps all three shapes on one path, and it is skipped
+     * for those two precisely because an iteration holding unaccepted work must not be Accepted.
+     */
     const iteration = await iterations.createIteration(admin, projectId, `Sprint ${uniqueKey()}`, {
       startDate: daysAgo(opts.endedDaysAgo + opts.lengthDays - 1),
       endDate: daysAgo(opts.endedDaysAgo),
-      state: 'accepted',
+      state: 'committed',
     });
     const story = await workItems.createWorkItem(admin, projectId, 'story', `S ${uniqueKey()}`, {
       storyPoints: String(opts.points),
     });
+    const scheduleState = opts.scheduleState ?? 'accepted';
     await workItems.updateWorkItem(admin, story.id, {
       iterationId: iteration.id,
       teamId: opts.teamId,
-      scheduleState: opts.scheduleState ?? 'accepted',
+      scheduleState,
     });
+    if (scheduleState === 'accepted') {
+      const after = await iterations.getIteration(admin.workspaceId, iteration.id);
+      if (after.state !== 'accepted') {
+        await iterations.acceptIteration(admin, iteration.id);
+      }
+    }
     return iteration.id;
   }
 
@@ -168,10 +189,12 @@ describe('capacity forecast (e2e)', () => {
     // half belongs to team B.
     const before = await forecast(teamAId);
 
+    // Committed then accepted, for the same reason as `seedHistory` above: `createIteration` refuses
+    // `accepted` on an iteration that has no members yet (§10.1).
     const iteration = await iterations.createIteration(admin, projectId, `Shared ${uniqueKey()}`, {
       startDate: daysAgo(27),
       endDate: daysAgo(14),
-      state: 'accepted',
+      state: 'committed',
     });
     const story = await workItems.createWorkItem(admin, projectId, 'story', `B ${uniqueKey()}`, {
       storyPoints: '13',
@@ -181,6 +204,10 @@ describe('capacity forecast (e2e)', () => {
       teamId: teamBId,
       scheduleState: 'accepted',
     });
+    const shared = await iterations.getIteration(admin.workspaceId, iteration.id);
+    if (shared.state !== 'accepted') {
+      await iterations.acceptIteration(admin, iteration.id);
+    }
 
     // Team A gained nothing.
     expect((await forecast(teamAId)).samplesUsed).toBe(before.samplesUsed);

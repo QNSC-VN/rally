@@ -22,11 +22,10 @@ import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { ListPageHeader } from '@/shared/ui/list-page/list-page-header'
 import { Button } from '@/shared/ui/button'
 import { RowGutter } from '@/shared/ui/row-gutter'
-import { InlineSelect } from '@/shared/ui/native-select'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
-import { OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
 import { RankEdgeActions } from '@/features/work-items/ui/rank-edge-actions'
 import { BulkScheduleActions } from '@/features/work-items/ui/bulk-schedule-bar'
@@ -42,8 +41,8 @@ import {
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
-import { useProjectMembers } from '@/features/teams/api'
-import { useIterationOptions, useIterations } from '@/features/iterations/api'
+import { useProjectMemberOptions } from '@/features/teams/api'
+import { useAssignableIterations, useIterationOptions } from '@/features/iterations/api'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -59,14 +58,21 @@ import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
 import type { ColumnDef } from '@/shared/lib/hooks/use-column-layout'
+import { BACKLOG_COLUMNS, BACKLOG_HEADER_COLUMNS, type ColumnKey } from './model/columns'
 import {
-  BACKLOG_COLUMNS,
-  BACKLOG_HEADER_COLUMNS,
-  SCHEDULE_STATE_OPTS,
-  type ColumnKey,
-} from './model/columns'
+  useBacklogFilterFields,
+  toBacklogQuery,
+  type BacklogFilterKey,
+} from './model/filter-fields'
+import {
+  useManageFilters,
+  type ManageFiltersState,
+} from '@/features/work-items/model/manage-filters'
+import { ManageFiltersBar } from '@/features/work-items/ui/manage-filters-bar'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { useDataTable, useRerankSensors, SelectableTable, RankCell } from '@/shared/ui/table'
+import { useSummarySelection } from '@/features/work-items/summary-selection'
+import { WorkItemSummaryPanel } from './ui/work-item-summary-panel'
 
 export function BacklogPage() {
   const { t } = useTranslation('backlog')
@@ -78,19 +84,10 @@ export function BacklogPage() {
   const canEdit = can('work_item:edit')
 
   // ── Filters ──────────────────────────────────────────────────────────────────
+  // Quick search is the page's OWN state and its own `q` parameter — P2-BL-TS-015
+  // requires it to keep working independently of the Manage Filters set, so it is
+  // never a Manage Filters field and never waits for Apply.
   const [search, setSearch] = useState('')
-  const [filterType, setFilterType] = useState<'' | 'story' | 'defect'>('')
-  const [filterState, setFilterState] = useState('')
-  const [filterPriority, setFilterPriority] = useState('')
-  const [filterOwner, setFilterOwner] = useState('')
-  const [filterRelease, setFilterRelease] = useState('')
-  // No Iteration filter: the Backlog is unscheduled items only, so every row's Iteration is
-  // `Unscheduled` and there is nothing left to narrow. See the note in `listBacklog`.
-  // "none yet" vs "no match" are different facts; one branch used to always blame filters.
-  const emptyKey =
-    search || filterType || filterState || filterPriority || filterOwner || filterRelease
-      ? 'empty.noMatch'
-      : 'empty.none'
   const [pageSize, setPageSize] = useState<number>(25)
   const [cursor, setCursor] = useState<string | undefined>(undefined)
   const [cursorHistory, setCursorHistory] = useState<string[]>([])
@@ -113,16 +110,20 @@ export function BacklogPage() {
   )
 
   // Reference lists for the P2.1 filters, inline selects and id→name lookups.
-  const { data: members = [] } = useProjectMembers(projectId)
+  // The assignee feed, NOT the administrative roster: that one is Admin-only (§3.1:71), and
+  // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
+  const { data: members = [] } = useProjectMemberOptions(projectId)
   const { data: releases = [] } = useReleases(projectId)
-  // Assignable choices only (planning/committed) — used to populate the
-  // inline-edit <option> list and the filter dropdown.
-  const { data: iterationOptions = [] } = useIterationOptions(projectId, team?.teamId)
-  // All iterations regardless of state — used to resolve an already-set
-  // iterationId to its name. Reusing iterationOptions here silently rendered
-  // a dash for any item whose iteration had since become Accepted, even though
-  // the relation was genuinely set (see RELATION_DATA_TRACEABILITY.md).
-  const { data: allIterations = [] } = useIterations(projectId, team?.teamId)
+  // ELIGIBILITY — `planning | committed`. Populates the inline-edit <option> list, the filter
+  // dropdown and Bulk Assign Iteration: every one of those WRITES, so the population must be the
+  // one the server accepts.
+  const { data: iterationOptions = [] } = useAssignableIterations(projectId, team?.teamId)
+  // REFERENCE — every state. Resolves an already-set iterationId to its name. Reusing
+  // `iterationOptions` here silently rendered a dash for any item whose iteration had since become
+  // Accepted, even though the relation was genuinely set (see RELATION_DATA_TRACEABILITY.md) — the
+  // two feeds are separate endpoints for exactly this reason. It used to read `GET /iterations`, the
+  // timebox RECORD, which is `timebox:view` and so 403'd every project Editor on this grid.
+  const { data: allIterations = [] } = useIterationOptions(projectId, team?.teamId)
 
   // Bulk Assign Release/Iteration choices — same composite "KEY: name" labels as
   // the inline row pickers, so the bulk bar and per-row selects stay consistent.
@@ -144,6 +145,18 @@ export function BacklogPage() {
     [iterationOptions],
   )
 
+  // ── Manage Filters (P2-BL-FR-005 / -020, AC-7) ────────────────────────────────
+  // The chooser and its controls live in `features/work-items` and are shared with
+  // Iteration Status. Every field key IS a server query parameter, so `applied`
+  // spreads straight into the list query — nothing is filtered client-side, which
+  // is what makes a match on page 7 findable.
+  const filterFields = useBacklogFilterFields({ members, releases })
+  const filters = useManageFilters(filterFields)
+  const applied = toBacklogQuery(filters.applied)
+
+  // "none yet" vs "no match" are different facts; one branch used to always blame filters.
+  const emptyKey = search || filters.activeCount > 0 ? 'empty.noMatch' : 'empty.none'
+
   // Reset pagination on filter/project change (synchronously, before useBacklog reads cursor)
   const prevTeamRef = useRef(team?.teamId)
   if (prevTeamRef.current !== team?.teamId) {
@@ -154,24 +167,10 @@ export function BacklogPage() {
   useEffect(() => {
     setCursor(undefined)
     setCursorHistory([])
-  }, [
-    search,
-    filterType,
-    filterState,
-    filterOwner,
-    filterRelease,
-    pageSize,
-    projectId,
-    sortCol,
-    sortDir,
-  ])
+  }, [search, applied, pageSize, projectId, sortCol, sortDir])
 
   const { data, isLoading, isError, error } = useBacklog(projectId, {
-    type: filterType || undefined,
-    scheduleState: filterState || undefined,
-    priority: filterPriority || undefined,
-    assigneeId: filterOwner || undefined,
-    releaseId: filterRelease || undefined,
+    ...applied,
     teamId: team?.teamId || undefined,
     q: search || undefined,
     sort: sortCol ? `${sortCol}:${sortDir}` : undefined,
@@ -250,6 +249,12 @@ export function BacklogPage() {
     void navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
   }
 
+  // ── Summary panel (WID-FR-003 / AC 7) ─────────────────────────────────────────
+  // The item a collapse left selected. Only the KEY is held — see the store's docblock — so the
+  // panel resolves the row itself and this page needs no extra query.
+  const summaryItemKey = useSummarySelection((s) => s.itemKey)
+  const clearSummary = useSummarySelection((s) => s.clear)
+
   function goNextPage() {
     if (!pageInfo?.hasNextPage || !pageInfo.nextCursor) return
     setCursorHistory((h) => [...h, cursor ?? ''])
@@ -284,18 +289,7 @@ export function BacklogPage() {
       <BacklogToolbar
         search={search}
         setSearch={setSearch}
-        filterType={filterType}
-        setFilterType={setFilterType}
-        filterState={filterState}
-        setFilterState={setFilterState}
-        filterPriority={filterPriority}
-        setFilterPriority={setFilterPriority}
-        filterOwner={filterOwner}
-        setFilterOwner={setFilterOwner}
-        filterRelease={filterRelease}
-        setFilterRelease={setFilterRelease}
-        members={members}
-        releases={releases}
+        filters={filters}
         canCreate={canCreate}
         onCreate={() => setShowCreate(true)}
         columns={BACKLOG_COLUMNS}
@@ -307,123 +301,138 @@ export function BacklogPage() {
 
       {/* Table — shared SelectableTable shell (selection gutter + BulkActionBar
           with Assign Release/Iteration + DnD wrap), consistent with Quality /
-          Iteration Status / Tasks. */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <SelectableTable
-          rows={localItems}
-          selection={selection}
-          headerProps={{
-            columns: BACKLOG_HEADER_COLUMNS,
-            colStyles,
-            onResize: startResize,
-            sort: { col: sortCol, dir: sortDir, onSort: toggleSort },
-            columnDrag: table.columnDrag,
-          }}
-          padClassName="gap-2 px-3"
-          dnd={{
-            dndContextProps: {
-              sensors: dndSensors,
-              collisionDetection: closestCenter,
-              onDragEnd: handleDragEnd,
-            },
-            sortableContextProps: {
-              items: localItems.map((it) => it.id),
-              strategy: verticalListSortingStrategy,
-            },
-          }}
-          bulkActions={(sel) =>
-            canEdit ? (
-              <>
-                {/* Rank Highest / Rank Lowest reach the true edges of the LIST, which drag cannot:
+          Iteration Status / Tasks. The summary panel sits beside it (WID-FR-003). */}
+      <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <SelectableTable
+            rows={localItems}
+            selection={selection}
+            headerProps={{
+              columns: BACKLOG_HEADER_COLUMNS,
+              colStyles,
+              onResize: startResize,
+              sort: { col: sortCol, dir: sortDir, onSort: toggleSort },
+              columnDrag: table.columnDrag,
+            }}
+            padClassName="gap-2 px-3"
+            dnd={{
+              dndContextProps: {
+                sensors: dndSensors,
+                collisionDetection: closestCenter,
+                onDragEnd: handleDragEnd,
+              },
+              sortableContextProps: {
+                items: localItems.map((it) => it.id),
+                strategy: verticalListSortingStrategy,
+              },
+            }}
+            bulkActions={(sel) =>
+              canEdit ? (
+                <>
+                  {/* Rank Highest / Rank Lowest reach the true edges of the LIST, which drag cannot:
                     reorder is page-local and the backlog pages at 25. Hidden while sorted, for the
                     same reason drag is. */}
-                <RankEdgeActions
-                  selection={sel}
-                  projectId={projectId}
-                  sorted={!!sortCol}
-                  filters={{
-                    type: filterType || undefined,
-                    scheduleState: filterState || undefined,
-                    priority: filterPriority || undefined,
-                    assigneeId: filterOwner || undefined,
-                    releaseId: filterRelease || undefined,
-                    teamId: team?.teamId || undefined,
-                    q: search || undefined,
-                  }}
-                />
-                <BulkScheduleActions
-                  projectId={projectId}
-                  selectedIds={sel.selectedIds}
-                  clearSelection={sel.clear}
-                  releases={releaseChoices}
-                  iterations={iterationChoices}
-                  canEdit={canEdit}
-                />
-                <BulkDeleteCopy
-                  selection={sel}
-                  projectId={projectId!}
-                  onCopy={copySelected}
-                  copyPending={createItem.isPending}
-                />
-              </>
-            ) : null
-          }
-          loading={isLoading}
-          skeleton={{ rows: 10, cols: 7 }}
-          error={
-            isError ? (
-              <div className="flex h-32 items-center justify-center">
-                <p className="text-ui-xl text-destructive">
-                  {error instanceof Error ? error.message : t('loadError')}
-                </p>
-              </div>
-            ) : undefined
-          }
-          empty={
-            items.length === 0 ? (
-              <div className="flex h-32 flex-col items-center justify-center gap-2">
-                <p className="text-ui-xl text-foreground-subtle">{t(emptyKey)}</p>
-                <button
-                  onClick={() => setShowCreate(true)}
-                  disabled={!canCreate}
-                  className="text-ui-md font-medium text-primary-light disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {t('createFirst')}
-                </button>
-              </div>
-            ) : undefined
-          }
-          footer={
-            <PaginationFooter
-              pageSize={pageSize}
-              setPageSize={setPageSize}
-              currentPage={currentPage}
-              rangeStart={(currentPage - 1) * pageSize + 1}
-              rangeEnd={(currentPage - 1) * pageSize + items.length}
-              total={pageInfo?.total}
-              hasPrevPage={currentPage > 1}
-              hasNextPage={!!pageInfo?.hasNextPage}
-              onPrevPage={goPrevPage}
-              onNextPage={goNextPage}
-            />
-          }
-          renderRow={(item, { selected, onToggleSelect }) => (
-            <BacklogRow
-              key={item.id}
-              item={item}
-              rowNum={(currentPage - 1) * pageSize + localItems.indexOf(item) + 1}
-              selected={selected}
-              onToggleSelect={onToggleSelect}
-              onOpen={() => openItem(item)}
-              colStyles={colStyles}
-              canEdit={canEdit}
-              members={members}
-              releases={releases}
-              iterations={iterationOptions}
-              allIterations={allIterations}
-            />
-          )}
-        />
+                  <RankEdgeActions
+                    selection={sel}
+                    projectId={projectId}
+                    sorted={!!sortCol}
+                    // The SAME applied filter set the grid is showing — Rank
+                    // Highest/Lowest must reach the edges of THIS list, not of an
+                    // unfiltered one.
+                    filters={{
+                      ...applied,
+                      teamId: team?.teamId || undefined,
+                      q: search || undefined,
+                    }}
+                  />
+                  <BulkScheduleActions
+                    projectId={projectId}
+                    selectedIds={sel.selectedIds}
+                    clearSelection={sel.clear}
+                    releases={releaseChoices}
+                    iterations={iterationChoices}
+                    canEdit={canEdit}
+                  />
+                  <BulkDeleteCopy
+                    selection={sel}
+                    projectId={projectId!}
+                    onCopy={copySelected}
+                    copyPending={createItem.isPending}
+                  />
+                </>
+              ) : null
+            }
+            loading={isLoading}
+            skeleton={{ rows: 10, cols: 7 }}
+            error={
+              isError ? (
+                <div className="flex h-32 items-center justify-center">
+                  <p className="text-ui-xl text-destructive">
+                    {error instanceof Error ? error.message : t('loadError')}
+                  </p>
+                </div>
+              ) : undefined
+            }
+            empty={
+              items.length === 0 ? (
+                <div className="flex h-32 flex-col items-center justify-center gap-2">
+                  <p className="text-ui-xl text-foreground-subtle">{t(emptyKey)}</p>
+                  <button
+                    onClick={() => setShowCreate(true)}
+                    disabled={!canCreate}
+                    className="text-ui-md font-medium text-primary-light disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {t('createFirst')}
+                  </button>
+                </div>
+              ) : undefined
+            }
+            footer={
+              <PaginationFooter
+                pageSize={pageSize}
+                setPageSize={setPageSize}
+                currentPage={currentPage}
+                rangeStart={(currentPage - 1) * pageSize + 1}
+                rangeEnd={(currentPage - 1) * pageSize + items.length}
+                total={pageInfo?.total}
+                hasPrevPage={currentPage > 1}
+                hasNextPage={!!pageInfo?.hasNextPage}
+                onPrevPage={goPrevPage}
+                onNextPage={goNextPage}
+              />
+            }
+            renderRow={(item, { selected, onToggleSelect }) => (
+              <BacklogRow
+                key={item.id}
+                item={item}
+                rowNum={(currentPage - 1) * pageSize + localItems.indexOf(item) + 1}
+                selected={selected}
+                active={item.itemKey === summaryItemKey}
+                onToggleSelect={onToggleSelect}
+                onOpen={() => openItem(item)}
+                colStyles={colStyles}
+                canEdit={canEdit}
+                members={members}
+                releases={releases}
+                iterations={iterationOptions}
+                allIterations={allIterations}
+              />
+            )}
+          />
+        </div>
+
+        {/* Summary panel — the collapsed state of Work Item Detail (WID-FR-003). Present only
+            while an item is selected; a collapse is what selects one. */}
+        {summaryItemKey && (
+          <WorkItemSummaryPanel
+            itemKey={summaryItemKey}
+            projectId={projectId}
+            onClose={clearSummary}
+            onExpand={() =>
+              void navigate({ to: '/item/$itemKey', params: { itemKey: summaryItemKey } })
+            }
+          />
+        )}
       </div>
 
       {/* Create modal */}
@@ -455,18 +464,8 @@ export function BacklogPage() {
 interface BacklogToolbarProps {
   search: string
   setSearch: (v: string) => void
-  filterType: '' | 'story' | 'defect'
-  setFilterType: (v: '' | 'story' | 'defect') => void
-  filterState: string
-  setFilterState: (v: string) => void
-  filterPriority: string
-  setFilterPriority: (v: string) => void
-  filterOwner: string
-  setFilterOwner: (v: string) => void
-  filterRelease: string
-  setFilterRelease: (v: string) => void
-  members: Array<{ userId: string; displayName?: string; email?: string }>
-  releases: Array<{ id: string; name: string }>
+  /** The shared Manage Filters model (P2-BL-FR-005 / -020). */
+  filters: ManageFiltersState<BacklogFilterKey>
   canCreate: boolean
   onCreate: () => void
   columns: ColumnDef<ColumnKey>[]
@@ -479,18 +478,7 @@ interface BacklogToolbarProps {
 function BacklogToolbar({
   search,
   setSearch,
-  filterType,
-  setFilterType,
-  filterState,
-  setFilterState,
-  filterPriority,
-  setFilterPriority,
-  filterOwner,
-  setFilterOwner,
-  filterRelease,
-  setFilterRelease,
-  members,
-  releases,
+  filters,
   canCreate,
   onCreate,
   columns,
@@ -500,16 +488,12 @@ function BacklogToolbar({
   reorder,
 }: BacklogToolbarProps) {
   const { t } = useTranslation('backlog')
-  const activeFilterCount =
-    (filterType ? 1 : 0) +
-    (filterState ? 1 : 0) +
-    (filterPriority ? 1 : 0) +
-    (filterOwner ? 1 : 0) +
-    (filterRelease ? 1 : 0) +
-    0
 
   return (
     <PageToolbar
+      // Quick search sits in the toolbar row, OUTSIDE the filter banner and
+      // outside Manage Filters (P2-BL-FR-003, P2-BL-TS-015). It queries on its
+      // own and never waits for Apply.
       search={{
         value: search,
         onChange: setSearch,
@@ -528,83 +512,11 @@ function BacklogToolbar({
           {t('common:addNew')}
         </Button>
       }
-      activeFilterCount={activeFilterCount}
-      defaultFiltersOpen={activeFilterCount > 0}
-      filters={
-        <>
-          {/* Type filter */}
-          <InlineSelect
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as '' | 'story' | 'defect')}
-            aria-label="Filter by type"
-            className="w-auto"
-          >
-            <option value="">{t('filters.allTypes')}</option>
-            <option value="story">{t('typeStory')}</option>
-            <option value="defect">{t('typeDefect')}</option>
-          </InlineSelect>
-
-          {/* Schedule State filter */}
-          <InlineSelect
-            value={filterState}
-            onChange={(e) => setFilterState(e.target.value)}
-            aria-label="Filter by schedule state"
-            className="w-auto"
-          >
-            {SCHEDULE_STATE_OPTS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </InlineSelect>
-
-          {/* Priority filter (P2-BL-02) */}
-          <InlineSelect
-            value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value)}
-            aria-label="Filter by priority"
-            className="w-auto"
-          >
-            <option value="">{t('filters.allPriorities')}</option>
-            {PRIORITY_VALUES.map((p) => (
-              <option key={p} value={p}>
-                {PRIORITY_LABEL[p]}
-              </option>
-            ))}
-          </InlineSelect>
-
-          {/* Owner filter (P2-BL-06) */}
-          <InlineSelect
-            value={filterOwner}
-            onChange={(e) => setFilterOwner(e.target.value)}
-            aria-label="Filter by owner"
-            className="w-auto"
-          >
-            <option value="">{t('filters.allOwners')}</option>
-            <option value="unassigned">{t('filters.unassigned')}</option>
-            {members.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.displayName ?? m.email ?? m.userId}
-              </option>
-            ))}
-          </InlineSelect>
-
-          {/* Release filter (P2-BL-06) */}
-          <InlineSelect
-            value={filterRelease}
-            onChange={(e) => setFilterRelease(e.target.value)}
-            aria-label="Filter by release"
-            className="w-auto"
-          >
-            <option value="">{t('filters.allReleases')}</option>
-            {releases.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </InlineSelect>
-        </>
-      }
+      activeFilterCount={filters.activeCount}
+      defaultFiltersOpen={filters.activeCount > 0}
+      // Manage Filters is the FIRST node in the banner — P2-BL-FR-020 puts it on
+      // the left — and it renders the chosen columns' own controls after itself.
+      filters={<ManageFiltersBar state={filters} />}
       fields={
         <ColumnFieldsMenu
           columns={columns}
@@ -624,11 +536,14 @@ interface BacklogRowProps {
   item: WorkItem
   rowNum: number
   selected: boolean
+  /** This row is the one shown in the summary panel (WID-AC-07's "selected item"). */
+  active: boolean
   onToggleSelect: () => void
   onOpen: () => void
   colStyles: Record<ColumnKey, React.CSSProperties>
   canEdit: boolean
-  members: Array<{ userId: string; displayName?: string; email?: string }>
+  /** The assignee feed (`useProjectMemberOptions`) — the shared picker shape, which permits null. */
+  members: OwnerSelectMember[]
   releases: Array<{ id: string; name: string; releaseKey?: string | null }>
   iterations: Array<{ id: string; name: string; iterationKey?: string | null }>
   allIterations: Array<{ id: string; name: string; iterationKey?: string | null }>
@@ -640,6 +555,7 @@ function BacklogRow({
   item,
   rowNum,
   selected,
+  active,
   onToggleSelect,
   onOpen,
   colStyles,
@@ -686,9 +602,11 @@ function BacklogRow({
         minWidth: 'max-content',
         backgroundColor: isDragging
           ? BRAND.primaryLighter
-          : selected
-            ? BRAND.surfaceSubtle
-            : undefined,
+          : active
+            ? BRAND.primaryLighter
+            : selected
+              ? BRAND.surfaceSubtle
+              : undefined,
         opacity: isDragging ? 0.6 : 1,
         transform: CSS.Transform.toString(transform),
         transition,

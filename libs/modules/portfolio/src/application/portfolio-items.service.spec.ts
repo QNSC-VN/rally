@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DRIZZLE, NotFoundException, UnitOfWork } from '@platform';
+import { DRIZZLE, NotFoundException, PreconditionFailedException, UnitOfWork } from '@platform';
 import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
 import { ActivityLogger } from '@modules/activity';
+import { ProjectsService } from '@modules/projects';
 import { PortfolioItemsService } from './portfolio-items.service';
 import { PreliminaryEstimateMapService } from './preliminary-estimate-map.service';
 import { DEFAULT_PRELIMINARY_ESTIMATE_MAP } from '../../../../../db/schema/enums';
@@ -72,6 +73,7 @@ describe('PortfolioItemsService', () => {
   let access: Mocked<AccessService>;
   let maps: Mocked<PreliminaryEstimateMapService>;
   let activity: Mocked<ActivityLogger>;
+  let projects: Mocked<ProjectsService>;
   /**
    * Rows returned to the Release/Team EXISTENCE checks in `assertReferences`.
    *
@@ -106,6 +108,7 @@ describe('PortfolioItemsService', () => {
             rollupsFor: vi.fn().mockResolvedValue([]),
             listChildren: vi.fn().mockResolvedValue(emptyPage([])),
             listChildFeatures: vi.fn().mockResolvedValue([]),
+            listFeatureOptions: vi.fn().mockResolvedValue([]),
             childRollupByType: vi.fn().mockResolvedValue([]),
             listMilestones: vi.fn().mockResolvedValue([]),
             setMilestones: vi.fn().mockResolvedValue(undefined),
@@ -155,6 +158,16 @@ describe('PortfolioItemsService', () => {
           useValue: { run: (fn: (tx: unknown) => unknown) => fn({}) },
         },
         {
+          provide: ProjectsService,
+          // `assertProjectWritable` is the ONE home of PRJ-FR-010 and this module calls it.
+          // Resolves by default; the block that is about it rejects deliberately.
+          useValue: {
+            assertProjectWritable: vi
+              .fn()
+              .mockResolvedValue({ id: 'proj-a', workspaceId: WORKSPACE, status: 'active' }),
+          },
+        },
+        {
           provide: DRIZZLE,
           // Three chains run through here: the Release/Team existence check in `assertReferences`
           // (`select→from→where→limit`), the destination-team lookup in `applyProjectMove`
@@ -193,6 +206,7 @@ describe('PortfolioItemsService', () => {
     access = module.get(AccessService);
     maps = module.get(PreliminaryEstimateMapService);
     activity = module.get(ActivityLogger);
+    projects = module.get(ProjectsService);
   });
 
   describe('listItems — the authorization filter', () => {
@@ -446,6 +460,27 @@ describe('PortfolioItemsService', () => {
         NotFoundException,
       );
       expect(repo.listChildFeatures).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The Feature picker feed. What is worth asserting is the ABSENCE of a check: the route carries
+     * `@RequirePermission('work_item:view', { from: 'query', field: 'projectId' })`, so the guard has
+     * already decided this exact project. A `listReadableProjectIds` narrowing here would answer a
+     * different question — which projects are readable — and silently widen a route the guard had
+     * already scoped, while an `assertProjectPermission` would be the double-check the guard's own
+     * docblock warns against. A future reader adding either would fail this test, which is the point.
+     */
+    it('passes the project straight through, with no second authorization call', async () => {
+      repo.listFeatureOptions.mockResolvedValue([
+        { id: 'fe-1', itemKey: 'FE-1', name: 'A feature', projectId: 'proj-a' },
+      ]);
+
+      const options = await service.listFeatureOptions(actor, 'proj-a');
+
+      expect(options).toHaveLength(1);
+      expect(repo.listFeatureOptions).toHaveBeenCalledWith(WORKSPACE, 'proj-a');
+      expect(access.listReadableProjectIds).not.toHaveBeenCalled();
+      expect(access.assertProjectPermission).not.toHaveBeenCalled();
     });
   });
 
@@ -1053,6 +1088,86 @@ describe('PortfolioItemsService', () => {
       await expect(service.rankItem(actor, 'missing', { beforeId: 'a' })).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+  });
+
+  /**
+   * PRJ-03. "Archived Projects are read-only regardless of access level" (PRJ-FR-010).
+   *
+   * This module had `assertNotArchived`, which asks whether the ITEM is archived — a different
+   * question with a different answer, and having it there is most likely why the project-level rule
+   * was never noticed missing. An active Feature in an archived project passed every check.
+   *
+   * Both directions of `setArchived` are guarded, including RESTORE, and that is safe rather than a
+   * trap: restoring an item does not undo the project's archive, so nothing becomes unreachable —
+   * `PATCH /projects/:id` with `status: 'active'` is the one write an archived project accepts and
+   * it takes no preconditions.
+   */
+  describe('an archived project refuses every portfolio write (PRJ-FR-010)', () => {
+    beforeEach(() => {
+      repo.findById.mockResolvedValue(view());
+      repo.findViewById.mockResolvedValue(view());
+      projects.assertProjectWritable.mockRejectedValue(
+        new PreconditionFailedException('PROJECT_ARCHIVED', 'archived'),
+      );
+    });
+
+    it('refuses a new Epic or Feature', async () => {
+      await expect(
+        service.createItem(actor, { projectId: 'proj-a', type: 'feature', name: 'A feature' }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses an edit', async () => {
+      await expect(service.updateItem(actor, 'pi-1', { name: 'Renamed' })).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses a move INTO an archived project, not just out of one', async () => {
+      // The destination is checked as well as the source. Without it, an archived project could be
+      // filled with work from the outside — the read-only rule broken on the one write that touches
+      // two projects. Both calls reject here, so the assertion is that the write never happened.
+      await expect(
+        service.updateItem(actor, 'pi-1', { projectId: 'proj-b' }),
+      ).rejects.toMatchObject({ code: 'PROJECT_ARCHIVED' });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses archiving an item', async () => {
+      await expect(service.setArchived(actor, 'pi-1', true)).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setArchived).not.toHaveBeenCalled();
+    });
+
+    it('refuses RESTORING an item — restore the PROJECT first, which always works', async () => {
+      await expect(service.setArchived(actor, 'pi-1', false)).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.setArchived).not.toHaveBeenCalled();
+    });
+
+    it('refuses a rank change', async () => {
+      await expect(service.rankItem(actor, 'pi-1', { beforeId: 'a' })).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses the attachment resolve step — archived takes no new files', async () => {
+      // `getItemForWrite` is what `PortfolioAttachmentsController` calls on presign/confirm and
+      // delete, so the rule reaches those routes without `EntityAttachmentsService` learning about
+      // projects.
+      await expect(service.getItemForWrite(actor, 'pi-1')).rejects.toMatchObject({
+        code: 'PROJECT_ARCHIVED',
+      });
+    });
+
+    it('still READS the item — archived is read-only, not invisible', async () => {
+      await expect(service.getItem(actor, 'pi-1')).resolves.toMatchObject({ id: 'pi-1' });
     });
   });
 });

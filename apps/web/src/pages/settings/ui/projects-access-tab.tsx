@@ -32,11 +32,8 @@ import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useMutation } from '@tanstack/react-query'
 import {
   useProjectMembers,
-  useUpdateProjectAccess,
-  useAddProjectMember,
+  useSetProjectAccess,
   useProjectTeams,
-  useAddTeamMember,
-  useRemoveTeamMember,
   useUserTeamMemberships,
   type ProjectMember,
 } from '@/features/teams/api'
@@ -58,6 +55,7 @@ import {
   accessSelectOptions,
   grantsAllTeams,
   requiresTeamSelection,
+  TEAM_SCOPED_LEVEL,
   type AccessLevel,
 } from '@/shared/config/access-levels'
 
@@ -65,8 +63,7 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
   const { t } = useTranslation('settings')
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { data: members = [], isLoading } = useProjectMembers(projectId)
-  const updateAccess = useUpdateProjectAccess(projectId)
-  const addMember = useAddProjectMember(projectId)
+  const setAccess = useSetProjectAccess(projectId)
   const [removeTarget, setRemoveTarget] = useState<ProjectMember | null>(null)
   const [editorTarget, setEditorTarget] = useState<ProjectMember | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -77,20 +74,23 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
   )
 
   /**
-   * The one level-write path on this roster, shared with `EditorTeamsModal` so the
-   * POST-vs-PATCH rule below cannot drift between the immediate (Admin) and deferred
-   * (Editor) journeys.
+   * The one level-write path on this roster, shared with `EditorTeamsModal` so the two entry points
+   * cannot drift between the immediate (Admin) and deferred (Editor) journeys.
    *
-   * NULL access_level rows are team-derived: their `id` is a team_members id, and
-   * PATCHing it 404s. POST upserts (BE sets the level on the existing row or creates
-   * the explicit grant).
+   * ONE request, level and Teams together (PRJ-08). It used to branch between POST and PATCH — a NULL
+   * `access_level` row is team-derived, so its `id` is a `team_members` id and PATCHing it 404s — and
+   * the Teams were a second set of requests after it. The combined endpoint upserts either row shape,
+   * so the branch and the follow-up writes are both gone.
+   *
+   * `teamIds` is passed through rather than defaulted: absent means "leave the memberships alone",
+   * which is what an Admin promotion must send.
    */
-  async function writeLevel(member: ProjectMember, level: AccessLevel) {
-    if (member.accessLevel) {
-      await updateAccess.mutateAsync({ memberId: member.id, accessLevel: level })
-    } else {
-      await addMember.mutateAsync({ userId: member.userId, accessLevel: level })
-    }
+  async function writeLevel(member: ProjectMember, level: AccessLevel, teamIds?: string[]) {
+    await setAccess.mutateAsync({
+      userId: member.userId,
+      accessLevel: level,
+      ...(teamIds ? { teamIds } : {}),
+    })
   }
 
   /**
@@ -291,15 +291,13 @@ function EditorTeamsModal({
 }: {
   projectId: string
   member: ProjectMember
-  writeLevel: (member: ProjectMember, level: AccessLevel) => Promise<void>
+  writeLevel: (member: ProjectMember, level: AccessLevel, teamIds?: string[]) => Promise<void>
   onClose: () => void
 }) {
   const { t } = useTranslation('settings')
   const { data: teams = [] } = useProjectTeams(projectId)
   const teamIds = teams.map((tm) => tm.id)
   const { memberTeamIds, isLoading } = useUserTeamMemberships(teamIds, member.userId)
-  const addTeamMember = useAddTeamMember()
-  const removeTeamMember = useRemoveTeamMember()
   const [draft, setDraft] = useState<string[] | null>(null)
   const [pending, setPending] = useState(false)
   const label = member.displayName ?? member.email ?? member.userId
@@ -312,37 +310,23 @@ function EditorTeamsModal({
   const canSave = !isLoading && (selected.length > 0 || teams.length === 0)
 
   /**
-   * The `team_members` rows go FIRST and the level LAST, and that order is the point of
-   * the dialog.
+   * ONE request: the level and the team set together (PRJ-08).
    *
-   * Written level-first, one failed `addTeamMember` (a 500, a dropped connection) left the
-   * level ALREADY landed with no team rows behind it: an Editor with zero teams — §2.2's
-   * "Editor must be assigned to at least one active Team", the exact state this Team step
-   * exists to make unreachable, reachable again through a network error instead of a
-   * click. In this order the same failure leaves the member at their PREVIOUS level, which
-   * is a state §2.2 already permits, plus some team rows that carry delivery meaning
-   * anyway (assignment, Team Status, capacity) and that a retry reconciles.
+   * This used to be a sequence — every add, then every remove, then the level LAST — and the ordering
+   * was load-bearing for a reason worth keeping on record: written level-first, one failed
+   * `addTeamMember` (a 500, a dropped connection) left the level ALREADY landed with no team rows
+   * behind it. That is an Editor with zero teams, §2.2's forbidden state, reached through a network
+   * error instead of a click, and the exact state this Team step exists to make unreachable. Ordering
+   * the writes only narrowed the window; the combined endpoint applies both halves in one transaction,
+   * so the window is gone and the server can refuse the invalid state outright.
    *
-   * Safe to write team rows first because every member this dialog opens over already has
-   * an active `project_members` row — the roster lists nothing else, and a NULL level is a
-   * team-derived row, not an absent one — so a `team_members` write never precedes the
-   * project grant that scopes it. Adds still precede removes for the same reason the level
-   * comes last: the member is never momentarily left with no team at all.
+   * `'editor'` is written unconditionally now rather than only when the member does not already hold
+   * it: the same request carries the teams either way, so there is no second write to skip.
    */
   async function handleSave() {
     setPending(true)
     try {
-      for (const teamId of selected.filter((id) => !memberTeamIds.includes(id))) {
-        await addTeamMember.mutateAsync({ teamId, userId: member.userId })
-      }
-      for (const teamId of memberTeamIds.filter((id) => !selected.includes(id))) {
-        await removeTeamMember.mutateAsync({ teamId, userId: member.userId })
-      }
-      // `requiresTeamSelection`, never an inline `=== 'editor'`: the shared predicate is
-      // the one place a level's team-scoping is decided (`shared/config/access-levels.ts`),
-      // and a hand-written level comparison in a second place is what once made a granted
-      // row read as No Access.
-      if (!requiresTeamSelection(member.accessLevel)) await writeLevel(member, 'editor')
+      await writeLevel(member, TEAM_SCOPED_LEVEL, selected)
       notify.success('Access updated to editor')
       onClose()
     } catch (e) {
@@ -408,11 +392,12 @@ function EditorTeamsModal({
 /**
  * Pick an active workspace user who is not yet a project member, choose a level, and
  * (when Editor) their Teams — all in one modal, one "Add to project" action, matching
- * the BA mockup's single-modal shape. The POST persists the level up front (Stage-5 BE
- * fix); Team membership is a separate write (`team_members`, not `project_members`), so
- * on success this fires one `useAddTeamMember` call per selected team — same hooks and
- * same per-selection call shape as `user-access-modal.tsx`'s `ProjectTeamsField`, just
- * starting from an empty `memberTeamIds` since the user isn't on any team yet.
+ * the BA mockup's single-modal shape — and ONE request, `useSetProjectAccess`, which carries the
+ * level and the Teams together (PRJ-08). It used to be a `POST /projects/{id}/members` for the level
+ * followed by one `POST /teams/{id}/members` per selected team, with the team failures merely
+ * TOASTED (`.catch(notify.fromError)`) — so an Editor could be added with the level landed and every
+ * team write failed, the state §2.2 forbids, reported as a warning rather than a refusal. One
+ * transaction makes that unreachable and the server refuses the invalid combination outright.
  *
  * Admin bypasses Team scoping entirely (`access.service.ts`'s `assertTeamScoped`), so the
  * Teams picker only renders for Editor and Admin reads `All Teams` instead (§2.2).
@@ -441,10 +426,9 @@ function AddExistingUserModal({
   const { t } = useTranslation('settings')
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
   const { data: teams = [] } = useProjectTeams(projectId)
-  const addMember = useAddProjectMember(projectId)
-  const addTeamMember = useAddTeamMember()
+  const setAccess = useSetProjectAccess(projectId)
   const [userId, setUserId] = useState<string | null>(null)
-  const [level, setLevel] = useState<AccessLevel>('editor')
+  const [level, setLevel] = useState<AccessLevel>(TEAM_SCOPED_LEVEL)
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
 
   // Workspace Admin is company-level only — never a Project member candidate (§2).
@@ -464,27 +448,23 @@ function AddExistingUserModal({
 
   function handleClose() {
     setUserId(null)
-    setLevel('editor')
+    setLevel(TEAM_SCOPED_LEVEL)
     setSelectedTeamIds([])
     onClose()
   }
 
   function handleAdd() {
     if (!userId) return
-    const newUserId = userId
-    addMember.mutate(
-      { userId: newUserId, accessLevel: level },
+    setAccess.mutate(
       {
-        onSuccess: async () => {
-          if (requiresTeamSelection(level) && selectedTeamIds.length > 0) {
-            await Promise.all(
-              selectedTeamIds.map((teamId) =>
-                addTeamMember
-                  .mutateAsync({ teamId, userId: newUserId })
-                  .catch((e) => notify.fromError(e, 'Failed to add to team')),
-              ),
-            )
-          }
+        userId,
+        accessLevel: level,
+        // Only for a team-scoped level: an Admin sends no `teamIds` at all, so the endpoint leaves
+        // any memberships it already has alone (§5.1 shows no Team control for an Admin).
+        ...(requiresTeamSelection(level) ? { teamIds: selectedTeamIds } : {}),
+      },
+      {
+        onSuccess: () => {
           notify.success('User added to project')
           handleClose()
         },
@@ -575,12 +555,10 @@ function AddExistingUserModal({
         </Button>
         <Button
           type="button"
-          disabled={!userId || missingTeam || addMember.isPending || addTeamMember.isPending}
+          disabled={!userId || missingTeam || setAccess.isPending}
           onClick={handleAdd}
         >
-          {(addMember.isPending || addTeamMember.isPending) && (
-            <Loader2 size={12} className="animate-spin" />
-          )}
+          {setAccess.isPending && <Loader2 size={12} className="animate-spin" />}
           Add to project
         </Button>
       </ModalFooter>

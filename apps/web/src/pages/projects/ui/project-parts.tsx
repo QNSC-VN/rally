@@ -14,11 +14,11 @@ import {
   type Project,
   type ProjectEstimationSettings,
 } from '@/features/projects/api'
-import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import {
   useWorkspaceTeams,
   useProjectTeams,
-  useProjectMembers,
+  useProjectMemberOptions,
   useLinkProjectTeam,
   useUnlinkProjectTeam,
 } from '@/features/teams/api'
@@ -42,7 +42,9 @@ import { type ProjectColKey, type ProjectCtx } from '../model/columns'
 
 // ── Owner (project lead) picker ──────────────────────────────────────────────
 // Shared by the New Project and Edit Project modals. Backed by the single-source
-// workspace-member roster (useWorkspaceMembers) so the owner list never drifts.
+// workspace picker feed (useWorkspaceMemberOptions) so the owner list never drifts. NOT
+// `useWorkspaceMembers`: that is the Workspace-Admin-only User Management roster, and an Editor
+// reading it gets a 403 (RBE-07 — the roster is two routes by audience).
 
 function OwnerSelect({
   workspaceId,
@@ -56,7 +58,7 @@ function OwnerSelect({
   currentUserId?: string
 }) {
   const { t } = useTranslation('projects')
-  const { data: members = [], isLoading } = useWorkspaceMembers(workspaceId)
+  const { data: members = [], isLoading } = useWorkspaceMemberOptions(workspaceId)
   const options = members.map((m) => ({
     value: m.userId,
     label: (m.displayName || m.email || m.userId) + (m.userId === currentUserId ? ' (you)' : ''),
@@ -473,7 +475,9 @@ function ProjectTeamsCell({
 /** Members cell — read-only chips (a project's members are derived from its
  *  linked teams, edited via Teams, not here). Same capped chip look as Teams. */
 function ProjectMembersCell({ projectId }: { projectId: string }) {
-  const { data: members = [] } = useProjectMembers(projectId)
+  // Names and avatars only, so the reference feed: this cell renders `--` when the list is empty,
+  // which on the administrative roster's 403 would claim a populated project has no members.
+  const { data: members = [] } = useProjectMemberOptions(projectId)
   if (members.length === 0) return <span className="text-foreground-subtle">--</span>
   return (
     <SearchableSelect

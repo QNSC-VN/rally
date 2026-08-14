@@ -22,10 +22,11 @@ import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ReleaseArtifactsTab } from './ui/release-artifacts-tab'
 import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
+import { listResource } from '@/shared/lib/query/resource'
 import { TaskRollupPanel } from './ui/release-detail-panels'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from './model/release-states'
 import { useProjectPermissions } from '@/features/access/api'
-import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useRecordProject } from '@/shared/lib/deep-link-project'
 import {
   useRelease,
   useUpdateRelease,
@@ -41,13 +42,26 @@ export function ReleaseDetailPage() {
   const { t } = useTranslation('releases')
   const navigate = useNavigate()
   const { releaseId } = useParams({ from: '/auth/releases/$releaseId' })
-  const { project } = useAppContext()
-  const projectId = project?.projectId ?? ''
-  const { can } = useProjectPermissions(projectId || undefined)
-  const canManage = can('release:create') || can('release:edit') || can('release:delete')
 
   const { data: release, isLoading, isError } = useRelease(releaseId)
-  const { data: activityLogs = [], isLoading: activityLoading } = useReleaseActivityLog(releaseId)
+
+  /**
+   * Both of these read the RELEASE's own project, never the selected one — the rule the Artifacts
+   * tab below already followed, and this file's only remaining exception to it.
+   *
+   * A release id is workspace-unique, so `/releases/:id` is a valid deep link with no project in the
+   * URL and a bookmarked or forwarded one opens a release in ANY project the caller can read. Asking
+   * `useProjectPermissions` about the selected project therefore answered a question about the wrong
+   * project in both directions: an Editor on this release's project saw it locked because they hold
+   * nothing on the one they happened to have selected, and an Admin of the selected project saw
+   * editors on a release they cannot write — every Save 403ing to `/403`. The scope label had the
+   * same fault visibly: a PAY release rendered `Project scope: NXP`.
+   */
+  const { can } = useProjectPermissions(release?.projectId)
+  const releaseProject = useRecordProject(release?.projectId)
+  const canManage = can('release:create') || can('release:edit') || can('release:delete')
+  const activityQuery = useReleaseActivityLog(releaseId)
+  const activityLogs = listResource(activityQuery)
   const update = useUpdateRelease(releaseId)
 
   const [activeTab, setActiveTab] = useState<TabKey>('details')
@@ -141,12 +155,18 @@ export function ReleaseDetailPage() {
       onTabChange={(key) => setActiveTab(key as TabKey)}
     >
       {activeTab === 'artifacts' ? (
-        <ReleaseArtifactsTab releaseId={releaseId} />
+        /* The RELEASE's own project, not the app-context one: the bulk write validates the selection
+           against it, and a release opened from a notification need not belong to the selected
+           project. */
+        <ReleaseArtifactsTab
+          releaseId={releaseId}
+          projectId={release.projectId}
+          canManage={canManage}
+        />
       ) : activeTab === 'history' ? (
         <div className="flex-1 overflow-y-auto bg-card p-6">
           <ActivityHistoryTab
             logs={activityLogs}
-            isLoading={activityLoading}
             title={t('detailPage.historyTitle', 'Revision History')}
             subtitle={t(
               'detailPage.historySubtitle',
@@ -188,8 +208,8 @@ export function ReleaseDetailPage() {
               <div className="space-y-4">
                 <DetailField label={t('detailPage.projectScope')}>
                   <ProjectCell
-                    projectKey={project?.projectKey}
-                    projectName={project?.projectName}
+                    projectKey={releaseProject?.projectKey}
+                    projectName={releaseProject?.projectName}
                   />
                 </DetailField>
 

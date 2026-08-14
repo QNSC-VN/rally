@@ -122,9 +122,29 @@ const makeProjectMemberRepo = () => ({
   // §2.1 — no Workspace Admin by default; the RBE-03 tests set this.
   listWorkspaceAdminUserIds: vi.fn().mockResolvedValue([]),
   findMember: vi.fn().mockResolvedValue(null),
-  addMember: vi.fn().mockResolvedValue(undefined),
+  findMemberById: vi.fn().mockResolvedValue(null),
   updateMember: vi.fn().mockResolvedValue(undefined),
   removeMember: vi.fn().mockResolvedValue(undefined),
+});
+
+/**
+ * `listProjects` asks which projects the caller may read: `null` = UNRESTRICTED, which keeps these
+ * specs' expectations about the unfiltered page intact; the restriction itself is covered
+ * end-to-end in `test/e2e/read-scoping.e2e.spec.ts`.
+ *
+ * `grantProjectAccess` is the ONE per-Project grant writer, and `addProjectMember` is a thin
+ * delegate to it — so what this spec can prove is the DELEGATION and its arguments. The rules the
+ * body used to hold moved to `access.service.spec.ts` with the body.
+ */
+const makeAccessService = () => ({
+  listReadableProjectIds: vi.fn().mockResolvedValue(null),
+  invalidateUser: vi.fn().mockResolvedValue(undefined),
+  // Archive/restore is WA-only; these specs run as one.
+  hasPermission: vi.fn().mockResolvedValue(true),
+  getProjectAccessLevel: vi.fn().mockResolvedValue(null),
+  grantProjectAccess: vi
+    .fn()
+    .mockResolvedValue({ id: 'pm-1', userId: 'user-2', accessLevel: 'editor' }),
 });
 
 const makeWorkspaceMemberRepo = () => ({
@@ -164,13 +184,18 @@ describe('ProjectsService', () => {
   let projectTeamRepo: ReturnType<typeof makeProjectTeamRepo>;
   let projectMemberRepo: ReturnType<typeof makeProjectMemberRepo>;
   let workspaceMemberRepo: ReturnType<typeof makeWorkspaceMemberRepo>;
-  let teamService: { listTeams: ReturnType<typeof vi.fn> };
+  let teamService: {
+    listTeams: ReturnType<typeof vi.fn>;
+    listUserTeamIds: ReturnType<typeof vi.fn>;
+    applyTeamMembershipDiff: ReturnType<typeof vi.fn>;
+  };
   let uow: ReturnType<typeof makeUow>;
   /** Capacity plans that BLOCK an unlink. Empty unless a test is about that refusal. */
   let capacityPlanRows: Array<{ planKey: string; name: string }>;
   /** work.project_settings rows for the estimation-settings read. Empty by default → fallback. */
   let estimationRows: unknown[];
   let audit: { emit: ReturnType<typeof vi.fn> };
+  let access: ReturnType<typeof makeAccessService>;
 
   beforeEach(async () => {
     capacityPlanRows = [];
@@ -182,7 +207,14 @@ describe('ProjectsService', () => {
     projectTeamRepo = makeProjectTeamRepo();
     projectMemberRepo = makeProjectMemberRepo();
     workspaceMemberRepo = makeWorkspaceMemberRepo();
-    teamService = { listTeams: vi.fn().mockResolvedValue([]) };
+    teamService = {
+      listTeams: vi.fn().mockResolvedValue([]),
+      // The user holds NO team by default — the state PRJ-08 refuses for an Editor, so every test
+      // that wants the level accepted has to say which teams it is standing on.
+      listUserTeamIds: vi.fn().mockResolvedValue([]),
+      applyTeamMembershipDiff: vi.fn().mockResolvedValue(undefined),
+    };
+    access = makeAccessService();
     uow = makeUow();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -198,19 +230,7 @@ describe('ProjectsService', () => {
         { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: audit },
         { provide: ActivityLogger, useValue: activityMock() },
-        // `listProjects` now asks which projects the caller may read. `null` = UNRESTRICTED, which
-        // keeps these specs' expectations about the unfiltered page intact; the restriction itself is
-        // covered end-to-end in `test/e2e/read-scoping.e2e.spec.ts`.
-        {
-          provide: AccessService,
-          useValue: {
-            listReadableProjectIds: vi.fn().mockResolvedValue(null),
-            invalidateUser: vi.fn().mockResolvedValue(undefined),
-            // Archive/restore is WA-only; these specs run as one.
-            hasPermission: vi.fn().mockResolvedValue(true),
-            getProjectAccessLevel: vi.fn().mockResolvedValue(null),
-          },
-        },
+        { provide: AccessService, useValue: access },
         {
           provide: DRIZZLE,
           /**
@@ -492,88 +512,189 @@ describe('ProjectsService', () => {
     });
   });
 
-  // ── addProjectMember ────────────────────────────────────────────────────────
+  // ── setProjectAccess (level + Teams, one write) ──────────────────────────────
 
-  describe('addProjectMember', () => {
-    it('adds a member who is an active workspace member', async () => {
+  /**
+   * The rules this block used to assert — the active-workspace-member check, the §2.1 Workspace
+   * Admin refusal, upsert-not-409, both audit events, the cache invalidation — now live in
+   * `AccessService.grantProjectAccess`, and so do their tests
+   * (`libs/modules/access/src/application/access.service.spec.ts`). They had to move with the body:
+   * `AccessService` is a mock here, so a spec on this side can only observe the delegation, and
+   * asserting on `projectMemberRepo` after the writer moved would assert on a repository this
+   * method no longer touches.
+   *
+   * What IS this method's own is PRJ-08 — "an Editor must be assigned to at least one active Team"
+   * (§2.2, and `mini_rally_usecase_role_mapping.md:81`) — plus the ATOMICITY that makes it
+   * enforceable, and the per-journey `onWorkspaceAdmin: 'refuse'` (an admin asked for the grant; the
+   * two side-effect journeys skip). All four PRJ-08 cases are here, not just the refusal: a test that
+   * only proves the refusal passes just as well when the level has been made unusable.
+   */
+  describe('setProjectAccess — PRJ-08: an Editor needs a Team', () => {
+    // Existence, not writability: both level writes call `getProject` first, and access writes stay
+    // open on an ARCHIVED project.
+    beforeEach(() => {
       projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
-      projectMemberRepo.findMember.mockResolvedValue(null);
-      projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
-      await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin');
-      expect(projectMemberRepo.addMember).toHaveBeenCalled();
     });
 
-    it('rejects a user who is not an active workspace member', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue(null);
+    /** A project WITH a team to assign, which is what makes the rule apply at all. */
+    function projectWithTeam() {
+      projectTeamRepo.listByProject.mockResolvedValue([{ teamId: 'team-1', status: 'active' }]);
+    }
+
+    it('REFUSES an Editor with zero teams', async () => {
+      projectWithTeam();
+
       await expect(
-        service.addProjectMember('ws-1', 'proj-1', 'foreign-user', 'admin'),
-      ).rejects.toThrow(PreconditionFailedException);
-      expect(projectMemberRepo.addMember).not.toHaveBeenCalled();
+        service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+          accessLevel: 'editor',
+          teamIds: [],
+        }),
+      ).rejects.toMatchObject({ code: 'PROJECT_EDITOR_REQUIRES_TEAM' });
+      // Nothing written: the rule is decided before the transaction opens.
+      expect(access.grantProjectAccess).not.toHaveBeenCalled();
+      expect(teamService.applyTeamMembershipDiff).not.toHaveBeenCalled();
     });
 
-    it('persists the chosen access level on add (Add Existing User flow)', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
-      projectMemberRepo.findMember.mockResolvedValue(null);
-      projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
+    it('ACCEPTS an Editor with one team, and writes both halves in ONE transaction', async () => {
+      projectWithTeam();
 
-      await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin', 'editor');
-
-      expect(projectMemberRepo.addMember).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'user-2', accessLevel: 'editor' }),
-        expect.anything(),
-      );
-    });
-
-    it('upserts: an existing NULL-level row gets the level instead of a 409', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
-      // The team-derived / pre-fix shape: explicit row, no level.
-      projectMemberRepo.findMember.mockResolvedValue({
-        id: 'pm-existing',
-        userId: 'user-2',
-        accessLevel: null,
+      const result = await service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+        accessLevel: 'editor',
+        teamIds: ['team-1'],
       });
-      projectMemberRepo.updateMember.mockResolvedValue({
-        id: 'pm-existing',
+
+      expect(teamService.applyTeamMembershipDiff).toHaveBeenCalledWith(uow.tx, {
+        workspaceId: 'ws-1',
         userId: 'user-2',
+        actorId: 'admin',
+        add: ['team-1'],
+        remove: [],
+      });
+      expect(access.grantProjectAccess).toHaveBeenCalledWith(
+        {
+          workspaceId: 'ws-1',
+          projectId: 'proj-1',
+          userId: 'user-2',
+          accessLevel: 'editor',
+          actorId: 'admin',
+          onWorkspaceAdmin: 'refuse',
+        },
+        // The SAME transaction the team rows were written in — see the atomicity test below.
+        uow.tx,
+      );
+      expect(access.invalidateUser).toHaveBeenCalledWith('ws-1', 'user-2');
+      expect(result.accessLevel).toBe('editor');
+    });
+
+    it('ACCEPTS an Editor on a project with NO teams at all', async () => {
+      // Decision, stated server-side: otherwise the level is unusable on a new project, and a
+      // Workspace Admin would have to invent a Team before granting anyone delivery access.
+      projectTeamRepo.listByProject.mockResolvedValue([]);
+
+      await service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
         accessLevel: 'editor',
       });
 
-      const result = await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin', 'editor');
-
-      expect(projectMemberRepo.updateMember).toHaveBeenCalledWith(
-        'pm-existing',
-        { accessLevel: 'editor' },
-        expect.anything(),
-      );
-      expect(result.accessLevel).toBe('editor');
-      expect(audit.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'project.member.updated',
-          changes: {
-            before: { userId: 'user-2', accessLevel: null },
-            after: { userId: 'user-2', accessLevel: 'editor' },
-          },
-        }),
-        expect.anything(),
+      expect(access.grantProjectAccess).toHaveBeenCalledWith(
+        expect.objectContaining({ accessLevel: 'editor' }),
+        uow.tx,
       );
     });
 
-    it('omits accessLevel when none is supplied (lands NULL until a PATCH)', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'user-2', status: 'active' });
-      projectMemberRepo.findMember.mockResolvedValue(null);
-      projectMemberRepo.addMember.mockResolvedValue({ id: 'pm-1', userId: 'user-2' });
+    it('ACCEPTS an Admin with zero teams — All Teams is the ABSENCE of a scope', async () => {
+      projectWithTeam();
 
-      await service.addProjectMember('ws-1', 'proj-1', 'user-2', 'admin');
+      await service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+        accessLevel: 'admin',
+      });
 
-      expect(projectMemberRepo.addMember).toHaveBeenCalledWith(
-        expect.not.objectContaining({ accessLevel: expect.anything() }),
-        expect.anything(),
+      expect(access.grantProjectAccess).toHaveBeenCalledWith(
+        expect.objectContaining({ accessLevel: 'admin' }),
+        uow.tx,
       );
+    });
+
+    it('leaves an Admin’s existing team rows alone rather than reconciling them', async () => {
+      // §5.1 shows no Team control for an Admin, and the rows carry delivery meaning (assignment,
+      // Team Status, capacity) — so a later demotion is lossless. Only `Remove` clears them.
+      projectWithTeam();
+      teamService.listUserTeamIds.mockResolvedValue(['team-1']);
+
+      await service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+        accessLevel: 'admin',
+        teamIds: [],
+      });
+
+      expect(teamService.applyTeamMembershipDiff).toHaveBeenCalledWith(
+        uow.tx,
+        expect.objectContaining({ add: [], remove: [] }),
+      );
+    });
+
+    it('is ATOMIC: a failed team write means the level did not land', async () => {
+      projectWithTeam();
+      teamService.applyTeamMembershipDiff.mockRejectedValue(new Error('team write exploded'));
+
+      await expect(
+        service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+          accessLevel: 'editor',
+          teamIds: ['team-1'],
+        }),
+      ).rejects.toThrow('team write exploded');
+
+      expect(access.grantProjectAccess).not.toHaveBeenCalled();
+    });
+
+    it('refuses a team that is not linked to this project', async () => {
+      projectWithTeam();
+
+      await expect(
+        service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {
+          accessLevel: 'editor',
+          teamIds: ['team-elsewhere'],
+        }),
+      ).rejects.toMatchObject({ code: 'PROJECT_TEAM_NOT_FOUND' });
+    });
+
+    it('passes an omitted level through as undefined, never a defaulted one', async () => {
+      await service.setProjectAccess('ws-1', 'proj-1', 'user-2', 'admin', {});
+
+      const [input] = access.grantProjectAccess.mock.calls[0] as [Record<string, unknown>];
+      expect('accessLevel' in input).toBe(false);
+    });
+
+    /**
+     * The level-ONLY route (`PATCH :id/members/:memberId`) has no Teams to combine, so it is judged
+     * against the ones the member already holds — and it must reach the SAME rule, not a second copy.
+     */
+    it('refuses a bare PATCH to Editor when the member holds no team', async () => {
+      projectWithTeam();
+      projectMemberRepo.findMemberById.mockResolvedValue({
+        id: 'pm-1',
+        projectId: 'proj-1',
+        userId: 'user-2',
+        accessLevel: null,
+      });
+
+      await expect(
+        service.updateProjectMember('ws-1', 'proj-1', 'pm-1', { accessLevel: 'editor' }, 'admin'),
+      ).rejects.toMatchObject({ code: 'PROJECT_EDITOR_REQUIRES_TEAM' });
+    });
+
+    it('allows a bare PATCH to Editor when the member already holds a team', async () => {
+      projectWithTeam();
+      teamService.listUserTeamIds.mockResolvedValue(['team-1']);
+      projectMemberRepo.findMemberById.mockResolvedValue({
+        id: 'pm-1',
+        projectId: 'proj-1',
+        userId: 'user-2',
+        accessLevel: null,
+      });
+      projectMemberRepo.updateMember.mockResolvedValue({ id: 'pm-1', accessLevel: 'editor' });
+
+      await expect(
+        service.updateProjectMember('ws-1', 'proj-1', 'pm-1', { accessLevel: 'editor' }, 'admin'),
+      ).resolves.toMatchObject({ accessLevel: 'editor' });
     });
   });
 
@@ -597,17 +718,78 @@ describe('ProjectsService', () => {
       expect(roster.map((m) => m.userId)).toEqual(['user-2']);
     });
 
-    it('REFUSES adding a Workspace Admin as a project member', async () => {
-      projectRepo.findById.mockResolvedValue(mockProject());
-      workspaceMemberRepo.findMember.mockResolvedValue({ userId: 'wa-1', status: 'active' });
-      projectMemberRepo.listWorkspaceAdminUserIds.mockResolvedValue(['wa-1']);
+    // The write half of §2.1 — "REFUSES adding a Workspace Admin" — moved with the writer, to
+    // `access.service.spec.ts`. The roster half stays here because `listProjectMembers` does.
+  });
 
-      // Refused, not silently dropped: the roster now hides these rows, so a row created here
-      // would be an invisible grant the moment the user stops being a Workspace Admin.
-      await expect(
-        service.addProjectMember('ws-1', 'proj-1', 'wa-1', 'admin', 'editor'),
-      ).rejects.toThrow(PreconditionFailedException);
-      expect(projectMemberRepo.addMember).not.toHaveBeenCalled();
+  /**
+   * The assignee feed, and why it is a SEPARATE method from the roster.
+   *
+   * Gating the roster to Workspace/Project Admin (§3.1:71) was correct — and it broke every Editor's
+   * Backlog and Iteration Status, because that roster was ALSO the only owner-picker feed. Both surfaces
+   * derive the displayed owner NAME from it, so with the request refused every owned item read
+   * `Unassigned` and §3.2:79's owner write was unreachable. Silent wrong data on the two screens an
+   * Editor lives in, caused by a permission fix. No register row ever named it.
+   *
+   * So these tests pin the two properties that keep the fix honest: the feed carries NONE of the
+   * administrative fields the roster is gated for, and it still excludes Workspace Admins (§2.1, and
+   * `AC-16`'s "Workspace Admin is not an assignable owner" — one filter serving both).
+   */
+  describe('the assignee feed is separate from the roster (§3.1:71 / §3.2:79)', () => {
+    beforeEach(() => {
+      projectRepo.findById.mockResolvedValue(mockProject());
+      projectMemberRepo.listWorkspaceAdminUserIds.mockResolvedValue(['wa-1']);
+      projectMemberRepo.listByProject.mockResolvedValue([
+        {
+          id: 'pm-1',
+          userId: 'wa-1',
+          accessLevel: 'admin',
+          status: 'active',
+          displayName: 'Admin',
+        },
+        {
+          id: 'pm-2',
+          userId: 'user-2',
+          accessLevel: 'editor',
+          status: 'active',
+          displayName: 'Dev Two',
+          email: 'dev2@qnsc.dev',
+          avatarUrl: null,
+          teamCount: 3,
+        },
+        { id: 'pm-3', userId: 'user-3', accessLevel: 'editor', status: 'removed' },
+      ]);
+    });
+
+    it('carries the picker fields and NONE of the administrative ones', async () => {
+      const options = await service.listProjectMemberOptions('ws-1', 'proj-1');
+
+      expect(options).toEqual([
+        {
+          userId: 'user-2',
+          displayName: 'Dev Two',
+          email: 'dev2@qnsc.dev',
+          avatarUrl: null,
+        },
+      ]);
+      // The fields §3.1 restricts the roster FOR must not ride along on the feed every participant
+      // reads — asserted by key, so a field added to the roster shape later cannot join it silently.
+      expect(Object.keys(options[0])).not.toContain('accessLevel');
+      expect(Object.keys(options[0])).not.toContain('status');
+      expect(Object.keys(options[0])).not.toContain('teamCount');
+    });
+
+    it('excludes Workspace Admins and inactive rows', async () => {
+      const options = await service.listProjectMemberOptions('ws-1', 'proj-1');
+
+      expect(options.map((o) => o.userId)).toEqual(['user-2']);
+    });
+
+    it('takes NO actor and applies no roster gate — the route carries project:view', async () => {
+      // The roster refuses an Editor by design. If this method grew the same check, the defect would
+      // simply move here, so its signature deliberately has nowhere to put an actor.
+      await expect(service.listProjectMemberOptions('ws-1', 'proj-1')).resolves.toHaveLength(1);
+      expect(access.getProjectAccessLevel).not.toHaveBeenCalled();
     });
   });
 

@@ -212,7 +212,7 @@ export interface ProjectMember {
   /**
    * Count of this user's ACTIVE `team_members` rows for Teams LINKED to this
    * project (`project_teams` scoped to this projectId, active on both sides) —
-   * the same scoping `AccessService.assertTeamScoped` uses to gate Editor
+   * the same two-tier scoping the reports and Team Status use (team rows plus the shared ones)
    * writes. Only `listByProject` computes this for real; other repository
    * methods leave it undefined and the DTO mapper defaults to 0, matching how
    * the other joined-from-users fields above are already handled.
@@ -220,14 +220,8 @@ export interface ProjectMember {
   teamCount?: number;
 }
 
-export interface AddProjectMemberInput {
-  id: string;
-  workspaceId: string;
-  projectId: string;
-  userId: string;
-  /** Persisted up front on create AND on reactivation of a removed row. */
-  accessLevel?: ProjectAccessLevel;
-}
+// `AddProjectMemberInput` is gone with the write it described: creating a grant is
+// `GrantProjectAccessInput` in `@modules/access` now, one shape for all three §5 journeys.
 
 export interface UpdateProjectMemberInput {
   roleId?: string;

@@ -225,23 +225,23 @@ export class WorkItemsService {
 
   // ── Create ────────────────────────────────────────────────────────────────
 
-  @Span('work-items.create')
   /**
-   * An archived project is read-only end to end (PRJ-FR-010). The project record and
-   * key-gen were guarded, but its CONTENT stayed fully writable — archive then did
-   * nothing to stop edits inside the project. Every write path resolves the project
-   * anyway, so this check costs no extra query.
+   * An archived project is read-only end to end (PRJ-FR-010). The project record and key-gen were
+   * guarded, but its CONTENT stayed fully writable — archive then did nothing to stop edits inside
+   * the project. Every write path resolves the project anyway, so this check costs no extra query.
+   *
+   * A DELEGATION, not an implementation. This used to be a copy of
+   * `ProjectsService.assertProjectWritable`'s body, and a second home for one rule is why the rule
+   * kept drifting: the copy was reached by three methods here while ~19 secondary writes in the
+   * same class reached neither it nor the original, and five other modules had no check at all. The
+   * wrapper stays only so the call sites below read the same as they did — the code and the message
+   * now live in exactly one place, and `void` is deliberate because nothing here wants the row.
    */
   private async assertProjectWritable(workspaceId: string, projectId: string): Promise<void> {
-    const project = await this.projectsService.getProject(workspaceId, projectId);
-    if (project.status === 'archived') {
-      throw new PreconditionFailedException(
-        'PROJECT_ARCHIVED',
-        'This project is archived and read-only. Restore it to active before changing its content.',
-      );
-    }
+    await this.projectsService.assertProjectWritable(workspaceId, projectId);
   }
 
+  @Span('work-items.create')
   async createWorkItem(
     actor: JwtPayload,
     projectId: string,
@@ -331,8 +331,11 @@ export class WorkItemsService {
       foundInReleaseId: opts.foundInReleaseId ?? null,
       memberIds: [opts.assigneeId, opts.reporterId, opts.devOwnerId],
     });
-    // RBAC migration Phase 9: an Editor may only create work in their assigned teams.
-    await this.accessService.assertTeamScoped(actor, projectId, opts.teamId ?? null);
+    // An `AccessService.assertTeamScoped` call sat here (and on update and delete). Team scope was
+    // deleted as an authorization boundary by ruling — see that method's former home in
+    // `access.service.ts` for the reasoning. `assertAssignmentScope` above still validates that the
+    // team, iteration and release BELONG to this project; what is gone is the separate question of
+    // whether the ACTOR is on the team.
 
     // Rank is assigned INSIDE the transaction below, under a per-scope advisory
     // lock — see the `create` call. It used to be computed here, on the pool
@@ -627,6 +630,14 @@ export class WorkItemsService {
     const item = await this.getWorkItem(actor.workspaceId, id);
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
 
+    // BL §8:294 — an Editor "cannot assign Release". Field-level, because the route is gated on
+    // `work_item:edit`, which an Editor holds for every other field in the same body. Only when the
+    // patch actually MOVES the release: an unrelated edit on an item that already sits in one must not
+    // be refused. See `assertMayAssignRelease` for why this lands now rather than earlier.
+    if (input.releaseId !== undefined && input.releaseId !== item.releaseId) {
+      await this.assertMayAssignRelease(actor, item.projectId);
+    }
+
     // TASK-FR-012: a task's Work Product (parent) can be reassigned, but the new
     // parent must be a valid work product (US/DE, never a task) in the SAME
     // project — the same scope rules enforced at task creation. A task always
@@ -747,8 +758,9 @@ export class WorkItemsService {
     }
 
     const effectiveTeamId = input.teamId !== undefined ? input.teamId : item.teamId;
-    // RBAC migration Phase 9: an Editor may only edit work in their assigned teams.
-    await this.accessService.assertTeamScoped(actor, item.projectId, effectiveTeamId);
+    // The `assertTeamScoped` call that sat here is gone (ruling, 2026-08-14 — see its former home in
+    // `access.service.ts`). `effectiveTeamId` is still needed below: it is what
+    // `assertIterationAssignable` validates the iteration against.
     /**
      * A TEAM change revalidates the iteration the item already sits in.
      *
@@ -1092,8 +1104,7 @@ export class WorkItemsService {
         'Defects cannot be deleted. Resolve the defect by setting its state to Closed or Closed Declined.',
       );
     }
-    // RBAC migration Phase 9: an Editor may only delete work in their assigned teams.
-    await this.accessService.assertTeamScoped(actor, item.projectId, item.teamId);
+    // An `assertTeamScoped` call sat here too, and is gone by the same ruling (2026-08-14).
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     await this.workItemRepo.softDelete(id, actor.workspaceId);
     // Remove this item's F6 relations so no dangling links survive the delete
@@ -1271,7 +1282,15 @@ export class WorkItemsService {
     relationType: WorkItemRelationType,
   ): Promise<WorkItemRelationView[]> {
     // Editing the source item's links requires edit on its project.
-    await this.getWorkItem(actor.workspaceId, sourceId);
+    const sourceItem = await this.getWorkItem(actor.workspaceId, sourceId);
+    /**
+     * The SOURCE's project only — the relation row belongs to the item that owns it.
+     *
+     * Cross-project links are legal (see the target check below), so the target may well sit in an
+     * archived project. Refusing on that would make an archived project able to block edits in
+     * projects that are still live, which is not what "read-only" means (PRJ-FR-010).
+     */
+    await this.assertProjectWritable(actor.workspaceId, sourceItem.projectId);
 
     if (sourceId === targetId) {
       throw new PreconditionFailedException(
@@ -1351,7 +1370,9 @@ export class WorkItemsService {
 
   @Span('work-items.unlink')
   async unlinkWorkItem(actor: JwtPayload, sourceId: string, relationId: string): Promise<void> {
-    await this.getWorkItem(actor.workspaceId, sourceId);
+    const sourceItem = await this.getWorkItem(actor.workspaceId, sourceId);
+    // Same scope as `linkWorkItem` — the source's project owns the relation row.
+    await this.assertProjectWritable(actor.workspaceId, sourceItem.projectId);
     const relation = await this.relationRepo.findById(relationId, actor.workspaceId);
     if (!relation) {
       throw new NotFoundException('WORK_ITEM_RELATION_NOT_FOUND', 'Relation not found');
@@ -1400,9 +1421,12 @@ export class WorkItemsService {
     if (existing.some((w) => w.workspaceId !== actor.workspaceId)) {
       throw new Error('Workspace mismatch');
     }
-    // Authorize edit on every project the batch touches (usually one backlog).
+    // Authorize edit on every project the batch touches (usually one backlog), and refuse the
+    // whole reorder if any of them is archived (PRJ-FR-010). All-or-nothing, like the permission
+    // check above and like the transaction below: a partially applied reorder is a corrupted order.
     for (const projectId of new Set(existing.map((w) => w.projectId))) {
       await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.WORK_ITEM_EDIT);
+      await this.assertProjectWritable(actor.workspaceId, projectId);
     }
     // Wrap in UoW so all rank UPDATEs are one atomic transaction with RLS active.
     await this.uow.run((tx) => this.workItemRepo.reorderItems(items, actor.workspaceId, tx));
@@ -1429,6 +1453,9 @@ export class WorkItemsService {
         'Work item does not belong to the given project',
       );
     }
+    // Rank is backlog order, which is project content (PRJ-FR-010). Checked after the scope
+    // mismatch above so the item's OWN project is the one guarded, not the caller's claim.
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
 
     // Resolve neighbour ranks; each neighbour must be in the same project/backlog.
     const neighbourIds = [opts.beforeId, opts.afterId].filter(
@@ -1483,6 +1510,9 @@ export class WorkItemsService {
     releaseId: string | null,
   ): Promise<number> {
     const items = await this.loadBulkItems(actor, projectId, itemIds);
+    // Before the project scope check, and for a CLEAR as well as an assign — see
+    // `assertMayAssignRelease`.
+    await this.assertMayAssignRelease(actor, projectId);
     if (releaseId) {
       await this.assertReleaseAssignable(actor.workspaceId, projectId, releaseId);
     }
@@ -1570,6 +1600,11 @@ export class WorkItemsService {
    * Load and validate a set of item ids for a bulk operation: all must exist,
    * be non-deleted, and belong to the given workspace/project. Fails the whole
    * request (all-or-nothing) if any id is missing or out of scope.
+   *
+   * Both callers are WRITES (`bulkAssignRelease`, `bulkAssignIteration`) and both reach the
+   * archived-project rule through here rather than each stating it, for the same reason
+   * `CapacityPlansService` puts it in `requireDraft`: a bulk path added later is guarded by
+   * construction. Every item is proven to be in `projectId` below, so one check covers the batch.
    */
   private async loadBulkItems(
     actor: JwtPayload,
@@ -1578,6 +1613,7 @@ export class WorkItemsService {
   ): Promise<WorkItem[]> {
     // Authorization (work_item:edit on projectId) is enforced by the PolicyGuard
     // on the bulk routes; here we only validate the selection is in-scope.
+    await this.assertProjectWritable(actor.workspaceId, projectId);
     const ids = [...new Set(itemIds)];
     if (ids.length === 0) {
       throw new PreconditionFailedException('WORK_ITEM_EMPTY_SELECTION', 'No items selected');
@@ -1668,6 +1704,32 @@ export class WorkItemsService {
         'That Feature is archived',
       );
     }
+  }
+
+  /**
+   * Assigning — or clearing — a Release is an ADMIN action, per BL §8:294: "Editor may manage
+   * US/DE/Task only in explicitly assigned Teams and **cannot assign Release**."
+   *
+   * The route can't express this: `PATCH /work-items/:id` and `PATCH /work-items/bulk-release` are
+   * gated on `work_item:edit`, which an Editor legitimately holds for every other field in the same
+   * body. So the rule is a FIELD-level check, and it lives here in one place rather than at each of the
+   * three call sites that can move a release.
+   *
+   * **This was failing closed BY ACCIDENT until now**, and that is why it is being added at this moment
+   * rather than earlier: `GET /releases` required `release:view`, which an Editor does not hold, so the
+   * release picker resolved to `[]` and the UI could not produce a `releaseId` to send. Splitting off
+   * `GET /releases/options` (a reference feed an Editor CAN read, so a released item stops rendering as
+   * unscheduled) removed that accident and made the write reachable. A fix that turns a latent
+   * over-permissive write into a live one has to close it in the same change.
+   *
+   * `release:view` is the code, not a new one: the authority to schedule work into a release is the
+   * authority to see releases at all, and `ACCESS_LEVEL_PERMISSIONS` already gives it to `admin` and
+   * withholds it from `editor` — which is exactly §294's line. Clearing is gated too: §294 says an
+   * Editor does not decide release membership, and removing an item from a release decides it just as
+   * much as adding one.
+   */
+  private async assertMayAssignRelease(actor: JwtPayload, projectId: string): Promise<void> {
+    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.RELEASE_VIEW);
   }
 
   private async assertReleaseAssignable(
@@ -1782,13 +1844,18 @@ export class WorkItemsService {
 
   async addLabelToWorkItem(actor: JwtPayload, id: string, labelId: string): Promise<void> {
     const item = await this.getWorkItem(actor.workspaceId, id);
+    // The label CATALOGUE is already guarded on an archived project
+    // (`ProjectsService.createLabel`); the ASSIGNMENT was not, so labels could not be created on an
+    // archived project but could still be applied and removed.
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
     // P1-15: label must belong to the same project as the work item
     await this.projectsService.assertLabelBelongsToProject(item.projectId, labelId);
     await this.workItemRepo.addLabel(id, labelId, actor.workspaceId);
   }
 
   async removeLabelFromWorkItem(actor: JwtPayload, id: string, labelId: string): Promise<void> {
-    await this.getWorkItem(actor.workspaceId, id);
+    const item = await this.getWorkItem(actor.workspaceId, id);
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
     await this.workItemRepo.removeLabel(id, labelId, actor.workspaceId);
   }
 
@@ -1818,6 +1885,10 @@ export class WorkItemsService {
     milestoneIds: string[],
   ): Promise<Array<{ id: string; name: string }>> {
     const item = await this.getWorkItem(actor.workspaceId, id);
+    // The ITEM's project. The MILESTONE's project is checked by `assertArtifactsAssignable` — the
+    // two can differ, because a milestone's scope spans `milestone_projects`, and one row written
+    // from this end touches both.
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
     const uniqueIds = [...new Set(milestoneIds)];
     if (uniqueIds.length > 0) {
       await this.milestonesService.assertArtifactsAssignable(actor.workspaceId, uniqueIds, [item]);
@@ -1847,7 +1918,16 @@ export class WorkItemsService {
     workItemId: string,
     input: { loggedDate: string; hours: string; description?: string },
   ): Promise<TimeLog> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    /**
+     * Logged hours are project content, so all three time-log writes are guarded (PRJ-FR-010).
+     *
+     * Worth stating because "I did this work, let me record it" reads like it should survive an
+     * archive: it does not, because Actual hours feed Team Status, Team Capacity and the Iteration
+     * Status totals, and a project someone is still booking time against has not been archived. The
+     * remedy is to restore the project, which is one action.
+     */
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
     const log = await this.timeLogRepo.create({
       id: uuidv7(),
       workspaceId: actor.workspaceId,
@@ -1872,7 +1952,8 @@ export class WorkItemsService {
     logId: string,
     input: { loggedDate?: string; hours?: string; description?: string | null },
   ): Promise<TimeLog> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
     const log = await this.timeLogRepo.findById(logId, actor.workspaceId);
     if (!log || log.workItemId !== workItemId) {
       throw new NotFoundException('TIME_LOG_NOT_FOUND', 'Time log entry not found');
@@ -1889,7 +1970,8 @@ export class WorkItemsService {
 
   @Span('work-items.delete-time-log')
   async deleteTimeLog(actor: JwtPayload, workItemId: string, logId: string): Promise<void> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
     const log = await this.timeLogRepo.findById(logId, actor.workspaceId);
     if (!log || log.workItemId !== workItemId) {
       throw new NotFoundException('TIME_LOG_NOT_FOUND', 'Time log entry not found');
@@ -1910,6 +1992,17 @@ export class WorkItemsService {
   }
 
   // ── Watchers ──────────────────────────────────────────────────────────────
+  //
+  // `watch` and `unwatch` are deliberately NOT guarded by `assertProjectWritable`.
+  //
+  // A watcher row is the READER'S OWN subscription, not the project's content — the same
+  // judgement `ProjectsService` already made for its three member writes ("access is not the
+  // project's content"), and for the same decisive reason: the withdrawal has to keep working.
+  // A user who cannot unwatch an archived project's items is stuck receiving its notifications
+  // with no way to stop, and nothing about being archived makes that acceptable. `watch` stays
+  // open with it, because guarding one half and not the other is a trap: `logTime`'s auto-watch
+  // aside, a person who wants to follow an item until the project is restored is asking for
+  // nothing the project can be harmed by.
 
   @Span('work-items.list-watchers')
   async listWatchers(actor: JwtPayload, workItemId: string): Promise<Watcher[]> {
@@ -1952,7 +2045,18 @@ export class WorkItemsService {
     workItemId: string,
     input: { filename: string; mimeType: string; sizeBytes: number; checksumSha256: string },
   ): Promise<{ attachmentId: string; uploadUrl: string; requiredHeaders: Record<string, string> }> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    /**
+     * Refused at PRESIGN, not only at confirm.
+     *
+     * Presign reserves a `storage.files` row and hands out a signed PUT, so letting it through and
+     * refusing the confirm would put bytes in the bucket for a project that accepts no content and
+     * leave the row to the reaper. Guarded here rather than inside `EntityAttachmentsService`
+     * because that service states its own rule — it "never loads a work item or a portfolio item"
+     * and takes its `projectId` from the caller — and an `entityType → project` lookup in there is
+     * exactly the owner-type registry its docblock refuses.
+     */
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
     return this.entityAttachments.presign(actor, WorkItemsService.attachmentRef(workItemId), input);
   }
 
@@ -1963,6 +2067,9 @@ export class WorkItemsService {
     attachmentId: string,
   ): Promise<EntityAttachment> {
     const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    // Checked again at confirm: presign and confirm are two requests, and a project archived
+    // between them must not gain a visible attachment. Same reason the quota is re-checked there.
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
     return this.entityAttachments.confirm(
       actor,
       WorkItemsService.attachmentRef(workItemId),
@@ -1998,6 +2105,7 @@ export class WorkItemsService {
     attachmentId: string,
   ): Promise<void> {
     const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.assertProjectWritable(actor.workspaceId, item.projectId);
     await this.entityAttachments.delete(
       actor,
       WorkItemsService.attachmentRef(workItemId),

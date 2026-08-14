@@ -10,7 +10,7 @@ import { notify } from '@/shared/lib/toast'
 import { useCreateDefect, type DefectRow } from '@/features/quality/api'
 import { useProjectMembers } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
-import { useIterations } from '@/features/iterations/api'
+import { useIterationOptions } from '@/features/iterations/api'
 import { useUpdateWorkItem, useBacklog } from '@/features/work-items/api'
 import {
   WorkItemType,
@@ -191,7 +191,11 @@ function IterationInlineCell({
 }) {
   const { t } = useTranslation('quality')
   const update = useUpdateWorkItem(defect.id)
-  const { data: iterations = [] } = useIterations(projectId)
+  // The REFERENCE feed (every state), not the timebox record: §5 gives an Editor
+  // `Quality Defects View`, and `GET /iterations` is `timebox:view`. Every state, because the cell
+  // must still render the label of a defect already sitting in an ACCEPTED iteration — narrowing to
+  // the assignable population would blank the value the reader can see.
+  const { data: iterations = [] } = useIterationOptions(projectId)
 
   if (!canEdit) {
     return (

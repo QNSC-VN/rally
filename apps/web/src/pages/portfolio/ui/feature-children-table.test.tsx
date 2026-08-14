@@ -12,22 +12,28 @@ vi.mock('@/shared/api/http-client', () => ({
 }))
 
 // The Feature's project scopes these two option lists. The fixtures are partial on purpose — the
-// cells read only these fields — but they are cast through the real types, so a rename in `Release`
-// or `ProjectMember` fails here rather than silently leaving the mock describing a shape the
-// component no longer receives.
+// cells read only these fields — but they are cast through the real types, so a rename in
+// `ReleaseOption` or `ProjectMemberOption` fails here rather than silently leaving the mock
+// describing a shape the component no longer receives.
+//
+// The REFERENCE hooks, deliberately: this table labels and chooses, and the administrative feeds
+// (`useReleaseRecords` / `useProjectMembers`) are gated on codes a project Editor does not hold.
+// Mocking the administrative names here is what would let the component drift back onto them —
+// `vi.mock` with a factory replaces the whole module, so the wrong name is a hard failure, not a
+// silent empty list. See apps/web/FRONTEND_CONVENTIONS.md §5a.
 vi.mock('@/features/releases/api', () => ({
-  useReleases: () => ({
-    data: [{ id: 'r1', name: 'v2.0', releaseKey: 'REL-1' } as unknown as Release],
+  useReleaseOptions: () => ({
+    data: [{ id: 'r1', name: 'v2.0', releaseKey: 'REL-1' } as unknown as ReleaseOption],
   }),
 }))
 vi.mock('@/features/teams/api', () => ({
-  useProjectMembers: () => ({
+  useProjectMemberOptions: () => ({
     data: [
       {
         userId: 'u1',
         displayName: 'Admin User',
         email: 'admin@qnsc.dev',
-      } as unknown as ProjectMember,
+      } as unknown as ProjectMemberOption,
     ],
   }),
 }))
@@ -36,8 +42,8 @@ import '@/shared/i18n/i18n'
 import { apiClient } from '@/shared/api/http-client'
 import { FeatureChildrenTable } from './feature-children-table'
 import type { PortfolioChild } from '@/features/portfolio/api'
-import type { Release } from '@/features/releases/api'
-import type { ProjectMember } from '@/features/teams/api'
+import type { ReleaseOption } from '@/features/releases/api'
+import type { ProjectMemberOption } from '@/features/teams/api'
 import { PRIORITY_LABEL, PRIORITY_VALUES } from '@/entities/work-item/model/types'
 import { PORTFOLIO_CHILD_COLUMNS } from '../model/children-columns'
 

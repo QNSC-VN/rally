@@ -57,6 +57,25 @@ const pointsNullable = z.coerce
   .optional()
   .transform((v) => (v === undefined || v === null ? v : v.toFixed(2)));
 
+/**
+ * A NUMBER-input filter value.
+ *
+ * `z.coerce.number()` maps `''` to 0, so a query string that carries the param
+ * with an empty value (`?planEstimate=`) would filter for zero-point items
+ * instead of not filtering at all — a control that narrows the list while
+ * reading as untouched. Drop empties before coercing.
+ */
+const numericFilter = z
+  .union([
+    z.literal(''),
+    z
+      .string()
+      .trim()
+      .regex(/^\d{1,6}(?:\.\d{1,2})?$/),
+  ])
+  .optional()
+  .transform((v) => (v === undefined || v === '' ? undefined : Number(v).toFixed(2)));
+
 // ── List query ────────────────────────────────────────────────────────────────
 
 export const WorkItemQuerySchema = PageQuerySchema.extend({
@@ -72,6 +91,12 @@ export const WorkItemQuerySchema = PageQuerySchema.extend({
   iterationId: z.string().uuid().optional(),
   releaseId: z.string().uuid().optional(),
   q: z.string().trim().max(255).optional(),
+  // ── Manage Filters column predicates (P2-BL-FR-005/006, AC-8) ─────────────
+  // ID and Name are text inputs; Est is a number input. All three are SERVER
+  // predicates so a match past page 1 is still found.
+  itemKey: z.string().trim().max(64).optional(),
+  title: z.string().trim().max(500).optional(),
+  planEstimate: numericFilter,
 });
 
 export class WorkItemQueryDto extends createZodDto(WorkItemQuerySchema) {}

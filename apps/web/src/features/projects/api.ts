@@ -1,7 +1,8 @@
 /**
  * Projects API hooks — TanStack Query wrappers.
  */
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo } from 'react'
 import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
@@ -72,20 +73,99 @@ export interface UpdateProjectInput {
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 
-export function useProjects(workspaceId: string | undefined) {
-  return useQuery({
+/** Page size per request. The list drains every page, so this is a batch size, not a ceiling. */
+const PAGE_SIZE = 100
+/** Stops an unbounded loop if a cursor ever fails to advance. */
+const MAX_PAGES = 50
+
+interface ProjectPage {
+  data: Project[]
+  pageInfo: { nextCursor: string | null; hasNextPage: boolean; limit: number; total?: number }
+}
+
+/**
+ * The result of {@link useProjects} — deliberately QUERY-SHAPED, not `usePortfolioItems`' `{ items }`.
+ *
+ * Twelve call sites read this hook (the shell's project switcher, five pickers, Settings, Portfolio,
+ * both Projects pages), and `data` / `isLoading` / `isError` is what they and `listResource` already
+ * consume. A rename would touch every one of them for no gain, so the drain is internal and the seam
+ * is unchanged.
+ */
+export interface ProjectsResult {
+  /**
+   * `undefined` until the FIRST page lands, and `undefined` after a failure — the distinction
+   * `listResource` needs to keep "could not load" out of "there are none".
+   */
+  data: Project[] | undefined
+  isLoading: boolean
+  isError: boolean
+  error: unknown
+  /**
+   * True until every page has landed. A COUNT taken while this is true is a partial count, so a
+   * caller that totals or tiles the set must wait on it; a picker that only offers rows need not.
+   */
+  isLoadingMore: boolean
+}
+
+/**
+ * Every project in the workspace the caller may read, fetched page by page.
+ *
+ * The defect this closes: it asked for `limit: 100` and returned that one page, while every consumer
+ * filtered CLIENT-side. Past 100 projects the Projects grid's Active/Archived tabs, its search box and
+ * its four metric tiles all truncated silently — a total that reads as measured, and a grid that looks
+ * complete while omitting rows. The tiles are the worst of it: "4 projects" is a number an operator
+ * acts on, and nothing on screen said it was the count of the first page. The switcher, the pickers and
+ * `Settings > Projects` shared the ceiling; `use-open-notification.ts` and `shared/lib/deep-link-project.ts`
+ * both record having had to route around it rather than resolve a project through this list.
+ *
+ * Drained the way {@link usePortfolioItems} already drains its own list — same `useInfiniteQuery`, same
+ * `PAGE_SIZE` batch, same `MAX_PAGES` stop, same effect-driven pull — because a second pattern for one
+ * problem is how the two come to disagree. Free-text search stays on the client, matching every other
+ * list page, so typing does not refetch.
+ */
+export function useProjects(workspaceId: string | undefined): ProjectsResult {
+  const query = useInfiniteQuery({
     queryKey: ['projects', workspaceId],
-    queryFn: async () => {
-      if (!workspaceId) return []
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }): Promise<ProjectPage> => {
       const { data, error, response } = await apiClient.GET('/v1/projects', {
-        params: { query: { workspaceId, limit: 100 } },
+        params: { query: { workspaceId, limit: PAGE_SIZE, cursor: pageParam } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
-      return (data as { data: Project[] }).data ?? []
+      const payload = data as Partial<ProjectPage> | undefined
+      return {
+        data: payload?.data ?? [],
+        pageInfo: payload?.pageInfo ?? { nextCursor: null, hasNextPage: false, limit: PAGE_SIZE },
+      }
     },
+    getNextPageParam: (last) => last.pageInfo.nextCursor ?? undefined,
     enabled: !!workspaceId,
     staleTime: 30_000,
   })
+
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = query
+  const loadedPages = query.data?.pages.length ?? 0
+  // Deliberately NOT react-query's `maxPages`: that is a sliding RETENTION window, so hitting the
+  // limit would evict the earliest pages and the grid would lose its top rows instead of stopping.
+  const shouldLoadMore = hasNextPage && !isFetchingNextPage && loadedPages < MAX_PAGES
+
+  // Pull the remaining pages as they arrive. In an effect, not in render: render must stay pure, and
+  // fetching there re-enters on every commit.
+  useEffect(() => {
+    if (shouldLoadMore) void fetchNextPage()
+  }, [shouldLoadMore, fetchNextPage])
+
+  const pages = query.data?.pages
+  // `undefined` while nothing has landed, so the absent-versus-empty distinction survives the flatten.
+  const rows = useMemo(() => pages?.flatMap((p) => p.data), [pages])
+
+  return {
+    data: rows,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    isLoadingMore: hasNextPage || isFetchingNextPage,
+  }
 }
 
 // ── Mutations ─────────────────────────────────────────────────────────────────

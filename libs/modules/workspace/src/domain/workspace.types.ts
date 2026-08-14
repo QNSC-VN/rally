@@ -1,3 +1,4 @@
+import type { ProjectAccessLevel } from '@shared-kernel';
 import type {
   WorkspaceStatus,
   WorkspaceMemberStatus,
@@ -65,6 +66,39 @@ export interface WorkspaceMemberWithProfile {
   teams: MemberTeamSummary[];
 }
 
+/**
+ * The ASSIGNEE / OWNER PICKER feed — the minimal half of the roster split.
+ *
+ * Deliberately NOT a subset type of {@link WorkspaceMemberWithProfile}: the whole point of the
+ * split (RBE-07) is that these four fields travel to every delivery participant while `phone`,
+ * `lastLoginAt` and the role ids travel only to the User Management surface. A structural subset
+ * would let a later field land on both by accident, which is exactly how the sensitive fields came
+ * to be on an ungated route in the first place.
+ *
+ * Name and email are here because they are already visible wherever a person appears — as an
+ * assignee, a project lead, a task owner or a team member — so hiding them from a picker while
+ * printing them in a grid would protect nothing.
+ */
+export interface WorkspaceMemberOption {
+  userId: string;
+  displayName: string;
+  email: string;
+  avatarUrl: string | null;
+  /**
+   * Whether a picker may OFFER this person as a new owner — the DECISION, not the account state it
+   * is derived from.
+   *
+   * It used to be `status: 'active' | 'suspended' | 'removed'`, verbatim off `workspace_members`, and
+   * that was a person's account state on the widest-audience feed in the product: no permission code,
+   * read by every delivery participant, and no client ever looked at it. The requirement behind it is
+   * real and is kept — an inactive member who still OWNS something must resolve to a name, or the
+   * grid claims the item is unowned — so the row stays and only the disclosure goes. A boolean cannot
+   * say WHY someone is unassignable, which is the point: whether a colleague is suspended or removed
+   * is User Management's business (`GET :id/members-with-profile`, `workspace:view`).
+   */
+  assignable: boolean;
+}
+
 export interface WorkspaceInvitation {
   id: string;
   workspaceId: string;
@@ -79,6 +113,19 @@ export interface WorkspaceInvitation {
   acceptedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * One project + level an invitation carries as INITIAL access (§6.4, migration 0119).
+ *
+ * `accessLevel` is typed as the shared catalogue union, not `string`: the CHECK constraint and
+ * `isProjectAccessLevel` are the same two values, and a widened type here is how a level the
+ * model does not have reaches a write (`viewer` was a CHECK value for a week; migrations 0113 and
+ * 0115).
+ */
+export interface InvitationProjectAccess {
+  projectId: string;
+  accessLevel: ProjectAccessLevel;
 }
 
 export interface WorkspaceSettings {

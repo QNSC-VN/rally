@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Loader2, Mail, Send, UserPlus, UserX, X } from 'lucide-react'
+import { Loader2, Mail, Plus, Send, UserPlus, UserX, X } from 'lucide-react'
 import { BulkBarButton } from '@/shared/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { UserAccessModal } from './user-access-modal'
@@ -20,6 +20,8 @@ import {
   useUpdateMember,
   type WorkspaceMember,
 } from '@/features/workspaces/api'
+import { useProjects } from '@/features/projects/api'
+import { accessSelectOptions, type AccessLevel } from '@/shared/config/access-levels'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
@@ -687,9 +689,67 @@ function MemberStatusBadge({ status }: { status: string }) {
   return <StatusBadge style={style} />
 }
 
-// ── Invite user modal (email + role; rich invite deferred per SRS §6.4) ─────────
+// ── Invite user modal (email + initial per-Project access, SRS §6.4) ────────────
 
-function InviteUserModal({
+/**
+ * One row of the initial-access repeater: a project and the level the invitee lands with.
+ *
+ * `accessSelectOptions` is the ONE option list (`shared/config/access-levels.ts`) — never a local
+ * array. That file exists because three surfaces each declared their own and drifted, and adding
+ * then removing a level in one week (migrations 0113, 0115) is what made the cost concrete.
+ */
+function InviteAccessRow({
+  row,
+  projectOptions,
+  onChangeProject,
+  onChangeLevel,
+  onRemove,
+}: {
+  row: { projectId: string; accessLevel: AccessLevel }
+  projectOptions: SelectOption[]
+  onChangeProject: (projectId: string) => void
+  onChangeLevel: (level: AccessLevel) => void
+  onRemove: () => void
+}) {
+  const { t } = useTranslation('settings')
+  return (
+    <div className="flex items-center gap-2">
+      <div className="min-w-0 flex-1">
+        <SearchableSelect
+          variant="field"
+          value={row.projectId}
+          ariaLabel={t('members.projectFieldLabel')}
+          placeholder={t('members.selectProject')}
+          options={projectOptions}
+          onChange={onChangeProject}
+        />
+      </div>
+      <div className="w-32 shrink-0">
+        <SearchableSelect
+          variant="field"
+          value={row.accessLevel}
+          ariaLabel={t('members.accessFieldLabel')}
+          options={accessSelectOptions}
+          onChange={(v) => onChangeLevel(v as AccessLevel)}
+        />
+      </div>
+      <IconButton
+        aria-label={t('members.removeProjectAccess')}
+        onClick={onRemove}
+        title={t('members.removeProjectAccess')}
+      >
+        <X size={13} />
+      </IconButton>
+    </div>
+  )
+}
+
+/**
+ * Exported for its own spec. The initial-access repeater is a §6.4 CONTRACT — what the modal sends
+ * decides whether a new joiner can see anything — and mounting the whole members table to reach it
+ * would test the table instead.
+ */
+export function InviteUserModal({
   workspaceId,
   onClose,
   onSuccess,
@@ -707,11 +767,53 @@ function InviteUserModal({
     defaultValues: { email: '' },
   })
 
+  /**
+   * §6.4 — the projects and levels the invitee lands with. Kept out of react-hook-form because it
+   * is a repeater whose rows are added and removed, not a fixed field set; the same shape
+   * `project-teams-tab.tsx` uses for its per-member access map.
+   *
+   * EMPTY IS THE DEFAULT AND IT IS LEGAL: no rows means no initial project access, which is what an
+   * invitation did before §6.4. The point of the section is that the inviter can see the choice
+   * exists — before this, inviting and granting were separate actions and only the first was on
+   * this screen, so the common path produced a member who signs in and can see nothing.
+   */
+  const [projectAccess, setProjectAccess] = useState<
+    Array<{ projectId: string; accessLevel: AccessLevel }>
+  >([])
+  const { data: projects = [] } = useProjects(workspaceId)
+
+  /** A project already on another row is not offerable again — the API refuses duplicates. */
+  const projectOptionsFor = (rowIndex: number): SelectOption[] => {
+    const taken = new Set(projectAccess.filter((_, i) => i !== rowIndex).map((r) => r.projectId))
+    return projects
+      .filter((p) => !taken.has(p.id))
+      .map((p) => ({ value: p.id, label: `${p.key} · ${p.name}` }))
+  }
+
+  const unusedProjects = projects.filter((p) => !projectAccess.some((r) => r.projectId === p.id))
+
+  function addAccessRow() {
+    const next = unusedProjects[0]
+    if (!next) return
+    // Defaults to the team-scoped level, never Admin: Admin is All Teams by definition, so an
+    // invitation should not hand it out by default. The inviter picks it deliberately.
+    setProjectAccess((prev) => [...prev, { projectId: next.id, accessLevel: 'editor' }])
+  }
+
   const invite = useMutation({
     mutationFn: async (data: InviteForm) => {
+      const rows = projectAccess.filter((r) => r.projectId !== '')
       const { error, response } = await apiClient.POST('/v1/workspaces/{id}/invitations', {
         params: { path: { id: workspaceId } },
-        body: { email: data.email },
+        // Omitted rather than sent empty when nothing was chosen: absent means "no initial access",
+        // which is what every invitation created before §6.4 carries.
+        //
+        // NOTE for whoever regenerates the client: `projectAccess` is new on `InviteMemberDto` and
+        // the committed `shared/api/generated/api.ts` predates it, so this needs
+        // `pnpm --filter rally-web codegen` against a running local API before the `OpenAPI
+        // contract` job will agree. The spread compiles today only because a spread skips excess
+        // property checks — it is the conditional-omit idiom, not a workaround for the stale type.
+        body: { email: data.email, ...(rows.length > 0 && { projectAccess: rows }) },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
     },
@@ -740,6 +842,37 @@ function InviteUserModal({
               autoFocus
               placeholder="colleague@company.com"
             />
+          </FormField>
+          <FormField label={t('members.initialAccessLabel')} hint={t('members.initialAccessHint')}>
+            <div className="space-y-2">
+              {projectAccess.map((row, i) => (
+                <InviteAccessRow
+                  key={`${row.projectId}-${i}`}
+                  row={row}
+                  projectOptions={projectOptionsFor(i)}
+                  onChangeProject={(projectId) =>
+                    setProjectAccess((prev) =>
+                      prev.map((r, j) => (j === i ? { ...r, projectId } : r)),
+                    )
+                  }
+                  onChangeLevel={(accessLevel) =>
+                    setProjectAccess((prev) =>
+                      prev.map((r, j) => (j === i ? { ...r, accessLevel } : r)),
+                    )
+                  }
+                  onRemove={() => setProjectAccess((prev) => prev.filter((_, j) => j !== i))}
+                />
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addAccessRow}
+                disabled={unusedProjects.length === 0}
+              >
+                <Plus size={13} /> {t('members.addProjectAccess')}
+              </Button>
+            </div>
           </FormField>
           {form.formState.errors.root && (
             <p role="alert" className="text-ui-md text-destructive">

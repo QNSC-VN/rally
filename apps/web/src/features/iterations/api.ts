@@ -19,7 +19,10 @@ export type IterationStatus = components['schemas']['IterationStatusResponseDto'
 export type IterationStatusItem = IterationStatus['items'][number]
 export type CreateIterationItemInput = components['schemas']['CreateIterationItemDto']
 
+/** ELIGIBILITY — `GET /iterations/assignable`, `planning | committed`. */
 export type IterationOption = components['schemas']['IterationOptionDto']
+/** REFERENCE — `GET /iterations/options`, every state. */
+export type IterationReference = components['schemas']['IterationReferenceDto']
 export type IterationActivityLog = components['schemas']['IterationActivityResponseDto']
 
 export const iterationKeys = {
@@ -28,6 +31,9 @@ export const iterationKeys = {
   optionsAll: ['iteration-options'] as const,
   options: (projectId: string, teamId?: string | null) =>
     ['iteration-options', projectId, teamId ?? null] as const,
+  assignableAll: ['iteration-assignable'] as const,
+  assignable: (projectId: string, teamId?: string | null) =>
+    ['iteration-assignable', projectId, teamId ?? null] as const,
   detail: (id: string) => ['iteration', id] as const,
   activity: (id: string) => ['iteration', id, 'activity'] as const,
   committedCount: (projectIds: string[]) =>
@@ -58,14 +64,54 @@ export function useIterationActivityLog(iterationId: string | undefined) {
   })
 }
 
-// ── Assignment options (P2-IT-10) — compact picker feed ─────────────────────
+// ── The two compact feeds (P2-IT-10) ────────────────────────────────────────
+//
+// TWO HOOKS, because there are two questions and two populations:
+//
+//   useIterationOptions      REFERENCE    every state          filters, id→name labels, scope pickers
+//   useAssignableIterations  ELIGIBILITY  planning|committed    the bulk-assign bar, inline pickers
+//
+// Both are `iteration:view`, which every project access level holds. `useIterations` below is the
+// timebox RECORD and is `timebox:view` — §3.2 hides that surface from an Editor, so ONLY
+// `pages/iterations/**` may call it. Pointing a picker at it 403s for an Editor, and a 403
+// defaulted to `[]` renders as "there are none" (see `shared/lib/query/resource.ts`).
 
+/**
+ * REFERENCE. Every iteration in the project, whatever its state.
+ *
+ * `teamId` means "the team's own timeboxes PLUS the project's shared ones" server-side, not a strict
+ * `team_id = ?`. Most iterations name no team, so a strict filter would empty a team-scoped picker.
+ */
 export function useIterationOptions(projectId: string | undefined, teamId?: string | null) {
   return useQuery({
     queryKey: iterationKeys.options(projectId ?? '', teamId),
     queryFn: async () => {
       if (!projectId) return []
       const { data, error, response } = await apiClient.GET('/v1/iterations/options', {
+        params: { query: { projectId, teamId: teamId ?? undefined } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data ?? []) as IterationReference[]
+    },
+    enabled: !!projectId,
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * ELIGIBILITY. Only the iterations work may be assigned INTO (`planning | committed`), so a picker
+ * can never offer a target the server would refuse.
+ *
+ * Do NOT reach for this to resolve an already-set `iterationId` to a name: an accepted iteration is
+ * absent here by design, and reusing it that way rendered `--` for genuinely scheduled items.
+ * `useIterationOptions` is the feed for that.
+ */
+export function useAssignableIterations(projectId: string | undefined, teamId?: string | null) {
+  return useQuery({
+    queryKey: iterationKeys.assignable(projectId ?? '', teamId),
+    queryFn: async () => {
+      if (!projectId) return []
+      const { data, error, response } = await apiClient.GET('/v1/iterations/assignable', {
         params: { query: { projectId, teamId: teamId ?? undefined } },
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
@@ -103,6 +149,17 @@ async function fetchAllIterations(projectId: string, teamId?: string): Promise<I
   return out
 }
 
+/**
+ * The timebox RECORD — `goal`, `theme`, `notes`, `plannedVelocity`, the task-estimate rollup — paged.
+ *
+ * `GET /iterations` is `timebox:view`, so this is the `Plan > Timeboxes` GRID's feed and ONLY that:
+ * §3.2 marks the surface Hidden for a per-Project Editor, and `apps/web/src/test/fe-consistency.
+ * ratchet.test.ts` restricts its call sites to `pages/iterations/**` for exactly that reason.
+ *
+ * For a filter, a label or a scope picker use {@link useIterationOptions}; for an assignment target
+ * use {@link useAssignableIterations}. Six call sites on five other surfaces read this hook before
+ * those two feeds existed, which meant a real per-project Editor got a 403 on each of them.
+ */
 export function useIterations(projectId: string | undefined, teamId?: string) {
   return useQuery({
     queryKey: [...iterationKeys.list(projectId ?? ''), teamId ?? null],
@@ -258,8 +315,26 @@ export interface IterationStatusFilters {
   q?: string
   type?: IterationStatusItem['type']
   scheduleState?: IterationStatusItem['scheduleState']
-  isBlocked?: boolean
+  /**
+   * The WIRE shape, `'true' | 'false'` — not a boolean.
+   *
+   * `isBlocked` used to be `z.coerce.boolean()` server-side, where `Boolean('false') === true`, so
+   * `?isBlocked=false` asked for BLOCKED rows. It is an explicit enum now, and the filter control
+   * already produces those two strings — so carrying a boolean here only to convert it back at the
+   * request boundary is a round trip that can disagree with itself. Kept as the wire value end to end.
+   */
+  isBlocked?: 'true' | 'false'
+  /** A user id, or `UNASSIGNED_OWNER` for rows with no owner (resolved server-side). */
   assigneeId?: string
+  /**
+   * Manage Filters column predicates (P2-IS-FR-022/023/024). Server-side, and
+   * separate from `q` so quick search stays independent (P2-BL-TS-015, inherited).
+   */
+  itemKey?: string
+  title?: string
+  planEstimate?: string
+  taskEstimate?: string
+  toDo?: string
 }
 
 export function useIterationStatus(id: string | undefined, filters: IterationStatusFilters = {}) {
@@ -276,7 +351,10 @@ export function useIterationStatus(id: string | undefined, filters: IterationSta
       let cursor: string | undefined
       for (let page = 0; page < MAX_PAGES; page++) {
         const { data, error, response } = await apiClient.GET('/v1/iterations/{id}/status', {
-          params: { path: { id: id! }, query: { ...filters, limit: 100, cursor } },
+          params: {
+            path: { id: id! },
+            query: { ...filters, limit: 100, cursor },
+          },
         })
         if (error) throw new Error(apiErrorMessage(error, response.status))
         const page$ = data as IterationStatus

@@ -7,6 +7,38 @@ export const ReleaseQuerySchema = PageQuerySchema.extend({
 });
 export class ReleaseQueryDto extends createZodDto(ReleaseQuerySchema) {}
 
+/**
+ * Query for `GET /releases/options` — the reference feed.
+ *
+ * Its own schema rather than {@link ReleaseQuerySchema}, because a picker takes the whole set: there
+ * is no cursor to carry and no page size to choose, and inheriting `PageQuerySchema` would let a
+ * caller silently truncate the option list to a page (the shape that made a real release read as
+ * unscheduled in the first place). Deliberately NOT reused from the artifacts query either — the
+ * `ValidationPipe` runs before the guard, so a field this route has no reason to require would be a
+ * 400 the picker could never diagnose.
+ */
+export const ReleaseOptionsQuerySchema = z.object({
+  projectId: z.string().uuid(),
+});
+export class ReleaseOptionsQueryDto extends createZodDto(ReleaseOptionsQuerySchema) {}
+
+/**
+ * Query for `GET /releases/:id/artifacts`.
+ *
+ * Its own schema because the release is already named by the path — and because reusing
+ * {@link ReleaseQuerySchema} here made `projectId` REQUIRED on a route that has no reason to take
+ * one. The ValidationPipe runs before the guard and before the handler, so every request the SPA
+ * ever sent (`?limit=…&q=…`) was rejected as a 400 and the Artifacts tab rendered its empty state —
+ * exactly the "Release Artifacts query/display" defect in the register.
+ *
+ * `q` matches item key or title (P3-REL-FR-033: the same core dashboard behaviour as Backlog,
+ * starting with search). It was being sent and silently dropped.
+ */
+export const ReleaseArtifactQuerySchema = PageQuerySchema.extend({
+  q: z.string().trim().max(255).optional(),
+});
+export class ReleaseArtifactQueryDto extends createZodDto(ReleaseArtifactQuerySchema) {}
+
 const RELEASE_STATES = ['planning', 'active', 'accepted'] as const;
 
 export const CreateReleaseSchema = z.object({

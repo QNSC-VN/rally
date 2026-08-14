@@ -10,12 +10,18 @@
  * result to this view:
  *
  *   const pg = useArtifactPagination()
- *   const { data, isLoading } = useReleaseArtifacts(id, { pageSize: pg.pageSize, search: pg.search || undefined })
- *   return <ArtifactsTabView items={data?.data ?? []} isLoading={isLoading}
- *            pageInfo={data?.pageInfo} entityNoun="release" pagination={pg}
+ *   const q = useReleaseArtifacts(id, { pageSize: pg.pageSize, search: pg.search || undefined })
+ *   return <ArtifactsTabView artifacts={listResource({ ...q, data: q.data?.data })}
+ *            pageInfo={q.data?.pageInfo} entityNoun="release" pagination={pg}
  *            onOpenItem={(i) => navigate(...)} />
+ *
+ * `artifacts` is a {@link ListResource}, not an array + `isLoading`. That prop shape is the whole
+ * point: both callers used to pass `data?.data ?? []`, so a failed request rendered
+ * "No artifacts linked to this <noun>" — and for one of the two endpoints EVERY request was a 400,
+ * which is precisely how the tab read as empty for every record in the system.
  */
 import { ArtifactTable, type ArtifactTableItem } from '@/entities/work-item/ui/artifact-table'
+import type { ListResource } from '@/shared/lib/query/resource'
 import type {
   ArtifactPageInfo,
   ArtifactPagination,
@@ -24,15 +30,13 @@ import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { SearchInput } from '@/shared/ui/search-input'
 
 export function ArtifactsTabView({
-  items,
-  isLoading,
+  artifacts,
   pageInfo,
   entityNoun,
   pagination,
   onOpenItem,
 }: {
-  items: ArtifactTableItem[]
-  isLoading: boolean
+  artifacts: ListResource<ArtifactTableItem>
   pageInfo?: ArtifactPageInfo
   /** Noun used in the empty state, e.g. "release" or "milestone". */
   entityNoun: string
@@ -64,8 +68,7 @@ export function ArtifactsTabView({
       {/* Table */}
       <div className="flex-1 overflow-auto bg-card">
         <ArtifactTable
-          items={items}
-          isLoading={isLoading}
+          artifacts={artifacts}
           search={search}
           entityNoun={entityNoun}
           startIndex={startIndex}
@@ -74,13 +77,13 @@ export function ArtifactsTabView({
       </div>
 
       {/* Pagination — shared footer (was hand-rolled per entity) */}
-      {items.length > 0 && (
+      {artifacts.phase === 'ready' && (
         <PaginationFooter
           pageSize={pageSize}
           setPageSize={setPageSize}
           currentPage={currentPage}
           rangeStart={startIndex + 1}
-          rangeEnd={startIndex + items.length}
+          rangeEnd={startIndex + artifacts.rows.length}
           total={pageInfo?.total}
           hasPrevPage={currentPage > 1}
           hasNextPage={!!pageInfo?.hasNextPage}

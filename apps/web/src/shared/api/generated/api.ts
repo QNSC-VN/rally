@@ -133,60 +133,8 @@ export interface paths {
     /** List all roles available to the workspace */
     get: operations['AccessController_listRoles']
     put?: never
-    /** Create a workspace custom role (workspace admin only) */
-    post: operations['AccessController_createRole']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/permissions': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List assignable permissions with their scope tier (workspace admin only) */
-    get: operations['AccessController_getPermissionCatalog']
-    put?: never
     post?: never
     delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/roles/{roleId}/permissions': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    /** Replace a custom role’s permission set (workspace admin only) */
-    patch: operations['AccessController_updateRolePermissions']
-    trace?: never
-  }
-  '/v1/roles/{roleId}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** Delete a workspace custom role (workspace admin only) */
-    delete: operations['AccessController_deleteRole']
     options?: never
     head?: never
     patch?: never
@@ -203,23 +151,6 @@ export interface paths {
     get: operations['AccessController_getUserAssignments']
     put?: never
     post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/v1/role-assignments': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Assign a role to a user (workspace admin only) */
-    post: operations['AccessController_assignRole']
     delete?: never
     options?: never
     head?: never
@@ -298,18 +229,17 @@ export interface paths {
     patch: operations['WorkspaceController_updateWorkspace']
     trace?: never
   }
-  '/v1/workspaces/{id}/members': {
+  '/v1/workspaces/{id}/member-options': {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    /** List workspace members */
-    get: operations['WorkspaceController_listMembers']
+    /** Assignee / owner picker feed — workspace members at display fields only */
+    get: operations['WorkspaceController_listMemberOptions']
     put?: never
-    /** Add a user to the workspace */
-    post: operations['WorkspaceController_addMember']
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -323,10 +253,27 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** List workspace members with user profile and role details */
+    /** User Management roster — profile, contact details and roles (Workspace Admin only) */
     get: operations['WorkspaceController_listMembersWithProfile']
     put?: never
     post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/workspaces/{id}/members': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Add a user to the workspace */
+    post: operations['WorkspaceController_addMember']
     delete?: never
     options?: never
     head?: never
@@ -461,7 +408,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** List teams in a workspace */
+    /** List teams linked to a project the caller can read */
     get: operations['TeamController_listTeams']
     put?: never
     /** Create a team in a workspace */
@@ -763,8 +710,25 @@ export interface paths {
     /** List project members */
     get: operations['ProjectsController_listProjectMembers']
     put?: never
-    /** Add a member to a project */
+    /** Set a user's project access level and Teams */
     post: operations['ProjectsController_addProjectMember']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/projects/{id}/member-options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List this project's assignable owners (id, name, email, avatar) */
+    get: operations['ProjectsController_listProjectMemberOptions']
+    put?: never
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -1310,6 +1274,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/milestones/options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List this project's milestones for a picker (id, key, name, releases) */
+    get: operations['MilestonesController_listMilestoneOptions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/milestones/{id}': {
     parameters: {
       query?: never
@@ -1353,10 +1334,27 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** List milestone artifacts (US/DE work items) */
-    get: operations['MilestonesController_listMilestoneArtifacts']
+    /** List milestone artifact LINKS (work item IDs) */
+    get: operations['MilestonesController_listMilestoneArtifactIds']
     /** Set milestone artifacts (replace all) */
     put: operations['MilestonesController_setMilestoneArtifacts']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/milestones/{id}/artifacts/items': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List milestone artifacts (US/DE work items) as dashboard rows */
+    get: operations['MilestonesController_listMilestoneArtifacts']
+    put?: never
     post?: never
     delete?: never
     options?: never
@@ -1425,7 +1423,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** List iterations for a project */
+    /** List iterations for a project (the timebox record — Plan > Timeboxes) */
     get: operations['IterationsController_listIterations']
     put?: never
     /** Create an iteration */
@@ -1443,7 +1441,24 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** Get assignable iterations for the work-item picker */
+    /** Reference feed: every iteration, for filters, labels and scope pickers */
+    get: operations['IterationsController_listIterationReferences']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/iterations/assignable': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Eligibility feed: the iterations work may be assigned into */
     get: operations['IterationsController_getAssignmentOptions']
     put?: never
     post?: never
@@ -1464,7 +1479,7 @@ export interface paths {
     get: operations['IterationsController_getIteration']
     put?: never
     post?: never
-    /** Delete a planning-state iteration */
+    /** Delete a planning-state iteration that has no recorded Burndown history */
     delete: operations['IterationsController_deleteIteration']
     options?: never
     head?: never
@@ -1498,7 +1513,7 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Commit an iteration (planning → committed) */
+    /** Commit an iteration (→ committed) */
     post: operations['IterationsController_commitIteration']
     delete?: never
     options?: never
@@ -1515,7 +1530,7 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Accept an iteration (committed → accepted). Requires ≥1 assigned Story/Defect and all of them accepted. */
+    /** Accept an iteration (→ accepted). Requires ≥1 assigned Story/Defect and all of them accepted. */
     post: operations['IterationsController_acceptIteration']
     delete?: never
     options?: never
@@ -1586,6 +1601,23 @@ export interface paths {
     put?: never
     /** Create a release */
     post: operations['ReleasesController_createRelease']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/releases/options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List this project's releases for a picker (id, key, name, window) */
+    get: operations['ReleasesController_listReleaseOptions']
+    put?: never
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -1814,6 +1846,23 @@ export interface paths {
     put?: never
     /** Create an Epic or Feature */
     post: operations['PortfolioItemsController_createItem']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/portfolio-items/options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List a project's active Features as picker options */
+    get: operations['PortfolioItemsController_listFeatureOptions']
+    put?: never
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -2340,7 +2389,7 @@ export interface paths {
     delete?: never
     options?: never
     head?: never
-    /** Update a task from Team Status (title/state) */
+    /** Update a task from Team Status (title and/or state only — SRS §9.3) */
     patch: operations['TeamStatusController_updateTask']
     trace?: never
   }
@@ -2786,128 +2835,9 @@ export interface components {
       name: string
       slug: string
       description: string | null
-      isSystem: boolean
       permissions: string[]
       /** Format: date-time */
       createdAt: string
-    }
-    PermissionCatalogResponseDto: {
-      permissions: {
-        code: string
-        /** @enum {string} */
-        tier: 'workspace' | 'project'
-      }[]
-    }
-    CreateRoleDto: {
-      name: string
-      description?: string | null
-      /** @default [] */
-      permissions: (
-        | 'workspace:*'
-        | 'workspace:view'
-        | 'workspace:create'
-        | 'workspace:edit'
-        | 'workspace:delete'
-        | 'users:invite'
-        | 'users:remove'
-        | 'users:assign_role'
-        | 'roles:view'
-        | 'roles:edit'
-        | 'teams:create'
-        | 'teams:edit'
-        | 'teams:manage_members'
-        | 'audit:view'
-        | 'scm:manage'
-        | 'project:view'
-        | 'project:create'
-        | 'project:edit'
-        | 'project:archive'
-        | 'project:restore'
-        | 'project:delete'
-        | 'project:manage_members'
-        | 'work_item:view'
-        | 'work_item:create'
-        | 'work_item:edit'
-        | 'work_item:delete'
-        | 'iteration:view'
-        | 'iteration:create'
-        | 'iteration:edit'
-        | 'iteration:delete'
-        | 'release:view'
-        | 'release:create'
-        | 'release:edit'
-        | 'release:delete'
-        | 'team_status:view'
-        | 'team_status:edit'
-        | 'quality:view'
-        | 'milestone:view'
-        | 'milestone:create'
-        | 'milestone:edit'
-        | 'milestone:delete'
-        | 'portfolio:view'
-        | 'portfolio:create'
-        | 'portfolio:edit'
-        | 'portfolio:archive'
-        | 'capacity:view'
-        | 'capacity:manage'
-        | 'capacity:publish'
-        | 'capacity:view_draft'
-        | 'report:view'
-      )[]
-    }
-    UpdateRolePermissionsDto: {
-      permissions: (
-        | 'workspace:*'
-        | 'workspace:view'
-        | 'workspace:create'
-        | 'workspace:edit'
-        | 'workspace:delete'
-        | 'users:invite'
-        | 'users:remove'
-        | 'users:assign_role'
-        | 'roles:view'
-        | 'roles:edit'
-        | 'teams:create'
-        | 'teams:edit'
-        | 'teams:manage_members'
-        | 'audit:view'
-        | 'scm:manage'
-        | 'project:view'
-        | 'project:create'
-        | 'project:edit'
-        | 'project:archive'
-        | 'project:restore'
-        | 'project:delete'
-        | 'project:manage_members'
-        | 'work_item:view'
-        | 'work_item:create'
-        | 'work_item:edit'
-        | 'work_item:delete'
-        | 'iteration:view'
-        | 'iteration:create'
-        | 'iteration:edit'
-        | 'iteration:delete'
-        | 'release:view'
-        | 'release:create'
-        | 'release:edit'
-        | 'release:delete'
-        | 'team_status:view'
-        | 'team_status:edit'
-        | 'quality:view'
-        | 'milestone:view'
-        | 'milestone:create'
-        | 'milestone:edit'
-        | 'milestone:delete'
-        | 'portfolio:view'
-        | 'portfolio:create'
-        | 'portfolio:edit'
-        | 'portfolio:archive'
-        | 'capacity:view'
-        | 'capacity:manage'
-        | 'capacity:publish'
-        | 'capacity:view_draft'
-        | 'report:view'
-      )[]
     }
     RoleAssignmentResponseDto: {
       /** Format: uuid */
@@ -2923,16 +2853,6 @@ export interface components {
       grantedBy: string | null
       /** Format: date-time */
       createdAt: string
-    }
-    AssignRoleDto: {
-      /** Format: uuid */
-      userId: string
-      /** Format: uuid */
-      roleId: string
-      /** @enum {string} */
-      scopeType: 'global' | 'workspace' | 'project'
-      /** Format: uuid */
-      scopeId?: string
     }
     ProjectPermissionsResponseDto: {
       /** Format: uuid */
@@ -2962,19 +2882,14 @@ export interface components {
         [key: string]: unknown
       }
     }
-    MemberResponseDto: {
-      /** Format: uuid */
-      id: string
-      /** Format: uuid */
-      workspaceId: string
+    MemberOptionResponseDto: {
       /** Format: uuid */
       userId: string
-      roleId: string | null
-      status: string
-      /** Format: date-time */
-      joinedAt: string
-      /** Format: date-time */
-      createdAt: string
+      displayName: string
+      email: string
+      avatarUrl: string | null
+      /** @description Whether a picker may offer this person as a new owner (derived, not the raw status) */
+      assignable: boolean
     }
     MemberWithProfileResponseDto: {
       /** Format: uuid */
@@ -3011,6 +2926,20 @@ export interface components {
       userId: string
       roleId?: string
     }
+    MemberResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      workspaceId: string
+      /** Format: uuid */
+      userId: string
+      roleId: string | null
+      status: string
+      /** Format: date-time */
+      joinedAt: string
+      /** Format: date-time */
+      createdAt: string
+    }
     UpdateMemberDto: {
       roleId?: string
       /** @enum {string} */
@@ -3021,6 +2950,12 @@ export interface components {
       /** Format: email */
       email: string
       roleId?: string
+      projectAccess?: {
+        /** Format: uuid */
+        projectId: string
+        /** @enum {string} */
+        accessLevel: 'admin' | 'editor'
+      }[]
     }
     InvitationResponseDto: {
       /** Format: uuid */
@@ -3260,8 +3195,22 @@ export interface components {
       displayName: string | null
       email: string | null
       avatarUrl: string | null
-      /** @description Active team_members rows for Teams linked to this project — same scoping as assertTeamScoped */
+      /** @description Active team_members rows for Teams linked to this project */
       teamCount: number
+    }
+    ProjectMemberOptionResponseDto: {
+      /** Format: uuid */
+      userId: string
+      displayName: string | null
+      email: string | null
+      avatarUrl: string | null
+    }
+    SetProjectAccessDto: {
+      /** Format: uuid */
+      userId: string
+      /** @enum {string} */
+      accessLevel?: 'admin' | 'editor'
+      teamIds?: string[]
     }
     UpdateProjectMemberDto: {
       /** @enum {string} */
@@ -3673,6 +3622,15 @@ export interface components {
       /** Format: date-time */
       updatedAt: string
     }
+    MilestoneOptionDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      projectId: string
+      milestoneKey: string | null
+      name: string
+      releaseIds: string[]
+    }
     UpdateMilestoneDto: {
       name?: string
       description?: string | null
@@ -3685,6 +3643,22 @@ export interface components {
       releaseIds?: string[]
       projectIds?: string[]
       teamIds?: string[]
+    }
+    MilestoneArtifactDto: {
+      /** Format: uuid */
+      id: string
+      itemKey: string
+      type: string
+      title: string
+      scheduleState: string
+      priority: string
+      assigneeId: string | null
+      assigneeName: string | null
+      storyPoints: number | null
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
     }
     SetMilestoneArtifactsDto: {
       workItemIds: string[]
@@ -3739,6 +3713,19 @@ export interface components {
       startDate?: string
       endDate?: string
       plannedVelocity?: number
+    }
+    IterationReferenceDto: {
+      /** Format: uuid */
+      id: string
+      name: string
+      iterationKey: string | null
+      /** @enum {string} */
+      state: 'planning' | 'committed' | 'accepted'
+      /** @description YYYY-MM-DD */
+      startDate: string | null
+      /** @description YYYY-MM-DD */
+      endDate: string | null
+      teamId: string | null
     }
     IterationOptionDto: {
       /** Format: uuid */
@@ -3909,6 +3896,20 @@ export interface components {
       state: 'planning' | 'active' | 'accepted'
       releaseNotes?: string | null
     }
+    ReleaseOptionDto: {
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      projectId: string
+      releaseKey: string | null
+      name: string
+      /** @enum {string} */
+      status: 'planning' | 'active' | 'accepted'
+      /** @description YYYY-MM-DD */
+      startDate: string | null
+      /** @description YYYY-MM-DD */
+      releaseDate: string | null
+    }
     UpdateReleaseDto: {
       name?: string
       description?: string | null
@@ -3922,6 +3923,24 @@ export interface components {
       /** @enum {string} */
       state?: 'planning' | 'active' | 'accepted'
       releaseNotes?: string | null
+    }
+    ReleaseArtifactDto: {
+      /** Format: uuid */
+      id: string
+      itemKey: string
+      type: string
+      title: string
+      scheduleState: string
+      priority: string
+      assigneeId: string | null
+      assigneeName: string | null
+      iterationId: string | null
+      releaseId: string | null
+      storyPoints: number | null
+      /** Format: date-time */
+      createdAt: string
+      /** Format: date-time */
+      updatedAt: string
     }
     CreateWorkflowStatusDto: {
       name: string
@@ -4068,6 +4087,18 @@ export interface components {
           tier: 'allocated' | 'refined' | 'preliminary' | 'none'
         }
       }
+    }
+    PortfolioFeatureOptionResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** @description FE-<n>, unique across the workspace */
+      itemKey: string
+      name: string
+      /**
+       * Format: uuid
+       * @description Always the requested project; echoed for binding
+       */
+      projectId: string
     }
     PortfolioItemDetailResponseDto: {
       /** Format: uuid */
@@ -4571,10 +4602,6 @@ export interface components {
       title?: string
       /** @enum {string} */
       state?: 'Defined' | 'In-Progress' | 'Completed'
-      estimateHours?: number | null
-      todoHours?: number | null
-      actualHours?: number | null
-      assigneeId?: string | null
     }
     CapacityPlanResponseDto: {
       /** Format: uuid */
@@ -5856,207 +5883,8 @@ export interface operations {
         }
         content?: never
       }
-    }
-  }
-  AccessController_createRole: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateRoleDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['RoleResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
       /** @description Forbidden — insufficient permissions */
       403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AccessController_getPermissionCatalog: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['PermissionCatalogResponseDto']
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AccessController_updateRolePermissions: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        roleId: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateRolePermissionsDto']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['RoleResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AccessController_deleteRole: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        roleId: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Role deleted */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
         headers: {
           [name: string]: unknown
         }
@@ -6099,71 +5927,6 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  AccessController_assignRole: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AssignRoleDto']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['RoleAssignmentResponseDto']
-        }
-      }
-      /** @description Bad Request — validation error or malformed input */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Forbidden — insufficient permissions */
-      403: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Conflict — duplicate record or state conflict */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Unprocessable — business rule violation */
-      422: {
         headers: {
           [name: string]: unknown
         }
@@ -6370,13 +6133,9 @@ export interface operations {
       }
     }
   }
-  WorkspaceController_listMembers: {
+  WorkspaceController_listMemberOptions: {
     parameters: {
-      query?: {
-        limit?: number
-        cursor?: string
-        sort?: string
-      }
+      query?: never
       header?: never
       path: {
         id: string
@@ -6385,28 +6144,58 @@ export interface operations {
     }
     requestBody?: never
     responses: {
-      /** @description Paginated list */
       200: {
         headers: {
           [name: string]: unknown
         }
         content: {
-          'application/json': {
-            data?: components['schemas']['MemberResponseDto'][]
-            pageInfo?: {
-              /** @description Opaque cursor token for the next page */
-              nextCursor: string | null
-              hasNextPage: boolean
-              /** @description Number of items returned per page */
-              limit: number
-              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
-              total?: number
-            }
-          }
+          'application/json': components['schemas']['MemberOptionResponseDto'][]
         }
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkspaceController_listMembersWithProfile: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MemberWithProfileResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }
@@ -6474,41 +6263,6 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  WorkspaceController_listMembersWithProfile: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['MemberWithProfileResponseDto'][]
-        }
-      }
-      /** @description Unauthorized — missing or invalid authentication */
-      401: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Not Found */
-      404: {
         headers: {
           [name: string]: unknown
         }
@@ -8164,7 +7918,11 @@ export interface operations {
       }
       cookie?: never
     }
-    requestBody?: never
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SetProjectAccessDto']
+      }
+    }
     responses: {
       201: {
         headers: {
@@ -8204,6 +7962,48 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ProjectsController_listProjectMemberOptions: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ProjectMemberOptionResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }
@@ -8317,6 +8117,9 @@ export interface operations {
         iterationId?: string
         releaseId?: string
         q?: string
+        itemKey?: string
+        title?: string
+        planEstimate?: '' | string
       }
       header?: never
       path?: never
@@ -8442,6 +8245,9 @@ export interface operations {
         iterationId?: string
         releaseId?: string
         q?: string
+        itemKey?: string
+        title?: string
+        planEstimate?: '' | string
       }
       header?: never
       path?: never
@@ -10146,6 +9952,55 @@ export interface operations {
       }
     }
   }
+  MilestonesController_listMilestoneOptions: {
+    parameters: {
+      query: {
+        projectId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MilestoneOptionDto'][]
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   MilestonesController_getMilestone: {
     parameters: {
       query?: never
@@ -10327,7 +10182,7 @@ export interface operations {
       }
     }
   }
-  MilestonesController_listMilestoneArtifacts: {
+  MilestonesController_listMilestoneArtifactIds: {
     parameters: {
       query?: never
       header?: never
@@ -10399,6 +10254,65 @@ export interface operations {
       }
       /** @description Forbidden — insufficient permissions */
       403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  MilestonesController_listMilestoneArtifacts: {
+    parameters: {
+      query?: {
+        limit?: number
+        cursor?: string
+        sort?: string
+        q?: string
+      }
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Paginated list */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': {
+            data?: components['schemas']['MilestoneArtifactDto'][]
+            pageInfo?: {
+              /** @description Opaque cursor token for the next page */
+              nextCursor: string | null
+              hasNextPage: boolean
+              /** @description Number of items returned per page */
+              limit: number
+              /** @description Total rows matching the filters (ignoring cursor/limit); present only on endpoints that expose a count */
+              total?: number
+            }
+          }
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
         headers: {
           [name: string]: unknown
         }
@@ -10775,6 +10689,49 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  IterationsController_listIterationReferences: {
+    parameters: {
+      query: {
+        projectId: string
+        teamId?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['IterationReferenceDto'][]
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
         headers: {
           [name: string]: unknown
         }
@@ -11185,8 +11142,13 @@ export interface operations {
         q?: string
         type?: 'story' | 'task' | 'defect'
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
-        isBlocked?: boolean
-        assigneeId?: string
+        isBlocked?: 'true' | 'false'
+        assigneeId?: string | 'unassigned'
+        itemKey?: string
+        title?: string
+        planEstimate?: '' | string
+        taskEstimate?: '' | string
+        toDo?: '' | string
       }
       header?: never
       path: {
@@ -11388,6 +11350,55 @@ export interface operations {
       }
     }
   }
+  ReleasesController_listReleaseOptions: {
+    parameters: {
+      query: {
+        projectId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ReleaseOptionDto'][]
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   ReleasesController_getRelease: {
     parameters: {
       query?: never
@@ -11571,11 +11582,11 @@ export interface operations {
   }
   ReleasesController_listReleaseArtifacts: {
     parameters: {
-      query: {
+      query?: {
         limit?: number
         cursor?: string
         sort?: string
-        projectId: string
+        q?: string
       }
       header?: never
       path: {
@@ -11592,7 +11603,7 @@ export interface operations {
         }
         content: {
           'application/json': {
-            data?: components['schemas']['ReleaseResponseDto'][]
+            data?: components['schemas']['ReleaseArtifactDto'][]
             pageInfo?: {
               /** @description Opaque cursor token for the next page */
               nextCursor: string | null
@@ -12294,6 +12305,48 @@ export interface operations {
       }
       /** @description Unprocessable — business rule violation */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  PortfolioItemsController_listFeatureOptions: {
+    parameters: {
+      query: {
+        projectId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioFeatureOptionResponseDto'][]
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }

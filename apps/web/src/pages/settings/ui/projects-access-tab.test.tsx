@@ -108,7 +108,17 @@ describe('ProjectAccessList — §5.2 level + team selection', () => {
     expect(save).toBeDisabled()
   })
 
-  it('writes the level AND the team memberships together on Save Access', async () => {
+  /**
+   * ONE request, level and teams together (PRJ-08).
+   *
+   * This used to assert a PATCH for the level, a `POST /v1/teams/{id}/members` per team, AND their
+   * relative ORDER — team rows first, because level-first meant a failed team write left the level
+   * landed with no teams behind it, §2.2's forbidden state reached through a network error. The
+   * ordering was a mitigation for a window that no longer exists: the combined endpoint applies both
+   * halves in one server-side transaction, so there is nothing left to order and the server refuses
+   * the invalid combination outright (`assertTeamAssignmentForLevel`).
+   */
+  it('writes the level AND the team memberships in ONE request on Save Access', async () => {
     renderList()
     await chooseLevel('Editor')
     fireEvent.click(await screen.findByRole('button', { name: 'Teams' }))
@@ -117,24 +127,17 @@ describe('ProjectAccessList — §5.2 level + team selection', () => {
     await waitFor(() => expect(save).not.toBeDisabled())
     fireEvent.click(save)
 
-    await waitFor(() => expect(mockPATCH).toHaveBeenCalled())
-    expect(mockPATCH.mock.calls[0][0]).toBe('/v1/projects/{id}/members/{memberId}')
-    expect(mockPATCH.mock.calls[0][1]).toMatchObject({ body: { accessLevel: 'editor' } })
     await waitFor(() => expect(mockPOST).toHaveBeenCalled())
-    expect(mockPOST.mock.calls[0][0]).toBe('/v1/teams/{id}/members')
+    expect(mockPOST.mock.calls[0][0]).toBe('/v1/projects/{id}/members')
     expect(mockPOST.mock.calls[0][1]).toMatchObject({
-      params: { path: { id: 'team-b' } },
-      body: { userId: 'u-1' },
+      body: { userId: 'u-1', accessLevel: 'editor', teamIds: ['team-b'] },
     })
-    // ORDER, not merely both: the team rows go first. See `handleSave` — level-first
-    // meant a failed team write left the level landed, i.e. an Editor with zero teams.
-    expect(mockPOST.mock.invocationCallOrder[0]).toBeLessThan(mockPATCH.mock.invocationCallOrder[0])
+    // No second write to order against, and no per-team fan-out at all.
+    expect(mockPOST).toHaveBeenCalledTimes(1)
+    expect(mockPATCH).not.toHaveBeenCalled()
   })
 
-  it('leaves the level alone when the team write fails (§2.2 stays unreachable)', async () => {
-    // The failure the write order exists for: level-first, this same 500 produced an
-    // Editor with zero teams — the state §2.2 forbids, reached by a network error
-    // rather than a click, and not undoable from this dialog.
+  it('keeps the dialog open to retry when the combined write fails', async () => {
     mockPOST.mockResolvedValue({ error: { error: { message: 'boom' } }, response: { status: 500 } })
     renderList()
     await chooseLevel('Editor')
@@ -145,8 +148,8 @@ describe('ProjectAccessList — §5.2 level + team selection', () => {
     fireEvent.click(save)
 
     await waitFor(() => expect(mockPOST).toHaveBeenCalled())
-    // The member is still an Admin, which §2.2 permits; the dialog stays open to retry.
-    expect(mockPATCH).not.toHaveBeenCalled()
+    // Nothing partial can have landed — one request, one transaction. The member is still an Admin,
+    // which §2.2 permits, and the dialog stays open.
     expect(screen.getByText('Assign Editor teams')).toBeTruthy()
   })
 
@@ -159,10 +162,11 @@ describe('ProjectAccessList — §5.2 level + team selection', () => {
     })
     renderList()
     await chooseLevel('Admin')
-    await waitFor(() => expect(mockPATCH).toHaveBeenCalled())
-    expect(mockPATCH.mock.calls[0][1]).toMatchObject({ body: { accessLevel: 'admin' } })
-    // Team membership is NOT touched by a promotion to Admin (§5.2 gives only
-    // Remove that power); All Teams is the absence of a scope, not a set of rows.
-    expect(mockPOST).not.toHaveBeenCalled()
+    await waitFor(() => expect(mockPOST).toHaveBeenCalled())
+    expect(mockPOST.mock.calls[0][1]).toMatchObject({ body: { accessLevel: 'admin' } })
+    // Team membership is NOT touched by a promotion to Admin (§5.2 gives only Remove that power);
+    // All Teams is the absence of a scope, so the body carries no `teamIds` for the server to
+    // reconcile against.
+    expect(mockPOST.mock.calls[0][1].body).not.toHaveProperty('teamIds')
   })
 })

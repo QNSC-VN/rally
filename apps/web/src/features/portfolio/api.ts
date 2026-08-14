@@ -61,8 +61,44 @@ export const portfolioKeys = {
       filter.includeArchived ? 'with-archived' : 'active',
     ] as const,
   detail: (id: string) => ['portfolio', 'detail', id] as const,
+  featureOptions: (projectId: string) => ['portfolio', 'feature-options', projectId] as const,
   children: (id: string) => ['portfolio', 'children', id] as const,
   features: (id: string) => ['portfolio', 'features', id] as const,
+}
+
+// ── Reference feed ───────────────────────────────────────────────────────────
+
+export type PortfolioFeatureOption = components['schemas']['PortfolioFeatureOptionResponseDto']
+
+/**
+ * The FEATURE REFERENCE feed — read this from the `Feature` field on a Story/Defect.
+ *
+ * WHY NOT {@link usePortfolioItems}. That hook reads `GET /v1/portfolio-items`, the
+ * `Portfolio > Portfolio Items` grid's feed: it carries the whole record (rollups, health, both
+ * top-down estimates, owner, team, release, dates) and is scoped by `portfolio:view`, a code
+ * P5-PI-FR-017 withholds from a project Editor. It was ALSO the only feed for the Feature picker
+ * on the Work Item detail rail — a field §5.2:124 makes the ONLY way a Story's Feature membership
+ * is ever set — so once the server stopped over-granting `portfolio:view` by membership alone, an
+ * Editor's linked Feature rendered as the "No Feature" placeholder and could not be changed.
+ *
+ * Single-project by contract (§5.3:133), which is also why the route can be gated by the guard.
+ * Pass the WORK ITEM's project, not the app-context one: the two differ whenever a reader opens an
+ * item by deep link.
+ */
+export function usePortfolioFeatureOptions(projectId: string | undefined) {
+  return useQuery({
+    queryKey: portfolioKeys.featureOptions(projectId ?? ''),
+    queryFn: async () => {
+      if (!projectId) return []
+      const { data, error, response } = await apiClient.GET('/v1/portfolio-items/options', {
+        params: { query: { projectId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return (data as PortfolioFeatureOption[] | undefined) ?? []
+    },
+    enabled: !!projectId,
+    staleTime: 60_000,
+  })
 }
 
 // ── List ─────────────────────────────────────────────────────────────────────

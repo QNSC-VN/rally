@@ -35,7 +35,8 @@ const optionLabels = () =>
 describe('TimeboxTypeSwitcher', () => {
   beforeEach(() => {
     navigate.mockReset()
-    grants = { 'iteration:view': true, 'project:view': true, 'milestone:view': true }
+    // A per-project Admin: §3.2 gives Admin all three timebox types.
+    grants = { 'timebox:view': true, 'release:view': true, 'milestone:view': true }
   })
 
   it('offers the three timebox types when the actor may view all', () => {
@@ -62,16 +63,36 @@ describe('TimeboxTypeSwitcher', () => {
   })
 
   it('hides a type the actor cannot view', () => {
-    grants = { 'iteration:view': true, 'project:view': false, 'milestone:view': true }
+    grants = { 'timebox:view': true, 'release:view': false, 'milestone:view': true }
     render(<TimeboxTypeSwitcher current="iterations" />)
     expect(optionLabels()).toEqual(['Iterations', 'Milestones'])
   })
 
   it('always keeps the current type visible even if its permission is missing', () => {
     // Guards against a permission race rendering a select with no matching value.
-    grants = { 'iteration:view': false, 'project:view': false, 'milestone:view': false }
+    grants = { 'timebox:view': false, 'release:view': false, 'milestone:view': false }
     render(<TimeboxTypeSwitcher current="releases" />)
     expect(optionLabels()).toEqual(['Releases'])
     expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('releases')
+  })
+
+  it('offers an EDITOR no type at all', () => {
+    /**
+     * §3.2 marks `Plan > Timeboxes` Hidden for an Editor, for every one of its three TYPE modes.
+     * This is the Editor's REAL permission set, and it is the shape that made the old gates wrong:
+     * `project:view` and `iteration:view` are both held by every access level, so gating `Releases`
+     * on the first and `Iterations` on the second offered an Editor two types — one of which 403'd
+     * on the very next request, and one of which opened a screen the BA hides
+     * (RBE-09 / P23-08). Only the CURRENT type survives, and only so the select is never valueless.
+     */
+    grants = {
+      'project:view': true,
+      'work_item:view': true,
+      'iteration:view': true,
+      'quality:view': true,
+      'team_status:view': true,
+    }
+    render(<TimeboxTypeSwitcher current="iterations" />)
+    expect(optionLabels()).toEqual(['Iterations'])
   })
 })

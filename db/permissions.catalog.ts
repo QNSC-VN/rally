@@ -30,9 +30,20 @@ export const PERMISSION = {
 
   // ── users namespace (company member + invitation management) ────────────────
   // Split out of the former coarse `workspace:manage_members` for least-privilege
-  // + audit clarity; each is an independent action. (Roster READS stay open to
-  // any authenticated member — owner pickers need them — so there is no
-  // `users:view` gate.)
+  // + audit clarity; each is an independent action.
+  //
+  // THERE IS STILL NO `users:view`, BUT THE REASON CHANGED (RBE-07). It used to be
+  // "roster READS stay open to any authenticated member — owner pickers need them",
+  // and that was the premise under which the company directory (with `phone`,
+  // `lastLoginAt` and every role id) was readable by an Editor and by a No Access
+  // principal alike. The roster is now two routes by AUDIENCE:
+  //   * `GET workspaces/:id/member-options`       the picker feed — id, name, email,
+  //     avatar — scoped in the service by `listReadableProjectIds`;
+  //   * `GET workspaces/:id/members-with-profile` the User Management roster, gated
+  //     `workspace:view` (Workspace Admin), which is the code that already gates
+  //     `GET workspaces/:id/settings`.
+  // So the gate exists; it is an EXISTING code rather than a new one, which also means
+  // no backfill migration was needed to reach an already-seeded workspace.
   USERS_INVITE: 'users:invite',
   USERS_REMOVE: 'users:remove',
   USERS_ASSIGN_ROLE: 'users:assign_role',
@@ -44,7 +55,14 @@ export const PERMISSION = {
   ROLES_EDIT: 'roles:edit',
 
   // ── teams namespace (split out of the former `workspace:manage_teams`) ───────
-  // Team READS stay open (project pickers); only writes are gated.
+  // Only WRITES have a code here, and team reads still have none — but they are no
+  // longer OPEN (RBE-08 / PRJ-07). §3.1 makes "View Project Details and Teams" a
+  // per-Project row, and a team is reached through its project links, so the three
+  // read routes (`GET workspaces/:id/teams`, `GET teams/:id`, `GET teams/:id/members`)
+  // are scoped in `TeamService` by `listReadableProjectIds` — a cross-project list
+  // whose `null` / `[]` sentinels a decorator cannot carry. A workspace-tier code
+  // would have been wrong in both directions: an Editor holds none, and holding one
+  // would grant every team in the workspace.
   TEAMS_CREATE: 'teams:create',
   TEAMS_EDIT: 'teams:edit',
   TEAMS_MANAGE_MEMBERS: 'teams:manage_members',
@@ -71,10 +89,73 @@ export const PERMISSION = {
   WORK_ITEM_DELETE: 'work_item:delete',
 
   // ── iteration namespace ────────────────────────────────────────────────────
+  /**
+   * READ the project's iterations as REFERENCE data: the `/options` reference feed
+   * (every state — a filter and an id→name label must be able to name an accepted
+   * timebox), the `/assignable` eligibility feed (`planning | committed`) and
+   * `Track > Iteration Status`.
+   *
+   * Held by EVERY level, Editor included, and it has to be. §3.2 gives the Editor
+   * `Iteration Status | View and update in assigned Teams`, and that screen's own picker
+   * reads it — as do the Backlog's iteration filter, Team Status's picker and Quality's.
+   * Revoking it would 403 four surfaces the same matrix grants.
+   *
+   * It does NOT cover `GET /iterations`, the PAGED RECORD behind the `Plan > Timeboxes`
+   * grid: that carries `TIMEBOX_VIEW`. It used to carry this code, because it was also the
+   * only feed those four surfaces had — so the surface was split and the feed was not, and
+   * the Editor kept reading `goal`, `theme`, `notes` and `plannedVelocity`. The reference
+   * feed is what closed it.
+   *
+   * Do NOT gate the `Plan > Timeboxes` surface on this code. That is `TIMEBOX_VIEW`
+   * below, and conflating the two is the defect that code was added to fix.
+   */
   ITERATION_VIEW: 'iteration:view',
   ITERATION_CREATE: 'iteration:create',
   ITERATION_EDIT: 'iteration:edit',
   ITERATION_DELETE: 'iteration:delete',
+
+  // ── timebox namespace (the `Plan > Timeboxes` SURFACE) ──────────────────────
+  /**
+   * Open the `Plan > Timeboxes` administration surface: a timebox as a managed record
+   * (goal, theme, notes, planned velocity) and its revision history.
+   *
+   * WHY IT EXISTS
+   * §3.2 marks `Timeboxes / Iterations` **Hidden** for an Editor and `Create, View, Edit,
+   * Delete` for Admin and WA — while the row directly above it gives the Editor
+   * `Iteration Status | View and update`. One code cannot answer two different questions,
+   * and `iteration:view` was being asked both: it gated the Timeboxes nav entry, the
+   * timebox grid, the timebox record and its revision history AND Iteration Status. So an
+   * Editor read the entire timebox inventory — names, dates, states, commitment — on a
+   * screen the BA hides, and was additionally offered a `Releases` TYPE that then 403'd
+   * (RBE-09 / P23-08 / P01-11, audit of 2026-08-14).
+   *
+   * The split ADDS the narrower capability rather than subtracting the broad one, because
+   * subtracting was not available: `iteration:view` is load-bearing for four Editor
+   * surfaces (see its docblock). That also means no role loses a permission here —
+   * migration 0120 is purely additive, the only shape that cannot undo a decision.
+   *
+   * WHY A NAMESPACE OF ITS OWN, AND WHY *NOT* `iteration:manage`
+   * Two reasons, and the second is the decisive one:
+   *   1. §3.2's row is a SURFACE, not an entity. That one screen hosts Iterations,
+   *      Releases and Milestones behind a TYPE switcher, so a code in the `iteration`
+   *      namespace could not honestly gate it. (The other two types are already Hidden for
+   *      an Editor through `release:view` / `milestone:view`, neither of which the Editor
+   *      holds — Iterations was the single type whose view code an Editor legitimately
+   *      needs, which is exactly why it was the one that needed splitting.)
+   *   2. `iteration:manage` is a RETIRED CODE STRING. It used to be the coarse
+   *      create+edit+delete bundle, and migration `0048_split_manage_permissions.sql`
+   *      deleted it from every stored role — global templates, per-workspace copies and
+   *      custom roles — replacing it with the three leaves. Re-using the string for a new,
+   *      narrower meaning would make any pre-0048 role, backup or hand-authored export
+   *      silently grant this surface, and it would read to every future maintainer as the
+   *      bundle 0048 unbundled. A retired code must not be recycled.
+   *
+   * A single-code namespace is the house pattern for a surface-shaped gate: `quality:view`
+   * (the defect dashboard), `audit:view`, `scm:manage`. The trade-off is that `iteration:*`
+   * no longer implies this one — deliberate, and the safer direction: a namespace wildcard
+   * quietly opening an administration surface is the worse failure.
+   */
+  TIMEBOX_VIEW: 'timebox:view',
 
   // ── release namespace ──────────────────────────────────────────────────────
   RELEASE_VIEW: 'release:view',
@@ -209,6 +290,9 @@ export const PERMISSION_TIER = {
   [PERMISSION.ITERATION_CREATE]: 'project',
   [PERMISSION.ITERATION_EDIT]: 'project',
   [PERMISSION.ITERATION_DELETE]: 'project',
+  // Project tier: `Plan > Timeboxes` shows one project's timeboxes, so a grant on one
+  // project must not open another's.
+  [PERMISSION.TIMEBOX_VIEW]: 'project',
   [PERMISSION.RELEASE_VIEW]: 'project',
   [PERMISSION.RELEASE_CREATE]: 'project',
   [PERMISSION.RELEASE_EDIT]: 'project',
@@ -323,6 +407,9 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.ITERATION_CREATE,
     PERMISSION.ITERATION_EDIT,
     PERMISSION.ITERATION_DELETE,
+    // §3.2 `Timeboxes / Iterations` is `Create, View, Edit, Delete` here and Hidden for an
+    // Editor, so this is the code that separates the two — see its docblock.
+    PERMISSION.TIMEBOX_VIEW,
     PERMISSION.RELEASE_VIEW,
     PERMISSION.RELEASE_CREATE,
     PERMISSION.RELEASE_EDIT,
@@ -360,6 +447,9 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.ITERATION_CREATE,
     PERMISSION.ITERATION_EDIT,
     PERMISSION.ITERATION_DELETE,
+    // §3.2 `Timeboxes / Iterations` is `Create, View, Edit, Delete` here and Hidden for an
+    // Editor, so this is the code that separates the two — see its docblock.
+    PERMISSION.TIMEBOX_VIEW,
     PERMISSION.RELEASE_VIEW,
     PERMISSION.RELEASE_CREATE,
     PERMISSION.RELEASE_EDIT,
@@ -392,6 +482,9 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORK_ITEM_CREATE,
     PERMISSION.WORK_ITEM_EDIT,
     PERMISSION.WORK_ITEM_DELETE,
+    // The timebox READ Iteration Status, the Backlog filter, Team Status and Quality all
+    // depend on — NOT the `Plan > Timeboxes` surface, which §3.2 marks Hidden for an Editor
+    // and which `TIMEBOX_VIEW` (deliberately absent here) gates.
     PERMISSION.ITERATION_VIEW,
     // §5 Editor rows: Quality Defects View = Assigned Teams and Team Status View =
     // the Editor's own teams' hours — both are Editor surfaces (the nav shows them,
@@ -401,9 +494,10 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.QUALITY_VIEW,
     PERMISSION.TEAM_STATUS_VIEW,
     // Editor is delivery-only and Team-scoped. Per the 3-level access matrix (§5),
-    // Portfolio Items, Capacity Planning and Reports are admin/report surfaces the
-    // Editor does NOT see — only Admin and WA do. (assertTeamScoped enforces the
-    // Team boundary on the delivery CRUD below.)
+    // Portfolio Items, Capacity Planning, Reports and — per §3.2 — `Plan > Timeboxes`
+    // (Iterations, Releases and Milestones alike) are admin surfaces the Editor does NOT
+    // see; only Admin and WA do. (assertTeamScoped enforces the Team boundary on the
+    // delivery CRUD below.)
   ],
 };
 

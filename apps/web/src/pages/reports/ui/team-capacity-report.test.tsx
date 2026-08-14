@@ -15,8 +15,20 @@ vi.mock('@/shared/api/http-client', () => ({
   apiClient: { GET: vi.fn(), POST: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() },
 }))
 
+/**
+ * The picker's feed, mutable per test.
+ *
+ * It was a fixed healthy `{ data: [...] }`, which is why every test in this file passed over the
+ * SECOND half of the same defect: `const { data: allIterations = [] } = useIterations(projectId)`
+ * made a failing `/v1/iterations` render `capacity.empty.noIteration` plus four `--` KPI cards —
+ * "select an iteration" for a project whose iterations could not be read.
+ */
+const iterationFeed: { data?: unknown[]; isError?: boolean; error?: unknown; isLoading?: boolean } =
+  { data: [{ id: 'it-1', name: 'Sprint 26.1' }] }
 vi.mock('@/features/iterations/api', () => ({
-  useIterations: () => ({ data: [{ id: 'it-1', name: 'Sprint 26.1' }] }),
+  // The REFERENCE feed (`GET /iterations/options`), which is what the picker reads now: the record
+  // list is `timebox:view` and a project Editor may not read it.
+  useIterationOptions: () => iterationFeed,
 }))
 
 import { apiClient } from '@/shared/api/http-client'
@@ -60,6 +72,10 @@ function renderReport() {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  iterationFeed.data = [{ id: 'it-1', name: 'Sprint 26.1' }]
+  iterationFeed.isError = false
+  iterationFeed.error = undefined
+  iterationFeed.isLoading = false
 })
 
 describe('TeamCapacityReport', () => {
@@ -133,5 +149,29 @@ describe('TeamCapacityReport', () => {
     await waitFor(() => expect(screen.getByText('capacity.error.title')).toBeInTheDocument())
     expect(screen.queryByText('0h')).not.toBeInTheDocument()
     expect(screen.getAllByText(EMPTY_VALUE).length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('reports a failed ITERATION LIST as a failure, not as "select an iteration" + four dashes', async () => {
+    iterationFeed.data = undefined
+    iterationFeed.isError = true
+    iterationFeed.error = new Error('boom')
+    mockGET.mockResolvedValue({ data: REPORT, error: undefined, response: { status: 200 } })
+    renderReport()
+
+    await waitFor(() => expect(screen.getByText('timeboxFeedError.title')).toBeInTheDocument())
+    // The affordance instruction must be gone — an empty picker is not something a reader can obey.
+    expect(screen.queryByText('capacity.empty.noIteration')).not.toBeInTheDocument()
+    // And the KPI strip must not read as a measurement either way.
+    expect(screen.queryByText('0h')).not.toBeInTheDocument()
+  })
+
+  it('still shows "select an iteration" when the project genuinely has none', async () => {
+    // Separating error from empty must not delete the empty state.
+    iterationFeed.data = []
+    mockGET.mockResolvedValue({ data: REPORT, error: undefined, response: { status: 200 } })
+    renderReport()
+
+    await waitFor(() => expect(screen.getByText('capacity.empty.noIteration')).toBeInTheDocument())
+    expect(screen.queryByText('timeboxFeedError.title')).not.toBeInTheDocument()
   })
 })

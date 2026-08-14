@@ -52,6 +52,8 @@ async function requireAuth() {
 // Each page is a separate chunk — only the shell is always loaded.
 import { lazy, Suspense } from 'react'
 import { PageSpinner } from '@/shared/ui/spinner'
+import { RequirePermission } from '@/features/access/ui/require-permission'
+import { navPermissionFor } from '@/shared/config/nav'
 
 function lazyPage<T extends Record<string, React.ComponentType>>(
   factory: () => Promise<T>,
@@ -64,6 +66,65 @@ function lazyPage<T extends Record<string, React.ComponentType>>(
     </Suspense>
   )
 }
+
+/**
+ * `lazyPage`, plus the permission the NAV gates the same path on.
+ *
+ * The code is looked up from `shared/config/nav.ts` by path rather than passed in, so this file
+ * cannot state a code at all — nav-hidden and route-open are then incapable of disagreeing, which
+ * was the whole defect: a bookmarked `/portfolio` rendered the page for a caller whose nav did not
+ * offer it, and the page's scoped query answered with nothing, so the grid read "this project has no
+ * Features". Phase 4 `02_Roles_Permissions/SRS.md:197` requires Access Denied there.
+ *
+ * `test/route-permission.contract.test.tsx` is what makes the pairing hold: it asserts every
+ * permission-carrying nav path routes through `guardedPage` with that same path literal, so a new
+ * surface added with plain `lazyPage`, or a mistyped path (which would silently resolve to
+ * `undefined` and gate nothing), fails there rather than in production.
+ *
+ * UX ONLY — `PolicyGuard` on the API is the authorization boundary and refuses independently. See
+ * `features/access/ui/require-permission.tsx` for why this is a component and not a `beforeLoad`.
+ */
+function guardedPage<T extends Record<string, React.ComponentType>>(
+  path: string,
+  factory: () => Promise<T>,
+  key: keyof T,
+) {
+  const Page = lazyPage(factory, key)
+  return () => (
+    <RequirePermission code={navPermissionFor(path)}>
+      <Page />
+    </RequirePermission>
+  )
+}
+
+// ── Deep-link project adoption ────────────────────────────────────────────────
+// A deep link is a property of the ROUTE, so "which project does this record belong to" is resolved
+// here — not on whatever clicked it. That switch used to live in `useOpenNotification`, i.e. on the
+// notification CLICK handler, so an in-app click landed in the right project context and the very
+// same URL pasted into a chat did not. One code path now serves both, and it runs before the first
+// paint, so the shell's breadcrumb and project selector never flicker through the previous project.
+//
+// Both adopters are imported dynamically: everything at this file's top level is in the shell
+// bundle, and each page is deliberately its own chunk. The page's chunk imports the same feature
+// module, so the loader shares it rather than duplicating it.
+//
+// ORDERING vs. THE GUARD — verified, not assumed
+// `RequirePermission` resolves permissions for the SELECTED project, so a record route that both
+// adopts a project AND is guarded has to adopt FIRST: a deep link denied on the permissions of the
+// project the reader happened to have selected before would be a worse defect than the unguarded
+// route it replaces. It does. TanStack Router holds a match at `status: 'pending'` until its loader
+// promise resolves and `Match` SUSPENDS on `loadPromise` while pending, so the component is not
+// rendered at all until the loader has returned (`router-core`'s `runLoader`: `await loaderResult`,
+// then `status: 'success'`). `adoptRecordProject` calls `setProject` synchronously after its own
+// await, so the adopted project is in the store on the guard's FIRST render.
+//
+// The residue, stated because it is not nothing: when the record cannot be resolved the loader
+// swallows the failure and adopts nothing, so the guard decides in the reader's currently selected
+// project. A 403 has already redirected to `/403`; a 404 leaves a caller who cannot open that surface
+// here with Access Denied rather than Not Found for an id that was never resolved — which discloses
+// nothing, since nothing was looked up. `/portfolio/$itemId`, `/capacity-planning/$planId` and
+// `/milestones/$milestoneId` have no adopter at all, so their guard and their page read the one
+// selected project and are incapable of disagreeing.
 
 // ── Public routes ─────────────────────────────────────────────────────────────
 const loginRoute = createRoute({
@@ -88,18 +149,30 @@ const homeRoute = createRoute({
   component: lazyPage(() => import('@/pages/home/home-page'), 'HomePage'),
 })
 
+// `Manage Projects` is not a top-nav row — it opens from the workspace switcher — so its code comes
+// from `NON_NAV_SURFACES` rather than a nav entry. §3.1:67 ("View `Workspaces & Projects`") is Hidden
+// only for No Access, so `project:view` is the code, and the pair below is the whole reason it needed
+// one: a record route folds onto its list surface, and this list had nothing to fold.
 const projectsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/projects',
   staticData: { breadcrumb: 'Manage Projects' },
-  component: lazyPage(() => import('@/pages/projects/projects-page'), 'ProjectsPage'),
+  component: guardedPage(
+    '/projects',
+    () => import('@/pages/projects/projects-page'),
+    'ProjectsPage',
+  ),
 })
 
 const projectDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/projects/$projectKey',
   staticData: { breadcrumb: 'Project Detail' },
-  component: lazyPage(() => import('@/pages/projects/projects-detail-page'), 'ProjectDetailPage'),
+  component: guardedPage(
+    '/projects/$projectKey',
+    () => import('@/pages/projects/projects-detail-page'),
+    'ProjectDetailPage',
+  ),
 })
 
 const settingsRoute = createRoute({
@@ -132,14 +205,26 @@ const backlogRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/backlog',
   staticData: { breadcrumb: 'Backlog' },
-  component: lazyPage(() => import('@/pages/backlog/backlog-page'), 'BacklogPage'),
+  component: guardedPage('/backlog', () => import('@/pages/backlog/backlog-page'), 'BacklogPage'),
 })
 
 const workItemDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/item/$itemKey',
   staticData: { breadcrumb: 'Work Item' },
-  component: lazyPage(
+  // A shared link must open in the ITEM's project, not the recipient's last-selected one.
+  // `cause` is threaded on purpose: `defaultPreload: 'intent'` runs this loader on HOVER, and the
+  // adopter writes global state. Global search links here for any typed key, so a hover used to
+  // switch project silently. See `adoptRecordProject`.
+  loader: ({ context, params, cause }) =>
+    import('@/features/work-items/deep-link').then((m) =>
+      m.adoptWorkItemProject(context.queryClient, params.itemKey, cause),
+    ),
+  // Gated on the code its LIST surfaces carry (`work_item:view`), which the alias table folds onto
+  // this path — see there for why a surface code on a record route is §197 and not §198. The loader
+  // above has already adopted the item's project by the time this renders.
+  component: guardedPage(
+    '/item/$itemKey',
     () => import('@/pages/work-item/work-item-detail-page'),
     'WorkItemDetailPage',
   ),
@@ -149,14 +234,19 @@ const timeboxesRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/timeboxes',
   staticData: { breadcrumb: 'Timeboxes' },
-  component: lazyPage(() => import('@/pages/iterations/iterations-page'), 'IterationsPage'),
+  component: guardedPage(
+    '/timeboxes',
+    () => import('@/pages/iterations/iterations-page'),
+    'IterationsPage',
+  ),
 })
 
 const iterationStatusRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/iteration-status',
   staticData: { breadcrumb: 'Iteration Status', section: 'Track' },
-  component: lazyPage(
+  component: guardedPage(
+    '/iteration-status',
     () => import('@/pages/iteration-status/iteration-status-page'),
     'IterationStatusPage',
   ),
@@ -168,14 +258,31 @@ const releasesRoute = createRoute({
   // A TYPE mode of the Timeboxes screen, not its own top-level surface — the
   // mockup breadcrumb reads "… › Plan › Timeboxes" here (DEV-004).
   staticData: { breadcrumb: 'Timeboxes' },
-  component: lazyPage(() => import('@/pages/releases/releases-page'), 'ReleasesPage'),
+  component: guardedPage(
+    '/releases',
+    () => import('@/pages/releases/releases-page'),
+    'ReleasesPage',
+  ),
 })
 
 const releaseDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/releases/$releaseId',
   staticData: { breadcrumb: 'Release Detail' },
-  component: lazyPage(() => import('@/pages/releases/releases-detail-page'), 'ReleaseDetailPage'),
+  // A shared link must open in the RELEASE's project, not the recipient's last-selected one.
+  // `cause` threaded for the same reason as `/item/$itemKey` above — a hover-time preload must not
+  // move the selected project.
+  loader: ({ context, params, cause }) =>
+    import('@/features/releases/deep-link').then((m) =>
+      m.adoptReleaseProject(context.queryClient, params.releaseId, cause),
+    ),
+  // A record of the Timeboxes surface, so it carries `timebox:view` like the three list modes do.
+  // Unguarded, a caller the nav denies `/timeboxes` to could paste a release URL and get the record.
+  component: guardedPage(
+    '/releases/$releaseId',
+    () => import('@/pages/releases/releases-detail-page'),
+    'ReleaseDetailPage',
+  ),
 })
 
 const milestonesRoute = createRoute({
@@ -183,14 +290,20 @@ const milestonesRoute = createRoute({
   path: '/milestones',
   // A TYPE mode of the Timeboxes screen (see /releases above).
   staticData: { breadcrumb: 'Timeboxes' },
-  component: lazyPage(() => import('@/pages/milestones/milestones-page'), 'MilestonesPage'),
+  component: guardedPage(
+    '/milestones',
+    () => import('@/pages/milestones/milestones-page'),
+    'MilestonesPage',
+  ),
 })
 
 const milestoneDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/milestones/$milestoneId',
   staticData: { breadcrumb: 'Milestone Detail' },
-  component: lazyPage(
+  // Timeboxes again: §3.2:83 hides "Releases and Milestones" in the same row as Timeboxes.
+  component: guardedPage(
+    '/milestones/$milestoneId',
     () => import('@/pages/milestones/milestones-detail-page'),
     'MilestoneDetailPage',
   ),
@@ -208,14 +321,22 @@ const qualityDefectsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/quality/defects',
   staticData: { breadcrumb: 'Quality' },
-  component: lazyPage(() => import('@/pages/quality/quality-page'), 'QualityPage'),
+  component: guardedPage(
+    '/quality/defects',
+    () => import('@/pages/quality/quality-page'),
+    'QualityPage',
+  ),
 })
 
 const teamStatusRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/team-status',
   staticData: { breadcrumb: 'Team Status', section: 'Track' },
-  component: lazyPage(() => import('@/pages/team-status/team-status-page'), 'TeamStatusPage'),
+  component: guardedPage(
+    '/team-status',
+    () => import('@/pages/team-status/team-status-page'),
+    'TeamStatusPage',
+  ),
 })
 
 // Team Board was consolidated into the Iteration Status List/Board toggle — the
@@ -240,14 +361,22 @@ const portfolioRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/portfolio',
   staticData: { breadcrumb: 'Portfolio' },
-  component: lazyPage(() => import('@/pages/portfolio/portfolio-page'), 'PortfolioPage'),
+  component: guardedPage(
+    '/portfolio',
+    () => import('@/pages/portfolio/portfolio-page'),
+    'PortfolioPage',
+  ),
 })
 
 const portfolioDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/portfolio/$itemId',
   staticData: { breadcrumb: 'Portfolio Item' },
-  component: lazyPage(
+  // `portfolio:view` — the LEAF's code, not the Portfolio menu trigger's `project:view`, which every
+  // access level holds. §5 makes Portfolio Items an admin surface, so an Editor pasting a Feature URL
+  // is exactly the reader this denies.
+  component: guardedPage(
+    '/portfolio/$itemId',
     () => import('@/pages/portfolio/portfolio-detail-page'),
     'PortfolioDetailPage',
   ),
@@ -257,7 +386,8 @@ const capacityPlansRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/capacity-planning',
   staticData: { breadcrumb: 'Capacity Planning' },
-  component: lazyPage(
+  component: guardedPage(
+    '/capacity-planning',
     () => import('@/pages/capacity-planning/capacity-plans-page'),
     'CapacityPlansPage',
   ),
@@ -267,7 +397,10 @@ const capacityPlanDetailRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/capacity-planning/$planId',
   staticData: { breadcrumb: 'Capacity Plan' },
-  component: lazyPage(
+  // `capacity:view`. P5-CAP-AC-010: "Editor/No Access do not access Capacity Planning" — a plan URL
+  // must not be the way around that.
+  component: guardedPage(
+    '/capacity-planning/$planId',
     () => import('@/pages/capacity-planning/capacity-plan-detail-page'),
     'CapacityPlanDetailPage',
   ),
@@ -280,7 +413,8 @@ const releaseTrackingRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/release-tracking',
   staticData: { breadcrumb: 'Release Tracking' },
-  component: lazyPage(
+  component: guardedPage(
+    '/release-tracking',
     () => import('@/pages/release-tracking/release-tracking-page'),
     'ReleaseTrackingPage',
   ),
@@ -290,7 +424,7 @@ const reportsRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/reports',
   staticData: { breadcrumb: 'Reports' },
-  component: lazyPage(() => import('@/pages/reports/reports-page'), 'ReportsPage'),
+  component: guardedPage('/reports', () => import('@/pages/reports/reports-page'), 'ReportsPage'),
 })
 
 // ── Not found ─────────────────────────────────────────────────────────────────

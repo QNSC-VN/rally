@@ -4,8 +4,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
-import { useCreateIterationItem, type Iteration } from '@/features/iterations/api'
-import { useProjectMembers, useProjectTeams } from '@/features/teams/api'
+import { useCreateIterationItem, type IterationReference } from '@/features/iterations/api'
+import { useProjectMemberOptions, useProjectTeams } from '@/features/teams/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -24,7 +24,9 @@ export function AddItemModal({
   onClose,
   onCreated,
 }: {
-  iteration: Iteration
+  // Reference, not the record: this modal shows the inherited Project/Team/Iteration read-only
+  // (P2-IS-FR-044/045), which is name + window + team and nothing else.
+  iteration: IterationReference
   projectId: string | undefined
   onClose: () => void
   onCreated: () => void
@@ -32,7 +34,9 @@ export function AddItemModal({
   const { t } = useTranslation('iteration-status')
   const navigate = useNavigate()
   const create = useCreateIterationItem(iteration.id)
-  const { data: members = [] } = useProjectMembers(projectId)
+  // The assignee feed, NOT the administrative roster: that one is Admin-only (§3.1:71), and
+  // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
+  const { data: members = [] } = useProjectMemberOptions(projectId)
   const { data: teams = [] } = useProjectTeams(projectId)
   const { project } = useAppContext()
   // Project / Team / Iteration are inherited from the iteration context and shown

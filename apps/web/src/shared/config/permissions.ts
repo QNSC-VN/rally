@@ -31,10 +31,18 @@ export const PERMISSION = {
   PROJECT_EDIT: 'project:edit',
   PROJECT_MANAGE_MEMBERS: 'project:manage_members',
 
+  // The timebox READ every delivery surface needs (Backlog filter, Team Status and Quality
+  // pickers, Iteration Status). Every access level holds it, so it gates nothing on its own.
   ITERATION_VIEW: 'iteration:view',
   ITERATION_CREATE: 'iteration:create',
   ITERATION_EDIT: 'iteration:edit',
   ITERATION_DELETE: 'iteration:delete',
+  // The `Plan > Timeboxes` SURFACE, which §3.2 marks Hidden for an Editor. This is the code
+  // the nav entry and the switcher's `Iterations` type gate on — gating them on
+  // ITERATION_VIEW showed an Editor a screen the BA hides and then offered a Releases mode
+  // that 403'd. Its own namespace on purpose: the screen hosts all three timebox types, and
+  // `iteration:manage` is a retired string (migration 0048) that must not be recycled.
+  TIMEBOX_VIEW: 'timebox:view',
   RELEASE_VIEW: 'release:view',
   RELEASE_CREATE: 'release:create',
   RELEASE_EDIT: 'release:edit',
@@ -48,6 +56,17 @@ export const PERMISSION = {
   QUALITY_VIEW: 'quality:view',
   // Reports (Iteration Burndown / Velocity / Team Capacity) and Release Tracking.
   REPORT_VIEW: 'report:view',
+
+  // The three codes `shared/config/nav.ts` gates nav entries and their routes on. They were
+  // MISSING from this mirror while the nav table used the bare strings — the identical drift
+  // PROJECT_VIEW's comment above records being fixed once already, accumulated three more times.
+  // A bare string typechecks, so `'portfolio:veiw'` would gate nothing and read as a gate; with a
+  // constant it is a compile error. `WORK_ITEM_VIEW` is the delivery read every access level holds,
+  // so it gates the nav's presence rather than any privilege; the other two are the §3.2 admin
+  // surfaces (Portfolio Items, Capacity Planning) an Editor does not see.
+  WORK_ITEM_VIEW: 'work_item:view',
+  PORTFOLIO_VIEW: 'portfolio:view',
+  CAPACITY_VIEW: 'capacity:view',
 } as const
 
 export type Permission = (typeof PERMISSION)[keyof typeof PERMISSION]

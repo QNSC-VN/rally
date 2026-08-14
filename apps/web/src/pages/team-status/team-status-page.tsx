@@ -11,12 +11,14 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronRight, Inbox } from 'lucide-react'
 import { EmptyState } from '@/shared/ui/empty-state'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
+import { listResource } from '@/shared/lib/query/resource'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { useIterations } from '@/features/iterations/api'
+import { useIterationOptions } from '@/features/iterations/api'
 import {
   useTeamStatus,
   useUpdateCapacity,
@@ -34,11 +36,12 @@ import { DataTableFrame, useDataTable, type ColumnSpec, rankColumn } from '@/sha
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
-import { useProjectMembers, type ProjectMember } from '@/features/teams/api'
 import { WorkItemType } from '@/entities/work-item/model/types'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
+import { OwnerCell } from '@/shared/ui/owner-cell'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
-import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { TableTotalsRow } from '@/shared/ui/table-totals-row'
+import { memberProgressPercent } from '@/features/team-status/progress'
 
 const TEAM_TASK_STATES: TeamTaskState[] = ['Defined', 'In-Progress', 'Completed']
 
@@ -133,11 +136,18 @@ export function TeamStatusPage() {
 
   // Team Status measures ONE team: offer its own team-scoped iterations plus the
   // shared (team_id IS NULL) ones — not every team's iterations in the project.
-  const { data: allIterations = [] } = useIterations(projectId)
+  // A resource, not `data ?? []`: the `!iterations.length` guard below prints "No iterations in
+  // this project/team yet." **plus a "Go to Timeboxes →" call to action**, so a failed
+  // `/v1/iterations` sent the reader off to create a sprint that already exists. Same defect,
+  // same sentence shape, as Release Tracking's §5.1 branch.
+  // The REFERENCE feed: §5 gives an Editor `Team Status | View`, and `GET /iterations` is
+  // `timebox:view` — so reading the record here 403'd a surface the matrix grants.
+  const iterationsQuery = useIterationOptions(projectId)
+  const iterationFeed = listResource(iterationsQuery)
+  const allIterations = iterationFeed.rows
   const iterations = teamId
     ? allIterations.filter((i) => i.teamId === teamId || i.teamId == null)
     : allIterations
-  const { data: members = [] } = useProjectMembers(projectId)
   const [chosenId, setChosenId] = useState<string | null>(null)
   const [stateFilter, setStateFilter] = useState<TeamTaskState | 'all'>('all')
   // Column sort — orders the member groups by an aggregate (Capacity / Estimate
@@ -178,7 +188,11 @@ export function TeamStatusPage() {
         }
       }
     },
-    [projectId],
+    // `setChosenId` is listed because the React Compiler infers it as a dependency and refuses to
+    // preserve the memo otherwise (`Compilation Skipped: Existing memoization could not be
+    // preserved`). A `useState` setter is referentially stable, so naming it costs nothing and the
+    // manual deps now match the inferred ones.
+    [projectId, setChosenId],
   )
 
   const {
@@ -213,7 +227,13 @@ export function TeamStatusPage() {
     )
   }
 
-  if (!iterations.length) {
+  // Error before absence, and before the picker's own empty state: the copy below is a claim about
+  // the project plus an instruction, and neither survives a request that did not land.
+  if (iterationFeed.phase === 'error') {
+    return <LoadErrorState error={iterationFeed.error} />
+  }
+
+  if (!iterations.length && !iterationFeed.isLoading) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-ui-lg text-foreground-subtle">
         <span>No iterations in this project/team yet.</span>
@@ -234,22 +254,27 @@ export function TeamStatusPage() {
     ? allGroups
         .map((g) => {
           // Recompute the group aggregates from the FILTERED tasks so the header
-          // ("N Tasks"), hours and progress match the visible rows, not the
-          // full-group server values.
+          // ("N Tasks") and hours match the visible rows, not the full-group
+          // server values. The Totals row is NOT recomputed here: P3-TS-FR-007B
+          // says "Filters affect displayed rows, but the Totals row always covers
+          // the full selected Iteration scope, never only the current page", so it
+          // keeps the server's numbers.
           const tasks = g.tasks.filter((t) => t.state === stateFilter)
           const sumH = (key: 'estimateHours' | 'todoHours' | 'actualHours') =>
             tasks.reduce((s, t) => s + (Number(t[key]) || 0), 0)
-          const completed = tasks.filter((t) => t.state === 'Completed').length
+          const estimateHours = sumH('estimateHours')
+          const actualHours = sumH('actualHours')
           return {
             ...g,
             tasks,
             taskCount: tasks.length,
-            estimateHours: sumH('estimateHours'),
+            estimateHours,
             todoHours: sumH('todoHours'),
-            actualHours: sumH('actualHours'),
-            progressPercent: tasks.length
-              ? Math.round((completed / tasks.length) * 100)
-              : g.progressPercent,
+            actualHours,
+            // The SAME §10 formula the server applies to the unfiltered group — see
+            // `memberProgressPercent`. This used to be a task-COUNT ratio, so the
+            // bar changed definition the moment a filter was applied.
+            progressPercent: memberProgressPercent(estimateHours, actualHours),
           }
         })
         .filter((g) => g.tasks.length > 0)
@@ -391,7 +416,6 @@ export function TeamStatusPage() {
             iterationId={selectedId!}
             canEdit={canEdit}
             colStyles={colStyles}
-            members={members}
             onOpenItem={(itemKey) => {
               if (itemKey) navigate({ to: '/item/$itemKey', params: { itemKey } })
             }}
@@ -414,7 +438,6 @@ function MemberGroup({
   iterationId,
   canEdit,
   colStyles,
-  members,
   onOpenItem,
   onOpenRelease,
 }: {
@@ -424,7 +447,6 @@ function MemberGroup({
   iterationId: string
   canEdit: boolean
   colStyles: Record<string, React.CSSProperties>
-  members: ProjectMember[]
   onOpenItem: (itemKey: string) => void
   onOpenRelease: (releaseId: string) => void
 }) {
@@ -546,7 +568,6 @@ function MemberGroup({
             task={task}
             canEdit={canEdit}
             colStyles={colStyles}
-            members={members}
             onOpenItem={onOpenItem}
             onOpenRelease={onOpenRelease}
           />
@@ -561,14 +582,12 @@ function TaskRow({
   task,
   canEdit,
   colStyles,
-  members,
   onOpenItem,
   onOpenRelease,
 }: {
   task: TeamStatusTaskRow
   canEdit: boolean
   colStyles: Record<string, React.CSSProperties>
-  members: ProjectMember[]
   onOpenItem: (itemKey: string) => void
   onOpenRelease: (releaseId: string) => void
 }) {
@@ -595,64 +614,6 @@ function TaskRow({
       { taskId: task.id, state },
       {
         onSuccess: () => toast.success(`Task state updated to ${state}`),
-        onError: (e) => toast.error(e.message),
-      },
-    )
-  }
-
-  function commitEstimate(raw: string) {
-    const num = raw.trim() === '' ? null : Number(raw)
-    if (num !== null && (isNaN(num) || num < 0)) {
-      toast.error('Estimate must be a positive number')
-      return
-    }
-    // Estimate is an independent planned value (real Rally) — editing it does
-    // NOT touch To Do. To Do defaults to Estimate at create (backend) and
-    // auto-zeroes on completion.
-    updateTask.mutate(
-      { taskId: task.id, estimateHours: num },
-      {
-        onSuccess: () => toast.success('Estimate updated'),
-        onError: (e) => toast.error(e.message),
-      },
-    )
-  }
-
-  function commitTodo(raw: string) {
-    const num = raw.trim() === '' ? null : Number(raw)
-    if (num !== null && (isNaN(num) || num < 0)) {
-      toast.error('To Do hours must be a positive number')
-      return
-    }
-    updateTask.mutate(
-      { taskId: task.id, todoHours: num },
-      {
-        onSuccess: () => toast.success('To Do hours updated'),
-        onError: (e) => toast.error(e.message),
-      },
-    )
-  }
-
-  function commitActual(raw: string) {
-    const num = raw.trim() === '' ? null : Number(raw)
-    if (num !== null && (isNaN(num) || num < 0)) {
-      toast.error('Actual hours must be a positive number')
-      return
-    }
-    updateTask.mutate(
-      { taskId: task.id, actualHours: num },
-      {
-        onSuccess: () => toast.success('Actual hours updated'),
-        onError: (e) => toast.error(e.message),
-      },
-    )
-  }
-
-  function handleOwnerChange(userId: string | null) {
-    updateTask.mutate(
-      { taskId: task.id, assigneeId: userId },
-      {
-        onSuccess: () => toast.success('Owner updated'),
         onError: (e) => toast.error(e.message),
       },
     )
@@ -708,7 +669,7 @@ function TaskRow({
             onOpen={() => onOpenItem(task.workProduct.key)}
           />
         ) : (
-          <span className="text-ui-xs text-foreground-faint">--</span>
+          <span className="text-ui-xs text-foreground-faint">{EMPTY_VALUE}</span>
         )}
       </div>
       {/* Release (P3-TS-FR-025) — clickable reference to the release detail,
@@ -736,7 +697,7 @@ function TaskRow({
             </span>
           </button>
         ) : (
-          <span className="text-ui-xs text-foreground-faint">--</span>
+          <span className="text-ui-xs text-foreground-faint">{EMPTY_VALUE}</span>
         )}
       </div>
       {/* State (P3-TS-FR-021 — inline editable). A dropdown (InlineSelect) keyed on
@@ -760,69 +721,36 @@ function TaskRow({
       </div>
       {/* Capacity (empty on task row — P3-TS-FR-024) */}
       <div className="shrink-0 px-2" style={colStyles.capacity} />
-      {/* Estimate / ToDo / Actuals (P3-TS-FR-026 — inline editable) */}
-      <div
-        className="shrink-0 px-0 text-right"
-        style={colStyles.estimate}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <InlineEditableCell
-          fullCell
-          value={String(task.estimateHours ?? '')}
-          canEdit={canEdit}
-          onCommit={commitEstimate}
-          displayValue={task.estimateHours ?? '--'}
-          className="font-mono text-muted-foreground tabular-nums"
-          inputClassName="text-right font-mono text-ui-sm text-foreground"
-          ariaLabel="Estimate hours"
-        />
+      {/* Estimate / ToDo / Actuals — READ-ONLY here (P3-TS-FR-026: "shown as
+          numeric hour values"; §11 gives this surface Capacity, Task Name and Task
+          State and nothing else; §9.3's patch accepts `title` and/or `state`). They
+          are inline editable on the Task Dashboard — Work Item Detail › Tasks tab,
+          P3-TS-FR-038 — which writes through the work-item route. */}
+      <div className="shrink-0 px-2 text-right" style={colStyles.estimate}>
+        <HoursCell value={task.estimateHours} />
       </div>
-      <div
-        className="shrink-0 px-0 text-right"
-        style={colStyles.todo}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <InlineEditableCell
-          fullCell
-          value={String(task.todoHours ?? '')}
-          canEdit={canEdit}
-          onCommit={commitTodo}
-          displayValue={task.todoHours ?? '--'}
-          className="font-mono text-muted-foreground tabular-nums"
-          inputClassName="text-right font-mono text-ui-sm text-foreground"
-          ariaLabel="To Do hours"
-        />
+      <div className="shrink-0 px-2 text-right" style={colStyles.todo}>
+        <HoursCell value={task.todoHours} />
       </div>
-      <div
-        className="shrink-0 px-0 text-right"
-        style={colStyles.actuals}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <InlineEditableCell
-          fullCell
-          value={String(task.actualHours ?? '')}
-          canEdit={canEdit}
-          onCommit={commitActual}
-          displayValue={task.actualHours ?? '--'}
-          className="font-mono text-muted-foreground tabular-nums"
-          inputClassName="text-right font-mono text-ui-sm text-foreground"
-          ariaLabel="Actual hours"
-        />
+      <div className="shrink-0 px-2 text-right" style={colStyles.actuals}>
+        <HoursCell value={task.actualHours} />
       </div>
-      {/* Owner + Dev Owner (UI-only alias — both write assigneeId) */}
-      <div
-        className="shrink-0 truncate px-0 text-ui-sm"
-        style={colStyles.owner}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <OwnerSelectCell
-          ownerName={task.owner.id ? task.owner.displayName : null}
-          assigneeId={task.owner.id}
-          members={members}
-          canEdit={canEdit}
-          onChange={handleOwnerChange}
-        />
+      {/* Owner — READ-ONLY (P3-TS-FR-027: the column "displays the task owner
+          name"). Reassignment happens on the Task Dashboard: the rows here are
+          GROUPED by owner, so editing it from inside a member's own group moves the
+          row out of the group it is drawn in. */}
+      <div className="shrink-0 px-2" style={colStyles.owner}>
+        <OwnerCell name={task.owner.id ? task.owner.displayName : null} />
       </div>
     </div>
+  )
+}
+
+/** One absent-safe hours cell — `EMPTY_VALUE`, never `0`, when there is no number. */
+function HoursCell({ value }: { value: number | null }) {
+  return (
+    <span className="font-mono text-ui-sm text-muted-foreground tabular-nums">
+      {value ?? EMPTY_VALUE}
+    </span>
   )
 }

@@ -1,9 +1,18 @@
+import { defaultIterationId } from '@/features/iterations/default-iteration'
 import { useState } from 'react'
 
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 
+/**
+ * Widened from `{ id }` to carry the WINDOW, because the default is now chosen by date rather than by
+ * row position — see `defaultIterationId`. Both the reference feed and the record satisfy this.
+ */
 interface Timebox {
   id: string
+  /** State and window, because the default is chosen by both — see `defaultIterationId`. */
+  state: string
+  startDate: string | null
+  endDate: string | null
 }
 
 /**
@@ -30,7 +39,7 @@ export function useSelectedIteration(projectId: string | undefined, iterations: 
       ? chosenId
       : persistedId && iterations.some((i) => i.id === persistedId)
         ? persistedId
-        : (iterations[0]?.id ?? null)
+        : defaultIterationId(iterations)
 
   function select(id: string) {
     setChosenId(id)

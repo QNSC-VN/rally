@@ -109,6 +109,34 @@ export const UpdateLabelSchema = z.object({
 
 export class UpdateLabelDto extends createZodDto(UpdateLabelSchema) {}
 
+// ── Set Project Access (level + Teams, one write) ─────────────────────────────
+//
+// PRJ-08 / §5.1-§5.2: the access level and the Teams it is scoped to arrive TOGETHER, because
+// "an Editor must be assigned to at least one active Team" (§2.2) is only decidable when they do.
+// This body used to be an INLINE `{ userId: string; accessLevel?: ProjectAccessLevel }` on the
+// handler, which Swagger cannot see — so the generated SPA client typed the body as `never` and
+// every caller cast through `as never`. A real schema is what makes the combined contract visible
+// to the client at all.
+export const SetProjectAccessSchema = z.object({
+  userId: z.string().uuid(),
+  /**
+   * Optional, and it is the LEVEL that is optional rather than the row: a `project_members` row with
+   * a NULL level is legitimate (§2.2's team-derived membership), and omitting it here leaves whatever
+   * level the row already carries rather than clearing it.
+   */
+  accessLevel: z.enum(PROJECT_ACCESS_LEVEL).optional(),
+  /**
+   * The teams of THIS project the user should end up on, reconciled as a SET.
+   *
+   * Absent means "leave the memberships alone" — not "remove them all", which is what `[]` means. The
+   * distinction is load-bearing: for an Editor, `[]` is exactly the state PRJ-08 refuses, while
+   * absent is an ordinary bare level change judged against the teams they already hold.
+   */
+  teamIds: z.array(z.string().uuid()).optional(),
+});
+
+export class SetProjectAccessDto extends createZodDto(SetProjectAccessSchema) {}
+
 // ── Update Project Member ─────────────────────────────────────────────────────
 
 export const UpdateProjectMemberSchema = z.object({

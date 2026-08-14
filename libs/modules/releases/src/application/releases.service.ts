@@ -15,7 +15,7 @@ import { PERMISSION } from '@shared-kernel';
 import { capacityPlans, workItems, tasks } from '../../../../../db/schema/work';
 import { acceptedScheduleStatesSql, type ReleaseStatus } from '../../../../../db/schema/enums';
 import { IReleaseRepository, RELEASE_REPOSITORY } from '../domain/ports/release.repository';
-import type { Release, UpdateReleaseInput } from '../domain/release.types';
+import type { Release, ReleaseOption, UpdateReleaseInput } from '../domain/release.types';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
 import { RELEASE_ACTIVITY_CONFIG } from './release-activity-diff';
 
@@ -128,6 +128,29 @@ export class ReleasesService {
         return { ...r, taskEstimate: taskRollup.estimateHours, taskRollup };
       }),
     };
+  }
+
+  /**
+   * The REFERENCE feed — every release in the project, projected to what a picker needs.
+   *
+   * Split out of {@link listReleases} because that one is the `Plan > Releases` administration grid's
+   * feed and takes `release:view`, which §3.2 withholds from an Editor — and it was ALSO the only
+   * source of a release's NAME on Backlog, the Work Item detail sidebar, the Backlog summary panel
+   * and Quality. See {@link ReleaseOptionSchema} for the full account; the short version is that a
+   * 403 there rendered a scheduled row as unscheduled and left the picker empty, which is the
+   * `member-options` regression one column across.
+   *
+   * No roll-up computed here: `computeTaskRollups` is three grouped aggregates over `work.tasks` for
+   * numbers a picker does not show, and `taskEstimate` is administration data an Editor must not
+   * read. So this is also the cheaper call, which is the one every grid makes.
+   *
+   * No actor gate beyond the route's: `project:view` scoped to the query's `projectId` is the
+   * parent's own view permission, held by every level, and `getProject` still refuses a project
+   * outside the caller's workspace.
+   */
+  async listReleaseOptions(actor: JwtPayload, projectId: string): Promise<ReleaseOption[]> {
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    return this.releaseRepo.listOptionsByProject(projectId, actor.workspaceId);
   }
 
   /**
@@ -441,11 +464,16 @@ export class ReleasesService {
   /**
    * List work items (stories/defects) linked to a release.
    * Reuses the same shape as the backlog list.
+   *
+   * `assigneeName` is joined because the shared artifact table renders an Owner column and had
+   * nothing to fill it with — the SPA's own row type declared the field, the feed never sent it.
+   * `q` (item key or title) is honoured for the same reason: the toolbar above this table has always
+   * had a search box and has always sent the term (P3-REL-FR-033).
    */
   async listReleaseArtifacts(
     actor: JwtPayload,
     releaseId: string,
-    args: { limit: number; cursor: CursorPayload | null },
+    args: { limit: number; cursor: CursorPayload | null; q?: string },
   ): Promise<
     PagedResult<{
       id: string;
@@ -455,6 +483,7 @@ export class ReleasesService {
       scheduleState: string;
       priority: string;
       assigneeId: string | null;
+      assigneeName: string | null;
       iterationId: string | null;
       releaseId: string | null;
       storyPoints: number | null;
@@ -472,6 +501,14 @@ export class ReleasesService {
       sql`type IN ('story', 'defect')`,
     ];
 
+    const term = args.q?.trim();
+    if (term) {
+      const like = `%${term}%`;
+      conditions.push(
+        sql`(${workItems.itemKey} ilike ${like} or ${workItems.title} ilike ${like})`,
+      );
+    }
+
     // Total artifacts on this release (before cursor/limit) for the footer count.
     const baseConditions = [...conditions];
 
@@ -488,6 +525,7 @@ export class ReleasesService {
         scheduleState: workItems.scheduleState,
         priority: workItems.priority,
         assigneeId: workItems.assigneeId,
+        assigneeName: sql<string | null>`assignee_user.display_name`,
         iterationId: workItems.iterationId,
         releaseId: workItems.releaseId,
         storyPoints: sql<number | null>`${workItems.storyPoints}::float8`,
@@ -495,6 +533,7 @@ export class ReleasesService {
         updatedAt: workItems.updatedAt,
       })
       .from(workItems)
+      .leftJoin(sql`identity.users assignee_user`, sql`assignee_user.id = work_items.assignee_id`)
       .where(and(...conditions))
       .orderBy(desc(workItems.createdAt), asc(workItems.id))
       .limit(args.limit + 1);

@@ -13,6 +13,9 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { Pencil, Send, Trash2, Undo2, Users } from 'lucide-react'
 
 import { EmptyState } from '@/shared/ui/empty-state'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
+import { valueResource } from '@/shared/lib/query/resource'
+import { toggleId } from './model/expanded-ids'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
 import { DndContext } from '@dnd-kit/core'
@@ -114,13 +117,7 @@ export function CapacityPlanDetailPage() {
    */
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
   const toggleTeam = useCallback(
-    (teamId: string) =>
-      setExpandedTeams((prev) => {
-        const next = new Set(prev)
-        if (next.has(teamId)) next.delete(teamId)
-        else next.add(teamId)
-        return next
-      }),
+    (teamId: string) => setExpandedTeams((prev) => toggleId(prev, teamId)),
     [],
   )
 
@@ -130,17 +127,17 @@ export function CapacityPlanDetailPage() {
    */
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
   const toggleItem = useCallback(
-    (itemId: string) =>
-      setExpandedItems((prev) => {
-        const next = new Set(prev)
-        if (next.has(itemId)) next.delete(itemId)
-        else next.add(itemId)
-        return next
-      }),
+    (itemId: string) => setExpandedItems((prev) => toggleId(prev, itemId)),
     [],
   )
 
-  const { data: plan, isLoading } = useCapacityPlan(planId)
+  // `valueResource`, not `{ data }` alone: a 500/403 left `plan` undefined and the guard below
+  // printed `detail.notFound` — "Capacity plan not found." — a claim the record does not exist,
+  // about a request that never landed. The list page already separated the two. See resource.ts.
+  const planQuery = useCapacityPlan(planId)
+  const planResource = valueResource(planQuery)
+  const plan = planResource.value
+  const isLoading = planResource.isLoading
 
   /**
    * The header's name field, seeded from the plan and re-seeded whenever the plan's own name
@@ -515,6 +512,8 @@ export function CapacityPlanDetailPage() {
   }
 
   if (isLoading) return <SkeletonList rows={6} />
+  // Error BEFORE absence: one `phase` discriminant, so the two can never both be true.
+  if (planResource.phase === 'error') return <LoadErrorState error={planResource.error} />
   if (!plan) return <EmptyState title={t('detail.notFound')} />
 
   const unitLabel = t(`units.${plan.unit}`)

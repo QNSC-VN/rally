@@ -17,6 +17,11 @@ interface Capability {
 const CAPABILITIES: Capability[] = [
   { feature: 'Backlog — Work Items', wa: true, admin: true, editor: ['create', 'edit', 'delete'] },
   { feature: 'Iteration Status', wa: true, admin: true, editor: ['edit'] },
+  // The row directly above and this one are the pair §3.2 gives an Editor DIFFERENT access to, and
+  // the reason `timebox:view` exists: one code used to gate both, so an Editor saw a surface
+  // the BA hides. Listed here because this table is where an admin reads the model, and it omitted
+  // the only Plan surface in the product.
+  { feature: 'Plan > Timeboxes (Iterations, Releases)', wa: true, admin: true, editor: false },
   { feature: 'Quality / Defects', wa: true, admin: true, editor: ['view'] },
   {
     feature: 'Portfolio Items (Epic/Feature)',

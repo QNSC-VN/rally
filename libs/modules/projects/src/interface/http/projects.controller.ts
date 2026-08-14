@@ -26,6 +26,7 @@ import {
   ProjectQueryDto,
   CreateLabelDto,
   UpdateLabelDto,
+  SetProjectAccessDto,
   UpdateProjectMemberDto,
   ProjectEstimationSettingsDto,
   UpdateProjectEstimationSettingsDto,
@@ -37,6 +38,7 @@ import {
   WorkflowTransitionResponseDto,
   LabelResponseDto,
   ProjectMemberResponseDto,
+  ProjectMemberOptionResponseDto,
 } from './dto/project-response.dto';
 import type {
   Project,
@@ -551,23 +553,58 @@ export class ProjectsController {
     return members.map(toProjectMemberDto);
   }
 
+  @Get(':id/member-options')
+  /**
+   * The assignee feed, for anyone who can READ the project — `project:view`, scoped to the path id.
+   *
+   * `GET :id/members` is the administrative roster and is Workspace-Admin/Project-Admin only (§3.1:71).
+   * It was also the only owner-picker feed, so gating it left every Editor's Backlog and Iteration
+   * Status with an empty member list — and both surfaces derive the displayed owner NAME from that
+   * list, so every owned item read `Unassigned` and §3.2:79's owner write was unreachable. The check
+   * was correct; the feed was the defect. Same split, and same reasoning, as
+   * `GET /workspaces/:id/member-options`.
+   */
+  @RequirePermission('project:view', { from: 'param', field: 'id' })
+  @ApiOperation({ summary: "List this project's assignable owners (id, name, email, avatar)" })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: ProjectMemberOptionResponseDto, isArray: true })
+  @ApiCommonErrors(401, 403, 404)
+  async listProjectMemberOptions(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ProjectMemberOptionResponseDto[]> {
+    return this.projectsService.listProjectMemberOptions(user.workspaceId, id);
+  }
+
+  /**
+   * The ONE combined access write: level + Teams, in one transaction (PRJ-08).
+   *
+   * Still `POST :id/members` rather than a new route, because it is still the same operation §5.2
+   * names ("Add Existing User or change Access Level") and the underlying grant has always UPSERTED —
+   * so all three §5 journeys can reach one endpoint (AC-9) instead of the level-then-teams pair they
+   * used to issue. `PATCH :id/members/:memberId` survives for the `status` field and for a bare level
+   * change; it enforces the same rule against the teams the member already holds.
+   */
   @Post(':id/members')
   @RequirePermission('project:manage_members', { from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'Add a member to a project' })
+  @ApiOperation({ summary: "Set a user's project access level and Teams" })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 201, type: ProjectMemberResponseDto })
   @ApiCommonErrors(400, 401, 404, 409, 422)
   async addProjectMember(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: { userId: string; accessLevel?: ProjectAccessLevel },
+    @Body() dto: SetProjectAccessDto,
   ): Promise<ProjectMemberResponseDto> {
-    const member = await this.projectsService.addProjectMember(
+    const member = await this.projectsService.setProjectAccess(
       user.workspaceId,
       id,
       dto.userId,
       user.sub,
-      dto.accessLevel,
+      {
+        ...(dto.accessLevel !== undefined && { accessLevel: dto.accessLevel }),
+        ...(dto.teamIds !== undefined && { teamIds: dto.teamIds }),
+      },
     );
     return toProjectMemberDto(member);
   }

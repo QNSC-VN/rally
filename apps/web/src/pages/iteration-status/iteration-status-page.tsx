@@ -24,26 +24,23 @@ import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import {
-  useIterations,
-  useIterationStatus,
   useIterationOptions,
+  useIterationStatus,
+  useAssignableIterations,
   useCreateIterationItem,
   type IterationStatusItem,
 } from '@/features/iterations/api'
 import { useUpdateAnyWorkItem, useRankAnyWorkItem } from '@/features/work-items/api'
-import { useProjectMembers } from '@/features/teams/api'
-import { useMilestones } from '@/features/milestones/api'
-import { ScheduleState } from '@/entities/work-item/model/types'
+import { useProjectMemberOptions } from '@/features/teams/api'
+import { useMilestoneOptions } from '@/features/milestones/api'
+import { defaultIterationId } from '@/features/iterations/default-iteration'
 import { StatusRow } from './ui/status-row'
 import { AddItemModal } from './ui/add-item-modal'
 import { IterationHeader, MetricsStrip, Toolbar, TableFooterTotals } from './ui/iteration-chrome'
 import { computeTotalDays } from './model/iteration-helpers'
-import {
-  type ColKey,
-  ITERATION_STATUS_COLUMNS,
-  OWNER_UNASSIGNED,
-  HEADER_META,
-} from './model/columns'
+import { type ColKey, ITERATION_STATUS_COLUMNS, HEADER_META } from './model/columns'
+import { useIterationFilterFields, toIterationStatusQuery } from './model/filter-fields'
+import { useManageFilters } from '@/features/work-items/model/manage-filters'
 
 // Stable empty-array reference — `status?.items ?? []` would otherwise mint a
 // new array every render while status is loading, which defeats the
@@ -62,9 +59,15 @@ export function IterationStatusPage() {
   const canEdit = can('work_item:edit')
   const canCreate = can('work_item:create')
 
-  const { data: iterations = [], isLoading: iterationsLoading } = useIterations(projectId)
-  const { data: members = [] } = useProjectMembers(projectId)
-  const { data: milestoneOptions = [] } = useMilestones(projectId)
+  // The REFERENCE feed, not `useIterations`: this page's own picker must offer every timebox
+  // including accepted ones, and `GET /iterations` is `timebox:view` — §3.2 marks `Plan > Timeboxes`
+  // Hidden for an Editor while granting them THIS screen, so reading the record here 403'd the
+  // surface the split exists to keep open.
+  const { data: iterations = [], isLoading: iterationsLoading } = useIterationOptions(projectId)
+  // The assignee feed, NOT the administrative roster: that one is Admin-only (§3.1:71), and
+  // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
+  const { data: members = [] } = useProjectMemberOptions(projectId)
+  const { data: milestoneOptions = [] } = useMilestoneOptions(projectId)
 
   const memberMap = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
 
@@ -74,9 +77,6 @@ export function IterationStatusPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [stateFilter, setStateFilter] = useState<ScheduleState | 'all'>('all')
-  const [ownerFilter, setOwnerFilter] = useState<string>('all')
-  const [blockedOnly, setBlockedOnly] = useState(false)
   const [pageSize, setPageSize] = useState<number>(25)
   const [page, setPage] = useState<number>(1)
 
@@ -106,8 +106,13 @@ export function IterationStatusPage() {
     }
   }, [projectId])
 
+  // `defaultIterationId`, NOT `iterations[0]`: the feed is ordered for the reader (newest first), and
+  // a default read off row order opens a sprint that has not started — no rows, which reads as an
+  // empty sprint rather than the wrong one. See that function for the rule.
   const selectedId =
-    chosenId && iterations.some((i) => i.id === chosenId) ? chosenId : (iterations[0]?.id ?? null)
+    chosenId && iterations.some((i) => i.id === chosenId)
+      ? chosenId
+      : defaultIterationId(iterations)
 
   const setSelectedId = useCallback(
     (id: string | null) => {
@@ -123,11 +128,24 @@ export function IterationStatusPage() {
     [projectId],
   )
 
+  // ── Manage Filters (P2-IS-FR-022) ─────────────────────────────────────────
+  // The shared chooser from `features/work-items`, the same one Backlog uses —
+  // P2-IS §5 makes this screen inherit the Backlog list patterns rather than
+  // grow its own. Every field is a SERVER predicate: Schedule State, Owner and
+  // Blocked used to narrow the already-fetched rows, which answers "which of the
+  // rows we loaded match?" rather than "which rows match?".
+  const filterFields = useIterationFilterFields({ members })
+  const filters = useManageFilters(filterFields)
+  const appliedFilters = useMemo(() => toIterationStatusQuery(filters.applied), [filters.applied])
+
   const {
     data: status,
     isLoading,
     isError,
   } = useIterationStatus(selectedId ?? undefined, {
+    ...appliedFilters,
+    // Quick search is independent of Manage Filters (P2-IS-FR-020: "Quick search
+    // `Filter items...` remains outside Manage Filters"; P2-BL-TS-015).
     q: search.trim() || undefined,
   })
 
@@ -137,10 +155,10 @@ export function IterationStatusPage() {
   )
   const selected = iterations[selectedIndex]
 
-  // Iteration picker feed for inline reassignment — scoped to the current
-  // iteration's team so every option is assignable (backend enforces the same
-  // team-scope rule via assertIterationAssignable).
-  const { data: iterationOptions = [] } = useIterationOptions(projectId, selected?.teamId)
+  // Iteration picker feed for inline REASSIGNMENT — the ELIGIBILITY feed
+  // (`planning | committed`), scoped to the current iteration's team so every option is genuinely
+  // assignable (the backend enforces the same team-scope rule via assertIterationAssignable).
+  const { data: iterationOptions = [] } = useAssignableIterations(projectId, selected?.teamId)
 
   const items = status?.items ?? EMPTY_ITEMS
 
@@ -164,27 +182,12 @@ export function IterationStatusPage() {
     [sortCol],
   )
 
-  // Client-side refinement on top of the server-side `q` search: Schedule
-  // State / Owner / Blocked filters applied to the loaded iteration items.
-  const filteredItems = useMemo(() => {
-    return items.filter((it) => {
-      if (stateFilter !== 'all' && it.scheduleState !== stateFilter) return false
-      if (ownerFilter === OWNER_UNASSIGNED && it.assigneeId != null) return false
-      if (
-        ownerFilter !== 'all' &&
-        ownerFilter !== OWNER_UNASSIGNED &&
-        it.assigneeId !== ownerFilter
-      )
-        return false
-      if (blockedOnly && !it.isBlocked) return false
-      return true
-    })
-  }, [items, stateFilter, ownerFilter, blockedOnly])
-
+  // No client-side filter pass: `items` IS the filtered set, because every
+  // Manage Filters field and the quick search are server predicates.
   const sortedItems = useMemo(() => {
-    if (!sortCol) return filteredItems
+    if (!sortCol) return items
     const dir = sortDir === 'asc' ? 1 : -1
-    return [...filteredItems].sort((a, b) => {
+    return [...items].sort((a, b) => {
       let va: string | number
       let vb: string | number
       switch (sortCol) {
@@ -231,7 +234,7 @@ export function IterationStatusPage() {
       if (va > vb) return 1 * dir
       return 0
     })
-  }, [filteredItems, sortCol, sortDir])
+  }, [items, sortCol, sortDir])
 
   // ── Client-side pagination ──────────────────────────────────────────────
   // An iteration is a bounded dataset (the fetch loads the full sprint), so we
@@ -241,7 +244,7 @@ export function IterationStatusPage() {
   const pageCount = Math.max(1, Math.ceil(sortedItems.length / pageSize))
   // Snap back to the first page whenever the underlying view identity changes
   // (project/iteration, search, filters, sort, or page size).
-  const pageResetKey = `${selectedId ?? ''}|${search}|${stateFilter}|${ownerFilter}|${blockedOnly}|${sortCol ?? ''}|${sortDir}|${pageSize}`
+  const pageResetKey = `${selectedId ?? ''}|${search}|${JSON.stringify(filters.applied)}|${sortCol ?? ''}|${sortDir}|${pageSize}`
   const [syncedPageKey, setSyncedPageKey] = useState(pageResetKey)
   if (syncedPageKey !== pageResetKey) {
     setSyncedPageKey(pageResetKey)
@@ -340,7 +343,10 @@ export function IterationStatusPage() {
   // An iteration is finished once it's been accepted or explicitly completed —
   // regardless of the raw end-date arithmetic (which reads 0/negative when past
   // due and otherwise misleadingly shows "0 days left" on a done sprint).
-  const iterationDone = selected?.state === 'accepted' || selected?.completedAt != null
+  // `state === 'accepted'` alone: `iterations.completed_at` is the ACCEPTANCE stamp and the service
+  // writes it on accept and clears it on every other transition (`iterations.service.ts`), so the
+  // two are maintained in lockstep and the reference feed deliberately does not carry it.
+  const iterationDone = selected?.state === 'accepted'
   // Elapsed / total, capped at 100%; a finished iteration always shows full.
   const iterationProgressPct = iterationDone
     ? 100
@@ -461,13 +467,7 @@ export function IterationStatusPage() {
         hidden={hidden}
         toggleVisible={toggleVisible}
         reorder={reorder}
-        stateFilter={stateFilter}
-        setStateFilter={setStateFilter}
-        ownerFilter={ownerFilter}
-        setOwnerFilter={setOwnerFilter}
-        blockedOnly={blockedOnly}
-        setBlockedOnly={setBlockedOnly}
-        members={members}
+        filters={filters}
       />
 
       {/* ── 6. Table (List view) or Board view ───────────────────────────── */}
@@ -480,13 +480,13 @@ export function IterationStatusPage() {
             <div className="flex h-full items-center justify-center text-ui-lg text-destructive">
               {t('boardLoadError')}
             </div>
-          ) : filteredItems.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="flex h-full items-center justify-center text-ui-lg text-foreground-subtle">
               {t('emptyItems')}
             </div>
           ) : (
             <IterationBoard
-              items={filteredItems}
+              items={items}
               memberMap={memberMap}
               canEdit={canEdit}
               onOpen={(itemKey) => navigate({ to: '/item/$itemKey', params: { itemKey } })}

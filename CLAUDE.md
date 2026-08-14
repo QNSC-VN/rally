@@ -32,6 +32,19 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   run unattended, so `db/migrations/*.sql` are authored by hand and must match
   `db/schema/*`. CI proves a new migration applies on top of `main`'s schema, not
   just a fresh database — see the `migrations` job in `backend-ci.yml`.
+
+  **Applying a HIGHER-numbered migration first strands the lower one on that database, silently.**
+  Drizzle records the journal's `when` as `created_at` and applies only entries past the newest
+  recorded value, so if `0120` is applied while `0119` is still being written, `pnpm db:migrate`
+  afterwards reports "Migrations applied" and `0119` never runs — its table simply does not exist.
+  Fresh databases and CI are fine, because the journal's array order is still ascending; this bites the
+  local database you are testing on, which is the one you would trust. Two ways in: writing two
+  migrations in parallel (do not — one at a time, even across parallel work), or a `when` that is not
+  strictly greater than its predecessor's. Verify with
+  `select count(*) from drizzle.__drizzle_migrations` against the journal's entry count; recover by
+  applying the stranded file by hand or recreating the database. (Two historical pairs — 0005/0006 and
+  0018/0019 — have non-ascending `when` values and ARE applied, so a non-monotonic journal is not by
+  itself proof of a skip; count the rows.)
 - **`db/permissions.catalog.ts` is the single source of truth** for permission
   codes and role→permission mappings, imported via the `@db/*` path. It lives
   outside `libs/` because the standalone migrator image ships `db/**` only.
@@ -110,6 +123,19 @@ not a function`, so use `AuthService.devLogin` for a bearer token), the **Valida
   `pnpm --filter rally-web codegen` against a running local API, then a commit. The
   `OpenAPI contract` job regenerates from the spec it captured and diffs
   (`codegen:check`), so drift fails CI instead of failing at runtime.
+
+  **`/api/docs-json` can serve a STALE document from a watch-mode restart.** Nest builds the Swagger
+  document once at bootstrap, so `pnpm start:dev` recompiling is not the same thing as the served spec
+  being current — it reported `Found 0 errors`, answered on the port, and still described the DTO as it
+  was before the last edit. Codegen then wrote a client that was *correct for a spec nobody has*, and
+  the only symptom was one absent field: `git diff` on the client was EMPTY, which reads exactly like
+  "no DTO change was needed". **Grep the served spec for a marker before trusting a generated client**
+  (`curl -s localhost:3000/api/docs-json | grep <newField>`), and restart the API rather than relying
+  on the watcher. Worth also knowing the diff is legitimately huge when the module graph changes:
+  `openapi-typescript` emits in spec order, which follows module init order, so adding one module
+  import reordered ~1200 lines with no route added or removed. Compare route INVENTORIES, not the line
+  count, to tell that apart from a real loss — and regenerate twice across a restart if you need to
+  prove the order is deterministic, because a nondeterministic one would flake `codegen:check`.
 - **`waitFor() timed out` in `notification-flow.e2e.spec.ts` is an ENVIRONMENT fault, not a flake.**
   Two independent causes, both seen in one session:
   1. **Email is unconfigured.** `.env` ships `EMAIL_PROVIDER=ses`, but `MAIL_FROM_EMAIL` is
@@ -457,6 +483,28 @@ write reaching the same state left the rule unsatisfied. Both are now pinned by
 **The smell to watch for: a value repaired on read.** It makes the defect invisible on exactly the
 screen someone checks, and it leaves every other reader stale.
 
+**Its sibling: a value HIDDEN on read.** Migration 0118 deletes the Workspace Admin's
+`project_members` rows (§2.1/AC-8), and `db/seeds/demo.ts` wrote the same row straight back — and
+`pnpm db:migrate` runs that seed, so every local and CI database undid the migration on the spot. What
+made it invisible is that the fix's own three readers (the roster query, `memberCount`, and the POST
+refusal) all correctly hide such a row, so nothing on screen would ever have shown it coming back. It
+was not cosmetic either: `AccessService.effectiveAssignments` synthesizes a project grant FROM that
+table, so the row is dormant only while the user is a WA — demote them and it becomes a live Project
+Admin grant no roster displays. **Whenever a migration DELETES rows, grep `db/seeds/**` for the writer
+before assuming the deletion holds.**
+
+**And a third: state FROZEN before its source arrived.** The user-access modal's draft materialised
+`teamIds` from its baseline the moment any part of a row was edited, but team memberships come from
+their own query — so choosing `Editor` before `/v1/teams/{id}/members` resolved froze `[]` in, and a
+draft SHADOWS the baseline, so the real memberships could never reach it. §2.2's "an Editor needs a
+Team" guard then stayed true forever: `Review Changes` disabled permanently, the user's own team
+unchecked, no way out but closing the modal. **A draft must hold only what the user TOUCHED** —
+`undefined` meaning "resolve against the baseline when it arrives", the same absent-versus-empty
+distinction a capacity plan's window and an allocation's value already rely on. Diagnosis note, because
+it presented as a flaky test (2 runs in 8): raising the `waitFor` timeout to 5s did NOT help, and that
+is what proves frozen state rather than a slow render. Pin such a case with a DEFERRED promise so the
+ordering is deterministic instead of lucky.
+
 ## Archive ordering cuts both ways
 
 An Epic with active child Features cannot be archived — and a Feature whose Epic is archived cannot be
@@ -547,12 +595,22 @@ Three references into a capacity plan are now REFUSALS rather than silent repair
   an unlinked or archived team could still be added to a plan — recreating exactly what migration
   0085 was written to clean up.
 
-**`capacity:view_draft` is the fourth capacity code, and it exists because the BA's matrix needs
-it.** AC-012 keeps a read-only Project Admin "opening Draft and Published plans"; AC-013 hides
-Drafts from a Project Member. Visibility was `capacity:manage || capacity:publish`, which satisfied
-AC-013 and broke AC-012 — a read-only Project Admin holds neither write code. Granted to Project
-Admin and NOT to Project Member; the write grants still imply it. Backfilled by migration 0094 (see
-below for why a backfill is required at all).
+**`capacity:view_draft` is the fourth capacity code, and it is now REDUNDANT — the requirement it
+existed for is gone.** It was added because AC-012 was read as keeping a read-only Project Admin
+"opening Draft and Published plans", which `capacity:manage || capacity:publish` could not express.
+That reading is STALE: on `product-docs` `origin/main`, `P5-CAP-AC-012` says Capacity Planning "uses the
+fixed Phase 4 Project Access baseline and has **no temporary editable Full/View permission row**",
+`P5-CAP-AC-010` says "Editor/No Access do not access Capacity Planning", and `P5-CAP-AC-013` is marked
+N/A with "Viewer level removed". So there is no read-only planner, and every role holding
+`capacity:view_draft` (`workspace_admin`, `project_admin`) also holds `capacity:manage` — the code
+cannot distinguish anyone. It is still granted and still read, deliberately: retiring a permission that
+sits in live role arrays needs a migration, not a catalogue edit, and the BA has been asked to confirm
+no future read-only planner is intended. Backfilled by migration 0094.
+
+**The lesson worth more than the fact:** this note asserted an AC that the BA had since changed, and two
+e2e tests were built on it — constructing a read-only planner from a CUSTOM ROLE, pinning a shape the
+SRS had deleted. Read `product-docs` `origin/main` rather than a summary of it before building on an AC;
+the local checkout is a gap-audit branch and lags where the BA authors.
 
 ## An invitation binds to an ADDRESS, and grants a real role
 
@@ -587,13 +645,51 @@ emitting `inArray(col, [])`, which is not portable as "match nothing".
 id — **with no `resource` key**, because the param IS the project id and there is nothing to resolve
 (`'project'` is deliberately not a `ScopedResource`).
 
-**Still open, and deliberately not in that change:** `GET :id/members-with-profile` is documented "for
-User Management UI" but feeds the Portfolio and Projects owner pickers, so gating it needs the feed
-split first — and the genuinely sensitive fields are `phone`, `lastLoginAt` and the role ids, not name
-and email, which are visible wherever someone is an assignee. Whether a staff directory is
-member-visible is a product decision. Separately, `useProjects` fetches `limit: 100` and filters
-client-side, so past 100 projects the Active/Archived tabs, the search and the metric tiles silently
-truncate — a pagination defect, not an authorization one.
+**That note used to end "still open", and both halves are now CLOSED — recorded because the
+resolution is the pattern, not the exception.** `GET :id/members-with-profile` was deferred behind
+"gating it needs the feed split first", because it fed the Portfolio and Projects owner pickers as
+well as User Management. The split shipped (`:id/member-options` for pickers, `:id/members-with-profile`
+for the administrative roster) and the administrative half now carries `workspace:view`. And
+`GET :id/members` — the third route, paged, with `roleId` and account `status` behind an in-service
+claim that amounted to `assertActive` — is **DELETED**, not gated: it had no consumer anywhere, and a
+gated dead route keeps a payload alive for whoever finds it next while reading, in review, as a
+considered decision about an audience. Its absence is asserted in `authz-cluster.e2e.spec.ts` for a
+Workspace ADMIN, because a 404 for an Editor is also what a gate would produce and would prove
+nothing.
+
+**And the `permission` argument has to actually decide something.** It did not, for the membership half:
+`listReadableProjectIds` unioned a raw `project_members` query in unconditionally, so every project the
+caller held an active row on was readable **regardless of whether that row's access level granted the
+permission being asked about**. It was written when membership was the only per-project fact and it
+survived the move to `access_level`, by which point `effectiveAssignments` already synthesized the same
+rows correctly filtered — so it was duplication for a permission the level grants, and a silent
+over-grant for one it does not. What it opened: `portfolio:view`, which `editor` deliberately withholds,
+so **every project Editor read every field of every Epic and Feature in their projects** — the one
+surface `P5-PI-FR-017` and §3.2:85 hide from them. No other caller was affected, because the rest ask
+for `project:view` or `work_item:view`, which is exactly why it stayed invisible. Membership now reaches
+the result only through the permission-filtered synthesis; the generalisable rule is that **a boundary
+taking a permission must not union in a source that ignores it**, and the failure reads as a boundary in
+review. Two second-order effects, both deliberate: the synthesis filters on `isProjectAccessLevel` where
+the deleted query used `isNotNull`, so an unrecognised level is no longer readable; and it rides the
+5-minute assignment cache, so a membership row written by raw SQL is invisible to cross-project lists
+until `invalidateUser` is called.
+
+**Closing it needed the picker split in the same change**, and that is the pattern now, not a one-off:
+the emptied list was also the only feed for the `Feature` field on a Story/Defect, so the fix is
+`GET /portfolio-items/options` (id, key, name, project) gated on `work_item:view`. The BA is **SILENT**
+on whether an Editor may set a Story's Feature, so this is a **declared reading** and has been put to
+them: §5.2:124 makes that field the only way Feature membership is ever set, §3.2:79 gives an Editor the
+Story, and the closest precedent is the BA's own one field over — `Phase 2/02_Iterations/SRS.md:393`,
+"Timeboxes hidden; may update Work Item Iteration through approved Backlog/Iteration Status flows only"
+— hidden surface, permitted field, therefore a feed. Release is decided the *other* way and says so in
+words ("cannot assign Release", BL §8:294), which is why that one is refused in `WorkItemsService`
+instead. **Where the BA wanted a field withheld from an Editor it wrote a sentence; it wrote none for
+Feature.** If they rule it like Release, the reversal is this route plus one SPA field. The feed is
+single-project per §5.3:133, which is what lets the GUARD check it (`{ from: 'query', field:
+'projectId' }`) instead of a service-side narrowing — so the service deliberately makes **no**
+authorization call, pinned by a spec. Note the API still *accepts* a cross-project Feature link
+(`assertFeatureLinkable` permits it, because Rally's rollup matches `feature_id` alone) while the picker
+no longer offers one: 0 such rows exist, and the BA's field scope wins over offering it.
 
 ## A route's permission code must be one the intended role can hold
 
@@ -639,15 +735,29 @@ sight. The audit and its sourced Rally research are in
   `isProjectAccessLevel`, never an inline comparison.
 
   Sourced evidence: `product-docs/projects/mini-rally/09_Gap_Audit/research/RALLY_PERMISSIONS_MODEL.md`.
-- **Team-scoped Editor is KEPT, against real Rally.** The BA scopes an Editor's writes to their
-  assigned Teams (§2.2, §3.2 "in assigned Teams"). Rally has **no `Team` object and no team
-  authorization scope** at all — `POST /user/<OID>/teammemberships/add` takes **project** refs, and
-  "Team Member" is a presentational checkbox beside the Permission field with auto-promotion to
-  Editor. Our own research file concluded "do not build a team scope". Kept anyway, because the BA
-  models Teams as first-class and every delivery surface already slices by them. Enforced by
-  `AccessService.assertTeamScoped`. **Known incomplete:** it covers a minority of Editor-reachable
-  writes and no reads, and a team-agnostic item (`teamId === null`) passes through by design. Treat
-  extending it as finishing this ruling, not as new scope.
+- **Team-scoped Editor is DROPPED as an authorization scope** (ruling 2026-08-14, reversing the
+  earlier "KEPT" ruling of the same day — recorded rather than deleted, because the next person to read
+  the BA's §2.2 will reach for it again). The BA scopes an Editor's writes to their assigned Teams
+  (§2.2, §3.2 "in assigned Teams"), and Rally has **no `Team` object and no team authorization scope**
+  at all — `POST /user/<OID>/teammemberships/add` takes **project** refs, and "Team Member" is a
+  presentational checkbox with auto-promotion to Editor. Our own research file said "do not build a
+  team scope"; it was kept anyway because the BA models Teams as first-class.
+
+  **What reversed it was our own schema, not Rally's docs.** A team scope can only restrict rows that
+  CARRY a team, and `portfolio_items.team_id` and `work_items.team_id` are both nullable and mostly
+  unset (195 of 206 local iterations name no team). `assertTeamScoped` therefore admitted every
+  `teamId === null` row *by design* — so the boundary admitted the ordinary case, which makes it a
+  filter with a security-sounding name rather than a control. It covered 3 of ~14 Editor-reachable
+  writes and **no reads**: the worst available state, because it reads as a boundary in review and is
+  not one. Finishing it honestly would have required making `team_id` MANDATORY on every
+  Editor-writable row — a data-model change across portfolio, work items and iterations, plus
+  team-scoped read models on every list, report and picker.
+
+  So Teams stay exactly what they already are: **delivery-model data, and a display filter.** Team
+  membership, `team_members`, Team Status, Team Capacity and every report's team scoping are untouched
+  — and note `RBE-06` now grants `editor` from a team roster row, which IS Rally's model arrived at from
+  the other direction. **Do not re-add a team authorization scope without a fresh ruling, and if one is
+  ever wanted, mandatory `team_id` is its precondition, not an optimisation.**
 - **A per-Project `Admin` has NO structural authority**, following the BA over Rally. §3.1 marks
   every structural row Hidden for Admin — create/edit/archive/restore/delete Project, create/edit/
   deactivate/restore Team, assign Project access and Team membership — and gives it Read-only on
@@ -675,6 +785,21 @@ global anchor and hid the fault everywhere it was tested. Migration 0092 backfil
 So: **a new permission needs a backfill migration**, not just a catalogue entry. Force it only
 when the permission is genuinely new (nobody can have revoked what never existed); a permission
 that already shipped must be merged, not forced, or the migration undoes someone's decision.
+
+**Custom roles and the editable permission matrix are DELETED** (ruling 2026-08-14). AC-11 makes the
+Permission Model read-only with no editable matrix, and three things agreed: the editing UI was already
+dead code (`RoleEditorDialog` unreferenced, `role-capabilities.ts` with no live consumer), the catalogue
+above is the single source of truth so a customisable matrix forks it, and — the deciding reason —
+custom-role CRUD plus workspace-scoped tier-role assignment together re-create exactly the company-wide
+over-grant migration 0111 removed. The READ-ONLY Permission Model tab stays; it is an AC-11 requirement,
+not a leftover.
+
+**The removal is deliberately sequenced, because deleting a role a user HOLDS revokes their access:**
+(1) remove the editing routes and dead UI — a contract change with no data risk; (2) a **dry-run report**
+of every custom role, everyone holding one, and every workspace-scoped tier assignment (the
+`pnpm db:backfill:accepted-date` shape: report, never guess); (3) only then a migration that removes
+them, converting any real assignment to its per-project equivalent. Step 3 is gated on reading step 2's
+output against a real database — do not collapse the three into one change.
 
 ## Seeds: what a DEPLOYED database is allowed to contain
 

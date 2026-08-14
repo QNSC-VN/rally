@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PreconditionFailedException, ValidationException, type JwtPayload } from '@platform';
 import { IterationsService } from '@modules/iterations';
 import { WorkItemsService, type UpdateWorkItemInput } from '@modules/work-items';
+import { ProjectsService } from '@modules/projects';
 import {
   ITeamStatusRepository,
   TEAM_STATUS_REPOSITORY,
@@ -42,6 +43,9 @@ export class TeamStatusService {
     private readonly repo: ITeamStatusRepository,
     private readonly iterationsService: IterationsService,
     private readonly workItemsService: WorkItemsService,
+    // For `assertProjectWritable` in `updateCapacity`. `updateTask` needs nothing here: it writes
+    // through `WorkItemsService.updateWorkItem`, which already carries the rule.
+    private readonly projectsService: ProjectsService,
   ) {}
 
   /**
@@ -104,9 +108,9 @@ export class TeamStatusService {
     const memberIds = [...memberInfo.keys()];
     const capacities =
       memberIds.length > 0
-        // `rosterTeamId`, the same key the roster and `upsertCapacity` use — so the number shown is
-        // the number an edit will write.
-        ? await this.repo.getCapacities(iterationId, memberIds, rosterTeamId)
+        ? // `rosterTeamId`, the same key the roster and `upsertCapacity` use — so the number shown is
+          // the number an edit will write.
+          await this.repo.getCapacities(iterationId, memberIds, rosterTeamId)
         : new Map<string, number>();
 
     // One group per member (empty task list when they have none), plus an
@@ -170,6 +174,12 @@ export class TeamStatusService {
     input: UpdateCapacityInput,
   ): Promise<{ userId: string; capacityHours: number }> {
     // team_status:edit on input.projectId is enforced by the PolicyGuard.
+    //
+    // The archived-project rule is not (PRJ-FR-010). This is the one write on this service that
+    // does not go through `WorkItemsService`, so it was the one that escaped: `member_capacity` is
+    // planning data for an iteration in this project, and it is the denominator Team Status and
+    // Team Capacity both render — see the note in CLAUDE.md on the two being one population.
+    await this.projectsService.assertProjectWritable(actor.workspaceId, input.projectId);
     if (input.capacityHours < 0) {
       throw new ValidationException('TEAM_STATUS_INVALID_CAPACITY', 'capacityHours must be >= 0');
     }
@@ -202,7 +212,21 @@ export class TeamStatusService {
 
   /**
    * Update a task from Team Status (P3-TS-FR-019 … P3-TS-FR-023).
-   * Accepts partial patch for title and/or state.
+   *
+   * Task Name and Task State, and NOTHING else — SRS §9.3 ("Accept partial patch for `title`
+   * and/or `state`") and §11, whose editable columns for this surface are Capacity, Task Name and
+   * Task State. Estimate / ToDo / Actuals / Owner are reads here (FR-026, FR-027) and are edited on
+   * the Task Dashboard, which writes through `WorkItemsService` directly.
+   *
+   * That is also what retires this method's own trap, worth keeping in view because the rule it
+   * bypassed still exists: an `estimateHours` branch here used to set `todoHours` whenever the
+   * caller had not, which DEFINED the field before `WorkItemsService` saw it and so bypassed the
+   * once-only copy gate (`input.todoHours === undefined && item.todoHours === null`). The copy then
+   * happened on every estimate edit instead of the first, re-inflating a completed task's
+   * auto-zeroed To Do and moving the Iteration Status total, the Tasks-tab total and the next
+   * Burndown snapshot with it. The gate lives in `WorkItemsService` — the three hour fields are
+   * independent — and any surface that edits Estimate must send it alone.
+   *
    * Parent roll-up (P3-TS-05) is owned by WorkItemsService.updateWorkItem, which
    * auto-completes the parent US/DE ONLY when every child task is completed; this
    * method never force-completes the parent. It re-reads the parent afterwards so
@@ -238,35 +262,6 @@ export class TeamStatusService {
         Completed: 'completed',
       };
       updateInput.scheduleState = stateMap[input.state] as 'defined' | 'in_progress' | 'completed';
-    }
-    if (input.estimateHours !== undefined) {
-      updateInput.estimateHours =
-        input.estimateHours === null ? null : input.estimateHours.toFixed(2);
-      /**
-       * Estimate is sent ALONE. There is no auto-sync here.
-       *
-       * This used to set `todoHours` to the new estimate whenever the caller had not sent one — which
-       * defined `input.todoHours` before `WorkItemsService` saw it, and so bypassed the once-only gate
-       * (`input.todoHours === undefined && item.todoHours === null`) entirely. The copy then happened
-       * on EVERY estimate edit rather than the first, re-inflating a completed task's auto-zeroed To
-       * Do and moving the Iteration Status To Do total, the Tasks-tab total and the next Burndown
-       * snapshot with it.
-       *
-       * The rule is one rule, and it lives in the service: the first Estimate copies to To Do once,
-       * while To Do is still null (RECONCILED_SOURCE_OF_TRUTH: three independent hour fields). The
-       * other two edit surfaces — Iteration Status and the Work Item Tasks tab — already send
-       * `estimateHours` alone and behave correctly; this screen was the outlier, and its own UI comment
-       * ("editing it does NOT touch To Do") described the behaviour it did not have.
-       */
-    }
-    if (input.todoHours !== undefined) {
-      updateInput.todoHours = input.todoHours === null ? null : input.todoHours.toFixed(2);
-    }
-    if (input.actualHours !== undefined) {
-      updateInput.actualHours = input.actualHours === null ? null : input.actualHours.toFixed(2);
-    }
-    if (input.assigneeId !== undefined) {
-      updateInput.assigneeId = input.assigneeId;
     }
 
     const updated = await this.workItemsService.updateWorkItem(actor, taskId, updateInput);

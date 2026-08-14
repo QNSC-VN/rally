@@ -3,7 +3,12 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
 import { releases } from '../../../../../../db/schema/work';
-import type { Release, CreateReleaseInput, UpdateReleaseInput } from '../../domain/release.types';
+import type {
+  Release,
+  ReleaseOption,
+  CreateReleaseInput,
+  UpdateReleaseInput,
+} from '../../domain/release.types';
 import { IReleaseRepository } from '../../domain/ports/release.repository';
 
 @Injectable()
@@ -34,6 +39,31 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
       .limit(limit + 1);
 
     return buildPageResult(rows as unknown as Release[], limit, (r) => [r.createdAt.toISOString()]);
+  }
+
+  /**
+   * The reference feed. Its own `select` of six columns, deliberately — `select()` would read the
+   * whole record and put the administration fields one `map` away from the widest-audience response.
+   *
+   * Ordered by start date with the undated last, which is the order both capacity-plan range pickers
+   * already impose client-side; doing it here means every picker gets it. Unpaged on purpose: a
+   * picker that offers a page of a project's releases is the defect this feed exists to fix.
+   */
+  async listOptionsByProject(projectId: string, workspaceId: string): Promise<ReleaseOption[]> {
+    const rows = await this.db
+      .select({
+        id: releases.id,
+        projectId: releases.projectId,
+        releaseKey: releases.releaseKey,
+        name: releases.name,
+        status: releases.status,
+        startDate: releases.startDate,
+        releaseDate: releases.releaseDate,
+      })
+      .from(releases)
+      .where(and(eq(releases.projectId, projectId), eq(releases.workspaceId, workspaceId)))
+      .orderBy(sql`${releases.startDate} asc nulls last`, asc(releases.name), asc(releases.id));
+    return rows;
   }
 
   async create(input: CreateReleaseInput): Promise<Release> {

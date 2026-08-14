@@ -23,6 +23,23 @@ export interface Release {
   updatedAt: Date;
 }
 
+/**
+ * The reference projection of a release: what a picker needs to label, order and choose one.
+ *
+ * A type of its own rather than `Pick<Release, …>`, for the same reason
+ * `ReleaseOptionSchema` is not a `.pick()` of the response schema — a field added to the record must
+ * not be able to reach the feed every delivery participant reads. See that schema's docblock.
+ */
+export interface ReleaseOption {
+  id: string;
+  projectId: string;
+  releaseKey: string | null;
+  name: string;
+  status: ReleaseStatus;
+  startDate: string | null; // YYYY-MM-DD
+  releaseDate: string | null; // YYYY-MM-DD
+}
+
 export interface CreateReleaseInput {
   id: string;
   workspaceId: string;

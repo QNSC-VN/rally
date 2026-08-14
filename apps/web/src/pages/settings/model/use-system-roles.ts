@@ -9,7 +9,6 @@ export type Role = {
   name: string
   slug: string
   description: string | null
-  isSystem: boolean
   permissions: string[]
 }
 

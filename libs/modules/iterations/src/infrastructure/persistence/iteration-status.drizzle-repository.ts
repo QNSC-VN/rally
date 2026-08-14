@@ -11,6 +11,7 @@ import {
   portfolioItems,
 } from '../../../../../../db/schema/work';
 import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
+import { UNASSIGNED_FILTER } from '@modules/work-items';
 import type {
   IterationStatusItem,
   IterationStatusFilters,
@@ -92,21 +93,14 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       inArray(workItems.type, ['story', 'defect']),
     ];
 
-    if (filters.type) conditions.push(eq(workItems.type, filters.type));
-    if (filters.scheduleState) conditions.push(eq(workItems.scheduleState, filters.scheduleState));
-    if (filters.isBlocked !== undefined)
-      conditions.push(eq(workItems.isBlocked, filters.isBlocked));
-    if (filters.assigneeId) conditions.push(eq(workItems.assigneeId, filters.assigneeId));
-    if (filters.q) {
-      const term = filters.q.trim();
-      if (term) {
-        conditions.push(
-          or(ilike(workItems.itemKey, `%${term}%`), ilike(workItems.title, `%${term}%`))!,
-        );
-      }
-    }
-
     // Task rollups via correlated subqueries over the dedicated `tasks` table.
+    //
+    // Declared BEFORE the filter block because the Manage Filters "Task Est" and
+    // "To Do" predicates reuse the very same expressions in the WHERE clause —
+    // one definition, so a filter can never test a different number than the
+    // column displays (the property whose absence produced the zero-point
+    // Velocity bars; see CLAUDE.md "Eligibility must be counted in the SAME
+    // scope as the measurement").
     const taskEstimate = sql<string>`(
       select coalesce(sum(t.estimate_hours), 0)
       from ${tasks} t
@@ -119,6 +113,46 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       where t.parent_id = ${workItems.id}
         and t.deleted_at is null
     )`;
+
+    if (filters.type) conditions.push(eq(workItems.type, filters.type));
+    if (filters.scheduleState) conditions.push(eq(workItems.scheduleState, filters.scheduleState));
+    if (filters.isBlocked !== undefined)
+      conditions.push(eq(workItems.isBlocked, filters.isBlocked));
+    if (filters.assigneeId) {
+      // `unassigned` is a sentinel, not a user id: SQL equality never matches
+      // NULL, so an "Unassigned" option built as `assignee_id = 'unassigned'`
+      // would return nothing. Same rule as the Backlog Owner filter.
+      conditions.push(
+        filters.assigneeId === UNASSIGNED_FILTER
+          ? isNull(workItems.assigneeId)
+          : eq(workItems.assigneeId, filters.assigneeId),
+      );
+    }
+    if (filters.q) {
+      const term = filters.q.trim();
+      if (term) {
+        conditions.push(
+          or(ilike(workItems.itemKey, `%${term}%`), ilike(workItems.title, `%${term}%`))!,
+        );
+      }
+    }
+    // ── Manage Filters column predicates (P2-IS-FR-022/023/024) ───────────────
+    // Whitelisted columns, bound parameters — never interpolated SQL.
+    if (filters.itemKey?.trim()) {
+      conditions.push(ilike(workItems.itemKey, `%${filters.itemKey.trim()}%`));
+    }
+    if (filters.title?.trim()) {
+      conditions.push(ilike(workItems.title, `%${filters.title.trim()}%`));
+    }
+    if (filters.planEstimate !== undefined) {
+      conditions.push(eq(workItems.storyPoints, filters.planEstimate));
+    }
+    if (filters.taskEstimate !== undefined) {
+      conditions.push(sql`${taskEstimate} = ${filters.taskEstimate}::numeric`);
+    }
+    if (filters.toDo !== undefined) {
+      conditions.push(sql`${toDo} = ${filters.toDo}::numeric`);
+    }
     // Actual = roll-up of child task actual_hours (parity with To Do / Task Est,
     // which also sum from the child tasks). Actual is a manual per-task input.
     const actual = sql<string>`(

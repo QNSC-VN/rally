@@ -8,10 +8,13 @@
  *     (P4-SET-07).
  *   - Project Access: a Workspace Admin ASSIGNS / CHANGES / REMOVES the user's
  *     per-Project access (admin / editor / No Access) and, for an Editor, their
- *     Teams — the same writes the Project-centric and Team journeys make, so all
- *     three stay synchronized (P4-RBAC-010/011: team membership goes through the
- *     SAME `useAddTeamMember` / `useRemoveTeamMember` hooks the project's own
- *     Teams tab uses, so both surfaces stay in sync via one React Query cache).
+ *     Teams — the same write the Project-centric and Team journeys make, so all
+ *     three stay synchronized (P4-RBAC-010/011, AC-9). That write is now ONE
+ *     request, `POST /v1/projects/{id}/members` with `accessLevel` AND `teamIds`
+ *     together, because §2.2's "an Editor must be assigned to at least one active
+ *     Team" is only enforceable server-side when both halves arrive together
+ *     (PRJ-08). It used to be a level write followed by one `POST
+ *     /teams/{id}/members` per team.
  *
  * **Project Access is a DRAFT.** Nothing is written until `Review Changes` →
  * `Confirm & Save`, because §5.1's journey names those two steps literally:
@@ -52,23 +55,18 @@
  *
  * **Admin shows `All Teams`, never a Team picker** (§5.1 :141-143, §2.2 :51).
  * The picker used to render for Admin as well, so a Workspace Admin was invited
- * to build a team scope for a level that has none — `assertTeamScoped` skips
- * team scoping for Admin, so those rows changed nothing. Promoting an Editor to
- * Admin therefore writes no team rows and REMOVES none either: the existing
- * memberships carry delivery meaning (assignment, Team Status, capacity) and
- * keeping them makes a later demotion lossless. Only Remove clears them (§5.2).
+ * to build a team scope for a level that has none — `grantsAllTeams` means an
+ * Admin covers every team by definition, so those rows changed nothing.
+ * Promoting an Editor to Admin therefore sends no `teamIds` at all, and so
+ * REMOVES none either: the existing memberships carry delivery meaning
+ * (assignment, Team Status, capacity) and keeping them makes a later demotion
+ * lossless. Only Remove clears them (§5.2).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Plus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useProjects } from '@/features/projects/api'
-import {
-  useProjectMembers,
-  useProjectTeams,
-  useAddTeamMember,
-  useRemoveTeamMember,
-  useUserTeamMemberships,
-} from '@/features/teams/api'
+import { useProjectMembers, useProjectTeams, useUserTeamMemberships } from '@/features/teams/api'
 import { useQueryClient } from '@tanstack/react-query'
 import { useUpdateMember, type WorkspaceMember } from '@/features/workspaces/api'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -119,8 +117,6 @@ interface TeamRef {
 interface ProjectBaseline {
   /** An active `project_members` row exists (any level, including NULL). */
   hasAccess: boolean
-  /** `project_members.id`, and ONLY for an explicit row — see `writeLevel`. */
-  memberId: string | null
   level: AccessLevel | null
   /** The user's active team memberships among this project's teams. */
   teamIds: string[]
@@ -342,8 +338,6 @@ export function UserAccessModal({
   // ── General tab: Status (active/suspended) — same hook + confirm-before-
   // suspend behaviour as the Members grid's inline status cell (P4-SET-07).
   const updateMember = useUpdateMember(workspaceId)
-  const addTeamMember = useAddTeamMember()
-  const removeTeamMember = useRemoveTeamMember()
   const [confirmSuspend, setConfirmSuspend] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const statusLocked = member.userId === user?.id || member.roleSlug === 'workspace_admin'
@@ -373,11 +367,17 @@ export function UserAccessModal({
   /**
    * `Confirm & Save` — the ONE write handler for the whole draft (§5.1).
    *
-   * Sequential on purpose: a grant's `project_members` row must land before the
-   * `team_members` writes that scope it, and a failure part-way must not race
-   * the rest. Raw `apiClient` for the level writes because the level hooks bind
-   * one projectId at their call site and this loop spans projects — hence the
-   * explicit cache invalidation, which `meta.invalidates` would otherwise do.
+   * ONE REQUEST PER PROJECT. The level and the Teams used to be separate writes issued in
+   * sequence — a POST or PATCH for the level, then one `POST /teams/{id}/members` per team — so a
+   * failure between them left an Editor with the level and no Teams, which is precisely the state
+   * §2.2 forbids. `POST /v1/projects/{id}/members` now takes `teamIds` alongside `accessLevel` and
+   * applies both in ONE transaction, so PRJ-08 is enforceable server-side and a partial write of one
+   * project's access is no longer reachable at all.
+   *
+   * Still sequential ACROSS projects: a failure part-way must not race the rest.
+   * Raw `apiClient` rather than the hooks because they bind one projectId at their call site and this
+   * loop spans projects — hence the explicit cache invalidation, which `meta.invalidates` would
+   * otherwise do.
    *
    * PARTIAL PROGRESS IS KEPT: each project drops out of the draft as its own
    * writes land (`forgetApplied`), and the baselines are re-read in a `finally`.
@@ -399,37 +399,18 @@ export function UserAccessModal({
           applied.push(change.projectId)
           continue
         }
-        const base = baselines[change.projectId]
-        if (change.levelChanged && change.level) {
-          // A NULL access_level row is team-derived — its `id` is a team_members
-          // id, so PATCHing it 404s. POST upserts (the BE sets the level on the
-          // existing row, or creates the explicit grant).
-          if (base?.memberId && base.level) {
-            const { error, response } = await apiClient.PATCH(
-              '/v1/projects/{id}/members/{memberId}',
-              {
-                params: { path: { id: change.projectId, memberId: base.memberId } },
-                body: { accessLevel: change.level },
-              },
-            )
-            if (error) throw new Error(apiErrorMessage(error, response.status))
-          } else {
-            const { error, response } = await apiClient.POST('/v1/projects/{id}/members', {
-              params: { path: { id: change.projectId } },
-              body: { userId: member.userId, accessLevel: change.level } as never,
-            })
-            if (error) throw new Error(apiErrorMessage(error, response.status))
-          }
-        }
-        if (requiresTeamSelection(change.level)) {
-          const had = base?.teamIds ?? []
-          for (const teamId of change.teamIds.filter((id) => !had.includes(id))) {
-            await addTeamMember.mutateAsync({ teamId, userId: member.userId })
-          }
-          for (const teamId of had.filter((id) => !change.teamIds.includes(id))) {
-            await removeTeamMember.mutateAsync({ teamId, userId: member.userId })
-          }
-        }
+        // `teamIds` only for a level that is team-scoped: absent means "leave the memberships
+        // alone", which is what an Admin row must send — its existing rows carry delivery meaning
+        // and §5.1 shows no Team control for it, so a promotion must not clear them.
+        const { error, response } = await apiClient.POST('/v1/projects/{id}/members', {
+          params: { path: { id: change.projectId } },
+          body: {
+            userId: member.userId,
+            ...(change.level ? { accessLevel: change.level } : {}),
+            ...(requiresTeamSelection(change.level) ? { teamIds: change.teamIds } : {}),
+          } as never,
+        })
+        if (error) throw new Error(apiErrorMessage(error, response.status))
         applied.push(change.projectId)
       }
       notify.success(t('access.saved'))
@@ -734,7 +715,6 @@ function UserProjectAccessRow({
   const baseline: ProjectBaseline = useMemo(
     () => ({
       hasAccess: !!me && me.status === 'active',
-      memberId: me?.id ?? null,
       level: me?.accessLevel ?? null,
       teamIds: memberTeamIds,
       teams: teams.map((tm) => ({ id: tm.id, name: tm.name })),
@@ -856,7 +836,6 @@ function MembershipProbe({
     const me = members.find((m) => m.userId === userId)
     const baseline: ProjectBaseline = {
       hasAccess: !!me && me.status === 'active',
-      memberId: me?.id ?? null,
       level: me?.accessLevel ?? null,
       teamIds: [],
       teams: teams.map((tm) => ({ id: tm.id, name: tm.name })),

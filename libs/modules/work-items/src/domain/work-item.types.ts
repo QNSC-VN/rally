@@ -85,6 +85,21 @@ export interface WorkItemFilters {
   parentId?: string;
   /** Free-text search: item_key exact (case-insensitive) or title ILIKE. */
   q?: string;
+  /**
+   * Manage Filters (P2-BL-FR-005/006, AC-8) — the "ID" column's text filter.
+   * Case-insensitive substring on `item_key`. Deliberately SEPARATE from `q`:
+   * P2-BL-TS-015 requires quick search to keep working independently of the
+   * Manage Filters set, so the two are ANDed rather than sharing one param.
+   */
+  itemKey?: string;
+  /** Manage Filters — the "Name" column's text filter (substring on `title`). */
+  title?: string;
+  /**
+   * Manage Filters — the "Est" column's number filter: exact match on
+   * `story_points`. Carried as the same fixed(2) string Drizzle uses for the
+   * numeric column, so the comparison never round-trips through a float.
+   */
+  planEstimate?: string;
   /** Explicit backlog sort column. Omit to use the default rank order. */
   sortBy?: WorkItemSortBy;
   sortDirection?: 'asc' | 'desc';

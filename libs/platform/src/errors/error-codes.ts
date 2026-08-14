@@ -175,6 +175,11 @@ export const ErrorCodes = {
   ITERATION_EMPTY: 'ITERATION_EMPTY',
   ITERATION_NOT_ALL_ACCEPTED: 'ITERATION_NOT_ALL_ACCEPTED',
   ITERATION_INVALID_STATE_TRANSITION: 'ITERATION_INVALID_STATE_TRANSITION',
+  /**
+   * A delete would CASCADE the iteration's frozen Burndown history away, and the snapshot cron
+   * only ever writes TODAY — so those days cannot be measured again.
+   */
+  ITERATION_HAS_REPORT_HISTORY: 'ITERATION_HAS_REPORT_HISTORY',
 
   // Release
   RELEASE_NOT_FOUND: 'RELEASE_NOT_FOUND',
@@ -233,6 +238,12 @@ export const ErrorCodes = {
    * member the roster does not list.
    */
   PROJECT_MEMBER_IS_WORKSPACE_ADMIN: 'PROJECT_MEMBER_IS_WORKSPACE_ADMIN',
+  /**
+   * PRJ-08 / §2.2: an Editor is scoped to Teams, so it must hold at least one of the project's.
+   * Refused only where the level and the Teams arrive in ONE write, and never for a project that has
+   * no Team to assign — see `assertTeamAssignmentForLevel` in `@modules/access` for both reasons.
+   */
+  PROJECT_EDITOR_REQUIRES_TEAM: 'PROJECT_EDITOR_REQUIRES_TEAM',
   ASSIGNEE_NOT_WORKSPACE_MEMBER: 'ASSIGNEE_NOT_WORKSPACE_MEMBER',
 
   // Team Status

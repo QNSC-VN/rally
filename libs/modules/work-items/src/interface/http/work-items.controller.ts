@@ -200,6 +200,9 @@ export class WorkItemsController {
         iterationId: query.iterationId,
         releaseId: query.releaseId,
         q: query.q,
+        itemKey: query.itemKey,
+        title: query.title,
+        planEstimate: query.planEstimate,
       },
       args,
     );
@@ -233,6 +236,11 @@ export class WorkItemsController {
         iterationId: query.iterationId,
         releaseId: query.releaseId,
         q: query.q,
+        // Manage Filters (P2-BL-FR-005/020): ID / Name / Est column predicates,
+        // combined with everything above — and with `q`, which stays independent.
+        itemKey: query.itemKey,
+        title: query.title,
+        planEstimate: query.planEstimate,
         sortBy: sort?.sortBy,
         sortDirection: sort?.sortDirection,
       },

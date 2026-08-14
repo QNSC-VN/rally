@@ -6,6 +6,7 @@ import { iterations, tasks } from '../../../../../../db/schema/work';
 import type {
   Iteration,
   IterationOption,
+  IterationReference,
   CreateIterationInput,
   UpdateIterationInput,
   IterationFilters,
@@ -151,6 +152,24 @@ export class IterationDrizzleRepository implements IIterationRepository {
     await this.db.delete(iterations).where(eq(iterations.id, id));
   }
 
+  /**
+   * The team predicate both compact feeds share: the team's OWN timeboxes PLUS the project's
+   * shared ones.
+   *
+   * `iterations.team_id` is optional in this product — the timebox says WHICH window, the work
+   * says whose it is — so a project may run one shared sprint every team works inside (195 of 206
+   * local iterations name no team). A plain `= teamId` drops exactly those, because SQL equality
+   * never matches NULL, and a team-scoped picker then comes back EMPTY. This is the server half of
+   * `iterationsInScope` and the same rule as reporting's `teamOrSharedTimebox`.
+   *
+   * Note `listByProject` (the RECORD grid) deliberately keeps its strict `= teamId`: that is an
+   * administrative filter over a grid, not a picker feed, and narrowing it is what the reader asked
+   * for.
+   */
+  private teamOrSharedTimebox(teamId: string): SQL {
+    return or(isNull(iterations.teamId), eq(iterations.teamId, teamId))!;
+  }
+
   async listAssignmentOptions(
     projectId: string,
     workspaceId: string,
@@ -159,15 +178,11 @@ export class IterationDrizzleRepository implements IIterationRepository {
     const conditions: SQL[] = [
       eq(iterations.projectId, projectId),
       eq(iterations.workspaceId, workspaceId),
+      // ELIGIBILITY. An accepted iteration is not assignable, so it is absent here BY DESIGN —
+      // `listReferences` below is what names one. Do not turn this into a flag over one query.
       inArray(iterations.state, ['planning', 'committed']),
     ];
-    // Team-less iterations are project-wide (assignable to any work item, per
-    // the backend guard), so a team-scoped picker must still offer them:
-    // match the team OR a NULL team. A plain `= teamId` would drop them
-    // (SQL equality never matches NULL).
-    if (teamId) {
-      conditions.push(or(isNull(iterations.teamId), eq(iterations.teamId, teamId))!);
-    }
+    if (teamId) conditions.push(this.teamOrSharedTimebox(teamId));
 
     const rows = await this.db
       .select({
@@ -177,6 +192,36 @@ export class IterationDrizzleRepository implements IIterationRepository {
         startDate: iterations.startDate,
         endDate: iterations.endDate,
         state: iterations.state,
+      })
+      .from(iterations)
+      .where(and(...conditions))
+      .orderBy(desc(iterations.startDate), asc(iterations.name), asc(iterations.id));
+
+    return rows;
+  }
+
+  async listReferences(
+    projectId: string,
+    workspaceId: string,
+    teamId?: string,
+  ): Promise<IterationReference[]> {
+    const conditions: SQL[] = [
+      eq(iterations.projectId, projectId),
+      eq(iterations.workspaceId, workspaceId),
+    ];
+    // No state predicate, deliberately: a filter, a label and a report scope picker must all be
+    // able to name an ACCEPTED or finished timebox.
+    if (teamId) conditions.push(this.teamOrSharedTimebox(teamId));
+
+    const rows = await this.db
+      .select({
+        id: iterations.id,
+        name: iterations.name,
+        iterationKey: iterations.iterationKey,
+        state: iterations.state,
+        startDate: iterations.startDate,
+        endDate: iterations.endDate,
+        teamId: iterations.teamId,
       })
       .from(iterations)
       .where(and(...conditions))

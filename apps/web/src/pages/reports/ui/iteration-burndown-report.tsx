@@ -14,7 +14,8 @@ import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { Bar, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { BRAND } from '@/shared/config/brand'
-import { useIterations } from '@/features/iterations/api'
+import { useIterationOptions } from '@/features/iterations/api'
+import { listResource } from '@/shared/lib/query/resource'
 import { useIterationBurndown } from '@/features/reporting/api'
 import { iterationsInScope, reportScopeLabel } from '@/features/reporting/scope'
 import { IterationPicker } from '@/shared/ui/timebox-picker'
@@ -39,9 +40,24 @@ export function IterationBurndownReport({
   teamId: string | undefined
 }) {
   const { t } = useTranslation(['reports', 'common'])
-  const { data: allIterations = [] } = useIterations(projectId)
+  /**
+   * The PICKER's feed, and it is a resource for the same reason the report's own query is.
+   *
+   * This was `const { data: allIterations = [] } = useIterations`, i.e. the timebox RECORD. A failing
+   * `/v1/iterations` therefore produced an empty picker, `selectedId === null`, and the body
+   * rendered `burndown.empty.noIteration` — "Select an iteration to see its burndown" — an
+   * AFFORDANCE INSTRUCTION standing in for a network fault, with no iteration available to obey
+   * it with. Worse than the defect this file's docblock already claims to have closed, because
+   * that one at least named the report; this one blames the reader. The injected-failure test
+   * below keeps the report endpoint healthy and fails the PICKER endpoint, which is exactly the
+   * case the original test could not see.
+   */
+  // The REFERENCE feed: every state, so a closed sprint's burndown is still reachable, and none of
+  // the timebox record — `GET /iterations` is `timebox:view` and would 403 a project Editor here.
+  const iterationsQuery = useIterationOptions(projectId)
+  const iterationFeed = listResource(iterationsQuery)
   // The picker offers what the report can serve — the team's own timeboxes plus the shared ones.
-  const iterations = iterationsInScope(allIterations, teamId)
+  const iterations = iterationsInScope(iterationFeed.rows, teamId)
   const { selectedId, select } = useSelectedIteration(projectId, iterations)
   /**
    * `isError` was never read here, so a failed request left `data` undefined and this report fell
@@ -56,7 +72,9 @@ export function IterationBurndownReport({
   const { data, isLoading, isError } = useIterationBurndown({
     projectId,
     teamId,
-    iterationId: selectedId,
+    // `null` (nothing selected) means the same thing to this hook as `undefined`, and it takes
+    // the latter — translate at the boundary rather than widening the hook's contract.
+    iterationId: selectedId ?? undefined,
   })
 
   const points = data?.points ?? []
@@ -162,11 +180,16 @@ export function IterationBurndownReport({
        * absent with the chart rather than a "Behind plan"/"On track" verdict sitting above an error.
        */
       error={
-        isError ? (
+        iterationFeed.isError ? (
+          <EmptyState
+            title={t('timeboxFeedError.title')}
+            description={t('timeboxFeedError.body')}
+          />
+        ) : isError ? (
           <EmptyState title={t('burndown.error.title')} description={t('burndown.error.body')} />
         ) : undefined
       }
-      loading={isLoading && !data}
+      loading={(isLoading && !data) || iterationFeed.isLoading}
     >
       <ChartFrame
         bare

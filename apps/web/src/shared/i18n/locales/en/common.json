@@ -1,6 +1,12 @@
 {
   "loading": "Loading...",
   "error": "Something went wrong",
+  "loadFailed": "Could not load this data.",
+  "loadFailedHint": "This is a load failure, not an empty result. Try again.",
+  "accessDenied": {
+    "title": "You don't have access to this page.",
+    "hint": "If you need it, ask your Workspace Admin."
+  },
   "retry": "Try again",
   "cancel": "Cancel",
   "save": "Save",
@@ -18,6 +24,15 @@
     "selectProject": "Select a project to search, or type an item key"
   },
   "filter": "Filter",
+  "manageFilters": {
+    "trigger": "Manage Filters",
+    "heading": "Filter columns",
+    "toggleField": "Filter by {{field}}",
+    "valueLabel": "{{field}} filter value",
+    "any": "Any",
+    "apply": "Apply",
+    "clear": "Clear"
+  },
   "actions": "Actions",
   "confirm": "Confirm",
   "back": "Back",

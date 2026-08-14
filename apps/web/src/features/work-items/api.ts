@@ -63,6 +63,15 @@ export interface BacklogFilters {
   releaseId?: string
   teamId?: string
   q?: string
+  /**
+   * Manage Filters column predicates (P2-BL-FR-005/006). Server-side, and
+   * deliberately separate from `q`: P2-BL-TS-015 requires quick search to keep
+   * working independently of the Manage Filters set, so the API ANDs the two.
+   */
+  itemKey?: string
+  title?: string
+  /** Exact `story_points` match, as typed (the API accepts up to 2 decimals). */
+  planEstimate?: string
   /** Server-side sort as `"<field>[:asc|:desc]"`; omit for the default rank order. */
   sort?: string
   limit?: number
@@ -90,6 +99,9 @@ export async function fetchBacklogPage(projectId: string, filters: BacklogFilter
         releaseId: filters.releaseId,
         teamId: filters.teamId,
         q: filters.q,
+        itemKey: filters.itemKey,
+        title: filters.title,
+        planEstimate: filters.planEstimate,
         sort: filters.sort,
         limit: filters.limit ?? 50,
         cursor: filters.cursor,
@@ -143,6 +155,41 @@ export function useWorkItem(id: string | undefined) {
     enabled: !!id,
     staleTime: 15_000,
   })
+}
+
+/**
+ * Resolve an item KEY (Rally FormattedID, e.g. `US-3`) to its work item via
+ * `GET /v1/work-items/by-key`, which falls back to the tasks table server-side so task detail
+ * pages are reachable too. Keys are workspace-unique, so no project context is needed — which is
+ * exactly what makes `/item/$itemKey` a valid deep link with no project in the URL.
+ *
+ * `null` means "no such key" (a 404), distinct from `undefined`, which — as everywhere in this
+ * file — means the query has not answered yet.
+ *
+ * Exposed as query OPTIONS as well as a hook because the `/item/$itemKey` route loader resolves the
+ * item outside React, to learn which project a deep link belongs to before the first paint. Same
+ * key, so the loader's fetch warms the cache every hook caller reads: one request, not two.
+ */
+export function workItemByKeyQueryOptions(itemKey: string) {
+  return {
+    queryKey: workItemKeys.byKey(itemKey),
+    queryFn: async (): Promise<WorkItem | null> => {
+      if (!itemKey) return null
+      const { data, error, response } = await apiClient.GET('/v1/work-items/by-key', {
+        params: { query: { itemKey } },
+      })
+      if (error) {
+        if (response.status === 404) return null
+        throw new Error(apiErrorMessage(error, response.status))
+      }
+      return (data as WorkItem | undefined) ?? null
+    },
+    staleTime: 15_000,
+  }
+}
+
+export function useWorkItemByKey(itemKey: string | undefined) {
+  return useQuery({ ...workItemByKeyQueryOptions(itemKey ?? ''), enabled: !!itemKey })
 }
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────

@@ -93,9 +93,25 @@ export const ProjectMemberResponseSchema = z.object({
     .number()
     .int()
     .min(0)
-    .describe(
-      'Active team_members rows for Teams linked to this project — same scoping as assertTeamScoped',
-    ),
+    .describe('Active team_members rows for Teams linked to this project'),
 });
 
 export class ProjectMemberResponseDto extends createZodDto(ProjectMemberResponseSchema) {}
+
+/**
+ * The assignee-picker projection: who can own this project's work, and nothing else.
+ *
+ * Deliberately NOT a `.pick()` of the roster schema. The roster is Workspace-Admin/Project-Admin only
+ * (§3.1:71) because it carries `accessLevel`, `status` and `teamCount`; this feed is read by every
+ * principal who can see the project, so a field added to the administrative shape later must not
+ * silently join it.
+ */
+export const ProjectMemberOptionResponseSchema = z.object({
+  userId: z.string().uuid(),
+  displayName: z.string().nullable(),
+  email: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+});
+export class ProjectMemberOptionResponseDto extends createZodDto(
+  ProjectMemberOptionResponseSchema,
+) {}

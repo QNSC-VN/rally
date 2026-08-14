@@ -7,7 +7,6 @@ export const RoleResponseSchema = z.object({
   name: z.string(),
   slug: z.string(),
   description: z.string().nullable(),
-  isSystem: z.boolean(),
   permissions: z.array(z.string()),
   createdAt: z.string().datetime(),
 });

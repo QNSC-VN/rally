@@ -51,7 +51,14 @@ export interface UpdateIterationInput {
   completedAt?: Date | null;
 }
 
-/** Compact projection used by the assignment-options picker endpoint. */
+/**
+ * ELIGIBILITY: the iterations work may be assigned INTO — `planning | committed`.
+ *
+ * Consumers are the bulk-assign bar and the inline/sidebar assignment pickers. Deliberately NOT
+ * the same projection as {@link IterationReference}: two questions are being asked, and a flag
+ * that silently changes the population is the shape that produced the zero-point Velocity bars
+ * (see CLAUDE.md, "Eligibility must be counted in the SAME scope as the measurement").
+ */
 export interface IterationOption {
   id: string;
   name: string;
@@ -59,6 +66,30 @@ export interface IterationOption {
   startDate: string | null;
   endDate: string | null;
   state: IterationState;
+}
+
+/**
+ * REFERENCE: "what is this timebox called, and when was it?" — EVERY state, accepted included.
+ *
+ * Consumers are filters, id→name labels and the report scope pickers. It exists because
+ * `GET /iterations` returns the timebox RECORD (`goal`, `theme`, `notes`, `plannedVelocity`),
+ * which §3.2 hides from an Editor behind `timebox:view`, while the four surfaces §3.2 GRANTS an
+ * Editor all need to name an iteration — including an accepted one, which the eligibility feed
+ * above cannot offer.
+ *
+ * `teamId` is here and the record's narrative fields are not: the client half of
+ * `teamOrSharedTimebox` (`iterationsInScope`) needs it to tell a team's own timebox from a shared
+ * one. Declared as its own interface rather than a subset of {@link Iteration} so a field added to
+ * the record cannot reach the feed a wider audience reads.
+ */
+export interface IterationReference {
+  id: string;
+  name: string;
+  iterationKey: string | null;
+  state: IterationState;
+  startDate: string | null;
+  endDate: string | null;
+  teamId: string | null;
 }
 
 export interface IterationFilters {

@@ -2,6 +2,7 @@ import type { CursorPayload, PagedResult } from '@platform';
 import type {
   Iteration,
   IterationOption,
+  IterationReference,
   CreateIterationInput,
   UpdateIterationInput,
   IterationFilters,
@@ -23,14 +24,24 @@ export interface IIterationRepository {
     iterationIds: string[],
   ): Promise<Map<string, number>>;
   /**
-   * Compact list for the assignment-options picker. Returns only
-   * `planning` and `committed` iterations; never paginated.
+   * ELIGIBILITY. Compact list for the assignment picker: only `planning` and
+   * `committed` iterations; never paginated.
    */
   listAssignmentOptions(
     projectId: string,
     workspaceId: string,
     teamId?: string,
   ): Promise<IterationOption[]>;
+  /**
+   * REFERENCE. Every state, so an ACCEPTED iteration still resolves to a name — which is the one
+   * thing {@link listAssignmentOptions} structurally cannot do, and the reason six SPA call sites
+   * read the timebox RECORD instead. Never paginated, same as the eligibility feed.
+   */
+  listReferences(
+    projectId: string,
+    workspaceId: string,
+    teamId?: string,
+  ): Promise<IterationReference[]>;
   /** Next per-project iteration number (drives the IT-<n> display key). */
   nextKeyNumber(projectId: string, workspaceId: string): Promise<number>;
   create(input: CreateIterationInput): Promise<Iteration>;

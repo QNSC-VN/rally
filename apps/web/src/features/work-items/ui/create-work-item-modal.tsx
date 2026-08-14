@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import { useCreateWorkItem, useBacklog, type WorkItem } from '@/features/work-items/api'
 import { useProjectTeams } from '@/features/teams/api'
-import { useProjectMembers } from '@/features/teams/api'
+import { useProjectMemberOptions } from '@/features/teams/api'
 import { useProjects } from '@/features/projects/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -65,7 +65,8 @@ export function CreateWorkItemModal({
   const createMutation = useCreateWorkItem()
   const { data: projects = [] } = useProjects(workspaceId || undefined)
   const { data: teams = [] } = useProjectTeams(selectedProjectId)
-  const { data: members = [] } = useProjectMembers(selectedProjectId)
+  // Owner PICKER — the reference feed, not the Admin-only roster.
+  const { data: members = [] } = useProjectMemberOptions(selectedProjectId)
   // Fetch stories for the parent dropdown (only used when type=defect)
   const { data: backlogData } = useBacklog(selectedProjectId, { type: 'story' })
   const stories = backlogData?.data ?? []

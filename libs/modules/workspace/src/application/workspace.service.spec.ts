@@ -95,6 +95,7 @@ const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> => ({
   findMembershipsForUser: vi.fn().mockResolvedValue([]),
   listMembers: vi.fn(),
   listMembersWithProfile: vi.fn().mockResolvedValue([]),
+  listMemberOptions: vi.fn().mockResolvedValue([]),
   addMember: vi.fn(),
   updateMember: vi.fn(),
   removeMember: vi.fn().mockResolvedValue(undefined),
@@ -116,6 +117,10 @@ const makeInvitationRepo = (): Mocked<IWorkspaceInvitationRepository> => ({
   create: vi.fn(),
   updateStatus: vi.fn().mockResolvedValue(undefined),
   cancelExistingForEmail: vi.fn().mockResolvedValue(undefined),
+  setProjectAccess: vi.fn().mockResolvedValue(undefined),
+  // §6.4 — no initial project access by default; the RBE-11 tests set this.
+  listProjectAccess: vi.fn().mockResolvedValue([]),
+  countProjectsInWorkspace: vi.fn().mockResolvedValue(0),
   rotateForResend: vi.fn(),
 });
 
@@ -140,8 +145,25 @@ const makeEmailScheduler = () => ({
 
 // Run the wrapped work immediately with a stub transaction so repository mocks
 // receive a tx argument exactly as they would in production.
-const makeUow = () => ({
-  run: vi.fn((fn: (tx: unknown) => unknown) => fn({})),
+/** Exposes the tx so a test can prove a write enlisted on the SAME transaction as the membership. */
+const makeUow = () => {
+  const tx = { __tx: 'uow' };
+  return { run: vi.fn((fn: (tx: unknown) => unknown) => fn(tx)), tx };
+};
+
+/**
+ * `AccessService` — accepting an invitation grants the invited role (so the permission cache has to
+ * be dropped for that user) AND, since §6.4, the invitation's initial per-Project access through the
+ * one grant writer. `findRole: null` = "no role found", so the role-grant path proceeds; the
+ * tier-role refusal is a separate behaviour, mocked per test.
+ */
+const makeAccessService = () => ({
+  invalidateUser: vi.fn().mockResolvedValue(undefined),
+  findRole: vi.fn().mockResolvedValue(null),
+  grantProjectAccess: vi.fn().mockResolvedValue({ id: 'pm-1' }),
+  // The picker feed's scope (RBE-07). Defaults to UNRESTRICTED so unrelated tests are unaffected;
+  // `null` and `[]` are DIFFERENT answers, which is exactly what the tests below assert.
+  listReadableProjectIds: vi.fn().mockResolvedValue(null),
 });
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -153,6 +175,8 @@ describe('WorkspaceService', () => {
   let invitationRepo: ReturnType<typeof makeInvitationRepo>;
   let settingsRepo: ReturnType<typeof makeSettingsRepo>;
   let emailScheduler: ReturnType<typeof makeEmailScheduler>;
+  let access: ReturnType<typeof makeAccessService>;
+  let uow: ReturnType<typeof makeUow>;
 
   beforeEach(async () => {
     workspaceRepo = makeWorkspaceRepo();
@@ -160,6 +184,8 @@ describe('WorkspaceService', () => {
     invitationRepo = makeInvitationRepo();
     settingsRepo = makeSettingsRepo();
     emailScheduler = makeEmailScheduler();
+    access = makeAccessService();
+    uow = makeUow();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -171,19 +197,9 @@ describe('WorkspaceService', () => {
         { provide: WORKSPACE_SETTINGS_REPOSITORY, useValue: settingsRepo },
         { provide: AppConfigService, useValue: makeConfig() },
         { provide: EmailSchedulerService, useValue: emailScheduler },
-        { provide: UnitOfWork, useValue: makeUow() },
+        { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
-        // Accepting an invitation now grants the invited role, so the permission cache has to be
-        // dropped for that user — see `acceptInvitation`.
-        {
-          provide: AccessService,
-          // findRole: null = "no role found" — the grant path proceeds. The tier-role
-          // refusal is a separate behavior (mocked per-test when covered).
-          useValue: {
-            invalidateUser: vi.fn().mockResolvedValue(undefined),
-            findRole: vi.fn().mockResolvedValue(null),
-          },
-        },
+        { provide: AccessService, useValue: access },
       ],
     }).compile();
 
@@ -333,6 +349,60 @@ describe('WorkspaceService', () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       await service.deleteWorkspace('ws-1');
       expect(workspaceRepo.softDelete).toHaveBeenCalledWith('ws-1');
+    });
+  });
+
+  // ── listMemberOptions — the picker half of the roster split (RBE-07) ─────────
+  //
+  // The check is IN THE SERVICE (`@AuthorizedInService`), so a service spec is the right shape for
+  // it: what a service spec cannot see is a GUARD defect, and there is no guard on this route by
+  // design. `test/e2e/directory-team-authz.e2e.spec.ts` drives it over real HTTP as well.
+
+  describe('listMemberOptions', () => {
+    const roster = [
+      {
+        userId: 'user-1',
+        displayName: 'Ada',
+        email: 'ada@example.com',
+        avatarUrl: null,
+        // The DECISION a picker needs, never the raw `workspace_members.status` — see
+        // `WorkspaceMemberOption.assignable`.
+        assignable: true,
+      },
+    ];
+
+    beforeEach(() => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      memberRepo.listMemberOptions.mockResolvedValue(roster);
+    });
+
+    it('returns the roster to a Workspace Admin (null = UNRESTRICTED)', async () => {
+      access.listReadableProjectIds.mockResolvedValue(null);
+
+      await expect(service.listMemberOptions('ws-1', 'user-1')).resolves.toEqual(roster);
+    });
+
+    it('returns the roster to a caller who can read at least one project', async () => {
+      // The other direction, and the one that matters most: over-restricting here silently breaks
+      // every owner and assignee picker, which is what deferred this fix the first time.
+      access.listReadableProjectIds.mockResolvedValue(['proj-1']);
+
+      await expect(service.listMemberOptions('ws-1', 'user-1')).resolves.toEqual(roster);
+    });
+
+    it('returns NOBODY to a No Access principal ([] = nothing), without querying', async () => {
+      access.listReadableProjectIds.mockResolvedValue([]);
+
+      await expect(service.listMemberOptions('ws-1', 'nobody')).resolves.toEqual([]);
+      expect(memberRepo.listMemberOptions).not.toHaveBeenCalled();
+    });
+
+    it('asks for project:view, the code every level holds', async () => {
+      access.listReadableProjectIds.mockResolvedValue(null);
+
+      await service.listMemberOptions('ws-1', 'user-1');
+
+      expect(access.listReadableProjectIds).toHaveBeenCalledWith('ws-1', 'user-1', 'project:view');
     });
   });
 
@@ -498,6 +568,73 @@ describe('WorkspaceService', () => {
     });
   });
 
+  describe('inviteMember — initial per-Project access (§6.4)', () => {
+    beforeEach(() => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      invitationRepo.create.mockResolvedValue(mockInvitation());
+    });
+
+    it('records the projects and levels inside the invite transaction', async () => {
+      // Same tx as the invitation row: the intent cannot exist without the invitation carrying it.
+      invitationRepo.countProjectsInWorkspace.mockResolvedValue(1);
+
+      await service.inviteMember('ws-1', 'bob@example.com', undefined, 'actor-1', [
+        { projectId: 'proj-1', accessLevel: 'editor' },
+      ]);
+
+      expect(invitationRepo.setProjectAccess).toHaveBeenCalledWith(
+        'inv-1',
+        [{ projectId: 'proj-1', accessLevel: 'editor' }],
+        uow.tx,
+      );
+    });
+
+    it('REFUSES a project that is not in this workspace, before the email goes out', async () => {
+      // Fail-fast on the inviter's screen, where the mistake can be fixed — not days later on the
+      // invitee's, where `grantProjectAccess` would refuse it with PROJECT_NOT_FOUND.
+      invitationRepo.countProjectsInWorkspace.mockResolvedValue(0);
+
+      await expect(
+        service.inviteMember('ws-1', 'bob@example.com', undefined, 'actor-1', [
+          { projectId: 'proj-elsewhere', accessLevel: 'editor' },
+        ]),
+      ).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+
+      expect(invitationRepo.create).not.toHaveBeenCalled();
+      expect(emailScheduler.schedule).not.toHaveBeenCalled();
+    });
+
+    it('REFUSES a level the catalogue does not have', async () => {
+      // Through `isProjectAccessLevel`, never a hand-written pair: `AccessService` had exactly that
+      // bug twice, and a granted row read as No Access for the week a third level existed.
+      await expect(
+        service.inviteMember('ws-1', 'bob@example.com', undefined, 'actor-1', [
+          { projectId: 'proj-1', accessLevel: 'viewer' as never },
+        ]),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      expect(invitationRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('REFUSES the same project twice', async () => {
+      // Two rows for one project make the resulting grant order-dependent.
+      await expect(
+        service.inviteMember('ws-1', 'bob@example.com', undefined, 'actor-1', [
+          { projectId: 'proj-1', accessLevel: 'editor' },
+          { projectId: 'proj-1', accessLevel: 'admin' },
+        ]),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      expect(invitationRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('an invitation with no initial access stays legal (pre-§6.4 behaviour)', async () => {
+      await service.inviteMember('ws-1', 'bob@example.com', undefined, 'actor-1');
+
+      expect(invitationRepo.create).toHaveBeenCalled();
+      expect(invitationRepo.setProjectAccess).toHaveBeenCalledWith('inv-1', [], uow.tx);
+      expect(invitationRepo.countProjectsInWorkspace).not.toHaveBeenCalled();
+    });
+  });
+
   // ── acceptInvitation ─────────────────────────────────────────────────────────
 
   describe('acceptInvitation', () => {
@@ -567,6 +704,83 @@ describe('WorkspaceService', () => {
         // In the SAME transaction as the membership and the status flip.
         expect.anything(),
       );
+    });
+
+    /**
+     * RBE-11 / Settings §6.4 — an invitation carries initial per-Project access.
+     *
+     * Before this, inviting someone and granting them access were two unrelated actions and only
+     * the first was on the invite screen, so the common path produced a member who signs in and can
+     * see nothing: `effectiveAssignments` synthesizes a project grant from `work.project_members`,
+     * and with no row the new joiner is indistinguishable from No Access.
+     */
+    describe('initial per-Project access (§6.4)', () => {
+      const pending = () => mockInvitation({ status: 'pending' });
+
+      beforeEach(() => {
+        invitationRepo.findByTokenHash.mockResolvedValue(pending());
+        memberRepo.findMember.mockResolvedValue(null);
+        memberRepo.addMember.mockResolvedValue(mockMember());
+        invitationRepo.listProjectAccess.mockResolvedValue([
+          { projectId: 'proj-1', accessLevel: 'editor' },
+        ]);
+      });
+
+      it('applies the invited grant through the one grant writer', async () => {
+        await service.acceptInvitation('raw-token', 'user-2');
+
+        expect(access.grantProjectAccess).toHaveBeenCalledWith(
+          {
+            workspaceId: 'ws-1',
+            projectId: 'proj-1',
+            userId: 'user-2',
+            accessLevel: 'editor',
+            actorId: 'user-2',
+            onWorkspaceAdmin: 'skip',
+          },
+          // The SAME transaction as the membership row: `grantProjectAccess`'s
+          // active-workspace-member check has to see the `addMember` above, and `UnitOfWork.run` is
+          // `db.transaction`, which does not nest.
+          uow.tx,
+        );
+      });
+
+      it('invalidates the permission cache after commit so the grant lands on the next request', async () => {
+        await service.acceptInvitation('raw-token', 'user-2');
+        expect(access.invalidateUser).toHaveBeenCalledWith('ws-1', 'user-2');
+      });
+
+      it('invalidates even when the invitation carried NO workspace role', async () => {
+        // The invalidation used to be gated on `invitation.roleId` alone; a project-access-only
+        // invitation would then have waited out the 5-minute cache TTL before the grant took effect.
+        invitationRepo.findByTokenHash.mockResolvedValue(
+          mockInvitation({ status: 'pending', roleId: null }),
+        );
+        await service.acceptInvitation('raw-token', 'user-2');
+        expect(access.invalidateUser).toHaveBeenCalledWith('ws-1', 'user-2');
+      });
+
+      it('A FORWARDED LINK COLLECTS NOTHING — the email binding runs first', async () => {
+        // The token used to be a bearer capability. With §6.4 a leaked link would buy per-project
+        // Admin as well as workspace membership, so the ORDER is the security property: the
+        // mismatch is thrown before the grants are even read, let alone applied.
+        memberRepo.findUserEmail.mockResolvedValue('someone.else@example.com');
+
+        await expect(service.acceptInvitation('raw-token', 'user-9')).rejects.toMatchObject({
+          code: 'INVITATION_EMAIL_MISMATCH',
+        });
+
+        expect(access.grantProjectAccess).not.toHaveBeenCalled();
+        expect(invitationRepo.listProjectAccess).not.toHaveBeenCalled();
+        expect(memberRepo.addMember).not.toHaveBeenCalled();
+      });
+
+      it('applies nothing for an invitation created before §6.4', async () => {
+        // The ABSENCE of a row IS the old behaviour, which is why migration 0119 owes no backfill.
+        invitationRepo.listProjectAccess.mockResolvedValue([]);
+        await service.acceptInvitation('raw-token', 'user-2');
+        expect(access.grantProjectAccess).not.toHaveBeenCalled();
+      });
     });
 
     it('grants nothing when the invitation carried no role', async () => {

@@ -3,8 +3,8 @@ import { uuidv7 } from 'uuidv7';
 import { CacheService } from '@qnsc-vn/platform-cache';
 import {
   NotFoundException,
-  ConflictException,
   PermissionDeniedException,
+  PreconditionFailedException,
   UnitOfWork,
   AuditProducer,
   AUDIT_ACTION,
@@ -12,36 +12,41 @@ import {
 } from '@platform';
 import {
   SYSTEM_ROLE,
-  PERMISSION,
-  PERMISSION_TIER,
   permissionGrants,
   isProjectAccessLevel,
   ACCESS_LEVEL_PERMISSIONS,
   type ProjectPermission,
   type ProjectAccessLevel,
 } from '@shared-kernel';
-import type { JwtPayload, DrizzleDB } from '@platform';
+import type { JwtPayload, DrizzleDB, DbExecutor, DrizzleTx } from '@platform';
 import { InjectDrizzle } from '@platform';
-import { and, eq, isNotNull } from 'drizzle-orm';
-import {
-  projectMembers,
-  projects,
-  teamMembers,
-  projectTeams,
-  teams,
-} from '../../../../../db/schema/work';
+import { and, eq } from 'drizzle-orm';
+import { projectMembers } from '../../../../../db/schema/work';
 import { workspaceMembers } from '../../../../../db/schema/workspace';
+import type { ScopeType } from '../domain/access.types';
 import { IRoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository';
 import {
   IRoleAssignmentRepository,
   ROLE_ASSIGNMENT_REPOSITORY,
 } from '../domain/ports/role-assignment.repository';
-import type {
-  SystemRole,
-  UserRoleAssignment,
-  ScopeType,
-  AssignRoleInput,
-} from '../domain/access.types';
+import {
+  IProjectAccessRepository,
+  PROJECT_ACCESS_REPOSITORY,
+} from '../domain/ports/project-access.repository';
+import type { ProjectAccessGrant } from '../domain/project-access';
+import type { SystemRole, UserRoleAssignment } from '../domain/access.types';
+
+/** The one shape every per-Project grant journey passes to {@link AccessService.grantProjectAccess}. */
+export interface GrantProjectAccessInput {
+  workspaceId: string;
+  projectId: string;
+  userId: string;
+  /** Omitted lands a NULL level — "a member, no level yet" — never a defaulted one. */
+  accessLevel?: ProjectAccessLevel;
+  actorId: string;
+  /** No default: every caller decides. See {@link AccessService.grantProjectAccess}. */
+  onWorkspaceAdmin: 'refuse' | 'skip';
+}
 
 @Injectable()
 export class AccessService {
@@ -51,6 +56,8 @@ export class AccessService {
     @Inject(ROLE_REPOSITORY) private readonly roleRepo: IRoleRepository,
     @Inject(ROLE_ASSIGNMENT_REPOSITORY)
     private readonly assignmentRepo: IRoleAssignmentRepository,
+    @Inject(PROJECT_ACCESS_REPOSITORY)
+    private readonly projectAccessRepo: IProjectAccessRepository,
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
     private readonly cache: CacheService,
@@ -188,12 +195,53 @@ export class AccessService {
     }
   }
 
-  /** Fan-out invalidation — e.g. editing a role's permission set affects every holder. */
+  /** Fan-out invalidation — e.g. a team roster edit changes several members' levels at once. */
   async invalidateUsers(workspaceId: string, userIds: readonly string[]): Promise<void> {
     await Promise.all([...new Set(userIds)].map((id) => this.invalidateUser(workspaceId, id)));
   }
 
-  // ── Roles ─────────────────────────────────────────────────────────────────
+  // ── Roles — READ ONLY ─────────────────────────────────────────────────────
+  //
+  // CUSTOM ROLES AND THE EDITABLE PERMISSION MATRIX WERE DELETED BY RULING
+  // (2026-08-14). `createRole`, `updateRolePermissions`, `deleteRole`,
+  // `getPermissionCatalog` and `assignRole` used to live here, behind
+  // `POST /roles`, `PATCH /roles/:roleId/permissions`, `DELETE /roles/:roleId`,
+  // `GET /permissions` and `POST /role-assignments`. Do not restore them.
+  //
+  // Three reasons, in the order they decide it:
+  //
+  //   1. AC-11 makes the Permission Model READ-ONLY — "no editable matrix". The
+  //      UI that edited it was already dead code when this was removed
+  //      (`role-editor-dialog.tsx` was unreferenced, and its capability model in
+  //      `pages/settings/model/role-capabilities.ts` had no live consumer), so
+  //      the writers were reachable only from a URL.
+  //   2. `db/permissions.catalog.ts` is the SINGLE SOURCE OF TRUTH for permission
+  //      codes and role→permission mappings, and a per-workspace editable matrix
+  //      forks it. Nothing then reconciles the fork: `db/seeds/bootstrap.ts`
+  //      upserts tier roles with `set: { name }` precisely so it cannot clobber
+  //      an edit, which is also why a catalogue addition needs a backfill
+  //      migration to reach an existing workspace.
+  //   3. Custom-role CRUD plus workspace-scoped tier-role assignment together
+  //      re-created the company-wide over-grant migration 0111 removed: a role
+  //      holding any project-tier code, assigned at `scope_type='workspace'`,
+  //      is that code granted in EVERY project at once. `assignRole` already
+  //      refused `scope_type='project'` for a related reason; the workspace
+  //      scope was the wider hole of the two.
+  //
+  // What deliberately REMAINS:
+  //   • `listRoles` / `findRole` — the read-only Permission Model tab, the audit
+  //     log's role-name lookup and `WorkspaceService.acceptInvitation` all read
+  //     the catalogue.
+  //   • `revokeRole` / `getUserAssignments` — you can no longer GRANT a
+  //     workspace-scoped assignment, but you must still be able to see and
+  //     REMOVE the ones that already exist. The removal migration is deliberately
+  //     deferred (deleting a role a user holds revokes their access), so the rows
+  //     are still live; retiring the un-grant path while the grants remain would
+  //     be exactly backwards. `pnpm db:report:custom-roles` is the dry-run that
+  //     the destructive step is gated on.
+  //   • `elevateToWorkspaceAdmin` — writes a workspace-scoped assignment of the
+  //     ONE canonical role whose grant is not project-tier, from
+  //     `PLATFORM_ADMIN_EMAILS`, with no caller-supplied role id.
 
   async listRoles(workspaceId: string): Promise<SystemRole[]> {
     return this.roleRepo.listForWorkspace(workspaceId);
@@ -206,200 +254,178 @@ export class AccessService {
     return role;
   }
 
+  // ── Per-Project access grants ─────────────────────────────────────────────
+
   /**
-   * The catalogue of concrete permissions that can be granted to a custom role,
-   * with each code's scope tier. Sourced directly from the canonical PERMISSION
-   * catalogue so the editable role matrix never drifts from the guards.
-   * Wildcard codes (e.g. `workspace:*`) are excluded — they are reserved for
-   * built-in system roles and are not individually assignable.
+   * Whether the user's project authority IS the workspace-wide grant (§2.1).
+   *
+   * Public because two callers legitimately need to SKIP a grant rather than be refused one — see
+   * `onWorkspaceAdmin` on {@link grantProjectAccess}. Takes an executor so it can be asked inside
+   * a transaction that has just written the user's `workspace_members` row.
    */
-  getPermissionCatalog(): { code: string; tier: 'workspace' | 'project' }[] {
-    return Object.values(PERMISSION)
-      .filter((code) => !code.endsWith(':*'))
-      .map((code) => ({ code, tier: PERMISSION_TIER[code] }));
+  async isWorkspaceAdmin(workspaceId: string, userId: string, exec?: DbExecutor): Promise<boolean> {
+    const admins = await this.projectAccessRepo.listWorkspaceAdminUserIds(workspaceId, exec);
+    return admins.includes(userId);
   }
 
   /**
-   * Replace a custom role's permission set. System roles (`isSystem`) are
-   * immutable — their permissions are seeded from the canonical catalogue and
-   * must not drift. Global roles (workspaceId = null) are likewise off-limits to
-   * a single workspace's admin. The incoming codes are validated at the DTO
-   * boundary against the PERMISSION catalogue, deduplicated here, and the change
-   * is written + audited in a single transaction.
+   * Grant a user per-Project access — the ONE writer of a `work.project_members` grant.
+   *
+   * It lives here, and not in `ProjectsService` where it used to, because THREE journeys grant
+   * project access and §5's closing sentence (AC-9) is that all three update the same source:
+   * the Users & Permissions screen, an invitation's initial access (§6.4) and team setup
+   * (P4-RBAC-010). `ProjectsModule` imports `WorkspaceModule` — `ProjectsService` resolves
+   * `TeamService` and `WORKSPACE_MEMBER_REPOSITORY` from it — so workspace and teams cannot
+   * import projects back, and a `forwardRef` cannot help: the failure is a JS module cycle, which
+   * surfaces at module-evaluation time (a partially-initialised `@modules/identity` reached
+   * through the cycle threw `TypeError: CurrentUser is not a function` when this was attempted the
+   * other way round). `AccessModule` imports nothing, so it is the one place every caller can
+   * reach.
+   *
+   * `tx` optional, and absent it opens its own — so the Users & Permissions journey is unchanged
+   * while the other two join the transaction they already hold. Every check reads through the
+   * SAME executor as the writes: `acceptInvitation` writes the `workspace_members` row in its own
+   * transaction moments before granting, and a membership check on `this.db` could not see it,
+   * so the grant would be refused with `ASSIGNEE_NOT_WORKSPACE_MEMBER`. Skipping the check for
+   * transactional callers was the other option and it is not acceptable — it is what stops a user
+   * from another workspace/tenant becoming a project member.
+   *
+   * CACHE INVALIDATION IS THE CALLER'S when `tx` is supplied, and it must happen AFTER commit:
+   * invalidating first lets a concurrent request repopulate from pre-commit state, which is the
+   * staleness the cache exists to remove. With no `tx` this method owns the transaction and does
+   * it itself.
+   *
+   * `onWorkspaceAdmin` has no default on purpose — a caller must decide. `refuse` is the
+   * Users & Permissions answer: the admin asked for a grant, and a 201 that writes nothing is how
+   * a UI comes to show a member who is not there. `skip` is the answer where the grant is a side
+   * effect of another action (accepting an invitation, joining a team): a Workspace Admin already
+   * has access to every project, so writing nothing is CORRECT there — §2.1 says they are not
+   * added as a Project user — while refusing would make the invitation permanently unredeemable
+   * or the team uncreatable.
    */
-  async updateRolePermissions(
-    actor: JwtPayload,
-    roleId: string,
-    permissions: string[],
-  ): Promise<SystemRole> {
-    const role = await this.roleRepo.findById(roleId);
-    if (!role || (role.workspaceId !== null && role.workspaceId !== actor.workspaceId)) {
-      throw new NotFoundException('ROLE_NOT_FOUND', 'Role not found');
+  async grantProjectAccess(
+    input: GrantProjectAccessInput & { onWorkspaceAdmin: 'refuse' },
+    tx?: DrizzleTx,
+  ): Promise<ProjectAccessGrant>;
+  async grantProjectAccess(
+    input: GrantProjectAccessInput & { onWorkspaceAdmin: 'skip' },
+    tx?: DrizzleTx,
+  ): Promise<ProjectAccessGrant | null>;
+  async grantProjectAccess(
+    input: GrantProjectAccessInput,
+    // `DrizzleTx`, not `DbExecutor`: `AuditProducer.emit` will only enlist on a real transaction,
+    // and every write here emits one. A caller with only a plain connection has no transaction to
+    // join, which is the no-`tx` case below.
+    tx?: DrizzleTx,
+  ): Promise<ProjectAccessGrant | null> {
+    const { workspaceId, projectId, userId, accessLevel, actorId, onWorkspaceAdmin } = input;
+
+    // Existence, not writability: access is not the project's content, so the member writes stay
+    // open on an ARCHIVED project — revoking or correcting a grant must never require unarchiving.
+    if (!(await this.projectAccessRepo.findLiveProject(workspaceId, projectId, tx))) {
+      throw new NotFoundException('PROJECT_NOT_FOUND', 'Project not found');
     }
-    if (role.isSystem || role.workspaceId === null) {
-      throw new ConflictException('ROLE_IMMUTABLE', 'Built-in system roles cannot be edited');
-    }
-    await this.assertGrantablePermissions(actor, permissions);
 
-    const next = [...new Set(permissions)].sort();
-
-    const updated = await this.uow.run(async (tx) => {
-      const saved = await this.roleRepo.updatePermissions(roleId, next, tx);
-      await this.audit.emit(
-        {
-          action: AUDIT_ACTION.ROLE_PERMISSIONS_UPDATED,
-          resourceType: AUDIT_RESOURCE.ROLE,
-          resourceId: roleId,
-          workspaceId: actor.workspaceId,
-          actor: { id: actor.sub },
-          changes: { before: { permissions: role.permissions }, after: { permissions: next } },
-        },
-        tx,
-      );
-      return saved;
-    });
-    // A role's permission set changed, so every holder's cached resolution is
-    // stale. Assignees are read after the commit so the list reflects the new state.
-    const assignees = await this.assignmentRepo.listUserIdsForRole(roleId);
-    await this.invalidateUsers(actor.workspaceId, assignees);
-
-    this.logger.log(
-      { roleId, updatedBy: actor.sub, invalidatedUsers: assignees.length },
-      'Role permissions updated',
-    );
-    return updated;
-  }
-
-  /**
-   * Create a workspace-owned custom role. Built-ins stay immutable; this is the
-   * only way a workspace gains a new role. The permission set must be grantable
-   * (see {@link assertGrantablePermissions}); the slug is derived from the name
-   * and de-duplicated against the roles already visible to the workspace.
-   */
-  async createRole(
-    actor: JwtPayload,
-    input: { name: string; description?: string | null; permissions: string[] },
-  ): Promise<SystemRole> {
-    await this.assertGrantablePermissions(actor, input.permissions);
-    const permissions = [...new Set(input.permissions)].sort();
-    const slug = await this.deriveUniqueSlug(actor.workspaceId, input.name);
-
-    const created = await this.uow.run(async (tx) => {
-      const saved = await this.roleRepo.create(
-        {
-          workspaceId: actor.workspaceId,
-          name: input.name.trim(),
-          slug,
-          description: input.description?.trim() || null,
-          permissions,
-        },
-        tx,
-      );
-      await this.audit.emit(
-        {
-          action: AUDIT_ACTION.ROLE_CREATED,
-          resourceType: AUDIT_RESOURCE.ROLE,
-          resourceId: saved.id,
-          workspaceId: actor.workspaceId,
-          actor: { id: actor.sub },
-          changes: { after: { name: saved.name, slug: saved.slug, permissions } },
-        },
-        tx,
-      );
-      return saved;
-    });
-    // A brand-new role has no holders yet — no token epoch bump needed.
-    this.logger.log({ roleId: created.id, slug, createdBy: actor.sub }, 'Custom role created');
-    return created;
-  }
-
-  /**
-   * Delete a workspace-owned custom role. Built-ins are immutable; a role still
-   * held by any user is blocked (409) so no one silently loses access — the admin
-   * must reassign holders first.
-   */
-  async deleteRole(actor: JwtPayload, roleId: string): Promise<void> {
-    const role = await this.roleRepo.findById(roleId);
-    if (!role || (role.workspaceId !== null && role.workspaceId !== actor.workspaceId)) {
-      throw new NotFoundException('ROLE_NOT_FOUND', 'Role not found');
-    }
-    // A canonical tier role (workspace_admin/project_admin/project_member) is
-    // never deletable, even as a per-workspace editable copy — only its
-    // permissions may be tuned. Custom roles delete freely.
-    const canonical = (Object.values(SYSTEM_ROLE) as string[]).includes(role.slug);
-    if (role.isSystem || role.workspaceId === null || canonical) {
-      throw new ConflictException('ROLE_IMMUTABLE', 'Built-in system roles cannot be deleted');
-    }
-    const holders = await this.assignmentRepo.listUserIdsForRole(roleId);
-    if (holders.length > 0) {
-      throw new ConflictException(
-        'ROLE_IN_USE',
-        `This role is still assigned to ${holders.length} user(s); reassign them before deleting it`,
+    // A project member must first be an active member of the owning workspace — the same rule
+    // enforced for a project's lead (PRJ-FR-006) and a work item's assignee (P1-15). This is what
+    // prevents adding a user from another workspace/tenant.
+    if (!(await this.projectAccessRepo.isActiveWorkspaceMember(workspaceId, userId, tx))) {
+      throw new PreconditionFailedException(
+        'ASSIGNEE_NOT_WORKSPACE_MEMBER',
+        'The assigned user is not an active member of this workspace',
       );
     }
 
-    await this.uow.run(async (tx) => {
-      await this.roleRepo.delete(roleId, tx);
-      await this.audit.emit(
-        {
-          action: AUDIT_ACTION.ROLE_DELETED,
-          resourceType: AUDIT_RESOURCE.ROLE,
-          resourceId: roleId,
-          workspaceId: actor.workspaceId,
-          actor: { id: actor.sub },
-          changes: { before: { name: role.name, slug: role.slug } },
-        },
-        tx,
-      );
-    });
-    this.logger.log({ roleId, deletedBy: actor.sub }, 'Custom role deleted');
-  }
-
-  /**
-   * A custom role may only carry concrete codes the ACTOR themselves holds
-   * (no privilege escalation) and never a wildcard (`ns:*` is reserved for
-   * built-ins). Today only workspace_admin (workspace:*) manages roles, so this
-   * is a guard-rail for future finer-grained role admins.
-   */
-  private async assertGrantablePermissions(
-    actor: JwtPayload,
-    permissions: string[],
-  ): Promise<void> {
-    // The actor's own baseline is resolved, not read off the token: no-escalation
-    // must be judged against what the actor holds RIGHT NOW, or an admin whose
-    // grant was just revoked could still hand it out until their token rotated.
-    const held = await this.getWorkspacePermissions(actor.sub, actor.workspaceId);
-    for (const code of permissions) {
-      if (code.endsWith(':*')) {
-        throw new ConflictException(
-          'ROLE_WILDCARD_FORBIDDEN',
-          `Wildcard permission "${code}" cannot be granted to a custom role`,
+    // §2.1 — see `onWorkspaceAdmin` above, and `selectWorkspaceAdminUserIds` for the predicate.
+    // Enforced here rather than in the SPA's candidate filter (`roleSlug !== 'workspace_admin'`),
+    // which is a client-side courtesy, and because `listProjectMembers` HIDES these rows — so a
+    // row created through any of these paths would be an invisible grant rather than a visible
+    // mistake, live Project Admin the moment the user stops being a Workspace Admin.
+    if (await this.isWorkspaceAdmin(workspaceId, userId, tx)) {
+      if (onWorkspaceAdmin === 'skip') {
+        this.logger.log(
+          { projectId, userId },
+          'Project access not granted: the user is a Workspace Admin and already has every project (§2.1)',
         );
+        return null;
       }
-      if (!permissionGrants(held, code)) {
-        throw new PermissionDeniedException(
-          'ROLE_PERMISSION_ESCALATION',
-          `You cannot grant "${code}" because you do not hold it`,
-        );
-      }
+      throw new PreconditionFailedException(
+        'PROJECT_MEMBER_IS_WORKSPACE_ADMIN',
+        'A Workspace Admin already has access to every project and cannot be added as a project user',
+      );
     }
-  }
 
-  /** Slug from the name, unique among the roles visible to the workspace. */
-  private async deriveUniqueSlug(workspaceId: string, name: string): Promise<string> {
-    const base =
-      name
-        .toLowerCase()
-        .trim()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '')
-        .slice(0, 80) || 'role';
-    const taken = new Set((await this.roleRepo.listForWorkspace(workspaceId)).map((r) => r.slug));
-    if (!taken.has(base)) return base;
-    for (let i = 2; ; i++) {
-      const candidate = `${base}_${i}`;
-      if (!taken.has(candidate)) return candidate;
+    const existing = await this.projectAccessRepo.findGrant(projectId, userId, tx);
+
+    const write = async (exec: DrizzleTx): Promise<ProjectAccessGrant | 'unchanged'> => {
+      if (existing) {
+        // UPSERT, not 409: a grant row can legitimately pre-exist with a NULL access_level (rows
+        // created before add-with-level, and every "team-derived" roster row — a user on a linked
+        // team with no explicit grant). Refusing the POST meant the UI could show the user in the
+        // project yet be unable to give them a level. With a level supplied, set it; without one,
+        // stay idempotent.
+        if (accessLevel === undefined || accessLevel === existing.accessLevel) return 'unchanged';
+        const next = await this.projectAccessRepo.setGrantLevel(existing.id, accessLevel, exec);
+        await this.audit.emit(
+          {
+            action: AUDIT_ACTION.PROJECT_MEMBER_UPDATED,
+            resourceType: AUDIT_RESOURCE.PROJECT,
+            resourceId: projectId,
+            workspaceId,
+            actor: { id: actorId },
+            projectId,
+            changes: {
+              before: { userId, accessLevel: existing.accessLevel },
+              after: { userId, accessLevel },
+            },
+          },
+          exec,
+        );
+        return next;
+      }
+
+      const created = await this.projectAccessRepo.createGrant(
+        {
+          id: uuidv7(),
+          workspaceId,
+          projectId,
+          userId,
+          // Persist the chosen level up front rather than landing a NULL row the caller must
+          // immediately PATCH. Repo treats undefined as NULL.
+          ...(accessLevel !== undefined && { accessLevel }),
+        },
+        exec,
+      );
+      // Access grants are administrative events — a grant of Admin/Editor is at least as
+      // sensitive as the team-membership writes that ARE logged. Same tx as the mutation: the
+      // outbox row can never diverge from the grant it records.
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.PROJECT_MEMBER_ADDED,
+          resourceType: AUDIT_RESOURCE.PROJECT,
+          resourceId: projectId,
+          workspaceId,
+          actor: { id: actorId },
+          projectId,
+          changes: { after: { userId, accessLevel: accessLevel ?? null } },
+        },
+        exec,
+      );
+      return created;
+    };
+
+    if (tx) {
+      // The caller owns the transaction AND the post-commit invalidation (see the docblock).
+      const result = await write(tx);
+      return result === 'unchanged' ? existing! : result;
     }
+
+    const result = await this.uow.run(write);
+    if (result === 'unchanged') return existing!;
+    // Invalidate so the level lands on the user's next request rather than at the 5-min cache TTL.
+    await this.invalidateUser(workspaceId, userId);
+    this.logger.log({ projectId, userId, accessLevel }, 'Project access granted');
+    return result;
   }
 
   // ── Assignments ───────────────────────────────────────────────────────────
@@ -408,81 +434,22 @@ export class AccessService {
     return this.assignmentRepo.listForUser(workspaceId, userId);
   }
 
-  async assignRole(
-    actor: JwtPayload,
-    userId: string,
-    roleId: string,
-    scopeType: ScopeType,
-    scopeId?: string,
-  ): Promise<UserRoleAssignment> {
-    // Migration 0105 deleted scope_type='project' rows but this writer stayed, and a
-    // row minted here grants project-tier perms OUTSIDE the access_level model while
-    // getProjectAccessLevel doesn't recognize roleSlug 'project_member' — so
-    // assertTeamScoped silently bypasses for an "editor" granted this way. The tier
-    // roles are granted per-Project via project_members.access_level only.
-    if (scopeType === 'project') {
-      throw new ConflictException(
-        'PROJECT_SCOPE_RETIRED',
-        'Project-scoped role assignments were retired; grant per-Project access levels instead',
-      );
-    }
-
-    // Validate role exists and is accessible for this workspace
-    const role = await this.roleRepo.findById(roleId);
-    if (!role || (role.workspaceId !== null && role.workspaceId !== actor.workspaceId)) {
-      throw new NotFoundException('ROLE_NOT_FOUND', 'Role not found');
-    }
-
-    const existing = await this.assignmentRepo.findExisting(
-      userId,
-      roleId,
-      scopeType,
-      scopeId ?? null,
-      actor.workspaceId,
-    );
-    if (existing) {
-      throw new ConflictException(
-        'ROLE_ASSIGNMENT_NOT_FOUND',
-        'User already has this role in the given scope',
-      );
-    }
-
-    const input: AssignRoleInput = {
-      id: uuidv7(),
-      workspaceId: actor.workspaceId,
-      userId,
-      roleId,
-      scopeType,
-      scopeId,
-      grantedBy: actor.sub,
-    };
-
-    const assignment = await this.uow.run(async (tx) => {
-      const created = await this.assignmentRepo.create(input, tx);
-      await this.audit.emit(
-        {
-          action: AUDIT_ACTION.ROLE_ASSIGNED,
-          resourceType: AUDIT_RESOURCE.ROLE_ASSIGNMENT,
-          resourceId: created.id,
-          workspaceId: actor.workspaceId,
-          actor: { id: actor.sub },
-          changes: { after: { userId, roleId, scopeType, scopeId: scopeId ?? null } },
-        },
-        tx,
-      );
-      return created;
-    });
-    // Every scope type invalidates: unlike the old token epoch — which skipped
-    // project-scoped changes because they were never in the token — the cache now
-    // holds the assignment rows the project-tier check reads too.
-    await this.invalidateUser(actor.workspaceId, userId);
-    this.logger.log(
-      { assignmentId: assignment.id, userId, roleId, scopeType, scopeId },
-      'Role assigned',
-    );
-    return assignment;
-  }
-
+  /**
+   * A workspace-scoped tier-role assignment can no longer be CREATED.
+   *
+   * `assignRole` lived here and was reachable through `POST /v1/role-assignments`; both were
+   * deleted by ruling (2026-08-14). A role holding any project-tier code, assigned at
+   * `scope_type='workspace'`, grants that code in EVERY project at once — the company-wide
+   * over-grant migration 0111 removed. It already refused `scope_type='project'`
+   * (`PROJECT_SCOPE_RETIRED`, migration 0105); the workspace scope was the wider of the two holes.
+   *
+   * The supported grants are exactly two: `grantProjectAccess` above (per-Project `admin` /
+   * `editor` on `work.project_members`) and {@link elevateToWorkspaceAdmin} below (one canonical
+   * role, driven by `PLATFORM_ADMIN_EMAILS`, with no caller-supplied role id).
+   *
+   * {@link revokeRole} deliberately survives — see the Roles section above for why the un-grant
+   * path has to outlive the grant path.
+   */
   async revokeRole(actor: JwtPayload, assignmentId: string): Promise<void> {
     const assignment = await this.assignmentRepo.findById(assignmentId, actor.workspaceId);
     if (!assignment) {
@@ -552,53 +519,42 @@ export class AccessService {
   }
 
   /**
-   * Phase 9 team-scoped enforcement. An Editor may only mutate work in their
-   * assigned Teams; Admin (All Teams), Viewer (no writes), and Workspace Admin
-   * (workspace:*) bypass. Call AFTER the project-level write permission check.
-   * A team-agnostic item (teamId null) is not team-scoped.
+   * TEAM SCOPE IS NOT AN AUTHORIZATION BOUNDARY HERE. DELETED BY RULING, 2026-08-14.
+   *
+   * `assertTeamScoped(actor, projectId, teamId)` used to live at this spot and threw
+   * `TEAM_NOT_IN_SCOPE` when an `editor` wrote a work item belonging to a Team they held no
+   * `team_members` row for. It was called from exactly three places — `WorkItemsService`'s create,
+   * update and delete — and it is gone. **This is a removal, not a regression: do not restore it as
+   * a missing feature.**
+   *
+   * Why it could never be the control it read as:
+   *
+   *   • A team scope can only restrict rows that CARRY a team, and in this schema
+   *     `portfolio_items.team_id` and `work_items.team_id` are both nullable and mostly unset —
+   *     195 of 206 local iterations name no team either. The method's own first line was
+   *     `if (!teamId) return;`, so the boundary admitted the ordinary case BY DESIGN. A filter
+   *     whose default answer is "allow" is a filter with a security-sounding name.
+   *   • It covered 3 of roughly 14 Editor-reachable writes and NO reads. That is the worst
+   *     available state: enough to read as a boundary in review, nowhere near enough to be one.
+   *     Nothing in the suite asserted the refusal either — the only `assertTeamScoped` mentions in
+   *     any spec were `vi.fn().mockResolvedValue(undefined)` mocks, so the whole feature was
+   *     covered by zero tests for its entire life.
+   *   • Real Rally has no `Team` object and no team authorization scope at all: its
+   *     `ProjectPermission` is per (user, project, workspace), and "Team Member" is a
+   *     presentational checkbox beside the Permission field that auto-promotes to Editor. That
+   *     auto-promotion is what this repo now implements instead — a `team_members` row IMPLIES a
+   *     level (`teamRosterAccessLevel` in `../domain/project-access.ts`). A roster row grants; it
+   *     does not fence.
+   *
+   * Teams remain first-class DELIVERY-MODEL data and a display FILTER. Nothing about `teams`,
+   * `team_members`, team assignment, Team Status, Team Capacity or the reports' team scoping
+   * changed with this, and `getProjectAccessLevel` above is untouched — it has four other callers.
+   * The authorization model is: Workspace Admin, per-Project `admin` or `editor`, and No Access as
+   * the absence of a `work.project_members` row.
+   *
+   * This note supersedes the "Team-scoped Editor is KEPT, against real Rally" divergence that
+   * CLAUDE.md recorded up to this date.
    */
-  async assertTeamScoped(
-    actor: JwtPayload,
-    projectId: string,
-    teamId: string | null,
-  ): Promise<void> {
-    if (!teamId) return;
-    const level = await this.getProjectAccessLevel(actor.workspaceId, actor.sub, projectId);
-    // Only an Editor is Team-scoped. `admin` is All Teams by definition and Workspace Admin
-    // resolves no level at all, so both pass straight through.
-    //
-    // `viewer` also returns here, and that is safe for a reason worth stating rather than assuming:
-    // this runs AFTER the project-level write permission check, and the viewer set holds no write
-    // code, so a Viewer can never reach a call site. If a write is ever gated on a view code, THAT
-    // is the bug — do not turn this into a deny for viewer and call it defence, because it would
-    // hide the real fault while leaving every other unscoped write open.
-    if (level !== 'editor') return;
-    // Named `scopedTeams` — a bare `teams` would shadow the imported schema table.
-    const scopedTeams = await this.db
-      .select({ teamId: teamMembers.teamId })
-      .from(teamMembers)
-      .innerJoin(projectTeams, eq(projectTeams.teamId, teamMembers.teamId))
-      // The team's OWN lifecycle must gate too: an archived team is "not actionable
-      // planning demand" and must not stay writable through its Editors. Without the
-      // join, deactivating a team left its members' write scope fully live.
-      .innerJoin(teams, eq(teams.id, teamMembers.teamId))
-      .where(
-        and(
-          eq(teamMembers.workspaceId, actor.workspaceId),
-          eq(teamMembers.userId, actor.sub),
-          eq(projectTeams.projectId, projectId),
-          eq(teamMembers.status, 'active'),
-          eq(projectTeams.status, 'active'),
-          eq(teams.status, 'active'),
-        ),
-      );
-    if (!scopedTeams.some((t) => t.teamId === teamId)) {
-      throw new PermissionDeniedException(
-        'TEAM_NOT_IN_SCOPE',
-        'Editors can only modify work in their assigned teams',
-      );
-    }
-  }
 
   /**
    * Resolve the primary role + effective permissions for a user.
@@ -771,17 +727,39 @@ export class AccessService {
    * rather than from any per-artifact grant: Rally stores one `ProjectPermission` row
    * per (user, project, workspace) and a Viewer sees everything in that project.
    *
-   * Three sources, unioned:
+   * Two sources, unioned:
    *   1. a workspace-wide grant (`workspace:*` or an explicit workspace-tier `:view`)
    *      sees every project — Rally's Workspace Admin;
-   *   2. project-scoped role assignments (`scope_type='project'`) — Rally's per-project
-   *      Editor/Viewer/Project Admin;
-   *   3. active project membership — the roster equivalent, so a member who holds no
-   *      explicit role assignment still sees their own project.
+   *   2. project-scoped assignments that GRANT `permission` — which covers per-project
+   *      membership too, because {@link effectiveAssignments} synthesizes a project-scoped
+   *      entry from every active `project_members` row using `ACCESS_LEVEL_PERMISSIONS`.
    *
    * Returns `null` to mean UNRESTRICTED, deliberately: an empty array is a legitimate
    * answer ("no projects"), so a sentinel is needed to distinguish it from "all". A
    * caller that treats `null` as empty fails closed, which is the safe direction.
+   *
+   * THE `permission` ARGUMENT IS THE POINT, AND A THIRD SOURCE USED TO IGNORE IT.
+   * ---------------------------------------------------------------------------
+   * A raw `project_members` query sat below, unioned in unconditionally: every project the
+   * caller held an active row for became readable REGARDLESS of whether that row's access
+   * level granted the permission being asked about. It was written when membership was the
+   * only per-project fact, and it survived the move to `access_level` — by which point
+   * `effectiveAssignments` was already synthesizing the same rows, correctly filtered. So
+   * for a permission the level DOES grant it was pure duplication (hence the union's
+   * de-duplication), and for one it does NOT it was a silent over-grant that could not be
+   * seen from any call site: the argument was passed, looked authoritative, and decided
+   * nothing.
+   *
+   * What it actually opened: `PortfolioItemsService.listItems` asks for `portfolio:view`, a
+   * code the `editor` level deliberately withholds (§3.2 marks Portfolio Items Hidden for
+   * an Editor). Every project Editor therefore read every field of every Epic and Feature
+   * in each of their projects — the one surface the access matrix hides from them. No other
+   * caller was affected, because the rest ask for `project:view` or `work_item:view`, which
+   * `editor` holds; that is exactly why this stayed invisible.
+   *
+   * The lesson generalises past this method: a boundary that takes a permission and then
+   * unions in a source not filtered by it is not a boundary, and it reads like one in
+   * review. Any new source added here MUST be filtered by `permissionGrants`.
    */
   async listReadableProjectIds(
     workspaceId: string,
@@ -808,36 +786,20 @@ export class AccessService {
       )
       .map((a) => a.scopeId as string);
 
-    // A membership row counts as readable ONLY with a real access level AND an
-    // active company row: a NULL level (team-derived union shape) or a suspended
-    // member listed the project in every picker while opening it 403'd — two
-    // readers, one row, different answers.
-    const memberships = await this.db
-      .select({ projectId: projectMembers.projectId })
-      .from(projectMembers)
-      .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-      .innerJoin(
-        workspaceMembers,
-        and(
-          eq(workspaceMembers.workspaceId, projectMembers.workspaceId),
-          eq(workspaceMembers.userId, projectMembers.userId),
-          eq(workspaceMembers.status, 'active'),
-        ),
-      )
-      .where(
-        and(
-          eq(projectMembers.workspaceId, workspaceId),
-          eq(projectMembers.userId, userId),
-          eq(projectMembers.status, 'active'),
-          // The "real access level" half of the comment above, as code: an explicit
-          // NULL-level row (legitimately created by addMember with no level) is not
-          // a grant — the synthesis denies it, so listing the project here put it in
-          // every picker while opening it 403'd.
-          isNotNull(projectMembers.accessLevel),
-        ),
-      );
-
-    return [...new Set([...fromAssignments, ...memberships.map((m) => m.projectId)])];
+    // Membership needs no query of its own: the synthesis above already turned every
+    // active `project_members` row into a project-scoped assignment, under the same two
+    // conditions the deleted query re-implemented by hand — an active workspace member
+    // row, and a level `isProjectAccessLevel` recognises (stricter than the old
+    // `isNotNull`, which admitted a level the catalogue does not know). One writer of that
+    // rule, so a picker and the guard can no longer disagree about one row.
+    //
+    // One second-order consequence, deliberate: the deleted query was an uncached live read,
+    // while the synthesis rides `effectiveAssignments`' 5-minute cache. So a membership row
+    // written OUTSIDE `AccessService` — raw SQL, a seed, a fixture — is invisible to every
+    // cross-project list until the TTL expires. Every real writer goes through
+    // `grantProjectAccess`, which invalidates; a test that inserts directly must call
+    // `invalidateUser` rather than expect a live read.
+    return [...new Set(fromAssignments)];
   }
 
   /**

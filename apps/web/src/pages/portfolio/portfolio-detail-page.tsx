@@ -32,6 +32,7 @@ import { FeatureChildrenTable } from './ui/feature-children-table'
 import { EmptyState } from '@/shared/ui/empty-state'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
+import { listResource } from '@/shared/lib/query/resource'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
 import { SaveCancelBar } from '@/shared/ui/save-cancel-bar'
 import { SaveIndicator } from '@/shared/ui/save-indicator'
@@ -39,9 +40,9 @@ import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { useWorkspaceMembers } from '@/features/workspaces/api'
-import { useReleases } from '@/features/releases/api'
-import { useMilestones } from '@/features/milestones/api'
+import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
+import { useReleaseOptions } from '@/features/releases/api'
+import { useMilestoneOptions } from '@/features/milestones/api'
 import { useUpdateAnyWorkItem } from '@/features/work-items/api'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
 import { PortfolioItemType } from '@/entities/work-item/model/types'
@@ -88,8 +89,8 @@ export function PortfolioDetailPage() {
   const { data: children = [], isLoading: childrenLoading } = usePortfolioChildren(
     isEpic ? undefined : itemId,
   )
-  const { data: activityLogs = [], isLoading: activityLoading } =
-    usePortfolioItemActivityLog(itemId)
+  const activityQuery = usePortfolioItemActivityLog(itemId)
+  const activityLogs = listResource(activityQuery)
 
   // Edit rights follow the ITEM's project, not the selected one: this page is reachable
   // from a cross-project grid, so the two are frequently different.
@@ -109,11 +110,14 @@ export function PortfolioDetailPage() {
   const canEdit = mayEdit && server?.archivedAt == null
 
   const { workspace } = useAppContext()
-  const { data: members = [] } = useWorkspaceMembers(workspace?.workspaceId)
-  const { data: projectReleases = [] } = useReleases(server?.projectId)
+  const { data: members = [] } = useWorkspaceMemberOptions(workspace?.workspaceId)
+  const { data: projectReleases = [] } = useReleaseOptions(server?.projectId)
   // Milestone options are Project-scoped (SRS §5.1); the sidebar unions in any already-assigned
   // milestone that falls outside them so a save cannot silently drop it.
-  const { data: projectMilestones = [] } = useMilestones(server?.projectId)
+  // Both of these are the REFERENCE feeds: this sidebar only labels and chooses. The administrative
+  // lists (`useReleaseRecords` / `useMilestones`) carry the record and are gated on codes an Editor
+  // does not hold, and a 403 there defaults to `[]` — which renders as "there are none".
+  const { data: projectMilestones = [] } = useMilestoneOptions(server?.projectId)
   // Candidate parents: this project's Epics. Skipped entirely for an Epic, which has none.
   const epicList = usePortfolioItems({
     type: PortfolioItemType.Epic,
@@ -326,7 +330,6 @@ export function PortfolioDetailPage() {
         <div className="flex-1 overflow-y-auto bg-card p-6">
           <ActivityHistoryTab
             logs={activityLogs}
-            isLoading={activityLoading}
             title={t('detail.history.title')}
             subtitle={t('detail.history.subtitle')}
           />

@@ -22,7 +22,6 @@ import {
   SEEDED,
   adminActor,
   bootRallyApp,
-  ensureViewerGrant,
   grantProjectAccess,
   makeActor,
   uniqueKey,
@@ -78,16 +77,25 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
   let workItems: WorkItemsService;
   let policy: PolicyGuard;
   const admin = adminActor();
-  const viewer = viewerActor();
+  /**
+   * The NO ACCESS principal.
+   *
+   * This was a "read-only viewer" backed by a workspace-owned CUSTOM ROLE assigned at WORKSPACE scope,
+   * which is why it could read a project created inside the test. Both halves of that are gone: the BA
+   * removed the `Viewer` level (`product-docs` 55e7dbb, §2.2 lists two levels), and custom roles plus
+   * workspace-scoped tier assignment were deleted by ruling (AC-11) precisely because one row granting
+   * project-tier codes across every project IS the over-grant migration 0111 removed.
+   *
+   * So the model's third state is No Access — the ABSENCE of an active `project_members` row — and this
+   * seeded user has none on the projects these tests create. Nothing to arrange; that is the point.
+   */
+  const noAccess = viewerActor();
 
   beforeAll(async () => {
     app = await bootRallyApp();
     projects = app.get(ProjectsService);
     workItems = app.get(WorkItemsService);
     policy = app.get(PolicyGuard);
-    // The viewer needs a REAL read-only grant: a principal's permission list is
-    // inert now that the guard resolves from the database.
-    await ensureViewerGrant(app);
   });
 
   afterAll(async () => {
@@ -139,36 +147,41 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
     });
   });
 
-  // ── E2E-009: Read-only user behaviour (enforced by the PolicyGuard) ──────────
-  describe('E2E-009 read-only user', () => {
-    it('lets a viewer read but blocks create and edit', async () => {
+  // ── E2E-009: No Access behaviour (enforced by the PolicyGuard) ───────────────
+  describe('E2E-009 No Access', () => {
+    /**
+     * Retitled from "read-only user". §2.2 lists two levels — `Admin` and `Editor` — with No Access
+     * implicit, so there is no read-only principal to assert. What replaced it is stronger, because a
+     * read-only grant admitted the VIEW and only refused the writes: No Access is refused the read too.
+     */
+    it('refuses a No Access user every route, including the read', async () => {
       const project = await projects.createProject(admin, {
         key: uniqueKey(),
         name: 'Viewer Project',
       });
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Read-only target');
 
-      // Viewer CAN view — the guard resolves the item's project and finds
-      // work_item:view in the viewer's effective project permissions.
+      // No Access cannot even VIEW. This is the assertion that changed: the old read-only viewer was
+      // ALLOWED here, and a grant that admits the read is a different security claim entirely.
       await expect(
         policy.canActivate(
-          policyContext(WorkItemPolicyProbe.prototype.view, viewer, { params: { id: story.id } }),
+          policyContext(WorkItemPolicyProbe.prototype.view, noAccess, { params: { id: story.id } }),
         ),
-      ).resolves.toBe(true);
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
 
-      // Viewer CANNOT create — no work_item:create on the project.
+      // Nor create — no `project_members` row means no project-tier permission at all.
       await expect(
         policy.canActivate(
-          policyContext(WorkItemPolicyProbe.prototype.create, viewer, {
+          policyContext(WorkItemPolicyProbe.prototype.create, noAccess, {
             body: { projectId: project.id },
           }),
         ),
       ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
 
-      // Viewer CANNOT edit — no work_item:edit on the item's project.
+      // Nor edit.
       await expect(
         policy.canActivate(
-          policyContext(WorkItemPolicyProbe.prototype.edit, viewer, { params: { id: story.id } }),
+          policyContext(WorkItemPolicyProbe.prototype.edit, noAccess, { params: { id: story.id } }),
         ),
       ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
 
@@ -183,9 +196,9 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
 
   // ── Role × route matrix: prove each canonical role's allow/deny through the
   // REAL guard against the seeded DB. Covers all three resolution paths:
-  //   admin  → workspace:* fast-path
-  //   member → DB-resolved project_member role (empty token forces the DB path)
-  //   viewer → flat JWT baseline (token-only work_item:view)
+  //   admin    → workspace:* fast-path
+  //   editor   → DB-resolved per-project grant (empty token forces the DB path)
+  //   noAccess → no `project_members` row, so nothing resolves
   describe('E2E-RBAC canonical role × route matrix', () => {
     it('enforces the reconciled catalog for every role', async () => {
       const project = await projects.createProject(admin, { key: uniqueKey(), name: 'Matrix' });
@@ -233,11 +246,12 @@ describe('BA flows: context isolation + read-only RBAC (real AppModule + seeded 
       await deny(P.releaseCreate, member, byProject);
       await deny(P.iterationCreate, member, byProject);
 
-      // read-only viewer — view only.
-      await allow(P.view, viewer, byId);
-      await deny(P.create, viewer, bodyProject);
-      await deny(P.edit, viewer, byId);
-      await deny(P.delete, viewer, byId);
+      // No Access — nothing, INCLUDING the read. There is no read-only level to sit between this and
+      // `editor` above: §2.2 lists two levels and makes No Access the absence of a row.
+      await deny(P.view, noAccess, byId);
+      await deny(P.create, noAccess, bodyProject);
+      await deny(P.edit, noAccess, byId);
+      await deny(P.delete, noAccess, byId);
     });
   });
 });

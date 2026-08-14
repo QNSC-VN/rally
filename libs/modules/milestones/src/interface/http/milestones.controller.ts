@@ -19,6 +19,8 @@ import { RequirePermission, AuthPolicy } from '@modules/access';
 import { MilestonesService, type MilestoneProgress } from '../../application/milestones.service';
 import {
   MilestoneQueryDto,
+  MilestoneOptionsQueryDto,
+  MilestoneArtifactQueryDto,
   CreateMilestoneDto,
   UpdateMilestoneDto,
   SetMilestoneProjectsDto,
@@ -26,7 +28,12 @@ import {
   SetMilestoneArtifactsDto,
   SetMilestoneReleasesDto,
 } from './dto/milestone-request.dto';
-import { MilestoneResponseDto, MilestoneListItemDto } from './dto/milestone-response.dto';
+import {
+  MilestoneResponseDto,
+  MilestoneListItemDto,
+  MilestoneOptionDto,
+  MilestoneArtifactDto,
+} from './dto/milestone-response.dto';
 import type { Milestone } from '../../domain/milestone.types';
 import {
   ActivityQueryDto,
@@ -114,6 +121,34 @@ export class MilestonesController {
     return toMilestoneDto(milestone);
   }
 
+  // ── Reference feed (declared before `:id` so the static path is not captured as an id) ──
+
+  /**
+   * The MILESTONE REFERENCE feed: what a picker needs to label, choose and scope a milestone.
+   *
+   * `project:view` — the PARENT's own view permission, which all three tier roles hold. The list
+   * route above keeps `milestone:view` and stays the `Plan > Milestones` administration grid's feed,
+   * which is right: §3.2 marks that surface Hidden for an Editor. But it was also the only feed for
+   * the Milestones column and picker on Iteration Status and on the Work Item detail sidebar — both
+   * Editor surfaces, and both defaulting a failed request to `[]`, so an item's real milestones
+   * rendered as none and none could be added while `PUT /work-items/:id/milestones` (`work_item:edit`)
+   * would have accepted the write. The gate was correct; the FEED was the defect. Identical split, and
+   * identical reasoning, to `GET /releases/options` and the two `member-options` feeds.
+   */
+  @Get('options')
+  @RequirePermission('project:view', { from: 'query', field: 'projectId' })
+  @ApiOperation({
+    summary: "List this project's milestones for a picker (id, key, name, releases)",
+  })
+  @ApiResponse({ status: 200, type: MilestoneOptionDto, isArray: true })
+  @ApiCommonErrors(400, 401, 403, 404)
+  async listMilestoneOptions(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: MilestoneOptionsQueryDto,
+  ): Promise<MilestoneOptionDto[]> {
+    return this.milestonesService.listMilestoneOptions(user, query.projectId);
+  }
+
   @Get(':id')
   @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Get milestone details' })
@@ -180,15 +215,38 @@ export class MilestonesController {
 
   @Get(':id/artifacts')
   @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'List milestone artifacts (US/DE work items)' })
+  @ApiOperation({ summary: 'List milestone artifact LINKS (work item IDs)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Array of work item IDs' })
   @ApiCommonErrors(401, 404)
-  async listMilestoneArtifacts(
+  async listMilestoneArtifactIds(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<string[]> {
     return this.milestonesService.getMilestoneArtifacts(user, id);
+  }
+
+  /**
+   * The Artifacts DASHBOARD (P3-MS-FR-019/020) — Backlog-shaped rows, paged and searchable.
+   *
+   * A separate resource from the link list above on purpose: `PUT :id/artifacts` takes ids back, so
+   * that pair speaks ids, and this one speaks rows. Serving both shapes from one path is what left
+   * the tab reading `{ data, pageInfo }` off a bare array and rendering "No artifacts linked to this
+   * milestone" for every milestone in every environment.
+   */
+  @Get(':id/artifacts/items')
+  @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
+  @ApiOperation({ summary: 'List milestone artifacts (US/DE work items) as dashboard rows' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiPagedResponse(MilestoneArtifactDto)
+  @ApiCommonErrors(400, 401, 404)
+  async listMilestoneArtifacts(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: MilestoneArtifactQueryDto,
+  ) {
+    const args = buildPageArgs(query);
+    return this.milestonesService.listMilestoneArtifacts(user, id, { ...args, q: query.q });
   }
 
   @Put(':id/artifacts')

@@ -7,7 +7,6 @@ export interface SystemRole {
   name: string;
   slug: string;
   description: string | null;
-  isSystem: boolean;
   permissions: string[];
   createdAt: Date;
 }

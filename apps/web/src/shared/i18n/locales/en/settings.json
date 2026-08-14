@@ -218,6 +218,13 @@
     "removeAccess": "Remove access",
     "invitePanelTitle": "Invite a new member",
     "emailFieldLabel": "Email address",
+    "initialAccessLabel": "Initial project access",
+    "initialAccessHint": "The invitee lands with these levels when they accept. Leave empty for no access.",
+    "projectFieldLabel": "Project",
+    "accessFieldLabel": "Access level",
+    "selectProject": "Select project…",
+    "addProjectAccess": "Add project",
+    "removeProjectAccess": "Remove project access",
     "roleFieldLabel": "Role",
     "invalidEmail": "Enter a valid email address",
     "selectRoleError": "Select a role",
@@ -244,7 +251,6 @@
   "audit": {
     "system": "System",
     "intro": "Administrative and settings changes for this workspace.",
-    "searchPlaceholder": "Search actor or description…",
     "fromDate": "From date",
     "toDate": "To date",
     "clear": "Clear",
@@ -256,7 +262,18 @@
     "empty": "No audit events found.",
     "searchPlaceholderPage": "Filter this page…",
     "actorFilter": "Filter by actor",
-    "allActors": "All actors"
+    "allActors": "All actors",
+    "actionFilter": "Filter by action",
+    "allActions": "All actions",
+    "actionGroups": {
+      "auth": "Sign-in",
+      "users": "Users & roles",
+      "projects": "Projects & access",
+      "teams": "Teams",
+      "workspace": "Workspace configuration"
+    },
+    "emptyFiltered": "No audit event in this workspace matches these filters.",
+    "pageFilterNoMatch": "No event on this page matches “{{term}}”. This box filters the {{rows}} loaded rows only — use the Actor, Action and date filters to search the whole log."
   },
   "access": {
     "colUser": "User",

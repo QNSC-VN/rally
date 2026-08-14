@@ -1,0 +1,54 @@
+-- Give the workspace-scoped `project_admin` tier role the new `timebox:view` permission.
+--
+-- WHY THE CODE EXISTS
+-- `iteration:view` gated two surfaces the BA gives an Editor different access to. §3.2 marks
+-- `Timeboxes / Iterations` **Hidden** for an Editor and `Create, View, Edit, Delete` for Admin
+-- and WA, while the row directly above grants the Editor `Iteration Status | View and update in
+-- assigned Teams`. One code answered both questions, so an Editor read the whole timebox
+-- inventory on a screen the BA hides (RBE-09 / P23-08 / P01-11). `iteration:view` could not be
+-- revoked instead: Iteration Status, the Backlog's iteration filter, Team Status and Quality all
+-- read `GET /iterations`. So the split ADDS the narrower `timebox:view` for the Timeboxes surface
+-- (`GET /iterations/:id`, `GET /iterations/:id/activity`, the nav entry and the TYPE switcher) and
+-- leaves the broad read where it was.
+--
+-- WHY `timebox:view` AND NOT `iteration:manage`
+-- Besides §3.2's row being a SURFACE that hosts Iterations, Releases and Milestones alike:
+-- `iteration:manage` is a RETIRED code string. It was the coarse create+edit+delete bundle, and
+-- `0048_split_manage_permissions.sql` deleted it from every stored role, replacing it with the
+-- three leaves. Recycling it would make any pre-0048 role or backup silently grant the new
+-- surface. This migration therefore adds a string no role has ever held.
+--
+-- WHY A MIGRATION IS NEEDED AT ALL
+-- The catalogue reaches a workspace only through `db/seeds/bootstrap.ts`, whose tier-role upsert
+-- is deliberately `set: { name: excluded.name }` so re-seeding cannot clobber an admin's edits to
+-- a role's permission array. Correct for edits, wrong for a brand-new permission: every existing
+-- workspace keeps its old array and the code never arrives. That is exactly how `report:view`
+-- answered 403 to everyone except Workspace Admin until migration 0092 — masked, as always, by
+-- `workspace:*` on the only principal anybody tests with. Verified on the local database before
+-- writing this: with the code in the catalogue, two full seed runs left the workspace-scoped
+-- `project_admin` row at 30 permissions without it, while the global template self-healed to 31.
+--
+-- SCOPE OF THE UPDATE, and the rows deliberately NOT touched
+--   * workspace-scoped `project_admin` — the row users are actually assigned. THIS is the gap.
+--   * the GLOBAL templates (`workspace_id IS NULL`) are re-seeded from the catalogue by
+--     `db/seeds/reference.ts` with `set: { permissions, name }` on every deploy, so they self-heal.
+--     0092 excluded them for the same reason.
+--   * `project_member` (Editor) must NOT receive this code — it is the whole point of the split.
+--   * per-Project `admin` / `editor` levels need nothing: `ACCESS_LEVEL_PERMISSIONS` aliases the
+--     TypeScript constant, so `AccessService`'s synthesized assignments pick the new code up from
+--     the catalogue with no data change. This statement is for the legacy assignment path, which
+--     0111/0112 emptied but which `assignRole` and custom roles can still populate — the same
+--     defence-in-depth 0109/0110 provide.
+--
+-- FORCED rather than merged, and only because `timebox:view` is genuinely NEW: it did not exist
+-- before this change, so no workspace can have deliberately revoked it and adding it cannot undo
+-- anyone's decision. A permission that had already shipped would need the opposite treatment.
+--
+-- `jsonb_insert` is not used: it appends unconditionally and would duplicate the code on a re-run.
+-- The `NOT @>` guard is what makes this idempotent, which the migration runner requires. No
+-- `updated_at` is set — `access.system_roles` has `created_at` only.
+UPDATE access.system_roles
+SET permissions = permissions || '["timebox:view"]'::jsonb
+WHERE slug = 'project_admin'
+  AND workspace_id IS NOT NULL
+  AND NOT (permissions @> '["timebox:view"]'::jsonb);

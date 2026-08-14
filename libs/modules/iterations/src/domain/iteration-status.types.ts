@@ -76,5 +76,24 @@ export interface IterationStatusFilters {
   type?: WorkItemType;
   scheduleState?: WorkItemScheduleState;
   isBlocked?: boolean;
+  /**
+   * A UUID matches that owner; `UNASSIGNED_FILTER` matches rows with no owner.
+   * Mirrors `WorkItemFilters.assigneeId` so the Backlog and Iteration Status
+   * Owner filters mean the same thing (P2-IS §5: "inherit Phase 2.1 patterns").
+   */
   assigneeId?: string;
+  /**
+   * Manage Filters text/number column predicates (P2-IS-FR-022/023/024).
+   * Each is a SERVER predicate, so a match past the first page is still found.
+   * `q` is deliberately separate — P2-BL-TS-015 (inherited here) makes quick
+   * search independent of the Manage Filters set.
+   */
+  itemKey?: string;
+  title?: string;
+  /** Exact match on `work_items.story_points`, as a fixed(2) numeric string. */
+  planEstimate?: string;
+  /** Exact match on the child-task estimate-hours rollup, fixed(2) string. */
+  taskEstimate?: string;
+  /** Exact match on the child-task to-do-hours rollup, fixed(2) string. */
+  toDo?: string;
 }

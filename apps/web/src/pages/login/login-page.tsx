@@ -29,7 +29,26 @@ export function LoginPage() {
   const [email, setEmail] = useState('')
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailError, setEmailError] = useState<string | null>(null)
-  const [devEmail, setDevEmail] = useState('admin@qnsc.dev')
+  /**
+   * Defaults to the EDITOR, not the Workspace Admin — deliberately, and this one line is why.
+   *
+   * A Workspace Admin holds `workspace:*`, which satisfies every project-tier check, so developing and
+   * demoing as one masks an entire class of defect. It is not hypothetical: `report:view` was missing
+   * from two roles and every report 403'd for everyone except a WA until migration 0092;
+   * `GET /work-items/by-key` carried an admin-only code so every notification click 403'd for both
+   * non-admin roles; and gating the project roster made every Editor see `Unassigned` on every owned
+   * item, because the roster was also the only owner feed. All three were invisible locally for the
+   * same reason — the default principal could not fail.
+   *
+   * `dev@qnsc.dev` is a real per-project Editor on NXP and No Access on PAY (`db/seeds/demo.ts`), which
+   * is the level most users actually have. `viewer@qnsc.dev` is a clean No Access principal, and
+   * `admin@qnsc.dev` is still one keystroke away for admin surfaces.
+   *
+   * The systematic guard is `test/route-audience.ratchet.spec.ts`, which fails on every `vitest run`
+   * rather than only when someone opens the affected screen. This default makes the same class visible
+   * by accident, which is the half a test cannot cover.
+   */
+  const [devEmail, setDevEmail] = useState('dev@qnsc.dev')
   const [devLoading, setDevLoading] = useState(false)
   const [devError, setDevError] = useState<string | null>(null)
 

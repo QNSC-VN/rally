@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { FileText, History, Loader2, Users } from 'lucide-react'
 import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
+import { listResource } from '@/shared/lib/query/resource'
 import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
 import { DetailField, DetailReadonlyValue } from '@/shared/ui/detail/detail-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
@@ -31,7 +32,7 @@ import {
   type UpdateProjectInput,
 } from '@/features/projects/api'
 import {
-  useProjectMembers,
+  useProjectMemberOptions,
   useProjectTeams,
   useWorkspaceTeams,
   useLinkProjectTeam,
@@ -51,8 +52,17 @@ export function ProjectDetailPage() {
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId ?? ''
 
-  const { data: projects = [], isLoading, isError } = useProjects(workspaceId || undefined)
-  const project = projects.find((p) => p.key === projectKey)
+  // The record is resolved out of the LIST — there is no `GET /projects/by-key` — so this page
+  // inherits the list's paging. `isLoadingMore` is therefore load-bearing here and not a nicety: with
+  // the drain, a project on page 2 is genuinely absent from `rows` for one round trip, and the
+  // not-found branch below would have claimed it does not exist. See `useProjects`.
+  const projectsQuery = useProjects(workspaceId || undefined)
+  const projectsRes = listResource(projectsQuery)
+  const project = projectsRes.rows.find((p) => p.key === projectKey)
+  // Waits on the remaining pages only while the record is still MISSING: found on page 1, it renders
+  // at once, so the drain costs nothing in the ordinary case.
+  const isLoading = projectsRes.isLoading || (!project && projectsQuery.isLoadingMore)
+  const isError = projectsRes.isError
   const update = useUpdateProject()
 
   const { can } = useProjectPermissions(project?.id)
@@ -60,9 +70,13 @@ export function ProjectDetailPage() {
   const canManage = can('project:edit') && project?.status === 'active'
 
   const [activeTab, setActiveTab] = useState<TabKey>('details')
-  const { data: activityLogs = [], isLoading: activityLoading } = useProjectActivityLog(project?.id)
+  const activityQuery = useProjectActivityLog(project?.id)
+  const activityLogs = listResource(activityQuery)
 
-  const { data: members = [] } = useProjectMembers(project?.id)
+  // Feeds the Lead OwnerSelectField — a PICKER, so the reference feed. The administrative roster
+  // is Workspace-Admin/Project-Admin only and a 403 there defaults to `[]`, which renders a real
+  // lead as no lead.
+  const { data: members = [] } = useProjectMemberOptions(project?.id)
   const { data: teams = [] } = useProjectTeams(project?.id)
   const { data: allTeams = [] } = useWorkspaceTeams(workspaceId || undefined)
   const linkTeam = useLinkProjectTeam(project?.id ?? '')
@@ -143,7 +157,6 @@ export function ProjectDetailPage() {
         <div className="flex-1 overflow-y-auto bg-card p-6">
           <ActivityHistoryTab
             logs={activityLogs}
-            isLoading={activityLoading}
             title={t('detail.historyTitle', 'Revision History')}
             subtitle={t('detail.historySubtitle', 'Every change to this project, newest first.')}
           />

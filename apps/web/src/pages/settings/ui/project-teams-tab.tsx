@@ -16,12 +16,11 @@ import {
   useCreateTeam,
   useUpdateTeam,
   useProjectMembers,
-  useAddProjectMember,
-  useUpdateProjectAccess,
+  useSetProjectAccess,
   useTeamMembers,
   type Team,
 } from '@/features/teams/api'
-import { useWorkspaceMembers } from '@/features/workspaces/api'
+import { useWorkspaceMembers, useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
@@ -52,8 +51,15 @@ export function ProjectTeamsTab({
 }) {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { data: teams = [], isLoading } = useProjectTeams(projectId)
-  // Workspace roster — resolves each team row's Lead name/avatar (mockup parity).
-  const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  /**
+   * The Lead's name/avatar comes from the PICKER feed, not the administrative roster.
+   *
+   * This tab is gated `project:view`, so an EDITOR reaches it — and the administrative roster is now
+   * `workspace:view` (Workspace Admin only), because it carries `phone`, `lastLoginAt` and the role ids
+   * (RBE-07). Reading it here would 403 for every non-WA and silently degrade every Lead to `--`: no
+   * crash, no error, just a column that quietly stops working for the level that uses it most.
+   */
+  const { data: wsMembers = [] } = useWorkspaceMemberOptions(workspaceId)
   const [editing, setEditing] = useState<Team | null>(null)
   const [creating, setCreating] = useState(false)
   const [deactivateTarget, setDeactivateTarget] = useState<Team | null>(null)
@@ -235,7 +241,8 @@ export function TeamDetail({
   isWA: boolean
 }) {
   const { data: members = [], isLoading } = useTeamMembers(team.id)
-  const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
+  // Display-only, so the picker feed — see the note on the row above.
+  const { data: wsMembers = [] } = useWorkspaceMemberOptions(workspaceId)
   const [editing, setEditing] = useState(false)
   const leadName =
     wsMembers.find((m) => m.userId === team.leadId)?.displayName ??
@@ -340,13 +347,16 @@ function TeamFormModal({
   team: Team | null
   onClose: () => void
 }) {
+  // The administrative roster ON PURPOSE: this modal filters `roleSlug !== 'workspace_admin'` out of
+  // the eligible list (§2.1 — a WA is never a Team member), and `roleSlug` exists only on that feed.
+  // Creating or editing a Team is a Workspace Admin action anyway, so the `workspace:view` gate costs
+  // nothing here. Do not "align" this with the two display-only lookups above.
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
   // Existing project members — only needed on create, to sync access for selected members.
   const { data: projectMembers = [] } = useProjectMembers(team ? undefined : projectId)
   const createTeam = useCreateTeam()
   const updateTeam = useUpdateTeam(team?.id ?? '')
-  const addProjectMember = useAddProjectMember(projectId)
-  const updateAccess = useUpdateProjectAccess(projectId)
+  const setAccess = useSetProjectAccess(projectId)
   const [name, setName] = useState(team?.name ?? '')
   const [key, setKey] = useState(team?.key ?? '')
   const [leadId, setLeadId] = useState<string | null>(team?.leadId ?? null)
@@ -396,22 +406,28 @@ function TeamFormModal({
     setMemberAccess((prev) => ({ ...prev, [userId]: level }))
   }
 
-  /** P4-RBAC-010: setting up a team assigns each selected member their Project access —
-   *  each at ITS OWN level, per `memberAccess`. A team created here is linked to THIS
-   *  project only (no picker), so this project is the only one to sync. */
+  /**
+   * P4-RBAC-010 / §5.3: setting up a team assigns each selected member their Project access — each at
+   * ITS OWN level, per `memberAccess`. A team created here is linked to THIS project only (no
+   * picker), so this project is the only one to sync.
+   *
+   * The THIRD §5 journey, and it reaches the SAME combined writer as the other two (AC-9: "All three
+   * journeys update the same Project access and Team membership source"). It used to branch between
+   * `POST /projects/{id}/members` and `PATCH /projects/{id}/members/{memberId}` — a NULL
+   * `access_level` row is team-derived, so its `id` is a `team_members` id and PATCHing it 404'd,
+   * which surfaced as "Failed to create team" over a half-write. One upserting endpoint removes the
+   * branch and the failure mode with it.
+   *
+   * No `teamIds` here, deliberately: `POST /v1/teams` has already written the roster rows for
+   * `memberUserIds` and implied a level for each (`teamRosterAccessLevel`), so an Editor landing in
+   * this loop already satisfies §2.2 — this call is only correcting the LEVEL, and sending a team set
+   * would let a level correction silently reshape the membership the team creation just established.
+   */
   async function syncMemberAccess() {
     for (const [uid, level] of Object.entries(memberAccess)) {
       const existing = projectMembers.find((pm) => pm.userId === uid)
-      // NULL accessLevel rows are team-derived: their `id` is a team_members id and
-      // PATCHing it 404s — and the team is already created by now, so the 404 surfaced
-      // as "Failed to create team" over a half-write. POST upserts (sets the level on
-      // the existing row or creates the grant), same guard as the other two journeys.
-      if (existing?.accessLevel) {
-        if (existing.accessLevel === level) continue
-        await updateAccess.mutateAsync({ memberId: existing.id, accessLevel: level })
-      } else {
-        await addProjectMember.mutateAsync({ userId: uid, accessLevel: level })
-      }
+      if (existing?.accessLevel === level) continue
+      await setAccess.mutateAsync({ userId: uid, accessLevel: level })
     }
   }
 
@@ -450,11 +466,7 @@ function TeamFormModal({
     }
   }
 
-  const pending =
-    createTeam.isPending ||
-    updateTeam.isPending ||
-    addProjectMember.isPending ||
-    updateAccess.isPending
+  const pending = createTeam.isPending || updateTeam.isPending || setAccess.isPending
 
   return (
     <AppModal open onClose={onClose} title={team ? 'Edit team' : 'Create team'} width={460}>

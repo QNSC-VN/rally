@@ -16,6 +16,7 @@ import {
   addDays,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
+import { isProjectAccessLevel } from '@shared-kernel';
 import { AccessService } from '@modules/access';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
 import {
@@ -37,9 +38,11 @@ import {
 import type {
   Workspace,
   WorkspaceMember,
+  WorkspaceMemberOption,
   WorkspaceMemberWithProfile,
   WorkspaceMembership,
   WorkspaceInvitation,
+  InvitationProjectAccess,
   WorkspaceSettings,
   UpdateWorkspaceInput,
   UpdateMemberInput,
@@ -228,17 +231,54 @@ export class WorkspaceService {
 
   // ── Members ──────────────────────────────────────────────────────────────────
 
-  async listMembers(
-    workspaceId: string,
-    args: { limit: number; cursor: CursorPayload | null },
-  ): Promise<PagedResult<WorkspaceMember>> {
-    await this.getWorkspace(workspaceId);
-    return this.memberRepo.listMembers(workspaceId, args);
-  }
+  // `listMembers` is GONE with `GET /workspaces/:id/members` — see that route's own note in
+  // `workspace.controller.ts`. It had exactly one caller, the deleted handler. The repository method
+  // it wrapped stays: `WorkspaceMemberService` still uses it.
 
+  /**
+   * The ADMINISTRATIVE roster — phone, last login, role ids and team memberships.
+   *
+   * Authorized at the ROUTE, on `workspace:view` (Workspace Admin only): see the note there for
+   * why this feed and the picker feed below are two routes rather than one.
+   */
   async listMembersWithProfile(workspaceId: string): Promise<WorkspaceMemberWithProfile[]> {
     await this.getWorkspace(workspaceId);
     return this.memberRepo.listMembersWithProfile(workspaceId);
+  }
+
+  /**
+   * The ASSIGNEE / OWNER PICKER roster — id, name, email, avatar (RBE-07).
+   *
+   * WHY THE CHECK IS HERE AND NOT A DECORATOR
+   * Every level must be able to resolve a person to a name, so a workspace-tier code is wrong (an
+   * Editor holds none) and a project-tier code is unavailable (there is no project in the path —
+   * the roster is workspace-wide by construction). What decides it is the one authorization fact
+   * behind every cross-project read: {@link AccessService.listReadableProjectIds}. Its `null` means
+   * UNRESTRICTED and `[]` means NOTHING, and those are different answers — which is precisely what
+   * no static descriptor can carry.
+   *
+   *   • `null`  (a Workspace Admin) → the whole roster.
+   *   • `[]`    (No Access: no active `project_members` row anywhere, and no workspace grant) → an
+   *             empty list. Before this, a principal with zero grants read the company directory
+   *             including phone numbers and last-login times.
+   *   • ids     (an Editor or per-project Admin) → the whole roster, at these four fields.
+   *
+   * THE LAST CASE IS DELIBERATELY NOT NARROWED FURTHER, and that is worth stating because it looks
+   * like a missing filter. Narrowing the POPULATION to the rosters of readable projects is not
+   * available: §2.1 (migration 0118) keeps a Workspace Admin OFF every `project_members` roster,
+   * and a Workspace Admin is exactly who owns a project — the seeded projects' `lead_id` is the
+   * admin user, with no membership row by design. A picker narrowed that way could neither RESOLVE
+   * nor OFFER the current owner, which is the both-directions failure this split exists to avoid.
+   * What the four fields are worth is bounded by the fact that they are already on screen wherever
+   * a person is an assignee, a lead or a team member; the sensitive columns are on the route above.
+   */
+  async listMemberOptions(workspaceId: string, actorId: string): Promise<WorkspaceMemberOption[]> {
+    await this.getWorkspace(workspaceId);
+    const readable = await this.access.listReadableProjectIds(workspaceId, actorId, 'project:view');
+    // `readable === null` is UNRESTRICTED, so it must be tested for explicitly — `!readable?.length`
+    // would collapse it into the empty case and fail closed for a Workspace Admin.
+    if (readable !== null && readable.length === 0) return [];
+    return this.memberRepo.listMemberOptions(workspaceId);
   }
 
   @Span('workspace.addMember')
@@ -432,14 +472,78 @@ export class WorkspaceService {
     );
   }
 
+  /**
+   * Validate the initial per-Project access an invitation carries (§6.4), BEFORE the invite is
+   * sent.
+   *
+   * Fail-fast on the inviter's screen, where the mistake can be corrected. The same rules are
+   * enforced again by `AccessService.grantProjectAccess` at accept time, and that is not
+   * redundancy: days pass in between, and a project deleted or a level retired in the meantime
+   * must not turn the invitee's one-click acceptance into an error they cannot act on.
+   *
+   * The level goes through `isProjectAccessLevel` — the catalogue — and never a hand-written pair.
+   * `AccessService` had exactly that bug twice: a literal `'admin' | 'editor'` comparison made a
+   * granted row read as No Access while a third level existed (migrations 0113, 0115).
+   *
+   * Both refusals reuse `VALIDATION_FAILED` rather than minting codes: they describe a malformed
+   * request, which is what that code means. The DTO's `z.enum(PROJECT_ACCESS_LEVEL)` already
+   * rejects a bad level for HTTP callers; the duplicate rule is only here, on purpose — see the
+   * DTO for why that schema must stay a plain object.
+   */
+  private assertInvitationProjectAccess(
+    access: readonly InvitationProjectAccess[],
+  ): readonly InvitationProjectAccess[] {
+    for (const row of access) {
+      // Read as `unknown` deliberately: the declared type says this cannot fail, and inside the
+      // failing branch TypeScript narrows it to `never` — but the type is a claim about compiled
+      // callers, and this guard exists for the ones that are not (a raw HTTP body, a seed, a
+      // future module). Narrowing it away would remove the only check a bad value ever meets.
+      const level: unknown = row.accessLevel;
+      if (!isProjectAccessLevel(level)) {
+        throw new PreconditionFailedException(
+          'VALIDATION_FAILED',
+          `"${String(level)}" is not a per-Project access level`,
+        );
+      }
+    }
+    const projectIds = [...new Set(access.map((a) => a.projectId))];
+    if (projectIds.length !== access.length) {
+      throw new PreconditionFailedException(
+        'VALIDATION_FAILED',
+        'The same project appears twice in the initial access list',
+      );
+    }
+    return access;
+  }
+
   @Span('workspace.inviteMember')
   async inviteMember(
     workspaceId: string,
     email: string,
     roleId: string | undefined,
     actorId: string,
+    /**
+     * The projects and levels the invitee lands with (§6.4, RBE-11). Empty is the pre-§6.4
+     * behaviour and stays legal: an invitation with no rows grants no initial project access, and
+     * the invitee is No Access until someone grants them a level.
+     */
+    projectAccess: readonly InvitationProjectAccess[] = [],
   ): Promise<WorkspaceInvitation> {
     const workspace = await this.getWorkspace(workspaceId);
+
+    const access = this.assertInvitationProjectAccess(projectAccess);
+    if (access.length > 0) {
+      const found = await this.invitationRepo.countProjectsInWorkspace(
+        workspaceId,
+        access.map((a) => a.projectId),
+      );
+      if (found !== access.length) {
+        throw new PreconditionFailedException(
+          'PROJECT_NOT_FOUND',
+          'One or more selected projects do not exist in this workspace',
+        );
+      }
+    }
 
     const normalizedEmail = email.toLowerCase().trim();
     const { rawToken, tokenHash } = this.mintInviteToken();
@@ -465,6 +569,10 @@ export class WorkspaceService {
         tx,
       );
 
+      // Inside the invite transaction: the intent cannot exist without the invitation carrying
+      // it, and `ON DELETE cascade` on both foreign keys makes the reverse true too.
+      await this.invitationRepo.setProjectAccess(inv.id, access, tx);
+
       await this.scheduleInviteEmail(tx, {
         to: normalizedEmail,
         rawToken,
@@ -480,7 +588,10 @@ export class WorkspaceService {
           resourceId: inv.id,
           workspaceId,
           actor: { id: actorId },
-          changes: { after: { email: normalizedEmail, roleId } },
+          // The initial grant is part of what was invited, so it belongs in the audit record —
+          // otherwise "who gave this person access to that project" has no answer for the most
+          // common path there is.
+          changes: { after: { email: normalizedEmail, roleId, projectAccess: access } },
         },
         tx,
       );
@@ -646,6 +757,16 @@ export class WorkspaceService {
 
     const existing = await this.memberRepo.findMember(invitation.workspaceId, acceptingUserId);
 
+    /**
+     * The initial per-Project access this invitation carries (§6.4, RBE-11).
+     *
+     * Read AFTER the email binding above, and applied inside the transaction below, so a forwarded
+     * or shared link cannot collect a grant: `INVITATION_EMAIL_MISMATCH` is thrown before anything
+     * here runs. That ordering is the whole point — before §6.4 a leaked token bought workspace
+     * membership at the invited role; with §6.4 it would buy per-project Admin as well.
+     */
+    const projectAccess = await this.invitationRepo.listProjectAccess(invitation.id);
+
     // Atomic: enroll the member (if not already one) and mark the invitation
     // accepted together. A partial failure would otherwise let the same
     // invitation be redeemed twice.
@@ -706,6 +827,32 @@ export class WorkspaceService {
         );
       }
 
+      /**
+       * §6.4 — the invited per-Project access, applied beside the role grant and in the SAME
+       * transaction as the membership it depends on. Which is exactly why
+       * `grantProjectAccess` takes a `tx`: its active-workspace-member check has to see the
+       * `addMember` row written a few lines above, and `UnitOfWork.run` is `db.transaction`, which
+       * does not nest — so a second transaction could neither see it nor roll back with it.
+       *
+       * `onWorkspaceAdmin: 'skip'`: a Workspace Admin already has every project through the
+       * workspace-wide grant (§2.1 keeps them out of project rosters), so writing nothing is the
+       * correct answer. Refusing instead would make the invitation permanently unredeemable for
+       * someone who is already an admin of this workspace.
+       */
+      for (const row of projectAccess) {
+        await this.access.grantProjectAccess(
+          {
+            workspaceId: invitation.workspaceId,
+            projectId: row.projectId,
+            userId: acceptingUserId,
+            accessLevel: row.accessLevel,
+            actorId: acceptingUserId,
+            onWorkspaceAdmin: 'skip',
+          },
+          tx,
+        );
+      }
+
       await this.invitationRepo.updateStatus(invitation.id, 'accepted', acceptingUserId, tx);
 
       await this.audit.emit(
@@ -724,8 +871,10 @@ export class WorkspaceService {
     // The grant has to land on the accepting user's NEXT request, not at token expiry: PolicyGuard
     // caches resolved permissions per (workspace, user) for 5 minutes, and this user was already
     // authenticated in order to accept — so a stale entry from before the grant is the normal case.
-    // After commit, matching `assignRole`.
-    if (invitation.roleId) {
+    // After commit, matching `assignRole`. The per-Project grants above are the caller's to
+    // invalidate for exactly this reason: `grantProjectAccess` ran inside the transaction and
+    // cannot know when it committed.
+    if (invitation.roleId || projectAccess.length > 0) {
       await this.access.invalidateUser(invitation.workspaceId, acceptingUserId);
     }
 

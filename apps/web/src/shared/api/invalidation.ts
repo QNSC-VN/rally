@@ -87,7 +87,9 @@ const WORK_ITEM_ALL: readonly QueryKey[] = [
 const ITERATION_ROOTS: readonly QueryKey[] = [
   ['iterations'], // list + committed-count
   ['iteration'], // detail + activity (singular)
-  ['iteration-options'], // compact picker feed (was the forgotten root)
+  ['iteration-options'], // REFERENCE feed, every state (was the forgotten root)
+  ['iteration-assignable'], // ELIGIBILITY feed, planning|committed — a SECOND root, because
+  // committing or accepting an iteration changes which feed it appears in, not just its own row.
   ['iteration-status'], // status read-model
 ]
 // `reports` is here because Release Tracking classifies from `Release.id` on Features and their
@@ -110,11 +112,10 @@ const WORKSPACE_ROOTS: readonly QueryKey[] = [
   ['workspace-invitations'],
   ['system-roles'],
 ]
-const ACCESS_ROOTS: readonly QueryKey[] = [
-  ['my-project-permissions'],
-  ['permission-catalog'],
-  ['role-catalog'],
-]
+// `permission-catalog` is gone with `GET /v1/access/permissions`: custom roles and the editable
+// permission matrix were deleted by ruling (2026-08-14, AC-11), and the READ-ONLY Permission Model tab
+// renders from the frontend catalogue mirror rather than from the API, so nothing fetches that key.
+const ACCESS_ROOTS: readonly QueryKey[] = [['my-project-permissions'], ['role-catalog']]
 
 /** De-duplicate roots so a shared root (e.g. `iteration-status`) fires once. */
 function dedup(roots: readonly QueryKey[]): QueryKey[] {

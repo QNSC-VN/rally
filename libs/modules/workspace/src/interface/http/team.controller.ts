@@ -104,10 +104,10 @@ export class TeamController {
   // Workspace-scoped team list + create
   @Get('workspaces/:workspaceId/teams')
   @AuthorizedInService(
-    'membership of the named workspace is checked in the service',
-    'workspace.service.spec.ts',
+    'a cross-project list scoped by AccessService.listReadableProjectIds to the teams linked to a project the caller can read — null means UNRESTRICTED and [] means nothing, which no scope descriptor can carry',
+    'directory-team-authz.e2e.spec.ts',
   )
-  @ApiOperation({ summary: 'List teams in a workspace' })
+  @ApiOperation({ summary: 'List teams linked to a project the caller can read' })
   @ApiParam({ name: 'workspaceId', type: 'string', format: 'uuid' })
   @ApiQuery({ name: 'includeInactive', required: false, type: 'boolean' })
   @ApiResponse({ status: 200, schema: { type: 'array', items: { type: 'object' } } })
@@ -120,7 +120,11 @@ export class TeamController {
     if (workspaceId !== user.workspaceId) {
       throw new NotFoundException('WORKSPACE_NOT_FOUND', 'Workspace not found');
     }
-    const teams = await this.teamService.listTeams(workspaceId, includeInactive === 'true');
+    const teams = await this.teamService.listTeamsForReader(
+      workspaceId,
+      user.sub,
+      includeInactive === 'true',
+    );
     return teams.map(toTeamWithStatsDto);
   }
 
@@ -155,17 +159,22 @@ export class TeamController {
   }
 
   // Individual team operations
+  //
+  // The team id resolves to its PROJECT LINKS, and a team may be linked to several — so the check is
+  // "readable through at least one of them", which is a resolve-then-check shape no decorator can
+  // express (the same reason `GET /work-items/by-key` carries none). Not a `project` scope on a
+  // `resource`, either: that resolves ONE project id, and a team does not have one.
   @Get('teams/:id')
   @AuthorizedInService(
-    'the team must belong to a workspace the caller is a member of',
-    'workspace.service.spec.ts',
+    'the team must be linked to at least one project the caller can read; unreachable is 404, so the detail route cannot confirm the existence of a team the list hides',
+    'directory-team-authz.e2e.spec.ts',
   )
   @ApiOperation({ summary: 'Get team details' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, schema: { type: 'object' } })
   @ApiCommonErrors(401, 404)
   async getTeam(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
-    const team = await this.teamService.getTeam(id, user.workspaceId);
+    const team = await this.teamService.getTeamForReader(id, user.workspaceId, user.sub);
     return toTeamDto(team);
   }
 
@@ -187,15 +196,15 @@ export class TeamController {
   // Team member operations
   @Get('teams/:id/members')
   @AuthorizedInService(
-    'the team must belong to a workspace the caller is a member of',
-    'workspace.service.spec.ts',
+    'same project-link check as the detail route — and this roster carries every member name and EMAIL, so an unscoped read is the directory leak reached through a team id',
+    'directory-team-authz.e2e.spec.ts',
   )
   @ApiOperation({ summary: 'List team members' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, schema: { type: 'array', items: { type: 'object' } } })
   @ApiCommonErrors(401, 404)
   async listTeamMembers(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
-    const members = await this.teamService.listTeamMembers(id, user.workspaceId);
+    const members = await this.teamService.listTeamMembersForReader(id, user.workspaceId, user.sub);
     return members.map(toTeamMemberDto);
   }
 

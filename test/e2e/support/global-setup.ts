@@ -19,7 +19,8 @@
  *
  * What is NOT truncated: `identity.*`, `access.*` and `workspace.*`. Users, roles, grants and the
  * workspace itself are the ground the fixtures stand on, `bootstrap.ts` reconciles them idempotently,
- * and dropping a role would take its assignments — including the ones `ensureViewerGrant` relies on.
+ * and dropping a role would take its assignments — including the per-project grants specs arrange
+ * through `grantProjectAccess`.
  *
  * THE CACHE HAS TO GO TOO, and that is not obvious. `AccessService.effectiveAssignments` caches a
  * user's resolved grants in Valkey under `authz:assign:<workspace>:<user>` for five minutes. The

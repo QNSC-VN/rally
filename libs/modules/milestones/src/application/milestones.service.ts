@@ -1,13 +1,20 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { InjectDrizzle, NotFoundException, PreconditionFailedException } from '@platform';
+import {
+  InjectDrizzle,
+  NotFoundException,
+  PreconditionFailedException,
+  buildPageResult,
+  keysetCondition,
+} from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
-import { and, eq, isNull, sql, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql, inArray } from 'drizzle-orm';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import {
   workItems,
   milestones,
+  milestoneArtifacts,
   milestoneReleases,
   releases,
   projects,
@@ -15,7 +22,12 @@ import {
 } from '../../../../../db/schema/work';
 import { completedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IMilestoneRepository, MILESTONE_REPOSITORY } from '../domain/ports/milestone.repository';
-import type { Milestone, MilestoneStatus, UpdateMilestoneInput } from '../domain/milestone.types';
+import type {
+  Milestone,
+  MilestoneOption,
+  MilestoneStatus,
+  UpdateMilestoneInput,
+} from '../domain/milestone.types';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
 import { MILESTONE_ACTIVITY_CONFIG } from './milestone-activity-diff';
 
@@ -41,6 +53,27 @@ export interface MilestoneProgress {
   completedPoints: number;
   /** Null when not computable — nothing estimated and not everything finished. */
   progressPercent: number | null;
+}
+
+/**
+ * One row of the Milestone Artifacts dashboard.
+ *
+ * Deliberately the same column set `ReleasesService.listReleaseArtifacts` returns plus
+ * `assigneeName`: the SPA renders both through one shared table, whose Owner column had nothing to
+ * read on either surface.
+ */
+export interface MilestoneArtifactRow {
+  id: string;
+  itemKey: string;
+  type: string;
+  title: string;
+  scheduleState: string;
+  priority: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  storyPoints: number | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 interface ReleaseStats {
@@ -130,6 +163,25 @@ export class MilestonesService {
       ...page,
       data: page.data.map((m) => ({ ...m, progress: progressByMilestone.get(m.id) ?? undefined })),
     };
+  }
+
+  /**
+   * The REFERENCE feed — every milestone in the project, projected to what a picker needs.
+   *
+   * Split out of {@link listMilestones} because that one is the `Plan > Milestones` administration
+   * grid's feed and takes `milestone:view`, which §3.2 withholds from an Editor (it marks the whole
+   * `Timeboxes` surface Hidden for one) — and it was ALSO the only feed for the Milestones column and
+   * picker on Iteration Status and on the Work Item detail sidebar, both Editor surfaces. Every one of
+   * those consumers defaults a failed request to `[]`, so an item's real milestones rendered as none
+   * and none could be added. Same defect, same split and same reasoning as
+   * `GET /releases/options` and `GET /projects/:id/member-options`.
+   *
+   * No progress computed here: `computeProgressBatch` aggregates work items for a number a picker does
+   * not show, and it is administration data an Editor must not read. So this is also the cheap call.
+   */
+  async listMilestoneOptions(actor: JwtPayload, projectId: string): Promise<MilestoneOption[]> {
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    return this.milestoneRepo.listOptionsByProject(projectId, actor.workspaceId);
   }
 
   /**
@@ -525,12 +577,95 @@ export class MilestonesService {
     return this.milestoneRepo.getArtifactIds(milestoneId);
   }
 
+  /**
+   * The Artifacts dashboard's ROWS — the same shape `ReleasesService.listReleaseArtifacts` serves,
+   * because both feed the one shared `ArtifactsTabView`/`ArtifactTable` on the SPA side.
+   *
+   * `getMilestoneArtifacts` above answers with link IDS, which is what the replace-set picker needs
+   * and what this route used to return. The tab cannot render an id: it wants key, title, schedule
+   * state, priority, owner and estimate, paged and searchable. So the SPA read the ids response as
+   * `{ data, pageInfo }`, got `undefined` for both, and the Milestone Artifacts tab rendered "No
+   * artifacts linked to this milestone" for every milestone — including the seeded `MS-1`, which has
+   * had a linked story since the demo fixture was written. Two shapes, one route, and the mismatch
+   * was invisible because the empty state is a legitimate answer.
+   *
+   * `q` is honoured here (item key or title), unlike on the release side, because the shared toolbar
+   * puts a search box above this table and sends the term.
+   */
+  async listMilestoneArtifacts(
+    actor: JwtPayload,
+    milestoneId: string,
+    args: { limit: number; cursor: CursorPayload | null; q?: string },
+  ): Promise<PagedResult<MilestoneArtifactRow>> {
+    await this.getMilestoneForView(actor, milestoneId);
+
+    const conditions = [
+      eq(milestoneArtifacts.milestoneId, milestoneId),
+      eq(milestoneArtifacts.entityType, 'work_item'),
+      eq(workItems.workspaceId, actor.workspaceId),
+      isNull(workItems.deletedAt),
+    ];
+    const term = args.q?.trim();
+    if (term) {
+      const like = `%${term}%`;
+      conditions.push(
+        sql`(${workItems.itemKey} ilike ${like} or ${workItems.title} ilike ${like})`,
+      );
+    }
+
+    // Total before the cursor/limit, for the footer count.
+    const baseConditions = [...conditions];
+    if (args.cursor) {
+      conditions.push(keysetCondition(workItems.createdAt, workItems.id, args.cursor));
+    }
+
+    const rows = await this.db
+      .select({
+        id: workItems.id,
+        itemKey: workItems.itemKey,
+        type: workItems.type,
+        title: workItems.title,
+        scheduleState: workItems.scheduleState,
+        priority: workItems.priority,
+        assigneeId: workItems.assigneeId,
+        assigneeName: sql<string | null>`assignee_user.display_name`,
+        storyPoints: sql<number | null>`${workItems.storyPoints}::float8`,
+        createdAt: workItems.createdAt,
+        updatedAt: workItems.updatedAt,
+      })
+      .from(milestoneArtifacts)
+      .innerJoin(workItems, eq(workItems.id, milestoneArtifacts.entityId))
+      .leftJoin(sql`identity.users assignee_user`, sql`assignee_user.id = work_items.assignee_id`)
+      .where(and(...conditions))
+      .orderBy(desc(workItems.createdAt), asc(workItems.id))
+      .limit(args.limit + 1);
+
+    const [countRow] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(milestoneArtifacts)
+      .innerJoin(workItems, eq(workItems.id, milestoneArtifacts.entityId))
+      .where(and(...baseConditions));
+
+    return buildPageResult(
+      rows,
+      args.limit,
+      (w) => [w.createdAt.toISOString()],
+      'desc',
+      Number(countRow?.total ?? 0),
+    );
+  }
+
   async setMilestoneArtifacts(
     actor: JwtPayload,
     milestoneId: string,
     workItemIds: string[],
   ): Promise<string[]> {
     const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    // PRJ-FR-010. `createMilestone`, `updateMilestone` and `deleteMilestone` carried this rule and
+    // the four replace-SET writes below did not, so an archived project's milestones kept their
+    // artifacts, projects, teams and releases fully editable — and the release set additionally
+    // rewrites the milestone's own target window (FR-011/012).
+    await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
     const uniqueIds = [...new Set(workItemIds)];
     if (uniqueIds.length > 0) {
       const rows = await this.db
@@ -581,6 +716,17 @@ export class MilestonesService {
   ): Promise<void> {
     for (const milestoneId of [...new Set(milestoneIds)]) {
       const milestone = await this.requireMilestone(workspaceId, milestoneId);
+      /**
+       * The archived-project rule is checked from this side too, and it has to be.
+       *
+       * `milestone_artifacts` has two write paths and the whole point of this method is that they
+       * cannot answer differently — the docblock below records what happened the last time one of
+       * them enforced less than the other. `setMilestoneArtifacts` refuses an archived project, so
+       * without this a caller could add the same row from `PUT /work-items/:id/milestones` instead:
+       * the work item's own project is checked by `WorkItemsService`, but the MILESTONE's may be a
+       * different one (its scope spans `milestone_projects`), and that one would go unchecked.
+       */
+      await this.projectsService.assertProjectWritable(workspaceId, milestone.projectId);
       assertArtifactsInMilestoneScope(milestone, candidates);
     }
   }
@@ -595,7 +741,8 @@ export class MilestonesService {
     milestoneId: string,
     projectIds: string[],
   ): Promise<string[]> {
-    await this.getMilestone(actor.workspaceId, milestoneId);
+    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
     await this.assertLinksInWorkspace(actor.workspaceId, { projectIds });
     await this.milestoneRepo.setProjectLinks(milestoneId, projectIds);
     return this.milestoneRepo.getProjectIds(milestoneId);
@@ -611,7 +758,8 @@ export class MilestonesService {
     milestoneId: string,
     teamIds: string[],
   ): Promise<string[]> {
-    await this.getMilestone(actor.workspaceId, milestoneId);
+    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
     await this.assertLinksInWorkspace(actor.workspaceId, { teamIds });
     await this.milestoneRepo.setTeamLinks(milestoneId, teamIds);
     return this.milestoneRepo.getTeamIds(milestoneId);
@@ -627,7 +775,8 @@ export class MilestonesService {
     milestoneId: string,
     releaseIds: string[],
   ): Promise<string[]> {
-    await this.getMilestone(actor.workspaceId, milestoneId);
+    const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
+    await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
     await this.assertLinksInWorkspace(actor.workspaceId, { releaseIds });
     await this.milestoneRepo.setReleaseLinks(milestoneId, releaseIds);
     // Target dates are derived from the linked releases (SRS FR-011/012), so
@@ -691,7 +840,7 @@ export interface MilestoneArtifactScope {
  *     the BA specified.
  *   • team — when the Milestone selects Team scope, an artifact must be on one of those Teams.
  *     A team-agnostic item (`teamId === null`) is OUT of a team scope, not exempt from it:
- *     unlike `AccessService.assertTeamScoped`, which asks whether the ACTOR may write, this
+ *     unlike an actor-side authorization check, which asks whether the CALLER may write, this
  *     asks whether the WORK is inside a declared scope, and "no team" is not one of them.
  *
  * The prose is deliberately direction-neutral: one message has to read correctly whether the

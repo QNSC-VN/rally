@@ -9,6 +9,7 @@ import {
 } from '@platform';
 import { AccessService } from '@modules/access';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
+import { ProjectsService } from '@modules/projects';
 import { PORTFOLIO_ACTIVITY_CONFIG } from './portfolio-activity-diff';
 import { PORTFOLIO_HEALTH_THRESHOLDS, computeHealth, type HealthResult } from '@shared-kernel';
 import type { CursorPayload, JwtPayload, PagedResult } from '@platform';
@@ -40,6 +41,7 @@ import {
 } from '../domain/ports/portfolio-item.repository';
 import type {
   CreatePortfolioItemInput,
+  PortfolioFeatureOption,
   PortfolioItem,
   PortfolioItemView,
   PortfolioListRequest,
@@ -133,6 +135,13 @@ export class PortfolioItemsService {
     private readonly uow: UnitOfWork,
     private readonly estimateMaps: PreliminaryEstimateMapService,
     private readonly activity: ActivityLogger,
+    /**
+     * Owns `assertProjectWritable`, the one home of "Archived Projects are read-only regardless
+     * of access level" (PRJ-FR-010). Note this is a DIFFERENT rule from `assertNotArchived` at
+     * the bottom of this file, which asks whether the ITEM is archived — the two can disagree,
+     * and both are checked on the writes that have both subjects.
+     */
+    private readonly projects: ProjectsService,
   ) {}
 
   /**
@@ -273,6 +282,24 @@ export class PortfolioItemsService {
     };
   }
 
+  /**
+   * `getItem`, plus the archived-project refusal — the resolve step a WRITE on an item opens with.
+   *
+   * It exists for `PortfolioAttachmentsController`, whose routes live there rather than in
+   * `@modules/attachments` precisely so that authorization stays with the owning context. That
+   * controller resolves the item to prove it exists and to get the `projectId` the activity log
+   * needs; attaching or deleting a file is content on that project, so the same resolve has to
+   * carry the read-only rule (PRJ-FR-010). Putting it here rather than in the controller keeps the
+   * rule in a service, and keeps `EntityAttachmentsService` free of any project knowledge — it
+   * states that it "never loads a work item or a portfolio item", and giving it `ProjectsService`
+   * would be the owner-type registry its own docblock refuses.
+   */
+  async getItemForWrite(actor: JwtPayload, id: string): Promise<PortfolioItemDetail> {
+    const item = await this.getItem(actor, id);
+    await this.projects.assertProjectWritable(actor.workspaceId, item.projectId);
+    return item;
+  }
+
   async listChildren(
     actor: JwtPayload,
     id: string,
@@ -298,6 +325,26 @@ export class PortfolioItemsService {
     return children.map((c) => this.withProgress(c, map, today));
   }
 
+  /**
+   * A project's active Features, as options for the `Feature` field on a Story/Defect.
+   *
+   * NO authorization call here, and that is deliberate rather than an omission: the route
+   * carries `@RequirePermission('work_item:view', { from: 'query', field: 'projectId' })`, so the
+   * guard has already checked this exact project before the handler runs. Re-checking would be
+   * the double-check the guard's own docblock warns against — and adding a
+   * `listReadableProjectIds` narrowing here would be worse, because it would answer a different
+   * question (which projects are readable) than the one the route asks (may you read THIS one).
+   *
+   * Contrast `listItems` directly above: that list's `projectId` is optional because a Workspace
+   * Admin reads across projects, which is why its authorization has to live in the service.
+   */
+  async listFeatureOptions(
+    actor: JwtPayload,
+    projectId: string,
+  ): Promise<PortfolioFeatureOption[]> {
+    return this.repo.listFeatureOptions(actor.workspaceId, projectId);
+  }
+
   // ── Writes ─────────────────────────────────────────────────────────────────
 
   /**
@@ -311,6 +358,10 @@ export class PortfolioItemsService {
     input: Omit<CreatePortfolioItemInput, 'workspaceId'>,
   ): Promise<PortfolioItemWithProgress> {
     await this.access.assertProjectPermission(actor, input.projectId, 'portfolio:create');
+    // PRJ-FR-010: an archived project takes no new content. One home for the rule —
+    // `ProjectsService.assertProjectWritable` — so this cannot answer differently from the
+    // work-item, iteration, release and milestone creates.
+    await this.projects.assertProjectWritable(actor.workspaceId, input.projectId);
     this.assertShape(input.type, input);
     await this.assertReferences(actor.workspaceId, input.projectId, input);
 
@@ -369,6 +420,7 @@ export class PortfolioItemsService {
   ): Promise<PortfolioItemWithProgress> {
     const existing = await this.requireItem(actor, id);
     await this.access.assertProjectPermission(actor, existing.projectId, 'portfolio:edit');
+    await this.projects.assertProjectWritable(actor.workspaceId, existing.projectId);
     assertNotArchived(existing);
 
     // A project move is authorised in BOTH directions: taking work out of a project and
@@ -378,6 +430,11 @@ export class PortfolioItemsService {
     const patch = { ...input };
     if (patch.projectId !== undefined && patch.projectId !== existing.projectId) {
       await this.access.assertProjectPermission(actor, patch.projectId, 'portfolio:edit');
+      // Both directions again, and for the same reason: the DESTINATION gains an Epic or Feature,
+      // which is content (PRJ-FR-010). Checking only the source would let an archived project be
+      // filled with work through a move — the read-only rule broken from the outside, on the one
+      // write that touches two projects.
+      await this.projects.assertProjectWritable(actor.workspaceId, patch.projectId);
       await this.applyProjectMove(actor.workspaceId, existing, patch);
     }
 
@@ -570,6 +627,16 @@ export class PortfolioItemsService {
   ): Promise<PortfolioItemWithProgress> {
     const existing = await this.requireItem(actor, id);
     await this.access.assertProjectPermission(actor, existing.projectId, 'portfolio:archive');
+    /**
+     * Guarded in BOTH directions, including restore.
+     *
+     * Restoring an ITEM does not undo the PROJECT's archive, so guarding it strands nothing: the
+     * project is reopened by `PATCH /projects/:id` with `status: 'active'`, which takes no
+     * preconditions and is the only write an archived project accepts. Nothing requires an item to
+     * be restored first. Archiving is content too — it removes the row from every portfolio
+     * surface and from its Epic's rollup — so neither direction is exempt (PRJ-FR-010).
+     */
+    await this.projects.assertProjectWritable(actor.workspaceId, existing.projectId);
 
     if (archived && existing.type === 'epic') {
       const children = await this.repo.countActiveChildFeatures(id, actor.workspaceId);
@@ -635,6 +702,7 @@ export class PortfolioItemsService {
   ): Promise<PortfolioItemWithProgress> {
     const item = await this.requireItem(actor, id);
     await this.access.assertProjectPermission(actor, item.projectId, 'portfolio:edit');
+    await this.projects.assertProjectWritable(actor.workspaceId, item.projectId);
     assertNotArchived(item);
 
     if (!opts.beforeId && !opts.afterId) {

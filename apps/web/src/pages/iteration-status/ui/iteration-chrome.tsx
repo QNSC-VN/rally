@@ -14,22 +14,19 @@ import {
 
 import { BRAND } from '@/shared/config/brand'
 import { useClickOutside } from '@/shared/lib/hooks/use-click-outside'
-import { type Iteration } from '@/features/iterations/api'
+import { type IterationReference } from '@/features/iterations/api'
 import { type ColumnDef } from '@/shared/lib/hooks/use-column-layout'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { Button } from '@/shared/ui/button'
-import { InlineSelect } from '@/shared/ui/native-select'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { TableTotalsRow } from '@/shared/ui/table-totals-row'
-import {
-  SCHEDULE_STATE_LABEL,
-  SCHEDULE_STATE_VALUES,
-  type ScheduleState,
-} from '@/entities/work-item/model/types'
 import { fmtRange } from '../model/iteration-helpers'
-import { type ColKey, OWNER_UNASSIGNED, HEADER_META } from '../model/columns'
+import { type ColKey, HEADER_META } from '../model/columns'
+import { type IterationFilterKey } from '../model/filter-fields'
+import { type ManageFiltersState } from '@/features/work-items/model/manage-filters'
+import { ManageFiltersBar } from '@/features/work-items/ui/manage-filters-bar'
 import { formatWholePercent } from '@/shared/lib/utils'
 
 export function IterationHeader({
@@ -44,8 +41,11 @@ export function IterationHeader({
   viewMode,
   setViewMode,
 }: {
-  iterations: Iteration[]
-  selected: Iteration | undefined
+  // The REFERENCE projection, not the timebox record: the picker needs a name and a window, and
+  // this screen is one §3.2 grants an Editor — who may not read `goal`, `theme`, `notes` or
+  // `plannedVelocity`.
+  iterations: IterationReference[]
+  selected: IterationReference | undefined
   selectedId: string | null
   selectedIndex: number
   setSelectedId: (id: string) => void
@@ -392,13 +392,7 @@ export function Toolbar({
   hidden,
   toggleVisible,
   reorder,
-  stateFilter,
-  setStateFilter,
-  ownerFilter,
-  setOwnerFilter,
-  blockedOnly,
-  setBlockedOnly,
-  members,
+  filters,
 }: {
   search: string
   setSearch: (v: string) => void
@@ -409,19 +403,14 @@ export function Toolbar({
   hidden: Set<ColKey>
   toggleVisible: (key: ColKey) => void
   reorder: (dragKey: ColKey, overKey: ColKey) => void
-  stateFilter: ScheduleState | 'all'
-  setStateFilter: (v: ScheduleState | 'all') => void
-  ownerFilter: string
-  setOwnerFilter: (v: string) => void
-  blockedOnly: boolean
-  setBlockedOnly: (v: boolean) => void
-  members: import('@/features/teams/api').ProjectMember[]
+  /** The shared Manage Filters model (P2-IS-FR-022). */
+  filters: ManageFiltersState<IterationFilterKey>
 }) {
   const { t } = useTranslation('iteration-status')
-  const activeFilterCount =
-    (stateFilter !== 'all' ? 1 : 0) + (ownerFilter !== 'all' ? 1 : 0) + (blockedOnly ? 1 : 0)
   return (
     <PageToolbar
+      // `Filter items...` stays in the toolbar row, OUTSIDE Manage Filters —
+      // P2-IS-FR-020 says so explicitly, and P2-BL-TS-015 asserts it.
       search={{
         value: search,
         onChange: setSearch,
@@ -436,65 +425,11 @@ export function Toolbar({
           </Button>
         ) : undefined
       }
-      activeFilterCount={activeFilterCount}
-      defaultFiltersOpen={activeFilterCount > 0}
-      filters={
-        <>
-          <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
-            {t('toolbar.state')}
-            <InlineSelect
-              value={stateFilter}
-              aria-label="Filter by schedule state"
-              onChange={(e) => setStateFilter(e.target.value as ScheduleState | 'all')}
-              className="w-auto"
-            >
-              <option value="all">{t('toolbar.allStates')}</option>
-              {SCHEDULE_STATE_VALUES.map((s) => (
-                <option key={s} value={s}>
-                  {SCHEDULE_STATE_LABEL[s as ScheduleState] ?? s}
-                </option>
-              ))}
-            </InlineSelect>
-          </label>
-          <label className="flex items-center gap-1.5 text-ui-sm font-semibold text-muted-foreground">
-            {t('common:owner')}
-            <InlineSelect
-              value={ownerFilter}
-              aria-label="Filter by owner"
-              onChange={(e) => setOwnerFilter(e.target.value)}
-              className="w-auto"
-            >
-              <option value="all">{t('toolbar.allOwners')}</option>
-              <option value={OWNER_UNASSIGNED}>{t('toolbar.unassigned')}</option>
-              {members.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.displayName}
-                </option>
-              ))}
-            </InlineSelect>
-          </label>
-          <label className="flex cursor-pointer items-center gap-1.5 text-ui-sm font-medium text-foreground">
-            <input
-              type="checkbox"
-              checked={blockedOnly}
-              onChange={(e) => setBlockedOnly(e.target.checked)}
-            />
-            {t('toolbar.blockedOnly')}
-          </label>
-          {activeFilterCount > 0 && (
-            <button
-              onClick={() => {
-                setStateFilter('all')
-                setOwnerFilter('all')
-                setBlockedOnly(false)
-              }}
-              className="cursor-pointer rounded px-2.5 py-1 text-ui-sm text-primary-light"
-            >
-              {t('toolbar.clearFilters')}
-            </button>
-          )}
-        </>
-      }
+      activeFilterCount={filters.activeCount}
+      defaultFiltersOpen={filters.activeCount > 0}
+      // Show/Hide filter banner is PageToolbar's own toggle (P2-IS-FR-021);
+      // Manage Filters is the first node inside it (P2-BL-FR-020, inherited).
+      filters={<ManageFiltersBar state={filters} />}
       fields={
         <ColumnFieldsMenu
           columns={columns}

@@ -17,6 +17,8 @@ import { Input } from '@/shared/ui/input'
 import { NativeSelect } from '@/shared/ui/native-select'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { type WorkItemType } from '@/entities/work-item/model/types'
+import { listResource } from '@/shared/lib/query/resource'
+import { LoadErrorState } from '@/shared/ui/load-error-state'
 import {
   useRelations,
   useLinkWorkItem,
@@ -52,7 +54,12 @@ export function LinkedItemsBlock({
 }: LinkedItemsBlockProps) {
   const { t } = useTranslation('work-items')
   const navigate = useNavigate()
-  const { data: relations = [], isLoading } = useRelations(workItemId)
+  // A resource: `data ?? []` rendered "No linked items." for a 403/500, which is a statement about
+  // the work item's dependency graph — the thing this panel exists to report.
+  const relationsQuery = useRelations(workItemId)
+  const relationFeed = listResource(relationsQuery)
+  const relations = relationFeed.rows
+  const isLoading = relationFeed.isLoading
   const linkMutation = useLinkWorkItem(workItemId)
   const unlinkMutation = useUnlinkWorkItem(workItemId)
 
@@ -165,7 +172,9 @@ export function LinkedItemsBlock({
 
       {isLoading ? (
         <p className="text-ui-md text-foreground-subtle">Loading…</p>
-      ) : relations.length === 0 ? (
+      ) : relationFeed.phase === 'error' ? (
+        <LoadErrorState error={relationFeed.error} size="sm" />
+      ) : relationFeed.phase === 'empty' ? (
         <p className="text-ui-md text-foreground-subtle">No linked items.</p>
       ) : (
         <div className="space-y-2">

@@ -4,13 +4,9 @@ import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { projectMembers, teamMembers, projectTeams } from '../../../../../../db/schema/work';
 import { users } from '../../../../../../db/schema/identity';
-import type {
-  ProjectMember,
-  AddProjectMemberInput,
-  UpdateProjectMemberInput,
-} from '../../domain/project.types';
+import type { ProjectMember, UpdateProjectMemberInput } from '../../domain/project.types';
 import { IProjectMemberRepository } from '../../domain/ports/project-member.repository';
-import { selectWorkspaceAdminUserIds } from './workspace-admin-ids';
+import { selectWorkspaceAdminUserIds } from '@modules/access';
 
 @Injectable()
 export class ProjectMemberDrizzleRepository implements IProjectMemberRepository {
@@ -109,7 +105,7 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
       })) as unknown as ProjectMember[];
 
     // Per-user team count, scoped to Teams LINKED to THIS project — the same
-    // scoping `AccessService.assertTeamScoped` uses to gate Editor writes
+    // scoping every delivery surface uses to slice by team
     // (project_teams.projectId = this project, active on both sides). One
     // grouped query regardless of member count (O(1) round trips, not one per
     // member), merged into both member sets below by userId. This is what lets
@@ -144,43 +140,6 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
   /** §2.1 — see `selectWorkspaceAdminUserIds` for why this is one shared query. */
   async listWorkspaceAdminUserIds(workspaceId: string): Promise<string[]> {
     return selectWorkspaceAdminUserIds(this.db, workspaceId);
-  }
-
-  async addMember(input: AddProjectMemberInput, tx?: DbExecutor): Promise<ProjectMember> {
-    // `uq_project_member` is on (project_id, user_id) with no status qualifier, so
-    // re-adding a user previously removed from this project collides with their
-    // own `removed` row on a plain INSERT (raw unique-violation, surfaces as an
-    // unhandled 500 — `findMember`'s pre-check only looks at active rows, so it
-    // never sees this coming). Reactivate the row instead. The supplied
-    // `accessLevel` travels through BOTH the insert and the reactivation: no
-    // caller "follows with a PATCH" (the Add flows pass the level up front —
-    // service upsert + FE), so resetting to NULL here made every remove-then-add
-    // land as No Access regardless of what was picked. When no level is supplied,
-    // NULL remains the honest value (a stale level is never resurrected).
-    const level = input.accessLevel !== undefined ? input.accessLevel : null;
-    const rows = await (tx ?? this.db)
-      .insert(projectMembers)
-      .values({
-        id: input.id,
-        workspaceId: input.workspaceId,
-        projectId: input.projectId,
-        userId: input.userId,
-        accessLevel: level,
-        status: 'active',
-        joinedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [projectMembers.projectId, projectMembers.userId],
-        set: {
-          status: 'active',
-          accessLevel: level,
-          joinedAt: new Date(),
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return rows[0];
   }
 
   async updateMember(
