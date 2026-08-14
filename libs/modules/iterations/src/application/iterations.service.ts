@@ -280,8 +280,21 @@ export class IterationsService {
         'Only iterations in the Planning state can be deleted',
       );
     }
+    /**
+     * Deleting the row UNSCHEDULES its work; it does not orphan it and it does not cascade.
+     *
+     * `work_items.iteration_id` and `work.tasks.iteration_id` carry `ON DELETE SET NULL` as of
+     * migration 0114, so the items survive and become unscheduled in the same statement as this
+     * DELETE. That is Rally's documented behaviour — "If you delete an iteration that stories and
+     * defects are scheduled in, they will all be updated to unscheduled" — and it is enforced in the
+     * database rather than here because `db/seeds/**` and raw SQL write those tables directly.
+     *
+     * Before 0114 neither column had a key and this method was exactly the two lines below, so every
+     * scheduled item was left pointing at a row that no longer existed. The 2026-08-04 audit called
+     * it the highest-value fix it found.
+     */
     await this.iterationRepo.delete(id);
-    this.logger.log({ iterationId: id }, 'Iteration deleted');
+    this.logger.log({ iterationId: id }, 'Iteration deleted; its work items are now unscheduled');
   }
 
   // ── Commit (planning → committed) ───────────────────────────────────────────
