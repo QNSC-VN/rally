@@ -645,13 +645,17 @@ emitting `inArray(col, [])`, which is not portable as "match nothing".
 id — **with no `resource` key**, because the param IS the project id and there is nothing to resolve
 (`'project'` is deliberately not a `ScopedResource`).
 
-**Still open, and deliberately not in that change:** `GET :id/members-with-profile` is documented "for
-User Management UI" but feeds the Portfolio and Projects owner pickers, so gating it needs the feed
-split first — and the genuinely sensitive fields are `phone`, `lastLoginAt` and the role ids, not name
-and email, which are visible wherever someone is an assignee. Whether a staff directory is
-member-visible is a product decision. Separately, `useProjects` fetches `limit: 100` and filters
-client-side, so past 100 projects the Active/Archived tabs, the search and the metric tiles silently
-truncate — a pagination defect, not an authorization one.
+**That note used to end "still open", and both halves are now CLOSED — recorded because the
+resolution is the pattern, not the exception.** `GET :id/members-with-profile` was deferred behind
+"gating it needs the feed split first", because it fed the Portfolio and Projects owner pickers as
+well as User Management. The split shipped (`:id/member-options` for pickers, `:id/members-with-profile`
+for the administrative roster) and the administrative half now carries `workspace:view`. And
+`GET :id/members` — the third route, paged, with `roleId` and account `status` behind an in-service
+claim that amounted to `assertActive` — is **DELETED**, not gated: it had no consumer anywhere, and a
+gated dead route keeps a payload alive for whoever finds it next while reading, in review, as a
+considered decision about an audience. Its absence is asserted in `authz-cluster.e2e.spec.ts` for a
+Workspace ADMIN, because a 404 for an Editor is also what a gate would produce and would prove
+nothing.
 
 **And the `permission` argument has to actually decide something.** It did not, for the membership half:
 `listReadableProjectIds` unioned a raw `project_members` query in unconditionally, so every project the

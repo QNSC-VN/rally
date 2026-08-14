@@ -231,13 +231,9 @@ export class WorkspaceService {
 
   // ── Members ──────────────────────────────────────────────────────────────────
 
-  async listMembers(
-    workspaceId: string,
-    args: { limit: number; cursor: CursorPayload | null },
-  ): Promise<PagedResult<WorkspaceMember>> {
-    await this.getWorkspace(workspaceId);
-    return this.memberRepo.listMembers(workspaceId, args);
-  }
+  // `listMembers` is GONE with `GET /workspaces/:id/members` — see that route's own note in
+  // `workspace.controller.ts`. It had exactly one caller, the deleted handler. The repository method
+  // it wrapped stays: `WorkspaceMemberService` still uses it.
 
   /**
    * The ADMINISTRATIVE roster — phone, last login, role ids and team memberships.

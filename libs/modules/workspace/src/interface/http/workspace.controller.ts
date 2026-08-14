@@ -228,27 +228,29 @@ export class WorkspaceController {
     await this.workspaceService.deleteWorkspace(id);
   }
 
-  // ── List members ───────────────────────────────────────────────────────────
-
-  @Get(':id/members')
-  @AuthorizedInService(
-    'membership of the workspace whose members are listed',
-    'workspace.service.spec.ts',
-  )
-  @ApiOperation({ summary: 'List workspace members' })
-  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiPagedResponse(MemberResponseDto)
-  @ApiCommonErrors(401, 404)
-  async listMembers(
-    @CurrentUser() user: JwtPayload,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Query() query: PageQueryDto,
-  ): Promise<PagedResult<MemberResponseDto>> {
-    this.assertActive(user, id);
-    const args = buildPageArgs(query);
-    const page = await this.workspaceService.listMembers(id, args);
-    return { data: page.data.map(toMemberDto), pageInfo: page.pageInfo };
-  }
+  // ── `GET :id/members` IS DELETED. Do not re-add it. ────────────────────────
+  //
+  // It listed every workspace member with their `roleId` and account `status`, behind an
+  // in-service authorization claim whose stated reason was "membership of the workspace whose
+  // members are listed" — which is `assertActive` and nothing more, so ANY active member read the
+  // whole company's role assignments, including a principal with No Access to every project.
+  //
+  // (Written without the decorator's call syntax on purpose: `test/route-policy.ratchet.spec.ts`
+  // parses source TEXT, so a comment reproducing `@AuthorizedInService(...)` is counted as a live
+  // citation and fails on the pinning spec it names.)
+  //
+  // Deleted rather than gated, because a gate would have preserved a route with NO CONSUMER: the
+  // SPA never called it (nothing outside the generated client referenced
+  // `/v1/workspaces/{id}/members'`), nothing in `apps/worker` did, and no other service did — the
+  // only caller of `WorkspaceService.listMembers` was this handler, so that method is gone with it.
+  // A gated dead route is worse than no route: it keeps a payload alive for whoever finds it next
+  // and it reads, in review, as a considered decision about an audience.
+  //
+  // Its two real audiences already have routes, split by what they serve (RBE-07, below):
+  //   • a picker needs id / name / email / avatar  → `:id/member-options`
+  //   • User Management needs the rest             → `:id/members-with-profile` (`workspace:view`)
+  // If a future surface needs paged membership WITH role ids, it wants a new route named for that
+  // audience and gated on `users:assign_role` or `workspace:view` — not this one back.
 
   // ── The roster, SPLIT IN TWO (RBE-07) ──────────────────────────────────────
   //
