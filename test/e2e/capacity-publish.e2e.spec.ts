@@ -257,21 +257,36 @@ describe('capacity publish (e2e)', () => {
     ).resolves.toMatchObject({ featuresUpdated: 1 });
   });
 
-  it('refuses a plan with no dates to write, but still publishes it', async () => {
-    // No window means nothing to inherit and no span question to answer, so the Release is
-    // skipped too — but visibility is still a legitimate thing to publish for.
+  it('LEAVES the Feature window alone when the plan has no dates, and still publishes', async () => {
+    /**
+     * The data-loss regression, at the only level that can prove it: the row.
+     *
+     * No window means nothing to inherit and no span question to answer, so the Release is skipped
+     * too — but publish used to write the plan's two NULL columns anyway and empty the Feature's own
+     * planned window. This case was already covered and could not see it, because the fixture Feature
+     * had no dates either: NULL over NULL looks exactly like leaving it alone. The Feature is given a
+     * window of its own first, so the assertion has something to lose.
+     *
+     * Visibility is still a legitimate thing to publish for, so the status flip stands.
+     */
     const { planId } = await newPlan({ start: null, end: null });
     const featureId = await newFeature();
+    await db
+      .update(portfolioItems)
+      .set({ plannedStartDate: '2026-03-02', plannedEndDate: '2026-04-17' })
+      .where(eq(portfolioItems.id, featureId));
     await capacity.allocate(admin, planId, { portfolioItemId: featureId, teamId, value: 20 });
 
     const result = await capacity.publishPlan(admin, planId, { updateFields: true });
 
     expect(result.plan.status).toBe('published');
-    expect(result.skipped[0].reason).toBe('release_span_mismatch');
+    expect(result.skipped[0].reason).toBe('no_window');
+    // Nothing was written, so nothing is claimed to have been.
+    expect(result.featuresUpdated).toBe(0);
     expect(await featureRow(featureId)).toEqual({
       releaseId: null,
-      plannedStartDate: null,
-      plannedEndDate: null,
+      plannedStartDate: '2026-03-02',
+      plannedEndDate: '2026-04-17',
     });
   });
 

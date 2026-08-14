@@ -41,6 +41,22 @@ export interface CapacityPlan {
   updatedAt: Date;
 }
 
+/**
+ * A plan's window, once it is known to BE one: both ends present, never null.
+ *
+ * `plannedStartDate` / `plannedEndDate` are independently nullable columns, but a window with one
+ * end is not a window — every rule that consumes one (the Ideal-style span check in `windowsMatch`,
+ * the forecast's `windowDays`, and what a publish stamps onto a Feature) needs both or nothing. Made
+ * a type so the pair travels together and so a nullable column cannot be handed to a caller that has
+ * already decided a window exists: publish used to pass `plan.plannedStartDate` straight through to
+ * the Feature write, and for a plan with no dates that wrote NULL over every allocated Feature's own
+ * planned window. `planWindow()` in `capacity-plans.service.ts` is the only place a plan becomes one.
+ */
+export interface PlanWindow {
+  start: string;
+  end: string;
+}
+
 /** A team participating in a plan, with the capacity a planner typed for it. */
 export interface CapacityPlanTeam {
   id: string;

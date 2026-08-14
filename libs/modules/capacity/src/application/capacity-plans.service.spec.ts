@@ -881,8 +881,7 @@ describe('CapacityPlansService', () => {
         // elsewhere cannot receive this plan's Release.
         'proj-a',
         {
-          plannedStartDate: '2026-07-01',
-          plannedEndDate: '2026-07-31',
+          window: { start: '2026-07-01', end: '2026-07-31' },
           releaseId: 'rel-1',
         },
         expect.anything(),
@@ -908,7 +907,7 @@ describe('CapacityPlansService', () => {
         'fe-1',
         WORKSPACE,
         'proj-a',
-        { plannedStartDate: '2026-07-01', plannedEndDate: '2026-07-31' },
+        { window: { start: '2026-07-01', end: '2026-07-31' } },
         expect.anything(),
       );
       // No `releaseId` key at all — `undefined` would be a different instruction to the repository.
@@ -956,7 +955,7 @@ describe('CapacityPlansService', () => {
         'fe-1',
         WORKSPACE,
         'proj-a',
-        { plannedStartDate: '2026-07-05', plannedEndDate: '2026-07-20' },
+        { window: { start: '2026-07-05', end: '2026-07-20' } },
         expect.anything(),
       );
       expect(result.skipped[0].reason).toBe('release_span_mismatch');
@@ -981,7 +980,7 @@ describe('CapacityPlansService', () => {
         // The PLAN's project: the write is filtered on it, so a Feature that has since moved
         // elsewhere cannot receive this plan's Release.
         'proj-a',
-        { plannedStartDate: '2026-06-01', plannedEndDate: '2026-08-31' },
+        { window: { start: '2026-06-01', end: '2026-08-31' } },
         expect.anything(),
       );
       // No `releaseId` key at all — `undefined` would be a different instruction.
@@ -999,6 +998,58 @@ describe('CapacityPlansService', () => {
       repo.releaseWindow.mockResolvedValue({ startDate: null, endDate: null });
       const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
       expect(result.skipped[0].reason).toBe('release_span_mismatch');
+    });
+
+    it("does NOT erase a Feature's planned window when the plan has none of its own", async () => {
+      /**
+       * The data-loss regression, and the DEFAULT case rather than an edge one: SRS §5 gives the New
+       * Capacity Plan dialog six fields and no dates, so every plan starts with no window and only
+       * `Edit Plan Details` can give it one.
+       *
+       * Publish used to pass the plan's two nullable columns straight through, so it wrote
+       * `planned_start_date = NULL, planned_end_date = NULL` onto every assigned Feature — a plan
+       * write reaching outside the plan to clear a value nobody asked it to clear, and with the
+       * Release field already refused by AC-019 the write had no legitimate effect to weigh against
+       * it. Asserting the CALL, not just the response: the repository is what touches the column, and
+       * `featuresUpdated` was happily reporting 1 while the only thing written was emptiness.
+       */
+      const noWindow = { plannedStartDate: null, plannedEndDate: null };
+      repo.findById.mockResolvedValue(plan(noWindow));
+      repo.findViewById.mockResolvedValue(view(noWindow));
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(repo.applyPlanToFeature).not.toHaveBeenCalled();
+      // Not counted as updated either — "1 Feature updated" for a row nothing was written to is the
+      // same lie the `archived` skip exists to avoid.
+      expect(result.featuresUpdated).toBe(0);
+      expect(result.skipped).toEqual([
+        { portfolioItemId: 'fe-1', itemKey: 'FE-1', reason: 'no_window' },
+      ]);
+      // Visibility is still a legitimate thing to publish for, so the status flip stands.
+      expect(repo.setStatus).toHaveBeenCalledWith(
+        'plan-1',
+        WORKSPACE,
+        'published',
+        'user-1',
+        expect.anything(),
+      );
+    });
+
+    it('reports `no_window` per row, but only for rows that could have taken a window', async () => {
+      // An unallocated row has no team to inherit from either way; it keeps its own, more specific
+      // reason rather than being relabelled by a plan-level fact.
+      const noWindow = { plannedStartDate: null, plannedEndDate: null };
+      repo.findById.mockResolvedValue(plan(noWindow));
+      repo.findViewById.mockResolvedValue(view(noWindow));
+      repo.listAllocations.mockResolvedValue([
+        allocation(),
+        allocation({ portfolioItemId: 'fe-2', itemKey: 'FE-2', teamId: null }),
+      ]);
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(result.skipped.map((s) => s.reason)).toEqual(['no_window', 'unallocated']);
     });
 
     it('skips an UNALLOCATED row entirely rather than giving it a schedule', async () => {
@@ -2419,6 +2470,12 @@ describe('CapacityPlansService', () => {
     it('reports an archived Feature as SKIPPED on publish rather than counting it', async () => {
       // The write filters `archivedAt`, so it matches nothing; publish used to increment anyway and a
       // planner reading "2 Features updated" had no way to find the one that was not.
+      //
+      // The plan needs a real window for this to be the archived case at all: a plan with no window
+      // never reaches the write, and this block's default plan has none.
+      const window = { plannedStartDate: '2026-07-01', plannedEndDate: '2026-07-31' };
+      repo.findById.mockResolvedValue(plan(window));
+      repo.findViewById.mockResolvedValue(view(window));
       repo.listAllocations.mockResolvedValue([row({ teamId: 'team-1' })]);
       repo.applyPlanToFeature.mockResolvedValue(false);
 
