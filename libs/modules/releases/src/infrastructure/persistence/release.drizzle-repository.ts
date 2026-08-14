@@ -82,7 +82,21 @@ export class ReleaseDrizzleRepository implements IReleaseRepository {
     if (input.startDate !== undefined) set.startDate = input.startDate;
     if (input.releaseDate !== undefined) set.releaseDate = input.releaseDate;
     if (input.plannedVelocity !== undefined) set.plannedVelocity = input.plannedVelocity;
-    if (input.planEstimate !== undefined) set.planEstimate = String(input.planEstimate);
+    /**
+     * `null` CLEARS the field; it must not be stringified.
+     *
+     * This was `String(input.planEstimate)`, so clearing Plan Estimate sent the four-character
+     * string `"null"` into a `numeric(8,2)` column and every attempt answered 500. Reachable from
+     * the release detail form by emptying the field — the one gesture that means "I do not have an
+     * estimate yet".
+     *
+     * `undefined` still means "not in this PATCH" and is filtered by the guard; only an explicit
+     * `null` reaches the column, which is what makes the field clearable at all. Drizzle wants a
+     * string for `numeric` (it preserves precision that a JS number would not), hence the cast on
+     * the non-null branch.
+     */
+    if (input.planEstimate !== undefined)
+      set.planEstimate = input.planEstimate === null ? null : String(input.planEstimate);
     if (input.version !== undefined) set.version = input.version;
     if (input.status !== undefined) set.status = input.status;
     if (input.releasedAt !== undefined) set.releasedAt = input.releasedAt;

@@ -47,6 +47,40 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
   });
 
   // ── E2E-013: single active release assignment; reassignment moves the item ──
+  describe('release Plan Estimate is clearable', () => {
+    it('sets, changes and CLEARS the value without a 500', async () => {
+      /**
+       * `ReleaseDrizzleRepository.update` ran every supplied `planEstimate` through
+       * `String(...)`, so clearing the field sent the four-character string `"null"` into a
+       * `numeric(8,2)` column and the request answered 500. Reachable from the release detail form
+       * by emptying the field — the one gesture that means "no estimate yet".
+       *
+       * Driven through the SERVICE rather than a repository unit test on purpose: the bug was a
+       * value crossing the application/persistence boundary, and only a real column rejects
+       * `"null"`. A mocked repository would have accepted the string happily.
+       */
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Plan Estimate Project',
+      });
+      const release = await releases.createRelease(actor, project.id, 'Estimate Release');
+
+      const set = await releases.updateRelease(actor, release.id, { planEstimate: 42.5 });
+      expect(set.planEstimate).toBe('42.50');
+
+      const changed = await releases.updateRelease(actor, release.id, { planEstimate: 10 });
+      expect(changed.planEstimate).toBe('10.00');
+
+      // The case that used to 500. `null` CLEARS; it is not the string "null".
+      const cleared = await releases.updateRelease(actor, release.id, { planEstimate: null });
+      expect(cleared.planEstimate).toBeNull();
+
+      // And it survives a re-read, so the column really holds NULL rather than a rejected write
+      // having been swallowed somewhere.
+      expect((await releases.getRelease(actor.workspaceId, release.id)).planEstimate).toBeNull();
+    });
+  });
+
   describe('E2E-013 release artifact assignment', () => {
     it('assigns an existing work item to one release and moves it on reassignment', async () => {
       const project = await projects.createProject(actor, {

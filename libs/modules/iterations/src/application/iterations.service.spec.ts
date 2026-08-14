@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DRIZZLE, NotFoundException, PreconditionFailedException } from '@platform';
 import { ProjectsService } from '@modules/projects';
+import { WorkItemsService } from '@modules/work-items';
 import { AccessService } from '@modules/access';
 import { IterationsService } from './iterations.service';
 import { ITERATION_REPOSITORY } from '../domain/ports/iteration.repository';
@@ -53,6 +54,7 @@ describe('IterationsService', () => {
     assertTeamLinkedToProject: ReturnType<typeof vi.fn>;
   };
   let access: { assertProjectPermission: ReturnType<typeof vi.fn> };
+  let workItemsSvc: { updateWorkItem: ReturnType<typeof vi.fn> };
   // Chainable Drizzle mock. Tests set the resolved rows before invoking.
   let dbSelectResult: unknown[];
   let dbUpdateReturning: unknown[];
@@ -86,6 +88,7 @@ describe('IterationsService', () => {
         .mockImplementation((id, patch) => Promise.resolve(mockIteration({ id, ...patch }))),
       delete: vi.fn().mockResolvedValue(undefined),
     };
+    workItemsSvc = { updateWorkItem: vi.fn().mockResolvedValue({}) };
     projects = {
       getProject: vi.fn().mockResolvedValue({ id: 'proj-1' }),
       assertProjectWritable: vi.fn().mockResolvedValue(undefined),
@@ -127,6 +130,11 @@ describe('IterationsService', () => {
         },
         { provide: ProjectsService, useValue: projects },
         { provide: AccessService, useValue: access },
+        // Rollover moves items through the ordinary work-item write path rather than a bulk
+        // `db.update`, so the real invariants (team match, auto-accept, activity) apply. The mock is
+        // what lets this spec assert the DELEGATION; the behaviour behind it is covered where it
+        // lives, in the work-items service and in `derived-invariants.e2e.spec.ts`.
+        { provide: WorkItemsService, useValue: workItemsSvc },
         { provide: DRIZZLE, useValue: db },
       ],
     }).compile();
@@ -217,9 +225,56 @@ describe('IterationsService', () => {
       repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
       // Rollover uses the same D1 acceptance predicate as the accept-gate
       // (schedule_state ∉ {accepted, release}) — no workflow-status lookup.
-      dbUpdateReturning = [{ id: 'wi-1' }, { id: 'wi-2' }];
+      dbSelectResult = [{ id: 'wi-1' }, { id: 'wi-2' }];
       const res = await service.rolloverUnfinished(actor, 'it-1');
       expect(res).toEqual({ movedCount: 2 });
+    });
+
+    it('moves each item through the work-item write path, not a bulk UPDATE', async () => {
+      /**
+       * The regression this guards. Rollover used to be one `db.update(workItems)`, which skipped
+       * every rule the ordinary assignment path applies: the iteration/team match
+       * (`ITERATION_TEAM_MISMATCH`), the auto-accept re-evaluation that CLAUDE.md requires on
+       * "every membership write … BOTH affected iterations", the activity entry, and an Editor's
+       * team scoping. Asserting the DELEGATION is what keeps those from being lost again — a bulk
+       * write would satisfy `movedCount` while satisfying none of them.
+       */
+      repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
+      dbSelectResult = [{ id: 'wi-1' }, { id: 'wi-2' }];
+
+      await service.rolloverUnfinished(actor, 'it-1');
+
+      expect(workItemsSvc.updateWorkItem).toHaveBeenCalledTimes(2);
+      expect(workItemsSvc.updateWorkItem).toHaveBeenCalledWith(actor, 'wi-1', {
+        iterationId: null,
+      });
+      // Nothing writes the column directly any more.
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('carries items INTO the target iteration when one is given', async () => {
+      repo.findById
+        .mockResolvedValueOnce(mockIteration({ state: 'committed', projectId: 'proj-1' }))
+        .mockResolvedValueOnce(mockIteration({ id: 'it-2', projectId: 'proj-1' }));
+      dbSelectResult = [{ id: 'wi-1' }];
+
+      await service.rolloverUnfinished(actor, 'it-1', { moveToIterationId: 'it-2' });
+
+      expect(workItemsSvc.updateWorkItem).toHaveBeenCalledWith(actor, 'wi-1', {
+        iterationId: 'it-2',
+      });
+    });
+
+    it('refuses to roll over inside an archived project', async () => {
+      // An archived project is read-only end to end, and this is a write on its work items.
+      repo.findById.mockResolvedValue(mockIteration({ state: 'committed' }));
+      projects.assertProjectWritable.mockRejectedValue(
+        new PreconditionFailedException('PROJECT_ARCHIVED', 'archived'),
+      );
+      await expect(service.rolloverUnfinished(actor, 'it-1')).rejects.toBeInstanceOf(
+        PreconditionFailedException,
+      );
+      expect(workItemsSvc.updateWorkItem).not.toHaveBeenCalled();
     });
   });
 
