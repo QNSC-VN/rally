@@ -8,7 +8,8 @@ import { CSS } from '@dnd-kit/utilities'
 import { BRAND } from '@/shared/config/brand'
 import { notify } from '@/shared/lib/toast'
 import { useCreateDefect, type DefectRow } from '@/features/quality/api'
-import { useProjectMembers } from '@/features/teams/api'
+import { useProjectMemberOptions } from '@/features/teams/api'
+import { listResource } from '@/shared/lib/query/resource'
 import { useReleases } from '@/features/releases/api'
 import { useIterationOptions } from '@/features/iterations/api'
 import { useUpdateWorkItem, useBacklog } from '@/features/work-items/api'
@@ -256,7 +257,11 @@ function OwnerInlineCell({
 }) {
   const { t } = useTranslation('quality')
   const update = useUpdateWorkItem(defect.id)
-  const { data: members = [] } = useProjectMembers(projectId)
+  // The ASSIGNEE feed, not the administrative roster (`GET /projects/:id/members`, Admin-only per
+  // §3.1:71): this cell both NAMES and SETS the owner, and §3.2:79 gives an Editor the Defect. On
+  // the roster a 403 defaulted to `[]`, which reads as a project with no one to assign to.
+  const membersQuery = useProjectMemberOptions(projectId)
+  const memberFeed = listResource(membersQuery)
 
   function handleChange(userId: string | null) {
     if (userId === (defect.assigneeId ?? null)) return
@@ -275,7 +280,7 @@ function OwnerInlineCell({
       <OwnerSelectCell
         ownerName={defect.assigneeName}
         assigneeId={defect.assigneeId}
-        members={members ?? []}
+        members={memberFeed.rows}
         canEdit={canEdit}
         onChange={handleChange}
       />
@@ -570,7 +575,11 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
   // banner, not under the Title field.
   const [formError, setFormError] = useState<string | null>(null)
 
-  const { data: members } = useProjectMembers(projectId)
+  // The ASSIGNEE feed, not the administrative roster — same reason as {@link OwnerInlineCell}:
+  // logging a Defect is an Editor action (§3.2:79) and `GET /projects/:id/members` is Admin-only
+  // (§3.1:71), so the Assignee picker in this modal 403'd and offered nobody but the empty option.
+  const membersQuery = useProjectMemberOptions(projectId)
+  const memberFeed = listResource(membersQuery)
   const { data: releases } = useReleases(projectId)
   const { data: backlog } = useBacklog(projectId, { type: 'story' })
   const stories = backlog?.data ?? []
@@ -693,7 +702,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
                 value={assigneeId}
                 ariaLabel={t('create.assigneeLabel')}
                 placeholder={t('create.unassigned')}
-                options={ownerSelectOptions(members ?? [], assigneeId)}
+                options={ownerSelectOptions(memberFeed.rows, assigneeId)}
                 onChange={setAssigneeId}
               />
             </FormField>
