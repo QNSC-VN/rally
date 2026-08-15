@@ -641,6 +641,34 @@ Two independent faults on the one flow that onboards every user, both fixed toge
   `grantWorkspaceRole` **inside the same transaction** and invalidates the permission cache after
   commit, like `assignRole` does. Any new path that "assigns a role" must write the assignment table.
 
+**Who SENDS the invitation email depends on `ENTRA_GUEST_INVITE_ENABLED`, and that is the ordering an
+external collaborator depends on.** `inviteMember` wrote both outbox rows in one transaction and two
+independent relays drained them — the email relay every 5s AND woken instantly by `wakeEmailRelay`, the
+Entra guest relay on a 30s cron with no wake signal at all. So the link arrived in under a second and
+the invitee's guest object in our tenant up to 30s later, plus Microsoft's directory replication: an
+invitee who clicks immediately cannot authenticate (`NO_CONNECTION` from our login box, `AADSTS50020`
+from Microsoft's), intermittently, and it reads as the feature being broken. With the flag ON the email
+is now scheduled by the ONE component that knows the guest is ready — `EntraGuestInviteRelayService`,
+in the same transaction that marks the row `sent` and writes `entra_guest_object_id`. Flag OFF is
+untouched: nothing is enqueued, `GuestInviteSchedulerService.schedule` answers `false`, and the email
+goes out inline. Four consequences worth knowing before touching either half:
+
+- **A permanent Graph refusal schedules NO email** (invalid address, `User.Invite.All` unconsented, B2B
+  invitations disabled tenant-wide). The invitee cannot authenticate, so a link is a dead end that also
+  burns the one-shot token; the dead-letter log and `last_error` are the signal and `Resend Invitation`
+  is the human action. A benign `proxyAddresses` collision DOES email — that invitee is already a
+  directory member.
+- **The flag gates ENQUEUEING, not draining.** The relay used to skip polling entirely while the flag
+  was off; now that a queued row also owes the email, that would strand the invitee in silence, so
+  committed intents are always drained.
+- **`guest_invite_outbox.invite_token` holds the RAW token** (migration 0124), because only its sha256
+  is persisted and the relay could not otherwise build `inviteUrl`. Scrubbed in the same write that
+  schedules the email, and on a terminal failure. NULL also *means* "this row owes no email", which is
+  what `resendInvitation` passes — it mails its own rotated token inline.
+- **Both writers key the email on `invitation.id`**, so a flag flipped mid-flight cannot produce two
+  invitation emails; the relay additionally refuses to mail a token whose hash no longer matches the
+  invitation, or an invitation that is no longer `pending`.
+
 ## A cross-project LIST is scoped by `listReadableProjectIds`, not by `workspace_id`
 
 `AccessService.listReadableProjectIds` is the authorization fact behind every cross-project list — its

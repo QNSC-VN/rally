@@ -18,6 +18,7 @@ import {
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
 import { isProjectAccessLevel } from '@shared-kernel';
 import { AccessService } from '@modules/access';
+import { GuestInviteSchedulerService } from './guest-invite-scheduler.service';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
 import {
   ITeamMemberRepository,
@@ -66,6 +67,7 @@ export class WorkspaceService {
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
     private readonly access: AccessService,
+    private readonly guestInviteScheduler: GuestInviteSchedulerService,
   ) {}
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
@@ -454,6 +456,11 @@ export class WorkspaceService {
    * Enqueue the transactional invitation email (shared by create + resend).
    * `idempotencyKey` MUST be unique per send — email_outbox dedups on it — so
    * create passes the invitation id and resend passes `${id}:r${n}`.
+   *
+   * Create only reaches this while `ENTRA_GUEST_INVITE_ENABLED` is OFF. With it on, the invitation
+   * email is scheduled by `EntraGuestInviteRelayService` once the invitee's Entra guest object
+   * exists, because a link that arrives first cannot be acted on — see `inviteMember`. Resend always
+   * sends from here; the same docblock says why.
    */
   private async scheduleInviteEmail(
     tx: DbExecutor,
@@ -561,9 +568,10 @@ export class WorkspaceService {
     const ttlDays = this.config.get('INVITATION_TTL_DAYS');
     const expiresAt = addDays(ttlDays);
 
-    // Atomic: rotate any prior pending invite, create the new one, and enqueue
-    // the email in ONE transaction. idempotencyKey = invitation.id so retrying
-    // the request skips the duplicate email_outbox insert.
+    // Atomic: rotate any prior pending invite, create the new one, and enqueue the outbox work in
+    // ONE transaction. idempotencyKey = invitation.id so retrying the request skips the duplicate
+    // insert — and so the two possible writers of this email (here, or the guest-invite relay once
+    // provisioning resolves) can never both produce one.
     const invitation = await this.uow.run(async (tx) => {
       await this.invitationRepo.cancelExistingForEmail(workspaceId, normalizedEmail, tx);
 
@@ -584,13 +592,51 @@ export class WorkspaceService {
       // it, and `ON DELETE cascade` on both foreign keys makes the reverse true too.
       await this.invitationRepo.setProjectAccess(inv.id, access, tx);
 
-      await this.scheduleInviteEmail(tx, {
-        to: normalizedEmail,
-        rawToken,
-        workspaceName: workspace.name,
-        ttlDays,
-        idempotencyKey: inv.id,
+      /**
+       * Provision the invitee as an Entra B2B GUEST, so a collaborator on a non-staff mailbox can
+       * actually sign in — Entra verifies them through their own Microsoft work account, Google
+       * federation, or an emailed one-time passcode — while THIS invitation stays the authorization
+       * gate. Staff are unaffected: they are already directory members, and Graph reports that as a
+       * collision the relay records as "nothing to do".
+       *
+       * Same seam and same reason as the email below: an intent written in this transaction, a
+       * worker relay owning the network call. No-op while `ENTRA_GUEST_INVITE_ENABLED` is off.
+       *
+       * IT ALSO TAKES OVER THE EMAIL when it is on, which is why it comes first and why the raw
+       * token goes with it (migration 0124). Both rows used to be written here and drained by two
+       * independent relays — the email relay every 5s AND woken instantly, the guest relay on a 30s
+       * cron with no wake signal — so the invitee got their link in under a second and their
+       * directory object up to 30s later, plus Microsoft's replication lag. Clicking immediately
+       * then cannot authenticate at all (`NO_CONNECTION`, or Entra's own `AADSTS50020`), which is
+       * indistinguishable from the feature being broken. The email is therefore scheduled by
+       * whoever KNOWS the guest is ready: the relay, in the same transaction that marks the row
+       * `sent`. Ordering, not tuning — a faster cron would only shorten the window.
+       */
+      const provisioningQueued = await this.guestInviteScheduler.schedule(tx, {
+        invitationId: inv.id,
+        workspaceId,
+        email: normalizedEmail,
+        inviteToken: rawToken,
       });
+
+      /**
+       * Flag OFF — nothing was enqueued, so no relay pass will ever schedule this email and it has
+       * to go out from here, exactly as it did before guest provisioning existed. Staff onboarding
+       * is the default path and must not regress in any way.
+       *
+       * `idempotencyKey` is `inv.id` in BOTH writers, so a flag flipped between the enqueue and the
+       * relay pass cannot produce two invitation emails: `email_outbox.idempotency_key` is UNIQUE
+       * and both inserts are `ON CONFLICT DO NOTHING`.
+       */
+      if (!provisioningQueued) {
+        await this.scheduleInviteEmail(tx, {
+          to: normalizedEmail,
+          rawToken,
+          workspaceName: workspace.name,
+          ttlDays,
+          idempotencyKey: inv.id,
+        });
+      }
 
       await this.audit.emit(
         {
@@ -662,6 +708,30 @@ export class WorkspaceService {
         ttlDays,
         // Fresh key per send — resendCount was just incremented by rotateForResend.
         idempotencyKey: `${inv.id}:r${inv.resendCount}`,
+      });
+
+      /**
+       * Guest provisioning keys on `inv.id`, NOT on the resend counter, so this is a no-op whenever
+       * the intent already exists — one invitation must never produce two directory writes. What it
+       * does buy: an invitation sent while `ENTRA_GUEST_INVITE_ENABLED` was off has no row at all,
+       * and Resend is then the way to provision it once the tenant grant lands, with no need to
+       * cancel and re-invite.
+       *
+       * NO `inviteToken`, so this row owes no email and the send above stays INLINE — three reasons,
+       * and they all point the same way. (1) A duplicate enqueue is swallowed, so an email hung off
+       * this row would never be scheduled at all in the ordinary case where the row already exists.
+       * (2) Resend has just ROTATED the token, and the queued row still holds the superseded one —
+       * the relay refuses to mail a token whose hash no longer matches, so hanging the email here
+       * would mail nothing. (3) The ordering problem this whole change exists to fix cannot arise:
+       * the 60s resend cooldown starts at invite time, and the guest relay is woken immediately and
+       * polls every 10s, so provisioning has long since resolved (or dead-lettered loudly) by the
+       * time a resend is even permitted. Resend is therefore also the manual escape hatch for an
+       * invitee whose provisioning failed.
+       */
+      await this.guestInviteScheduler.schedule(tx, {
+        invitationId: inv.id,
+        workspaceId,
+        email: inv.email,
       });
 
       await this.audit.emit(

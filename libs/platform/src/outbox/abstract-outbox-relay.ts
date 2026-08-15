@@ -150,6 +150,25 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
   ): Promise<void>;
 
   /**
+   * True when `err` can never succeed on a retry, so the row must go straight to `failed` instead
+   * of spending `maxAttempts` proving it.
+   *
+   * Attempt exhaustion used to be the ONLY route to a terminal status, which is right for a
+   * transient fault and wrong for a refusal: an external API rejecting a malformed payload, or a
+   * permission that has not been granted, answers identically on all five tries — so the row sat
+   * `pending` for ~15 minutes of backoff, and every tick in between re-issued a call that could
+   * not work. Worse, the retries kept the row out of `status = 'failed'`, which is the only place
+   * anyone looks for work that needs a human.
+   *
+   * Default `false` — every existing relay keeps its exact behaviour, and a subclass opts in by
+   * recognising its own error type (never by matching error prose, for the reason
+   * {@link DEAD_LETTER_FIELD} gives).
+   */
+  protected isPermanentFailure(_err: unknown): boolean {
+    return false;
+  }
+
+  /**
    * Exponential backoff with a cap, so a persistently-failing row is retried
    * with increasing spacing instead of burning all `maxAttempts` within
    * seconds (bounded only by the cron/wake cadence). Base 30s, doubling per
@@ -258,8 +277,10 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
             failed += 1;
             const errMsg = err instanceof Error ? err.message : String(err);
             const newAttempts = row.attempts + 1;
+            // A permanent refusal is terminal on the FIRST attempt: see isPermanentFailure().
+            const permanent = this.isPermanentFailure(err);
             const newStatus: 'pending' | 'failed' =
-              newAttempts >= this.maxAttempts ? 'failed' : 'pending';
+              permanent || newAttempts >= this.maxAttempts ? 'failed' : 'pending';
             const nextAttemptAt = new Date(Date.now() + this.backoffDelayMs(newAttempts));
 
             await this.markFailed(tx, row.id, newAttempts, newStatus, errMsg, nextAttemptAt);
@@ -270,8 +291,10 @@ export abstract class AbstractOutboxRelay<TRow extends { id: string; attempts: n
             // transient errors that resolve themselves on the next tick.
             if (newStatus === 'failed') {
               this.logger.error(
-                { rowId: row.id, err, [DEAD_LETTER_FIELD]: this.queueName },
-                `Relay dead-lettered a row after ${newAttempts}/${this.maxAttempts} attempts — it will never be retried`,
+                { rowId: row.id, err, permanent, [DEAD_LETTER_FIELD]: this.queueName },
+                permanent
+                  ? `Relay dead-lettered a row on a permanent refusal after ${newAttempts} attempt(s) — retrying it could not succeed`
+                  : `Relay dead-lettered a row after ${newAttempts}/${this.maxAttempts} attempts — it will never be retried`,
               );
             } else {
               this.logger.error(

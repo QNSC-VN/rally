@@ -105,6 +105,31 @@ describe('AbstractOutboxRelay.relay() — retry/backoff wiring', () => {
     expect(relay.markFailedCalls[0].newAttempts).toBe(5);
   });
 
+  it('a PERMANENT failure is terminal on the first attempt, and the default is still transient', async () => {
+    // Attempt exhaustion used to be the only route to 'failed'. That is right for a transient
+    // fault and wrong for a refusal an external API will answer identically five times: the row
+    // sat 'pending' through ~15 minutes of backoff, every tick re-issuing a call that could not
+    // work, and stayed out of `status = 'failed'` — the only place anyone looks for work that
+    // needs a human.
+    const transient = new TestRelay(makeFakeDb());
+    transient.fetchBatchResult = [{ id: 'row-1', attempts: 0, shouldFail: true }];
+    await transient.relay();
+    // Default isPermanentFailure() is false, so every existing relay keeps its exact behaviour.
+    expect(transient.markFailedCalls[0].newStatus).toBe('pending');
+
+    class PermanentRelay extends TestRelay {
+      protected override isPermanentFailure(): boolean {
+        return true;
+      }
+    }
+    const permanent = new PermanentRelay(makeFakeDb());
+    permanent.fetchBatchResult = [{ id: 'row-1', attempts: 0, shouldFail: true }];
+    await permanent.relay();
+
+    expect(permanent.markFailedCalls[0].newStatus).toBe('failed');
+    expect(permanent.markFailedCalls[0].newAttempts).toBe(1);
+  });
+
   it('marks a successful row sent and does not call markFailed for it', async () => {
     const relay = new TestRelay(makeFakeDb());
     relay.fetchBatchResult = [{ id: 'row-ok', attempts: 0, shouldFail: false }];

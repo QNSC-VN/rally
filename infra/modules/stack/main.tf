@@ -970,6 +970,18 @@ module "migrator" {
     # connection, so SSO authenticates but only invited / already-provisioned
     # users (+ platform-admins) get in. No silent auto-join for any qnsc.vn user.
     SSO_JIT_ENABLED = "false"
+    # EMPTY = any email domain may sign in, which is what admits an invited external
+    # collaborator: they arrive as an Entra B2B GUEST on their own mailbox, and the seed's default
+    # of "qnsc.vn" would have `isEmailDomainAllowed` refuse them with SSO_DOMAIN_NOT_ALLOWED before
+    # the invitation was ever consulted. Safe only BECAUSE of SSO_JIT_ENABLED=false above: the
+    # Rally invitation stays the sole gate, so "any domain" widens who may PRESENT an identity, not
+    # who may join.
+    #
+    # This does NOT drop the qnsc.vn row from sso_connection_domains — that seed block only ever
+    # inserts (ON CONFLICT DO NOTHING) and never deletes, and it is skipped entirely when the list
+    # is empty. Staff therefore keep email-first IdP routing on the same single connection; do not
+    # add a second sso_connections row for guests.
+    SSO_ALLOWED_EMAIL_DOMAINS = ""
   }
 
   secrets = merge({

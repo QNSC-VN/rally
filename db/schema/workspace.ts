@@ -95,6 +95,20 @@ export const workspaceInvitations = workspaceSchema.table(
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * The invitee's Entra B2B GUEST object id in OUR tenant — Graph's `invitedUser.id`, written by
+     * the worker relay once `messaging.guest_invite_outbox` provisioning succeeds (migration 0123).
+     * NULL for every staff invitation (they are already directory members), for every invitation
+     * sent while `ENTRA_GUEST_INVITE_ENABLED` is off, and for the window before the relay runs.
+     *
+     * NOTHING READS IT FOR AUTHORIZATION, deliberately. `acceptInvitation` binds on the email
+     * claim, and must keep doing so while provisioning is ASYNCHRONOUS: the oid can legitimately
+     * still be NULL when the invitee clicks their link, so binding on it would refuse a valid
+     * acceptance. Binding on the oid is the security-correct end state (Microsoft: "apps should
+     * never use the email claim for authorization purposes") and needs a follow-up once
+     * provisioning is synchronous or accept is gated on the row.
+     */
+    entraGuestObjectId: uuid('entra_guest_object_id'),
   },
   (t) => ({
     workspaceIdx: index('ix_wi_workspace').on(t.workspaceId),
