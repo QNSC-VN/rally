@@ -60,5 +60,8 @@
   "addNew": "Add New",
   "allTeams": "All Teams",
   "unassigned": "Unassigned",
-  "noData": "no data"
+  "noData": "no data",
+  "permissionDenied": {
+    "write": "You don't have permission to do that."
+  }
 }
