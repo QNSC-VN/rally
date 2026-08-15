@@ -9,10 +9,9 @@ import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import { useCreateWorkItem, useBacklog, type WorkItem } from '@/features/work-items/api'
 import { useProjectTeams } from '@/features/teams/api'
-import { useProjectMemberOptions } from '@/features/teams/api'
+import { useTeamOwnerOptions } from '@/features/teams/api'
 import { useProjects } from '@/features/projects/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { BRAND } from '@/shared/config/brand'
 import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -30,7 +29,13 @@ interface Props {
   projectId: string
   onClose: () => void
   onCreated?: (item: WorkItem) => void
-  onCreatedWithDetails?: (item: WorkItem) => void
+  /**
+   * REQUIRED, unlike `onCreated`, because `Create with details` is always rendered and does
+   * nothing at all without it — no close, no navigation, no toast, for an item that WAS created
+   * (P5-PI-016: the Feature Children tab passed only `onCreated`). Optional-and-unimplemented is
+   * indistinguishable from a dead button at runtime; required makes it a compile error.
+   */
+  onCreatedWithDetails: (item: WorkItem) => void
 }
 
 export function CreateWorkItemModal({
@@ -50,9 +55,17 @@ export function CreateWorkItemModal({
   const [selectedProjectId, setSelectedProjectId] = useState(projectId)
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
   const [teamId, setTeamId] = useState(team?.teamId ?? '')
-  // Owner defaults to the authenticated creator (still changeable, incl. Unassigned).
-  const currentUserId = useAuthStore((s) => s.user?.id)
-  const [assigneeId, setAssigneeId] = useState(() => currentUserId ?? '')
+  /**
+   * Owner defaults to UNASSIGNED (GAP-P1-WID-007 / P6-TC-007: "Work Item and Task Owner default to
+   * Unassigned").
+   *
+   * It used to seed the authenticated CREATOR's id, so an item created "without an owner" silently
+   * arrived owned by whoever happened to open this modal — and a Task created under it inherited that
+   * (`createTask`: `assigneeId: opts.assigneeId ?? parent.assigneeId`). That is the upstream cause of
+   * P6-TC-007's "null-owner Task attributed to a named member": Team Capacity keys
+   * `ownerId ?? 'Unassigned'` correctly, there was simply never a null owner to key.
+   */
+  const [assigneeId, setAssigneeId] = useState('')
   const [storyPoints, setStoryPoints] = useState('')
   const [parentStoryId, setParentStoryId] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -65,8 +78,6 @@ export function CreateWorkItemModal({
   const createMutation = useCreateWorkItem()
   const { data: projects = [] } = useProjects(workspaceId || undefined)
   const { data: teams = [] } = useProjectTeams(selectedProjectId)
-  // Owner PICKER — the reference feed, not the Admin-only roster.
-  const { data: members = [] } = useProjectMemberOptions(selectedProjectId)
   // Fetch stories for the parent dropdown (only used when type=defect)
   const { data: backlogData } = useBacklog(selectedProjectId, { type: 'story' })
   const stories = backlogData?.data ?? []
@@ -75,6 +86,17 @@ export function CreateWorkItemModal({
   // treated as unset so the backend can't reject the create with
   // PROJECT_TEAM_LINK_NOT_FOUND (DEV-007). Derived — no effect needed.
   const validTeamId = teams.some((t) => t.id === teamId) ? teamId : ''
+
+  /**
+   * Owner OPTIONS follow the TEAM selected in this form, not the project (GAP-P1-WID-007: "Selected
+   * Team offers Unassigned plus its ACTIVE MEMBERS; No Team offers only Unassigned. Do not add No Team
+   * or unrelated Workspace users to Owner options").
+   *
+   * Keyed on `validTeamId` rather than the raw `teamId`, so an inherited team that is not linked to
+   * the selected project asks for nothing instead of 422-ing the feed — the same value the create
+   * itself will send.
+   */
+  const { data: members = [] } = useTeamOwnerOptions(selectedProjectId, validTeamId || null)
 
   // When the project changes, reset project-scoped selections so no stale
   // cross-project team/owner/parent can be submitted.
@@ -133,7 +155,7 @@ export function CreateWorkItemModal({
         parentId: type === 'defect' ? parentStoryId || undefined : undefined,
       })
       if (withDetails) {
-        onCreatedWithDetails?.(item)
+        onCreatedWithDetails(item)
       } else {
         onCreated?.(item)
       }
@@ -273,6 +295,10 @@ export function CreateWorkItemModal({
             onChange={(v) => {
               setTeamId(v)
               setTeamError(null)
+              // The Owner options ARE the team's members (GAP-P1-WID-007), so a selection made
+              // against the previous team is no longer offered — and a draft must not submit a value
+              // its own picker would not show. Choosing "No team" clears it for the same reason.
+              setAssigneeId('')
             }}
             teams={teams}
             /* Blank is a legal, and the DEFAULT, choice — WIC-FR-005 / GAP-P1-CREATE-003. Without

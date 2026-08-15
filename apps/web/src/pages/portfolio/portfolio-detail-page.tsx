@@ -43,7 +43,7 @@ import { useProjectPermissions } from '@/features/access/api'
 import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { useReleaseOptions } from '@/features/releases/api'
 import { useMilestoneOptions } from '@/features/milestones/api'
-import { useUpdateAnyWorkItem } from '@/features/work-items/api'
+import { useUpdateAnyWorkItem, type WorkItem } from '@/features/work-items/api'
 import { CreateWorkItemModal } from '@/features/work-items/ui/create-work-item-modal'
 import { PortfolioItemType } from '@/entities/work-item/model/types'
 import { DetailLayout, DetailSectionHeading, DetailTwoPane } from '@/shared/ui/detail'
@@ -75,8 +75,10 @@ export function PortfolioDetailPage() {
   const [showAddChild, setShowAddChild] = useState(false)
   /** Create a child Feature from an EPIC's Children tab, with this Epic as the fixed parent. */
   const [showAddFeature, setShowAddFeature] = useState(false)
-  // `featureId` lives on the work-item UPDATE body, so a new child is created first and linked
-  // second — the same two-step the e2e fixtures use to attach a Story to a Feature.
+  // `featureId` lives on the work-item UPDATE body and NOT on `CreateWorkItemSchema`, so a new
+  // child is created first and linked second — the same two-step the e2e fixtures use to attach a
+  // Story to a Feature. See `linkCreatedChild`: the link belongs to BOTH create buttons, so it
+  // cannot live inside one of their callbacks.
   const linkChild = useUpdateAnyWorkItem()
 
   const { data: server, isLoading } = usePortfolioItem(itemId)
@@ -176,6 +178,41 @@ export function PortfolioDetailPage() {
       })
     },
   )
+
+  /**
+   * `Add Item`'s ONE completion path — for `Create` and for `Create with details` alike.
+   *
+   * The Feature link used to live inside the `onCreated` callback, which made it the create
+   * button's private business: `Create with details` never ran it, so that button would have
+   * produced an UNLINKED Story that never appeared on the tab that created it. It also passed no
+   * `onCreatedWithDetails` at all, and the modal's call was optional — so the button did nothing
+   * whatsoever: no close, no navigation, no toast (P5-PI-016).
+   *
+   * Hoisted rather than duplicated, because the two paths differ ONLY in what happens after the
+   * link. Sharing it is what guarantees the BA's "exactly ONE item, with its prefills preserved"
+   * on both: one POST, one PATCH, no branch that can skip either.
+   *
+   * The navigation waits for the link. `/item/$itemKey` reads the item fresh, so racing it against
+   * the PATCH is how a reader arrives at a detail page whose `Feature` field is still empty — the
+   * prefill would look lost even though it landed a moment later. A FAILED link still navigates:
+   * the Story exists either way, and the detail page is where the reader can set the Feature by
+   * hand. The toast says what went wrong; leaving them on a Children tab that does not list the
+   * row they just created would hide it instead.
+   */
+  async function linkCreatedChild(created: WorkItem, withDetails: boolean) {
+    setShowAddChild(false)
+    try {
+      await linkChild.mutateAsync({ id: created.id, input: { featureId: itemId } })
+      // No success toast on the with-details path: the navigation IS the feedback, exactly as
+      // Backlog's own `onCreatedWithDetails` treats it.
+      if (!withDetails) notify.success(t('detail.children.added', { key: created.itemKey }))
+    } catch (err) {
+      notify.error(errorMessage(err))
+    }
+    if (withDetails) {
+      void navigate({ to: '/item/$itemKey', params: { itemKey: created.itemKey } })
+    }
+  }
 
   const setArchived = useSetPortfolioItemArchived()
   // SRS.md:471 — Archive is DISABLED while an Epic still has active child Features, rather
@@ -396,21 +433,16 @@ export function PortfolioDetailPage() {
         §5.2's `Add Item`: the SAME creation flow Backlog uses, restricted to Story/Defect (the
         modal already offers only those two), pre-filled with this Feature's Project, and linked
         to the Feature on the way out.
-        `featureId` is on the UPDATE body, not create, so the link is a second call — the same
-        two-step the e2e fixtures use. It runs before the toast so a failed link is reported as a
-        failure rather than hidden behind a success message.
+        BOTH buttons run the same completion path — see `linkCreatedChild`. The link runs before
+        the toast so a failed link is reported as a failure rather than hidden behind a success
+        message.
       */}
       {showAddChild && server?.projectId && (
         <CreateWorkItemModal
           projectId={server.projectId}
           onClose={() => setShowAddChild(false)}
-          onCreated={(created) => {
-            setShowAddChild(false)
-            void linkChild
-              .mutateAsync({ id: created.id, input: { featureId: itemId } })
-              .then(() => notify.success(t('detail.children.added', { key: created.itemKey })))
-              .catch((err: unknown) => notify.error(errorMessage(err)))
-          }}
+          onCreated={(created) => void linkCreatedChild(created, false)}
+          onCreatedWithDetails={(created) => void linkCreatedChild(created, true)}
         />
       )}
 

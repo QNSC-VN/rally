@@ -514,6 +514,22 @@ export class PortfolioItemsService {
    *
    * Deliberately does NOT touch child Features when an Epic moves: "Epic remains
    * Project-level and changing its Project does not move child Features" (SRS §3.1).
+   *
+   * And deliberately does NOT touch `work_items.feature_id` when a FEATURE moves, which is the
+   * one write that can manufacture a cross-project link at scale — the Stories stay in the old
+   * project, still linked. Three reasons it stays that way, recorded because the state LOOKS like
+   * a bug on the Children tab (P5-PI-017):
+   *   • the link is LEGAL by the write rule. `WorkItemsService.assertFeatureLinkable` permits a
+   *     cross-project Feature link on purpose, because `rollupSubqueries` matches `feature_id`
+   *     alone — Rally's own model. Manufacturing it here breaks nothing that write allows.
+   *   • CLEARING the children would destroy a planner's linkage silently and zero this Feature's
+   *     rollup for work that really is its own, on a write that named none of those rows.
+   *   • REFUSING the move (the `PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION` shape) would contradict
+   *     `assertFeatureLinkable` and block the ordinary case: nearly every Feature has children,
+   *     so a Feature could effectively never change project.
+   * What follows from a legal-but-unofferable link is a READER problem — the project-scoped
+   * `Feature` picker cannot label it — and it is fixed on the reader, not by re-scoping
+   * membership. See `PortfolioItemDrizzleRepository.listChildren`.
    */
   private async applyProjectMove(
     workspaceId: string,
