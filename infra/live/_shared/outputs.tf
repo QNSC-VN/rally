@@ -22,3 +22,8 @@ output "cloudflare_ipv4" {
   value       = try(data.terraform_remote_state.platform.outputs.cloudflare_ipv4, [])
   description = "Cloudflare IPv4 ranges from qnsc-infra — prod stacks use for ALB ingress allow-list"
 }
+
+output "ses_identity_arn" {
+  value       = aws_sesv2_email_identity.mail_domain.arn
+  description = "SES domain identity for outbound mail — env stacks scope their send permission to it."
+}
