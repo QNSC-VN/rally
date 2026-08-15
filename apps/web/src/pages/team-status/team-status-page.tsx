@@ -18,6 +18,7 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
+import { PERMISSION } from '@/shared/config/permissions'
 import { useIterationOptions } from '@/features/iterations/api'
 import {
   useTeamStatus,
@@ -237,12 +238,18 @@ export function TeamStatusPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-ui-lg text-foreground-subtle">
         <span>No iterations in this project/team yet.</span>
-        <button
-          onClick={() => navigate({ to: '/timeboxes' })}
-          className="cursor-pointer text-ui-md font-semibold text-primary-light hover:underline"
-        >
-          Go to Timeboxes →
-        </button>
+        {/* The call to action is offered ONLY to a reader who can open the destination. §3.2:82 marks
+            `Plan > Timeboxes` Hidden for an Editor, so for them this was the single next step on an
+            otherwise empty screen and it landed on Access Denied — a dead end presented as the way
+            out. With no route to offer, the sentence above stands on its own. */}
+        {can(PERMISSION.TIMEBOX_VIEW) && (
+          <button
+            onClick={() => navigate({ to: '/timeboxes' })}
+            className="cursor-pointer text-ui-md font-semibold text-primary-light hover:underline"
+          >
+            Go to Timeboxes →
+          </button>
+        )}
       </div>
     )
   }
