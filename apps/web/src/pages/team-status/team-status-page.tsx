@@ -459,6 +459,17 @@ function MemberGroup({
 }) {
   const [expanded, setExpanded] = useState(false)
   const updateCapacity = useUpdateCapacity(projectId, teamId, iterationId)
+  /**
+   * The `Unassigned` group has no member to plan capacity for, so its Capacity cell is a READ.
+   *
+   * `owner.id` is the literal string `'unassigned'` on that group, and `UpdateCapacitySchema` requires
+   * `userId` to be a uuid — so the cell was always a guaranteed 400 with a "Validation failed" toast
+   * and no explanation. GAP-P3-TS-008 also fixes the group's population (an off-roster owner's task now
+   * lands here rather than in a named group of its own), which makes the cell reachable far more often
+   * than before: it must not be an inline edit that cannot succeed. The AC's own wording is the rule —
+   * "Null-owner Tasks appear under Unassigned WITH 0h CAPACITY".
+   */
+  const isUnassignedGroup = group.owner.id === 'unassigned'
 
   function commitCapacity(raw: string) {
     const val = Number(raw)
@@ -539,7 +550,7 @@ function MemberGroup({
           <InlineEditableCell
             fullCell
             value={String(group.capacityHours)}
-            canEdit={canEdit}
+            canEdit={canEdit && !isUnassignedGroup}
             onCommit={commitCapacity}
             className="font-mono text-ui-sm text-muted-foreground tabular-nums"
             inputClassName="text-right font-mono text-ui-sm text-foreground"

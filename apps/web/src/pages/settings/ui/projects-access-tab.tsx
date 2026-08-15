@@ -59,6 +59,16 @@ import {
   type AccessLevel,
 } from '@/shared/config/access-levels'
 
+/**
+ * Best-available display label for a roster row — and the string the typed removal confirmation
+ * asks for, which is why it is a function rather than the same three-way `??` written out four
+ * times. A typed confirmation whose expected value is computed differently from the name on screen
+ * is unsatisfiable, so the two have to come from one place.
+ */
+function memberLabel(m: ProjectMember): string {
+  return m.displayName ?? m.email ?? m.userId
+}
+
 export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA: boolean }) {
   const { t } = useTranslation('settings')
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
@@ -168,7 +178,7 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
               className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5 last:border-b-0"
             >
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                <OwnerAvatar name={m.displayName ?? m.email ?? m.userId} size={20} />
+                <OwnerAvatar name={memberLabel(m)} size={20} />
                 <div className="min-w-0">
                   <p className="truncate text-ui-sm font-medium text-foreground">
                     {m.displayName ?? m.email ?? '--'}
@@ -196,7 +206,7 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
                     <SearchableSelect
                       variant="cell"
                       value={m.accessLevel}
-                      ariaLabel={`Access level for ${m.displayName ?? m.email ?? m.userId}`}
+                      ariaLabel={`Access level for ${memberLabel(m)}`}
                       options={accessSelectOptions}
                       onChange={(v) => handleSelectLevel(m, v as AccessLevel)}
                     />
@@ -232,15 +242,25 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
         </div>
       )}
 
+      {/*
+        TYPED target confirmation (GAP-P4-SET-004) — the BA reserves that for exactly this action
+        ("Remove User Access requires typed target confirmation"), and it is the one destructive
+        action on this roster that is not reversible by an equal-and-opposite click: it deletes the
+        `project_members` row AND every one of that user's `team_members` rows for this project
+        (§5.2), so re-adding them restores the level but not the team memberships. The dialog already
+        named the target; it committed on one click of a 13px icon in a dense row.
+
+        Same shape and same copy source as the Members grid's Remove Access
+        (`members-tab.tsx`), which is the model this aligns to.
+      */}
       <ConfirmDialog
         open={!!removeTarget}
-        title="Remove project access"
+        title={t('access.removeAccessTitle')}
         message={
-          removeTarget
-            ? `Remove ${removeTarget.displayName ?? removeTarget.email ?? removeTarget.userId} from this project? They will lose all access (No Access) and their Team memberships will be removed.`
-            : ''
+          removeTarget ? t('access.removeAccessConfirm', { name: memberLabel(removeTarget) }) : ''
         }
-        confirmLabel="Remove Access"
+        confirmText={removeTarget ? memberLabel(removeTarget) : undefined}
+        confirmLabel={t('access.removeAccessConfirmLabel')}
         destructive
         pending={removeMember.isPending}
         onConfirm={handleRemove}

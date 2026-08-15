@@ -538,7 +538,28 @@ export class WorkItemsService {
     return this.createWorkItem(actor, parent.projectId, 'task', title, {
       ...opts,
       parentId: parent.id,
-      assigneeId: opts.assigneeId ?? parent.assigneeId ?? undefined,
+      // Owner is NOT inherited from the parent, and that absence is the point.
+      // GAP-P1-WID-007 states the rule without a carve-out — "Work Item and Task Owner default to
+      // Unassigned" — and where the BA wants a field derived from the parent it says so in words:
+      // three times for Iteration (P1-TASK-011, P2-IS-024), explicitly for Team (P1-04, just below).
+      // It wrote no such sentence for Owner.
+      //
+      // This used to be `opts.assigneeId ?? parent.assigneeId`, and because `CreateTaskSchema`'s
+      // `assigneeId` is `.optional()` and NOT `.nullable()` (unlike the update DTO), there was NO WAY
+      // through the API to create a genuinely unowned task under an owned Story. So Team Capacity's
+      // `Unassigned` row and Team Status's Unassigned group could never show a real planning gap —
+      // which is exactly what P6-TC-007 reported as "a null-owner Task attributed to a named member".
+      // The projection was innocent; every task simply had an owner nobody chose.
+      //
+      // It is also unlike the two fields it sat between. Team and Iteration decide WHICH timebox and
+      // roster the work belongs to, and the app actively keeps them in step (ITERATION_TEAM_MISMATCH,
+      // trg_task_iteration_from_parent, trg_cascade_iteration_to_tasks). Nothing ties a task's owner
+      // to its parent's, so the two diverged one edit later — a derived value with no maintainer.
+      // Splitting a Story into five tasks assigned all five to whoever owned the Story, who is
+      // usually the person breaking the work down rather than the person doing it.
+      //
+      // The convenience it bought is better spent as a VISIBLE prefill in the Add Task modal, where
+      // the reader can see it and change it, than as a server default they can neither see nor refuse.
       // SRS P1-04 (Task Management): team defaults to the parent's team unless
       // explicitly provided, keeping the task's project/team compatible with
       // its parent. createWorkItem still validates a provided team is linked.

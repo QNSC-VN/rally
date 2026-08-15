@@ -149,8 +149,10 @@ const homeRoute = createRoute({
   component: lazyPage(() => import('@/pages/home/home-page'), 'HomePage'),
 })
 
-// `Manage Projects` is not a top-nav row — it opens from the workspace switcher — so its code comes
-// from `NON_NAV_SURFACES` rather than a nav entry. §3.1:67 ("View `Workspaces & Projects`") is Hidden
+// The Projects list is not a top-nav row — it opens from Settings > Workspaces & Projects — so its
+// code comes from `NON_NAV_SURFACES` rather than a nav entry. (Until GAP-P0-SHELL-007 it also had a
+// `Manage Projects` link in the Project/Team switcher; that dropdown may only change delivery
+// context, so the gear is now the only doorway.) §3.1:67 ("View `Workspaces & Projects`") is Hidden
 // only for No Access, so `project:view` is the code, and the pair below is the whole reason it needed
 // one: a record route folds onto its list surface, and this list had nothing to fold.
 const projectsRoute = createRoute({

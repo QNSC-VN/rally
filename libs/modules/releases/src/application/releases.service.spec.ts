@@ -84,6 +84,23 @@ const makeAccess = () => ({
   assertProjectPermission: vi.fn().mockResolvedValue(undefined),
 });
 
+/**
+ * A fully chainable, awaitable `select()` stub for the two-branch Artifacts query.
+ *
+ * The generic chain in `beforeEach` makes `.limit()` its own terminal (the capacity-plan lookup), and
+ * it knows nothing of `leftJoin`/`orderBy`. The artifact branches end
+ * `.leftJoin().where().orderBy().limit()`, so they need a chain where every link returns the chain and
+ * the whole thing resolves to one supplied result.
+ */
+const makeArtifactChain = (result: unknown) => {
+  const chain: Record<string, unknown> = {};
+  for (const key of ['from', 'innerJoin', 'leftJoin', 'where', 'groupBy', 'orderBy', 'limit']) {
+    chain[key] = vi.fn().mockReturnValue(chain);
+  }
+  chain.then = (resolve: (v: unknown) => void) => resolve(result);
+  return chain;
+};
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('ReleasesService', () => {
@@ -95,6 +112,8 @@ describe('ReleasesService', () => {
   let repo: ReturnType<typeof makeRepo>;
   let projects: ReturnType<typeof makeProjects>;
   let access: ReturnType<typeof makeAccess>;
+  /** The stubbed drizzle handle, so a spec can pin one query's result per call. */
+  let db: { select: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     repo = makeRepo();
@@ -134,15 +153,13 @@ describe('ReleasesService', () => {
       (chain as { then: unknown }).then = (resolve: (v: unknown) => void) => resolve(statRows);
       return chain;
     };
-    const mockDrizzle = {
-      select: vi.fn(() => makeChain()),
-    };
+    db = { select: vi.fn(() => makeChain()) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ReleasesService,
         { provide: RELEASE_REPOSITORY, useValue: repo },
-        { provide: DRIZZLE, useValue: mockDrizzle },
+        { provide: DRIZZLE, useValue: db },
         { provide: ProjectsService, useValue: projects },
         { provide: AccessService, useValue: access },
         { provide: ActivityLogger, useValue: activityMock() },
@@ -165,6 +182,103 @@ describe('ReleasesService', () => {
       await expect(service.listReleases(actor, 'bad', { limit: 25, cursor: null })).rejects.toThrow(
         'PROJECT_NOT_FOUND',
       );
+    });
+  });
+
+  // ── listReleaseArtifacts ──────────────────────────────────────────────────
+  //
+  // `GAP-P3-REL-002`: a release's artifacts come from TWO tables. `work_items.release_id` is the
+  // Story/Defect half and `portfolio_items.release_id` is the Feature half — the column the Portfolio
+  // Feature detail writes, present in the schema since the Feature gained a Release field, and never
+  // read here. So a Feature assigned to a release showed the release on the Feature, survived a
+  // reload, and the release's Artifacts tab reported `0 items`. The seed has had `FE-1 → RE-1` all
+  // along, so every environment displayed the fault.
+
+  describe('listReleaseArtifacts', () => {
+    const story = {
+      id: 'wi-1',
+      itemKey: 'US-11',
+      type: 'story',
+      title: 'Guest checkout',
+      scheduleState: 'in_progress',
+      priority: 'high',
+      assigneeId: 'user-1',
+      assigneeName: 'Dev One',
+      iterationId: 'it-1',
+      releaseId: 'rel-1',
+      storyPoints: 5,
+      createdAt: now,
+      updatedAt: now,
+    };
+    /** A Feature carries no Schedule State, no priority column and no leaf Plan Estimate. */
+    const feature = {
+      id: 'pi-1',
+      itemKey: 'FE-6',
+      type: 'feature',
+      title: 'Checkout revamp',
+      scheduleState: '',
+      priority: '',
+      assigneeId: 'user-2',
+      assigneeName: 'Owner Two',
+      iterationId: null,
+      releaseId: 'rel-1',
+      storyPoints: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    beforeEach(() => {
+      repo.findById.mockResolvedValue(mockRelease());
+    });
+
+    it('serves the Story/Defect and the Feature in one page, with the summed total', async () => {
+      // FOUR selects, in the order the `Promise.all` array evaluates: the work-item page, the
+      // portfolio page, then a COUNT for each branch.
+      db.select
+        .mockReturnValueOnce(makeArtifactChain([{ ...story, sortKey: '20260101000000000001' }]))
+        .mockReturnValueOnce(makeArtifactChain([{ ...feature, sortKey: '20260101000000000002' }]))
+        .mockReturnValueOnce(makeArtifactChain([{ total: 1 }]))
+        .mockReturnValueOnce(makeArtifactChain([{ total: 1 }]));
+
+      const page = await service.listReleaseArtifacts(actor, 'rel-1', { limit: 25, cursor: null });
+
+      // Merged newest-first on the exact MICROSECOND key — both fixtures share one `now`, so a
+      // millisecond comparison would tie and fall through to the id instead. The key itself never
+      // reaches the response.
+      expect(page.data).toEqual([feature, story]);
+      // Summed, because the two branches are disjoint by construction: two tables, two id spaces.
+      expect(page.pageInfo.total).toBe(2);
+      expect(page.pageInfo.hasNextPage).toBe(false);
+    });
+
+    it('pages the UNION, not each branch — `limit + 1` per branch, `limit` of the merge', async () => {
+      // Three work items and one Feature against a limit of 2. A per-branch limit would have served
+      // both branches' first rows; the merge must serve the two newest of the union and report a next
+      // page. `limit + 1` per branch is what makes that exact.
+      db.select
+        .mockReturnValueOnce(
+          makeArtifactChain([
+            { ...story, id: 'wi-3', sortKey: '20260101000000000003' },
+            { ...story, id: 'wi-2', sortKey: '20260101000000000002' },
+            { ...story, id: 'wi-1', sortKey: '20260101000000000001' },
+          ]),
+        )
+        .mockReturnValueOnce(makeArtifactChain([{ ...feature, sortKey: '20260101000000000004' }]))
+        .mockReturnValueOnce(makeArtifactChain([{ total: 3 }]))
+        .mockReturnValueOnce(makeArtifactChain([{ total: 1 }]));
+
+      const page = await service.listReleaseArtifacts(actor, 'rel-1', { limit: 2, cursor: null });
+
+      expect(page.data.map((r) => r.id)).toEqual(['pi-1', 'wi-3']);
+      expect(page.pageInfo.hasNextPage).toBe(true);
+      expect(page.pageInfo.total).toBe(4);
+    });
+
+    it('loads the release first, so an unknown id is a 404 and not an empty page', async () => {
+      repo.findById.mockResolvedValue(null);
+      await expect(
+        service.listReleaseArtifacts(actor, 'bad', { limit: 25, cursor: null }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

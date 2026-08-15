@@ -73,14 +73,13 @@ export const CAPACITY_TEAM_COLUMNS: ColumnSpec<CapacityPlanTeam, unknown, TeamCo
   },
   // Its own column, with a header, rather than a bare digit beside the team name: a loose
   // number there reads as "1 what?" — and Rally gives the count a column too.
-  {
-    key: 'features',
-    label: 'Features',
-    defaultWidth: 84,
-    minWidth: 70,
-    align: 'right',
-    sortCol: 'features',
-  },
+  //
+  // LEFT-aligned, and it is the one numeric column on this grid that is: SRS §121 spells it out
+  // ("Count of allocated Features, left-aligned"), where every other number here is a share of the
+  // capacity baseline the bar draws and reads down a right edge. This one is a count of rows, not a
+  // quantity to compare against the ceiling — and it carries the warning badge beside it, which hangs
+  // off the leading edge of the cell.
+  { key: 'features', label: 'Features', defaultWidth: 84, minWidth: 70, sortCol: 'features' },
   // The bar is UNLABELLED and sits beside the numbers, not instead of them. Rally shows both: the
   // bar answers "is this team over?" at a glance, the numbers answer "by how much" — and an
   // earlier version of this grid collapsed all three values into the bar, so the numbers could
@@ -295,10 +294,16 @@ export const CAPACITY_ALLOCATION_COLUMNS: ColumnSpec<CapacityAllocation, unknown
   { key: 'id', label: 'ID', defaultWidth: 92, minWidth: 80, locked: true },
   { key: 'name', label: 'Name', defaultWidth: 176, minWidth: 130, locked: true, grow: true },
   { key: 'state', label: 'State', defaultWidth: 112, minWidth: 90 },
-  // Where this row's work came FROM: `—` on the Feature's owning team, `From {owner}` on any other.
+  // Where this row's work came FROM: `EMPTY_VALUE` (`--`) on the Feature's own team, `From {owner}` on
+  // any other. The placeholder is `--` and not the `—` the BA writes in prose (P5-CP-025) — that
+  // string is fixed by `EMPTY_VALUE`'s docblock, "not an em-dash, because that is what real Rally
+  // renders".
   { key: 'allocation', label: 'Allocation', defaultWidth: 124, minWidth: 90 },
-  // Placeholder, per the BA: "every row shows `—`" until there is a dependency model.
-  // The label is the widest thing in this column, so the width is set by it, not by the `—`/`0`.
+  // Placeholder, per the BA — but it shows `0`, not the dash the catalog suggests, because Rally's
+  // column is a COUNT and dependencies are unimplemented rather than unknown. That is a DECLARED
+  // divergence (see the repo's CLAUDE.md, "Nested `Dependencies` renders `0`, not `--`") and the one
+  // place the app's absent-value rule is deliberately not applied; do not "fix" it on sight.
+  // The label is the widest thing in this column, so the width is set by it, not by the `0`.
   { key: 'dependencies', label: 'Dependencies', defaultWidth: 124, minWidth: 104, align: 'right' },
   { key: 'progress', label: '', defaultWidth: 130, minWidth: 100 },
   { key: 'complete', label: 'Complete', defaultWidth: 86, minWidth: 72, align: 'right' },

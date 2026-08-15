@@ -36,6 +36,7 @@ globalThis.ResizeObserver ??= NoopResizeObserver as unknown as typeof ResizeObse
 const mockGET = apiClient.GET as ReturnType<typeof vi.fn>
 const mockPATCH = apiClient.PATCH as ReturnType<typeof vi.fn>
 const mockPOST = apiClient.POST as ReturnType<typeof vi.fn>
+const mockDELETE = apiClient.DELETE as ReturnType<typeof vi.fn>
 
 const ADMIN = {
   id: 'pm-1',
@@ -168,5 +169,65 @@ describe('ProjectAccessList — §5.2 level + team selection', () => {
     // All Teams is the absence of a scope, so the body carries no `teamIds` for the server to
     // reconcile against.
     expect(mockPOST.mock.calls[0][1].body).not.toHaveProperty('teamIds')
+  })
+})
+
+/**
+ * GAP-P4-SET-004 — `Remove Access` is the one action here the BA singles out for TYPED target
+ * confirmation, and it is the one that cannot be undone by an equal-and-opposite click: it deletes
+ * the `project_members` row AND every one of that user's `team_members` rows for this project (§5.2),
+ * so re-adding them restores the level but not the memberships.
+ *
+ * The assertions are about the WRITE being blocked, not about a dialog appearing. It already named
+ * the target and still committed on one click of a 13px icon in a dense row.
+ */
+describe('ProjectAccessList — removing access needs the name typed', () => {
+  beforeEach(() => {
+    mockGET.mockReset()
+    mockPATCH.mockReset()
+    mockPOST.mockReset()
+    mockDELETE.mockReset()
+    mockDELETE.mockResolvedValue({ data: undefined, error: undefined, response: { status: 204 } })
+    mockGET.mockImplementation((path: string) => {
+      if (path === '/v1/projects/{id}/members') return Promise.resolve({ data: [ADMIN] })
+      if (path === '/v1/projects/{id}/teams') return Promise.resolve({ data: TEAMS })
+      return Promise.resolve({ data: [] })
+    })
+  })
+
+  async function openRemove() {
+    // 'Remove access' is the icon; 'Remove Access' is the dialog's confirm — the role-name match is
+    // case-sensitive, so the two never collide.
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove access' }))
+    return screen.findByText(/Remove Ada Admin from this project\?/)
+  }
+
+  it('keeps the confirm disabled until the name matches, and DELETEs nothing before that', async () => {
+    renderList()
+    await openRemove()
+
+    expect(screen.getByRole('button', { name: 'Remove Access' })).toBeDisabled()
+
+    fireEvent.change(screen.getByPlaceholderText('Ada Admin'), { target: { value: 'ada admin' } })
+    expect(screen.getByRole('button', { name: 'Remove Access' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Access' }))
+    expect(mockDELETE).not.toHaveBeenCalled()
+  })
+
+  it('removes the access once the exact name is typed', async () => {
+    renderList()
+    await openRemove()
+    fireEvent.change(screen.getByPlaceholderText('Ada Admin'), { target: { value: 'Ada Admin' } })
+
+    const confirm = screen.getByRole('button', { name: 'Remove Access' })
+    await waitFor(() => expect(confirm).not.toBeDisabled())
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(mockDELETE).toHaveBeenCalled())
+    expect(mockDELETE.mock.calls[0][0]).toBe('/v1/projects/{id}/members/{userId}')
+    expect(mockDELETE.mock.calls[0][1]).toMatchObject({
+      params: { path: { id: 'p-1', userId: 'u-1' } },
+    })
   })
 })

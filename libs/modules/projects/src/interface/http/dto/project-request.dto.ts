@@ -87,6 +87,18 @@ export const ProjectQuerySchema = PageQuerySchema;
 
 export class ProjectQueryDto extends createZodDto(ProjectQuerySchema) {}
 
+// ── Member-options query (GAP-P1-WID-007) ────────────────────────────────────
+//
+// `teamId` narrows the assignee feed to that Team's ACTIVE roster: "Selected Team offers Unassigned
+// plus its ACTIVE MEMBERS; No Team offers only Unassigned." OPTIONAL, and absent deliberately means
+// the whole project — the same feed still resolves an owner's NAME on grids where a row's owner may
+// no longer be on the team, and narrowing that would reprint them as `Unassigned`.
+export const MemberOptionsQuerySchema = z.object({
+  teamId: z.string().uuid().optional(),
+});
+
+export class MemberOptionsQueryDto extends createZodDto(MemberOptionsQuerySchema) {}
+
 // ── Labels ───────────────────────────────────────────────────────────────────
 
 export const CreateLabelSchema = z.object({

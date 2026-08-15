@@ -235,6 +235,48 @@ export function useProjectMemberOptions(projectId: string | undefined) {
 }
 
 /**
+ * OWNER OPTIONS for a record that carries a Team (GAP-P1-WID-007).
+ *
+ * "Work Item and Task Owner default to Unassigned. Selected Team offers Unassigned plus its ACTIVE
+ * MEMBERS; No Team offers only Unassigned. Do not add No Team or unrelated Workspace users to Owner
+ * options." Both halves live here so no caller can implement one and forget the other:
+ *
+ *  - a `teamId` reads the same `member-options` route with `?teamId=`, which returns that team's
+ *    active roster (one feed, one gate — the route still carries `project:view` on the path id);
+ *  - NO `teamId` never fetches at all, so `data` is `undefined` and the caller's `?? []` yields the
+ *    empty list the rule asks for. Falling through to the project-wide feed here is the defect this
+ *    hook exists to make unreachable.
+ *
+ * This is NOT a replacement for {@link useProjectMemberOptions}. That one stays the id→name source:
+ * an item's CURRENT owner may have left the team, and a picker whose label resolves out of the
+ * narrowed list reprints them as the placeholder — the `searchable-select` "absent value reads as
+ * unset" defect. Callers pass the already-set owner alongside these options.
+ */
+export function useTeamOwnerOptions(
+  projectId: string | undefined,
+  teamId: string | null | undefined,
+) {
+  return useQuery({
+    queryKey: [
+      ...teamKeys.projectMembers(projectId ?? ''),
+      'options',
+      'team',
+      teamId ?? '',
+    ] as const,
+    queryFn: async () => {
+      if (!projectId || !teamId) return []
+      const { data, error, response } = await apiClient.GET('/v1/projects/{id}/member-options', {
+        params: { path: { id: projectId }, query: { teamId } },
+      })
+      if (error) throw new Error(apiErrorMessage(error, response.status))
+      return data ?? []
+    },
+    enabled: !!projectId && !!teamId,
+    staleTime: 60_000,
+  })
+}
+
+/**
  * The ADMINISTRATIVE roster: access level, status and team count per member.
  *
  * Workspace Admin / Project Admin only (§3.1:71). For an owner picker or an owner NAME, use

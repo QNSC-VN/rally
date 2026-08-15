@@ -1,0 +1,231 @@
+/**
+ * The Work Item sidebar's three "read the RECORD, not the selection" rules.
+ *
+ *  1. GAP-P1-WID-007 — Owner offers Unassigned plus the item's Team's ACTIVE members; with no Team it
+ *     offers Unassigned only; and an owner who has since left the team is still NAMED.
+ *  2. P6-E2E-003 — the Project field is the item's own project, never `useAppContext()`'s selection.
+ *  3. The iteration LABEL comes from the reference feed, so an item in an accepted iteration does not
+ *     render the "No Iteration" placeholder.
+ *
+ * Every feature module is mocked by factory rather than by spying on the HTTP client, deliberately:
+ * `vi.mock` with a factory replaces the whole module, so if this component drifts back onto
+ * `useProjectMemberOptions` for its OPTIONS, or onto `useAppContext` for the project, the import
+ * simply is not there and the test fails hard instead of quietly rendering a wider list.
+ */
+import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
+
+const teamOwnerOptions = vi.fn()
+const projectMemberOptions = vi.fn()
+const recordProject = vi.fn()
+const assignableIterations = vi.fn()
+const iterationOptions = vi.fn()
+
+vi.mock('@/features/teams/api', () => ({
+  useProjectTeams: () => ({ data: [{ id: 'team-1', name: 'Team Alpha', key: 'TA' }] }),
+  useProjectMemberOptions: (...args: unknown[]) => projectMemberOptions(...args),
+  useTeamOwnerOptions: (...args: unknown[]) => teamOwnerOptions(...args),
+}))
+vi.mock('@/shared/lib/deep-link-project', () => ({
+  useRecordProject: (...args: unknown[]) => recordProject(...args),
+}))
+vi.mock('@/features/iterations/api', () => ({
+  useAssignableIterations: (...args: unknown[]) => assignableIterations(...args),
+  useIterationOptions: (...args: unknown[]) => iterationOptions(...args),
+}))
+vi.mock('@/features/work-items/api', () => ({
+  useWorkItem: () => ({ data: undefined }),
+  useWorkItemLabels: () => ({ data: [] }),
+  useWorkItemMilestones: () => ({ data: [] }),
+  useSetWorkItemMilestones: () => ({ mutateAsync: vi.fn() }),
+  useTaskTotals: () => ({ data: undefined }),
+  useBacklog: () => ({ data: undefined }),
+}))
+vi.mock('@/features/releases/api', () => ({ useReleases: () => ({ data: [] }) }))
+vi.mock('@/features/portfolio/api', () => ({
+  usePortfolioFeatureOptions: () => ({ data: [] }),
+}))
+vi.mock('@/features/milestones/api', () => ({ useMilestoneOptions: () => ({ data: [] }) }))
+vi.mock('@/features/access/api', () => ({
+  useProjectPermissions: () => ({ can: () => true }),
+}))
+
+import '@/shared/i18n/i18n'
+import { DetailSidebar } from './detail-sidebar'
+import type { WorkItem } from '@/features/work-items/api'
+
+const ALICE = { userId: 'alice', displayName: 'Alice Smith', email: 'alice@qnsc.dev' }
+const OLIVE = { userId: 'olive', displayName: 'Olive Outsider', email: 'olive@qnsc.dev' }
+
+const item = (over: Partial<WorkItem> = {}): WorkItem =>
+  ({
+    id: 'wi-1',
+    itemKey: 'US-1',
+    type: 'story',
+    title: 'Wire the SSO callback',
+    projectId: 'proj-record',
+    teamId: 'team-1',
+    assigneeId: null,
+    parentId: null,
+    iterationId: null,
+    releaseId: null,
+    featureId: null,
+    scheduleState: 'defined',
+    flowState: null,
+    priority: 'none',
+    storyPoints: null,
+    estimateHours: null,
+    todoHours: null,
+    actualHours: null,
+    isBlocked: false,
+    blockedReason: null,
+    foundInEnvironment: null,
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-01T00:00:00.000Z',
+    ...over,
+  }) as unknown as WorkItem
+
+function setup() {
+  // Defaults every test may override. The project-wide feed always holds BOTH people, so a narrowed
+  // Owner list can only come from `useTeamOwnerOptions` and never from a client-side filter.
+  projectMemberOptions.mockReturnValue({ data: [ALICE, OLIVE] })
+  teamOwnerOptions.mockReturnValue({ data: [ALICE] })
+  recordProject.mockReturnValue({
+    projectId: 'proj-record',
+    projectKey: 'TEST',
+    projectName: 'Test Project',
+  })
+  assignableIterations.mockReturnValue({ data: [] })
+  iterationOptions.mockReturnValue({ data: [] })
+}
+
+function renderSidebar(over: Partial<WorkItem> = {}) {
+  return render(
+    <DetailSidebar item={item(over)} onUpdate={vi.fn()} updating={false} readOnly={false} />,
+  )
+}
+
+/**
+ * The option labels a `SearchableSelect` trigger opens onto.
+ *
+ * Matched as substrings, because an owner row's accessible text carries the `OwnerAvatar`'s initials
+ * ahead of the name (`ASAlice Smith`) — asserting equality would be asserting the avatar.
+ */
+function openOptions(label: string): string[] {
+  fireEvent.click(screen.getByRole('button', { name: label }))
+  const list = screen.getByRole('dialog')
+  return within(list)
+    .getAllByRole('button')
+    .map((b) => b.textContent?.trim() ?? '')
+    .filter((t) => t !== '')
+}
+
+const has = (options: string[], text: string) => options.some((o) => o.includes(text))
+
+describe('DetailSidebar — Owner options are team-scoped (GAP-P1-WID-007)', () => {
+  it("offers the item's TEAM members, not every project member", () => {
+    setup()
+    renderSidebar({ teamId: 'team-1' })
+
+    // The narrowing is a REQUEST, keyed on the item's own project and team.
+    expect(teamOwnerOptions).toHaveBeenCalledWith('proj-record', 'team-1')
+
+    const options = openOptions('Owner')
+    expect(has(options, 'Alice Smith')).toBe(true)
+    // In the project feed, not on the team — the "unrelated Workspace users" the rule excludes.
+    expect(has(options, 'Olive Outsider')).toBe(false)
+  })
+
+  it('offers ONLY Unassigned when the item carries no Team', () => {
+    setup()
+    // `useTeamOwnerOptions` never fetches without a team, so `data` is undefined — the hook, not the
+    // caller, is what makes "No Team offers only Unassigned" unforgettable.
+    teamOwnerOptions.mockReturnValue({ data: undefined })
+    renderSidebar({ teamId: null })
+
+    expect(teamOwnerOptions).toHaveBeenCalledWith('proj-record', null)
+    expect(openOptions('Owner')).toEqual(['— No Entry —'])
+  })
+
+  it('still NAMES an owner who has left the team', () => {
+    setup()
+    // Olive owns the item but is no longer on Team Alpha.
+    renderSidebar({ teamId: 'team-1', assigneeId: 'olive' })
+
+    // `searchable-select` resolves its label out of the OPTIONS (`display = first?.label ??
+    // placeholder`), so a narrowed list that omitted her would print "Unassigned" on an item that is
+    // genuinely owned — the same defect as the iteration label below.
+    expect(screen.getByRole('button', { name: 'Owner' }).textContent).toContain('Olive Outsider')
+    // And she stays selectable, so opening the dropdown to read the owner cannot lose it.
+    expect(has(openOptions('Owner'), 'Olive Outsider')).toBe(true)
+  })
+})
+
+describe("DetailSidebar — the Project field is the RECORD's project (P6-E2E-003)", () => {
+  it("resolves the item's own projectId", () => {
+    setup()
+    renderSidebar({ projectId: 'proj-record' })
+
+    expect(recordProject).toHaveBeenCalledWith('proj-record')
+    expect(screen.getByText('TEST')).toBeTruthy()
+    expect(screen.getByText('Test Project')).toBeTruthy()
+  })
+
+  it('renders the absent placeholder rather than falling back to a selected project', () => {
+    setup()
+    // `useRecordProject` returns undefined until the row is known — including while the selected
+    // project is a DIFFERENT one, which is the whole point.
+    recordProject.mockReturnValue(undefined)
+    renderSidebar()
+
+    // `ProjectCell` renders EMPTY_VALUE for undefined. A confident wrong project name is the defect;
+    // a dash that resolves in a moment is not.
+    expect(screen.queryByText('TEST')).toBeNull()
+  })
+})
+
+describe('DetailSidebar — the Iteration label comes from the reference feed', () => {
+  it('names an iteration that is no longer assignable, and keeps it selected', () => {
+    setup()
+    // Accepted iterations are absent from the ELIGIBILITY feed by design.
+    assignableIterations.mockReturnValue({
+      data: [{ id: 'it-open', name: 'Sprint 26.2', iterationKey: 'IT-2' }],
+    })
+    iterationOptions.mockReturnValue({
+      data: [
+        { id: 'it-open', name: 'Sprint 26.2', iterationKey: 'IT-2' },
+        { id: 'it-done', name: 'Sprint 26.1', iterationKey: 'IT-1' },
+      ],
+    })
+    renderSidebar({ iterationId: 'it-done' })
+
+    // Was the "No Iteration" placeholder — the BA's "valid Iterations were unavailable".
+    expect(screen.getByRole('button', { name: 'Iteration' }).textContent).toContain('IT-1')
+
+    const options = openOptions('Iteration')
+    expect(has(options, 'IT-2')).toBe(true)
+    expect(has(options, 'IT-1')).toBe(true)
+  })
+
+  it('does not add the reference feed to the ASSIGNABLE options', () => {
+    setup()
+    assignableIterations.mockReturnValue({
+      data: [{ id: 'it-open', name: 'Sprint 26.2', iterationKey: 'IT-2' }],
+    })
+    iterationOptions.mockReturnValue({
+      data: [
+        { id: 'it-open', name: 'Sprint 26.2', iterationKey: 'IT-2' },
+        { id: 'it-done', name: 'Sprint 26.1', iterationKey: 'IT-1' },
+      ],
+    })
+    // No iteration set, so there is nothing to keep NAMED — the accepted one must stay out of a list
+    // this select WRITES from, or the server would refuse the assignment.
+    renderSidebar({ iterationId: null })
+
+    const options = openOptions('Iteration')
+    expect(has(options, 'IT-1')).toBe(false)
+    expect(has(options, 'IT-2')).toBe(true)
+  })
+})

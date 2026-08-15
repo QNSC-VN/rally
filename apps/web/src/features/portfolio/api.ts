@@ -224,16 +224,42 @@ export function usePortfolioItem(id: string | undefined) {
   })
 }
 
-/** Linked Stories/Defects under a Feature — the detail Children tab. */
+/**
+ * Linked Stories/Defects under a Feature — the detail Children tab.
+ *
+ * DRAINS the cursor. `GET :id/children` is keyset-paged and this hook asked for one page of
+ * `PAGE_SIZE` and discarded `pageInfo`, so a Feature with more than 100 children lost the rest
+ * SILENTLY: the tab's count, its totals row and the `+N more` preview all described 100 rows as
+ * if they were all of them. Every consumer here paginates on the CLIENT
+ * (`useClientPagination`), so the whole set has to arrive — exactly the reason
+ * {@link usePortfolioItems} drains too.
+ *
+ * The loop lives in `queryFn` rather than in `useInfiniteQuery` on purpose: three call sites read
+ * `{ data, isLoading }` off this hook, and a page-array shape would change all of them for a
+ * request that is one page in every realistic case. `MAX_PAGES` is the same runaway guard, so a
+ * cursor that fails to advance stops instead of spinning.
+ */
 export function usePortfolioChildren(id: string | undefined) {
   return useQuery({
     queryKey: portfolioKeys.children(id ?? ''),
     queryFn: async () => {
-      const { data, error, response } = await apiClient.GET('/v1/portfolio-items/{id}/children', {
-        params: { path: { id: id as string }, query: { limit: PAGE_SIZE } },
-      })
-      if (error) throw new Error(apiErrorMessage(error, response.status))
-      return (data as { data?: PortfolioChild[] } | undefined)?.data ?? []
+      const rows: PortfolioChild[] = []
+      let cursor: string | undefined
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const { data, error, response } = await apiClient.GET('/v1/portfolio-items/{id}/children', {
+          params: { path: { id: id as string }, query: { limit: PAGE_SIZE, cursor } },
+        })
+        if (error) throw new Error(apiErrorMessage(error, response.status))
+        const payload = data as
+          { data?: PortfolioChild[]; pageInfo?: { nextCursor: string | null } } | undefined
+        rows.push(...(payload?.data ?? []))
+        const next = payload?.pageInfo?.nextCursor ?? undefined
+        // Also stops when the server repeats a cursor, which would otherwise re-fetch one page
+        // `MAX_PAGES` times and report the same rows again and again.
+        if (!next || next === cursor) break
+        cursor = next
+      }
+      return rows
     },
     enabled: !!id,
     staleTime: 30_000,

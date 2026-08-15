@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 /**
  * RBE-11 / Settings §6.4 — an invitation carries initial per-Project access.
@@ -13,6 +13,12 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
  * `shared/config/access-levels.ts` (never a local array), an empty repeater must send no
  * `projectAccess` key at all (absent = the pre-§6.4 behaviour, which is why migration 0119 owes no
  * backfill), and a project already chosen must not be offerable twice — the API refuses duplicates.
+ *
+ * GAP-P1-USER-006 adds two things to that contract:
+ *   • `roleId` is SENT, and only `workspace_admin` may be offered — the per-Project tier roles are
+ *     refused at acceptance (`INVITED_ROLE_IS_PROJECT_TIER`), so offering one would mint an
+ *     invitation nobody can redeem.
+ *   • a REVIEW step sits between the form and the POST. The submit button must not send.
  */
 
 vi.mock('@/shared/api/http-client', () => ({
@@ -21,7 +27,7 @@ vi.mock('@/shared/api/http-client', () => ({
 
 import '@/shared/i18n/i18n'
 import { apiClient } from '@/shared/api/http-client'
-import { InviteUserModal } from './members-tab'
+import { InviteUserModal } from './invite-user-modal'
 
 class NoopResizeObserver {
   observe() {}
@@ -36,6 +42,16 @@ const mockPOST = apiClient.POST as ReturnType<typeof vi.fn>
 const PROJECTS = [
   { id: 'p-1', key: 'NXP', name: 'NextGen Platform' },
   { id: 'p-2', key: 'PAY', name: 'Payments' },
+]
+
+/**
+ * `GET /v1/roles` as it really answers: the three canonical tier roles. Two of them are per-PROJECT
+ * tiers that `WorkspaceService.acceptInvitation` refuses, so the picker must offer neither.
+ */
+const ROLES = [
+  { id: 'r-wa', slug: 'workspace_admin', name: 'Workspace Admin', workspaceId: null },
+  { id: 'r-pa', slug: 'project_admin', name: 'Project Admin', workspaceId: 'ws-1' },
+  { id: 'r-pm', slug: 'project_member', name: 'Project Member', workspaceId: 'ws-1' },
 ]
 
 function renderModal() {
@@ -65,8 +81,30 @@ async function addRow() {
   fireEvent.click(button)
 }
 
+/** Step 1 of 2: the footer button opens the REVIEW step. It must never POST. */
 function submit() {
-  fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Review Changes' }))
+}
+
+/** Step 2 of 2: `Send invitation` inside the review dialog is the only thing that writes. */
+async function send() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Send invitation' }))
+}
+
+/**
+ * The review dialog's own element. Radix marks the background modal `aria-hidden` once a second one
+ * opens, so exactly one node has an exposed `dialog` role while the review step is up — which is
+ * what makes this a reliable scope for the summary assertions.
+ */
+async function reviewDialog(): Promise<HTMLElement> {
+  await screen.findByText('Review invitation')
+  return screen.getByRole('dialog')
+}
+
+/** The whole two-step submit, for the tests whose subject is the request body. */
+async function reviewAndSend() {
+  submit()
+  await send()
 }
 
 /** Open the row's picker and choose an option by its visible label. */
@@ -82,6 +120,7 @@ describe('InviteUserModal — initial per-Project access (§6.4)', () => {
     mockPOST.mockReset()
     mockGET.mockImplementation((path: string) => {
       if (path === '/v1/projects') return Promise.resolve({ data: { data: PROJECTS } })
+      if (path === '/v1/roles') return Promise.resolve({ data: ROLES })
       return Promise.resolve({ data: [] })
     })
     mockPOST.mockResolvedValue({ data: {}, error: undefined, response: { status: 201 } })
@@ -90,12 +129,14 @@ describe('InviteUserModal — initial per-Project access (§6.4)', () => {
   it('sends NO projectAccess key when nothing was chosen (pre-§6.4 behaviour)', async () => {
     renderModal()
     typeEmail()
-    submit()
+    await reviewAndSend()
 
     await waitFor(() => expect(mockPOST).toHaveBeenCalled())
     const body = mockPOST.mock.calls[0][1].body as Record<string, unknown>
     expect(body).toEqual({ email: 'bob@example.com' })
     expect('projectAccess' in body).toBe(false)
+    // No `roleId` either — an ordinary member's authority is entirely per-Project.
+    expect('roleId' in body).toBe(false)
   })
 
   it('sends the chosen project and level, defaulting to the team-scoped level', async () => {
@@ -104,7 +145,7 @@ describe('InviteUserModal — initial per-Project access (§6.4)', () => {
     renderModal()
     typeEmail()
     await addRow()
-    submit()
+    await reviewAndSend()
 
     await waitFor(() => expect(mockPOST).toHaveBeenCalled())
     expect((mockPOST.mock.calls[0][1].body as Record<string, unknown>).projectAccess).toEqual([
@@ -117,7 +158,7 @@ describe('InviteUserModal — initial per-Project access (§6.4)', () => {
     typeEmail()
     await addRow()
     await pick('Access level', 'Admin')
-    submit()
+    await reviewAndSend()
 
     await waitFor(() => expect(mockPOST).toHaveBeenCalled())
     expect((mockPOST.mock.calls[0][1].body as Record<string, unknown>).projectAccess).toEqual([
@@ -154,9 +195,151 @@ describe('InviteUserModal — initial per-Project access (§6.4)', () => {
     typeEmail()
     await addRow()
     fireEvent.click(screen.getByRole('button', { name: 'Remove project access' }))
-    submit()
+    await reviewAndSend()
 
     await waitFor(() => expect(mockPOST).toHaveBeenCalled())
     expect('projectAccess' in (mockPOST.mock.calls[0][1].body as object)).toBe(false)
   })
 })
+
+describe('InviteUserModal — the workspace role (GAP-P1-USER-006a)', () => {
+  beforeEach(() => {
+    mockGET.mockReset()
+    mockPOST.mockReset()
+    mockGET.mockImplementation((path: string) => {
+      if (path === '/v1/projects') return Promise.resolve({ data: { data: PROJECTS } })
+      if (path === '/v1/roles') return Promise.resolve({ data: ROLES })
+      return Promise.resolve({ data: [] })
+    })
+    mockPOST.mockResolvedValue({ data: {}, error: undefined, response: { status: 201 } })
+  })
+
+  it('offers ONLY Workspace Admin beside the plain member choice', async () => {
+    // The per-Project tiers are refused at acceptance, so an invitation that carries one is
+    // permanently unredeemable. The picker is where that has to be prevented.
+    renderModal()
+    fireEvent.click(await screen.findByRole('button', { name: 'Role' }))
+
+    expect(await screen.findByRole('button', { name: 'Workspace Admin' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Project Admin' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Project Member' })).toBeNull()
+  })
+
+  it('sends the selected role id, and the role NAME appears in the review step', async () => {
+    renderModal()
+    typeEmail()
+    await pick('Role', 'Workspace Admin')
+    submit()
+
+    // The review step restates what is about to be sent, so the role is part of it.
+    expect(await screen.findByText('Review invitation')).toBeTruthy()
+    expect(screen.getByText('bob@example.com')).toBeTruthy()
+    await send()
+
+    await waitFor(() => expect(mockPOST).toHaveBeenCalled())
+    expect(mockPOST.mock.calls[0][1].body).toEqual({
+      email: 'bob@example.com',
+      roleId: 'r-wa',
+    })
+  })
+})
+
+describe('InviteUserModal — the review step (GAP-P1-USER-006b)', () => {
+  beforeEach(() => {
+    mockGET.mockReset()
+    mockPOST.mockReset()
+    mockGET.mockImplementation((path: string) => {
+      if (path === '/v1/projects') return Promise.resolve({ data: { data: PROJECTS } })
+      if (path === '/v1/roles') return Promise.resolve({ data: ROLES })
+      return Promise.resolve({ data: [] })
+    })
+    mockPOST.mockResolvedValue({ data: {}, error: undefined, response: { status: 201 } })
+  })
+
+  it('does NOT send on submit — it opens the review step first', async () => {
+    renderModal()
+    typeEmail()
+    submit()
+
+    expect(await screen.findByText('Review invitation')).toBeTruthy()
+    expect(mockPOST).not.toHaveBeenCalled()
+  })
+
+  it('abandons on Back without sending, and the form is still there to edit', async () => {
+    renderModal()
+    typeEmail()
+    submit()
+    fireEvent.click(await screen.findByRole('button', { name: 'Back' }))
+
+    expect(mockPOST).not.toHaveBeenCalled()
+    expect(screen.getByPlaceholderText('colleague@company.com')).toBeTruthy()
+  })
+
+  it('never reaches the review step with an invalid address', async () => {
+    // The zod resolver runs first, so the summary cannot claim an address that will be refused.
+    //
+    // Asserted on the STATE, not on the message: the field-level message does not currently render
+    // at all (see the note at the bottom of this file), and that is pre-existing behaviour of the
+    // shared react-hook-form + zodResolver wiring rather than anything this step introduced. What
+    // must hold either way is that nothing is sent and no summary claims otherwise.
+    renderModal()
+    typeEmail('not-an-email')
+    submit()
+    await waitFor(() => expect(mockGET).toHaveBeenCalled())
+
+    expect(screen.queryByText('Review invitation')).toBeNull()
+    expect(mockPOST).not.toHaveBeenCalled()
+  })
+
+  it('lists the project rows the invitation will grant', async () => {
+    renderModal()
+    typeEmail()
+    await addRow()
+    submit()
+
+    // Scoped to the review dialog: the repeater row's own project picker renders the same label
+    // behind it, so an unscoped query finds two and proves nothing about the summary.
+    const review = within(await reviewDialog())
+    expect(review.getByText('NXP · NextGen Platform')).toBeTruthy()
+    expect(review.getByText('Editor')).toBeTruthy()
+  })
+
+  it('says so, rather than nothing, when no project access was chosen', async () => {
+    renderModal()
+    typeEmail()
+    submit()
+
+    expect(
+      await screen.findByText('None — No Access until a Workspace Admin grants a level.'),
+    ).toBeTruthy()
+  })
+
+  it('brings the API failure back to the form instead of stranding it behind the dialog', async () => {
+    mockPOST.mockResolvedValue({
+      error: { error: { message: 'Already invited' } },
+      response: { status: 409 },
+    })
+    renderModal()
+    typeEmail()
+    await reviewAndSend()
+
+    expect(await screen.findByText('Already invited')).toBeTruthy()
+    expect(screen.queryByText('Review invitation')).toBeNull()
+  })
+})
+
+/**
+ * FOUND, NOT FIXED, and not introduced here: a FIELD-level validation failure on this form renders
+ * no message. Submitting `not-an-email` correctly refuses to open the review step and sends nothing,
+ * but `formState.errors` stays `{}`, so the `FormField` error slot has nothing to show and the
+ * button appears to do nothing.
+ *
+ * Narrowed down: `zodResolver(schema)` called directly DOES return
+ * `{ errors: { email: { message: 'Enter a valid email address' } } }`, and `form.setError('root')`
+ * from the mutation's `onError` DOES render (pinned by the test above), so neither the schema nor the
+ * `formState` subscription is at fault — the errors never reach the subscription from inside
+ * `handleSubmit`. The wiring is identical to what `members-tab.tsx` had before this file was split
+ * out of it, and `profile-tab.tsx` is the other consumer of the same stack (react-hook-form 7.81 +
+ * @hookform/resolvers 5.4 + zod 4.4), so it is likely affected too. Fixing it belongs with that
+ * shared stack, not here.
+ */

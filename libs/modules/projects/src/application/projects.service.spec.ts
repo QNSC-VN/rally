@@ -186,6 +186,7 @@ describe('ProjectsService', () => {
   let workspaceMemberRepo: ReturnType<typeof makeWorkspaceMemberRepo>;
   let teamService: {
     listTeams: ReturnType<typeof vi.fn>;
+    listTeamMembers: ReturnType<typeof vi.fn>;
     listUserTeamIds: ReturnType<typeof vi.fn>;
     applyTeamMembershipDiff: ReturnType<typeof vi.fn>;
   };
@@ -209,6 +210,8 @@ describe('ProjectsService', () => {
     workspaceMemberRepo = makeWorkspaceMemberRepo();
     teamService = {
       listTeams: vi.fn().mockResolvedValue([]),
+      // The selected Team's roster — the narrowed half of the assignee feed (GAP-P1-WID-007).
+      listTeamMembers: vi.fn().mockResolvedValue([]),
       // The user holds NO team by default — the state PRJ-08 refuses for an Editor, so every test
       // that wants the level accepted has to say which teams it is standing on.
       listUserTeamIds: vi.fn().mockResolvedValue([]),
@@ -790,6 +793,75 @@ describe('ProjectsService', () => {
       // simply move here, so its signature deliberately has nowhere to put an actor.
       await expect(service.listProjectMemberOptions('ws-1', 'proj-1')).resolves.toHaveLength(1);
       expect(access.getProjectAccessLevel).not.toHaveBeenCalled();
+    });
+
+    /**
+     * GAP-P1-WID-007 (P1). "Work Item and Task Owner default to Unassigned. Selected Team offers
+     * Unassigned plus its ACTIVE MEMBERS; No Team offers only Unassigned. Do not add No Team or
+     * unrelated Workspace users to Owner options."
+     *
+     * Three cases, because the rule has three branches and the middle one — "no team" — is the one a
+     * client-side filter over the project feed would silently get wrong.
+     */
+    describe('a teamId narrows it to that Team (GAP-P1-WID-007)', () => {
+      beforeEach(() => {
+        projectTeamRepo.listByProject.mockResolvedValue([
+          { id: 'link-1', projectId: 'proj-1', teamId: 'team-1', status: 'active' },
+        ]);
+        teamService.listTeamMembers.mockResolvedValue([
+          {
+            userId: 'user-9',
+            status: 'active',
+            displayName: 'Team Nine',
+            email: 'nine@qnsc.dev',
+            avatarUrl: null,
+          },
+          // On the roster but no longer an active member — offered by neither branch.
+          { userId: 'user-8', status: 'inactive', displayName: 'Team Eight' },
+          // A Workspace Admin who IS on the team roster. See the DECLARED CONFLICT in the service's
+          // docblock: AC-16 ("Workspace Admin are not assignable owners") wins over WID-007's "its
+          // active members", and this assertion is what a BA reversal would have to flip.
+          { userId: 'wa-1', status: 'active', displayName: 'Admin' },
+        ]);
+      });
+
+      it('offers the TEAM roster, not the project roster', async () => {
+        const options = await service.listProjectMemberOptions('ws-1', 'proj-1', 'team-1');
+
+        expect(options).toEqual([
+          {
+            userId: 'user-9',
+            displayName: 'Team Nine',
+            email: 'nine@qnsc.dev',
+            avatarUrl: null,
+          },
+        ]);
+        // `user-2` is an active PROJECT member and is deliberately absent: the narrowed population is
+        // `team_members`, not `project_members` filtered by team — RBE-06 grants `editor` FROM a team
+        // roster row, so intersecting the two would withhold exactly the team-derived participants.
+        expect(teamService.listTeamMembers).toHaveBeenCalledWith('team-1', 'ws-1');
+        expect(projectMemberRepo.listByProject).not.toHaveBeenCalled();
+      });
+
+      it('still offers the whole project when NO teamId is given', async () => {
+        const options = await service.listProjectMemberOptions('ws-1', 'proj-1');
+
+        // The project-wide feed is what resolves an owner's NAME on a grid whose row owner may have
+        // left the team, so it must not narrow itself.
+        expect(options.map((o) => o.userId)).toEqual(['user-2']);
+        expect(teamService.listTeamMembers).not.toHaveBeenCalled();
+      });
+
+      it('refuses a team that is not actively linked to the project', async () => {
+        projectTeamRepo.listByProject.mockResolvedValue([]);
+
+        await expect(
+          service.listProjectMemberOptions('ws-1', 'proj-1', 'team-1'),
+        ).rejects.toMatchObject({ code: 'PROJECT_TEAM_LINK_NOT_FOUND' });
+        // Refused BEFORE the roster is read, so this route cannot be used to enumerate an unrelated
+        // team's members through a project the caller happens to be able to view.
+        expect(teamService.listTeamMembers).not.toHaveBeenCalled();
+      });
     });
   });
 
