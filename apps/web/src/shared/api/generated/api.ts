@@ -7971,7 +7971,9 @@ export interface operations {
   }
   ProjectsController_listProjectMemberOptions: {
     parameters: {
-      query?: never
+      query?: {
+        teamId?: string
+      }
       header?: never
       path: {
         id: string
@@ -8004,6 +8006,13 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
         headers: {
           [name: string]: unknown
         }

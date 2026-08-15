@@ -579,6 +579,44 @@ describe('WorkItemsService', () => {
       );
     });
 
+    /**
+     * GAP-P1-WID-007 / P6-TC-007. Owner is deliberately NOT inherited, unlike Team just above.
+     *
+     * This pair is the whole fix: the first assertion is the rule, the second is why the rule
+     * matters. `assigneeId` used to be `opts.assigneeId ?? parent.assigneeId`, and because
+     * `CreateTaskSchema.assigneeId` is `.optional()` and not `.nullable()`, an owned Story could
+     * not produce an unowned Task through any API path — so the Unassigned bucket that Team
+     * Capacity and Team Status both report was unreachable for the ordinary case, and the BA read
+     * the resulting named attribution as a reporting defect. The projection was correct.
+     */
+    it('does NOT inherit the owner from the parent — Owner defaults to Unassigned', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'parent-1', projectId: 'proj-1', assigneeId: 'owner-of-the-story' }),
+      );
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task' }));
+
+      await service.createTask(mockActor, 'parent-1', 'My task');
+
+      expect(workItemRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ assigneeId: undefined }),
+        expect.anything(),
+      );
+    });
+
+    it('still honours an explicitly provided owner', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'parent-1', projectId: 'proj-1', assigneeId: 'owner-of-the-story' }),
+      );
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task' }));
+
+      await service.createTask(mockActor, 'parent-1', 'My task', { assigneeId: 'someone-else' });
+
+      expect(workItemRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ assigneeId: 'someone-else' }),
+        expect.anything(),
+      );
+    });
+
     it('uses the explicitly provided team over the parent team', async () => {
       workItemRepo.findById.mockResolvedValue(
         mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),

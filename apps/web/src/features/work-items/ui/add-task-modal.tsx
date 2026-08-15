@@ -6,10 +6,8 @@ import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
-import { useCreateTask } from '@/features/work-items/api'
-import { useProjectMemberOptions } from '@/features/teams/api'
-import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useCreateTask, useWorkItem } from '@/features/work-items/api'
+import { useTeamOwnerOptions } from '@/features/teams/api'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField } from '@/shared/ui/form-field'
@@ -23,18 +21,40 @@ interface Props {
 
 export function AddTaskModal({ workItemId, onClose }: Props) {
   const { t } = useTranslation('work-items')
-  const { project } = useAppContext()
-  // Owner PICKER — the reference feed, not the Admin-only roster.
-  const { data: members = [] } = useProjectMemberOptions(project?.projectId)
+  /**
+   * The PARENT, not the app shell's selected project (P6-E2E-003).
+   *
+   * A task created under a known `workItemId` inherits that parent's project AND team
+   * (`WorkItemsService.createTask`: `teamId: opts.teamId ?? parent.teamId`), so both facts are
+   * properties of the parent. Reading the owner feed from `useAppContext().project` meant that opening
+   * this modal from a deep-linked item — before the shell had adopted its project, or on a row whose
+   * project is simply not the selected one — offered another project's members for a task the server
+   * would then file under this one.
+   */
+  const { data: parent } = useWorkItem(workItemId)
+  /**
+   * Owner OPTIONS are the parent's TEAM's active members, or nothing at all (GAP-P1-WID-007:
+   * "Selected Team offers Unassigned plus its ACTIVE MEMBERS; No Team offers only Unassigned").
+   * No merge of an existing owner is needed here — a task being created has none.
+   */
+  const { data: members = [] } = useTeamOwnerOptions(parent?.projectId, parent?.teamId)
   const navigate = useNavigate()
 
   const [name, setName] = useState('')
   const [estimate, setEstimate] = useState('')
   const [todo, setTodo] = useState('')
   const [actual, setActual] = useState('')
-  // Owner defaults to the authenticated creator (still changeable, incl. Unassigned).
-  const currentUserId = useAuthStore((s) => s.user?.id)
-  const [assigneeId, setAssigneeId] = useState(() => currentUserId ?? '')
+  /**
+   * Owner defaults to UNASSIGNED (GAP-P1-WID-007 / P6-TC-007: "Work Item and Task Owner default to
+   * Unassigned").
+   *
+   * This used to seed the authenticated CREATOR's id, so a task created "without an owner" silently
+   * arrived owned — which is how P6-TC-007's "null-owner Task attributed to a named member" and
+   * GAP-P3-TS-008's outside-team member group came to exist at all. The Team Capacity projection
+   * (`rollUpTeamCapacity`) keys `ownerId ?? 'Unassigned'` correctly; there was simply never a null
+   * owner to key.
+   */
+  const [assigneeId, setAssigneeId] = useState('')
   const [error, setError] = useState<string | null>(null)
   // Server/submit failures aren't tied to one input — shown as a modal-level
   // banner, not under the Name field.

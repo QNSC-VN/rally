@@ -14,14 +14,14 @@ import {
   type WorkItem,
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
-import { useProjectTeams, useProjectMemberOptions } from '@/features/teams/api'
+import { useProjectTeams, useProjectMemberOptions, useTeamOwnerOptions } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
 import { useProjectPermissions } from '@/features/access/api'
 import { PERMISSION } from '@/shared/config/permissions'
 import { usePortfolioFeatureOptions } from '@/features/portfolio/api'
 import { listResource } from '@/shared/lib/query/resource'
 import { useMilestoneOptions } from '@/features/milestones/api'
-import { useAssignableIterations } from '@/features/iterations/api'
+import { useAssignableIterations, useIterationOptions } from '@/features/iterations/api'
 import { useSaveState } from '@/shared/lib/hooks/use-save-state'
 import {
   PRIORITY_VALUES,
@@ -44,7 +44,7 @@ import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { SaveIndicator } from '@/shared/ui/save-indicator'
 import { formatDateIso } from '@/shared/lib/utils'
-import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useRecordProject } from '@/shared/lib/deep-link-project'
 
 type SaveStatus = ReturnType<typeof useSaveState>['status']
 
@@ -139,14 +139,45 @@ export function DetailSidebar({
   saveErrorMsg,
 }: SidebarProps) {
   const { t } = useTranslation('work-items')
-  const { project } = useAppContext()
+  // The RECORD's own project (P6-E2E-003), never `useAppContext()`'s selection. Every other field on
+  // this component reads `item.*`; the Project field read the globally selected project, so a deep
+  // link, a notification click or a hover-preloaded row showed `AUDIT26` above relationships that all
+  // belonged to `TEST`. `useRecordProject` returns `undefined` until the row is known rather than
+  // falling back — `ProjectCell` renders `--` for that, and a placeholder that resolves in a moment
+  // beats the wrong project name rendered with confidence.
+  const recordProject = useRecordProject(item.projectId)
   const { data: teams = [] } = useProjectTeams(item.projectId)
   // The ASSIGNEE feed, NOT the administrative roster: `GET /projects/:id/members` carries
   // accessLevel/status/teamCount and is Admin-only (§3.1:71), while §3.2:79/:81 give an Editor
   // Create/View/Edit on the Story, Defect and Task this sidebar edits. The Owner field both names
   // and SETS the owner, so a 403 defaulted to `[]` left it unreadable and unwritable at once.
+  //
+  // Kept as the id→NAME source only. What may be OFFERED is narrower — see `ownerOptions`.
   const membersQuery = useProjectMemberOptions(item.projectId)
   const memberFeed = listResource(membersQuery)
+  /**
+   * Owner OPTIONS are team-scoped (GAP-P1-WID-007): "Selected Team offers Unassigned plus its ACTIVE
+   * MEMBERS; No Team offers only Unassigned. Do not add No Team or unrelated Workspace users to Owner
+   * options." `useTeamOwnerOptions` returns nothing at all without a team, which is that rule.
+   *
+   * The item's CURRENT owner is appended when the narrowed feed no longer contains them, because
+   * `searchable-select` resolves its display label BY LOOKING THE VALUE UP in the options
+   * (`display = first?.label ?? placeholder`) — so an owner who has since left the team would read as
+   * `Unassigned` on a row that is genuinely owned. That is the same class of defect as the iteration
+   * label below, and appending them is also the honest picker behaviour: a reader who opens the
+   * dropdown to see who owns it must be able to leave it alone.
+   */
+  // Bound to its own const before `listResource`, per that module's docblock: the React Compiler
+  // cannot see through a hook call used as a plain function's argument and gives up on the whole
+  // component.
+  const teamOwnersQuery = useTeamOwnerOptions(item.projectId, item.teamId)
+  const teamOwnerFeed = listResource(teamOwnersQuery)
+  const ownerOptions = useMemo(() => {
+    const scoped = teamOwnerFeed.rows
+    if (!item.assigneeId || scoped.some((m) => m.userId === item.assigneeId)) return scoped
+    const current = memberFeed.rows.find((m) => m.userId === item.assigneeId)
+    return current ? [...scoped, current] : scoped
+  }, [teamOwnerFeed.rows, memberFeed.rows, item.assigneeId])
   // `release:view` is what `WorkItemsService.assertMayAssignRelease` checks, so the control and the
   // server agree on one code rather than the client guessing a weaker one.
   const { can } = useProjectPermissions(item.projectId)
@@ -165,6 +196,14 @@ export function DetailSidebar({
   // The ELIGIBILITY feed: this select WRITES `iterationId`, so it must only offer the
   // `planning | committed` population the server will accept.
   const { data: iterations = [] } = useAssignableIterations(item.projectId, item.teamId)
+  // The REFERENCE feed — every state — and it is a SECOND feed on purpose, exactly as Backlog and
+  // Iteration Status take both. `useAssignableIterations` was serving as the label source too, which
+  // its own docblock prohibits: an accepted or finished iteration is absent there by design, so an
+  // item genuinely scheduled into one rendered the `noIteration` placeholder and the BA read it as
+  // "valid Iterations were unavailable". Not `useIterations`: that is the timebox RECORD
+  // (`timebox:view`), which §3.2 hides from an Editor.
+  const allIterationsQuery = useIterationOptions(item.projectId, item.teamId)
+  const allIterationsFeed = listResource(allIterationsQuery)
   const { data: parentItem } = useWorkItem(item.parentId ?? undefined)
   const { data: taskTotals } = useTaskTotals(item.type !== 'task' ? item.id : undefined)
   const { data: tags = [] } = useWorkItemLabels(item.id)
@@ -186,6 +225,24 @@ export function DetailSidebar({
       (m) => selectedIds.has(m.id) || m.releaseIds.includes(item.releaseId!),
     )
   }, [milestoneOptions, itemMilestones, item.releaseId])
+  /**
+   * The Iteration select's options: the ELIGIBILITY population, plus the item's OWN iteration when
+   * that is no longer assignable.
+   *
+   * `SearchableSelect` resolves its label from the options, so offering only `planning | committed`
+   * printed the "No Iteration" placeholder for every item sitting in an accepted or finished sprint —
+   * a relation that is genuinely set, reported as absent. Two feeds, one list: the assignable ones
+   * stay writable and the current one stays NAMED (and re-selectable, so opening the dropdown to read
+   * it cannot lose it).
+   */
+  const iterationChoices = useMemo(() => {
+    const rows: { id: string; name: string; iterationKey: string | null }[] = [...iterations]
+    if (item.iterationId && !rows.some((i) => i.id === item.iterationId)) {
+      const current = allIterationsFeed.rows.find((i) => i.id === item.iterationId)
+      if (current) rows.push(current)
+    }
+    return rows
+  }, [iterations, allIterationsFeed.rows, item.iterationId])
   const navigate = useNavigate()
   const openItem = (itemKey: string) => void navigate({ to: '/item/$itemKey', params: { itemKey } })
 
@@ -282,18 +339,23 @@ export function DetailSidebar({
           </>
         )}
 
-        {/* Owner */}
+        {/* Owner — Unassigned plus the item's Team's ACTIVE members (GAP-P1-WID-007); see
+            `ownerOptions` for why the current owner is appended when they have left the team. */}
         <OwnerSelectField
           value={item.assigneeId}
           onChange={(v) => onUpdate({ assigneeId: v || null })}
-          members={memberFeed.rows}
+          members={ownerOptions}
           disabled={disabled}
         />
 
-        {/* Project — read-only (WID-FR-007). A work item's project is fixed. */}
+        {/* Project — read-only (WID-FR-007). A work item's project is fixed, and it is the ITEM's
+            project, not the one selected in the app shell (P6-E2E-003) — see `recordProject`. */}
         <FormField label={t('sidebar.project', 'Project')}>
           <div className="flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground">
-            <ProjectCell projectKey={project?.projectKey} projectName={project?.projectName} />
+            <ProjectCell
+              projectKey={recordProject?.projectKey}
+              projectName={recordProject?.projectName}
+            />
           </div>
         </FormField>
 
@@ -477,7 +539,7 @@ export function DetailSidebar({
                 placeholder={t('sidebar.noIteration')}
                 options={[
                   { value: '', label: t('sidebar.noIteration') },
-                  ...iterations.map((i) => ({
+                  ...iterationChoices.map((i) => ({
                     value: i.id,
                     label: i.iterationKey ? `${i.iterationKey}: ${i.name}` : i.name,
                     searchText: `${i.iterationKey ?? ''} ${i.name}`,

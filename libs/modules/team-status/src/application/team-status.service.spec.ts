@@ -69,6 +69,18 @@ const makeRawRow = (overrides: Partial<RawTeamStatusTaskRow> = {}): RawTeamStatu
   ...overrides,
 });
 
+/**
+ * A roster, in the shape `getRosterMembers` returns.
+ *
+ * Every test that expects a NAMED group has to supply one now, and that is the point of
+ * GAP-P3-TS-008: the roster is the complete list of named groups, so an empty roster means every
+ * task falls under `Unassigned`. Several tests below leaned on the old fold-in (`memberInfo.set` for
+ * any assignee the roster did not contain) and passed with `getRosterMembers` returning `[]` — i.e.
+ * they were asserting grouping through the very code path that produced the outside-team group.
+ */
+const roster = (...members: Array<[string, string]>) =>
+  members.map(([id, displayName]) => ({ id, displayName, avatarUrl: null }));
+
 // ── Mock factories ────────────────────────────────────────────────────────────
 
 const makeRepo = () => ({
@@ -168,6 +180,7 @@ describe('TeamStatusService', () => {
           actualHours: '0',
         }),
       ]);
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith'], ['bob', 'Bob Ray']));
       repo.getCapacities.mockResolvedValue(
         new Map([
           ['alice', 40],
@@ -209,6 +222,7 @@ describe('TeamStatusService', () => {
         makeRawRow({ id: 't2', assigneeId: null }),
         makeRawRow({ id: 't3', assigneeId: 'bob' }),
       ]);
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith'], ['bob', 'Bob Ray']));
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
       expect(result.groups).toHaveLength(3);
@@ -267,6 +281,7 @@ describe('TeamStatusService', () => {
         makeRawRow({ id: 't1', assigneeId: 'zara', assigneeDisplayName: 'Zara Jones' }),
         makeRawRow({ id: 't2', assigneeId: 'amy', assigneeDisplayName: 'Amy Lee' }),
       ]);
+      repo.getRosterMembers.mockResolvedValue(roster(['zara', 'Zara Jones'], ['amy', 'Amy Lee']));
       repo.getCapacities.mockResolvedValue(
         new Map([
           ['zara', 40],
@@ -281,6 +296,7 @@ describe('TeamStatusService', () => {
 
     it('defaults capacity to 0 when repo returns no capacity for a user', async () => {
       repo.getTaskRows.mockResolvedValue([makeRawRow({ id: 't1', assigneeId: 'alice' })]);
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
       repo.getCapacities.mockResolvedValue(new Map()); // no capacity entry
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
@@ -310,6 +326,7 @@ describe('TeamStatusService', () => {
       repo.getTaskRows.mockResolvedValue([
         makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '5', actualHours: '8' }),
       ]);
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
       repo.getCapacities.mockResolvedValue(new Map([['alice', 40]]));
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
@@ -321,6 +338,7 @@ describe('TeamStatusService', () => {
       repo.getTaskRows.mockResolvedValue([
         makeRawRow({ id: 't1', assigneeId: 'alice', estimateHours: '0', actualHours: '3' }),
       ]);
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
       repo.getCapacities.mockResolvedValue(new Map([['alice', 40]]));
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
@@ -334,6 +352,9 @@ describe('TeamStatusService', () => {
         makeRawRow({ id: 't-ip', assigneeId: 'bob', scheduleState: 'in_progress' }),
         makeRawRow({ id: 't-done', assigneeId: 'carol', scheduleState: 'accepted' }),
       ]);
+      repo.getRosterMembers.mockResolvedValue(
+        roster(['alice', 'Alice Smith'], ['bob', 'Bob Ray'], ['carol', 'Carol Vo']),
+      );
       repo.getCapacities.mockResolvedValue(
         new Map([
           ['alice', 40],
@@ -348,10 +369,99 @@ describe('TeamStatusService', () => {
       expect(result.groups.find((g) => g.owner.id === 'carol')!.tasks[0].state).toBe('Completed');
     });
 
+    /**
+     * GAP-P3-TS-008 (P0). "Team Status shows only ACTIVE members of the Team selected in the top
+     * filter. Null-owner Tasks appear under Unassigned with 0h capacity; no outside-Team member group
+     * appears."
+     *
+     * The roster comes from `team_members WHERE status = 'active'` and was already correct; the
+     * service then folded ANY task assignee it did not contain into `memberInfo`, so an owner outside
+     * the selected team got their own named group carrying 0h capacity.
+     */
+    describe('an owner outside the selected Team gets NO group of their own', () => {
+      it('does not name them, and does not lose their hours', async () => {
+        repo.getTaskRows.mockResolvedValue([
+          makeRawRow({
+            id: 't-in',
+            assigneeId: 'alice',
+            assigneeDisplayName: 'Alice Smith',
+            estimateHours: '4',
+            todoHours: '4',
+            actualHours: '1',
+          }),
+          // Owned by someone who is not on this team's roster — but the TASK is in scope: the
+          // repository scopes by `coalesce(task, parent, iteration).team_id` with no owner predicate.
+          makeRawRow({
+            id: 't-out',
+            assigneeId: 'outsider',
+            assigneeDisplayName: 'Olive Outsider',
+            estimateHours: '6',
+            todoHours: '2',
+            actualHours: '3',
+          }),
+        ]);
+        repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
+        repo.getCapacities.mockResolvedValue(new Map([['alice', 40]]));
+
+        const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
+
+        // No group for them, under any name or id.
+        expect(result.groups.some((g) => g.owner.id === 'outsider')).toBe(false);
+        expect(result.groups.map((g) => g.owner.displayName)).not.toContain('Olive Outsider');
+        expect(result.groups.map((g) => g.owner.id).sort()).toEqual(['alice', 'unassigned']);
+
+        // Their work is counted, under Unassigned with 0h capacity.
+        const unassigned = result.groups.find((g) => g.owner.id === 'unassigned')!;
+        expect(unassigned.capacityHours).toBe(0);
+        expect(unassigned.taskCount).toBe(1);
+        expect(unassigned.estimateHours).toBe(6);
+        // The task row itself still carries the real owner, so FR-027's Owner column stays truthful.
+        expect(unassigned.tasks[0].owner.displayName).toBe('Olive Outsider');
+
+        // TOTALS are unchanged by the regrouping — Team Status and Team Capacity are one population
+        // (`test/e2e/team-status-agreement.e2e.spec.ts` pins this over HTTP), so dropping the row
+        // instead would have made this surface understate the team's commitment.
+        expect(result.totals.estimateHours).toBe(10);
+        expect(result.totals.todoHours).toBe(6);
+        expect(result.totals.actualHours).toBe(4);
+      });
+
+      it('shares the Unassigned group with genuinely null-owner tasks, and keeps rank order', async () => {
+        repo.getTaskRows.mockResolvedValue([
+          makeRawRow({ id: 't-out', assigneeId: 'outsider', rank: 'a1' }),
+          makeRawRow({ id: 't-null', assigneeId: null, rank: 'a2' }),
+        ]);
+        repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
+
+        const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
+
+        const unassigned = result.groups.find((g) => g.owner.id === 'unassigned')!;
+        expect(unassigned.taskCount).toBe(2);
+        // Bucketed in ONE pass over the already rank-ordered rows, not re-homed afterwards — so the
+        // residual group is still in rank order rather than "roster misses, then nulls".
+        expect(unassigned.tasks.map((t) => t.id)).toEqual(['t-out', 't-null']);
+      });
+
+      it('asks for capacity for ROSTER members only', async () => {
+        repo.getTaskRows.mockResolvedValue([
+          makeRawRow({ id: 't-out', assigneeId: 'outsider' }),
+          makeRawRow({ id: 't-in', assigneeId: 'alice' }),
+        ]);
+        repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
+
+        await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
+
+        // `member_capacity` is keyed on (project, team, iteration, user); asking for a user who is
+        // not on the team can only ever return nothing.
+        expect(repo.getCapacities).toHaveBeenCalledWith('it-1', ['alice'], 'team-a');
+      });
+    });
+
     it('defaults unknown schedule states to Defined', async () => {
       repo.getTaskRows.mockResolvedValue([
         makeRawRow({ id: 't1', assigneeId: 'alice', scheduleState: 'some_unknown_state' }),
       ]);
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
       repo.getCapacities.mockResolvedValue(new Map([['alice', 40]]));
 
       const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');

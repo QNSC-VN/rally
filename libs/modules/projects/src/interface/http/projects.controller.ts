@@ -24,6 +24,7 @@ import {
   CreateProjectDto,
   UpdateProjectDto,
   ProjectQueryDto,
+  MemberOptionsQueryDto,
   CreateLabelDto,
   UpdateLabelDto,
   SetProjectAccessDto,
@@ -563,17 +564,25 @@ export class ProjectsController {
    * list, so every owned item read `Unassigned` and §3.2:79's owner write was unreachable. The check
    * was correct; the feed was the defect. Same split, and same reasoning, as
    * `GET /workspaces/:id/member-options`.
+   *
+   * `?teamId=` narrows the population to that Team's ACTIVE roster (GAP-P1-WID-007). It is a query
+   * param on THIS route rather than a second endpoint because the audience, the fields and the gate
+   * are identical — one feed, one gate. The permission is unchanged and still resolves its project
+   * from the PATH id, so the narrowing cannot widen who may read it: `teamId` selects rows inside a
+   * project the caller has already been authorized for, and the service refuses a team that is not
+   * actively linked to it.
    */
   @RequirePermission('project:view', { from: 'param', field: 'id' })
   @ApiOperation({ summary: "List this project's assignable owners (id, name, email, avatar)" })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, type: ProjectMemberOptionResponseDto, isArray: true })
-  @ApiCommonErrors(401, 403, 404)
+  @ApiCommonErrors(401, 403, 404, 422)
   async listProjectMemberOptions(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: MemberOptionsQueryDto,
   ): Promise<ProjectMemberOptionResponseDto[]> {
-    return this.projectsService.listProjectMemberOptions(user.workspaceId, id);
+    return this.projectsService.listProjectMemberOptions(user.workspaceId, id, query.teamId);
   }
 
   /**

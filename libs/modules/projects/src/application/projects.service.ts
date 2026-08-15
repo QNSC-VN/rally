@@ -1033,10 +1033,38 @@ export class ProjectsService {
    * `AC-16` wants ("No Access and Workspace Admin are not assignable owners") — one filter, both
    * requirements. No actor gate here: the route carries `project:view` scoped to the path id, so
    * anyone who reaches this can already see the project.
+   *
+   * `teamId` NARROWS IT TO THAT TEAM'S ACTIVE ROSTER (GAP-P1-WID-007)
+   *
+   * "Work Item and Task Owner default to Unassigned. Selected Team offers Unassigned plus its ACTIVE
+   * MEMBERS; No Team offers only Unassigned. Do not add No Team or unrelated Workspace users to Owner
+   * options." So this is ONE feed with one gate rather than a second endpoint: the audience, the
+   * fields and the permission are identical, only the population moves. Omitting `teamId` keeps the
+   * project-wide list, which is what every id→name lookup on a grid still needs (a row's owner may
+   * have left the team, and a name that resolves is not the same question as an option that may be
+   * offered).
+   *
+   * The team must be actively LINKED to the project — `assertTeamLinkedToProject`, the one home of
+   * that rule — or this route would read any team's roster through any project the caller can view.
+   * Team STATUS is deliberately not checked: an archived team keeps its work (DB design §488), so
+   * refusing here would make the Owner field unusable on every item that team still owns.
+   *
+   * DECLARED CONFLICT, needs a BA ruling — Workspace Admins are excluded here too.
+   * ---------------------------------------------------------------------------
+   * `AC-16` says a Workspace Admin is "not an assignable owner", and migration 0118 deletes a WA's
+   * `project_members` rows on purpose, so the project-wide branch cannot offer them either way.
+   * WID-007 says "its active members of that Team", and a WA CAN hold a `team_members` row —
+   * `TeamService.grantTeamRosterProjectAccess` runs with `onWorkspaceAdmin: 'skip'` precisely because
+   * a WA on a roster needs no grant. Those two readings disagree for exactly one person: a Workspace
+   * Admin who is on the selected team. AC-16 wins here because it is the narrower, explicit statement
+   * about OWNER OPTIONS and because it keeps one filter over both populations — but this is a
+   * declared reading, not a settled one. If the BA rules the other way, the change is this filter and
+   * nothing else.
    */
   async listProjectMemberOptions(
     workspaceId: string,
     projectId: string,
+    teamId?: string,
   ): Promise<
     Array<{
       userId: string;
@@ -1047,7 +1075,9 @@ export class ProjectsService {
   > {
     await this.getProject(workspaceId, projectId);
     const admins = await this.workspaceAdminIds(workspaceId);
-    const members = await this.projectMemberRepo.listByProject(projectId);
+    const members = teamId
+      ? await this.teamRosterOptionSource(workspaceId, projectId, teamId)
+      : await this.projectMemberRepo.listByProject(projectId);
     return members
       .filter((m) => !admins.has(m.userId) && m.status === 'active')
       .map((m) => ({
@@ -1056,6 +1086,30 @@ export class ProjectsService {
         email: m.email ?? null,
         avatarUrl: m.avatarUrl ?? null,
       }));
+  }
+
+  /**
+   * The selected Team's roster, in the shape {@link listProjectMemberOptions} filters and maps.
+   *
+   * `team_members` and not `project_members` narrowed by team: `RBE-06` grants `editor` FROM a team
+   * roster row, so a team member is a participant whether or not an explicit `project_members` row
+   * was ever written for them — intersecting the two would withhold exactly those people.
+   */
+  private async teamRosterOptionSource(
+    workspaceId: string,
+    projectId: string,
+    teamId: string,
+  ): Promise<
+    Array<{
+      userId: string;
+      status: string;
+      displayName?: string | null;
+      email?: string | null;
+      avatarUrl?: string | null;
+    }>
+  > {
+    await this.assertTeamLinkedToProject(workspaceId, projectId, teamId);
+    return this.teamService.listTeamMembers(teamId, workspaceId);
   }
 
   /**
