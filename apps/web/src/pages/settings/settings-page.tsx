@@ -134,25 +134,78 @@ export function SettingsPage() {
   const { project } = useAppContext()
   const { can: hasPermission } = useProjectPermissions(project?.projectId)
 
-  const allItems = SIDEBAR.flatMap((g) => g.items)
-  const activeItem = allItems.find((i) => i.key === activeTab)
+  /**
+   * An entry the reader has no access to is HIDDEN, never rendered disabled.
+   *
+   * Phase 4 `03_Settings_Audit/SRS.md:48-58` states it entry by entry — Workspace Settings, Users,
+   * Permission Model and Audit Log are `Hidden` for Admin, Editor and No Access alike — and §4.1:69
+   * says it in words: "Other users do not see the entry." `02_Roles_Permissions/SRS.md:117` and
+   * `P3_RBAC_AND_SYSTEM_STATES.md:38` then forbid the shape this used to have: "Disabled is not an
+   * assignable access level. It must not be used as a replacement for No Access."
+   *
+   * What it used to do: every entry the reader lacked rendered as a padlocked, `disabled` row
+   * captioned "Requires admin role" — 4 of them for a per-project Admin, 5 for an Editor, 6 for a No
+   * Access reader. That advertises a surface's existence to the one principal the BA hides it from,
+   * invites a click that cannot work, and states a reason that is wrong twice over (the entries are
+   * gated on five different codes, and "role" is not how access is modelled — §1:21/§2.2 make it a
+   * per-Project LEVEL). `P3_RBAC_AND_SYSTEM_STATES.md:42-47` gives the resulting gear contents
+   * directly: WA "Full Administration", Admin "My Permissions, Workspaces & Projects, Permission
+   * Model", Editor "My Permissions and Workspaces & Projects", No Access "Personal only".
+   *
+   * A group whose every item is hidden drops with them, so no empty `Workspace` heading is left
+   * standing over nothing — which would disclose exactly what hiding the rows conceals.
+   */
+  const visibleGroups = SIDEBAR.map((group) => ({
+    group: group.group,
+    items: group.items.filter((i) => i.requires === null || hasPermission(i.requires)),
+  })).filter((group) => group.items.length > 0)
+  const visibleItems = visibleGroups.flatMap((g) => g.items)
+
+  /**
+   * The tab actually rendered — DERIVED from the same `visibleGroups` the sidebar renders, so the
+   * strip and the panel answer with ONE predicate and cannot disagree.
+   *
+   * The visible set shrinks under a reader who is already inside Settings: `hasPermission` resolves
+   * against the SELECTED project, so switching from a project where they are Admin to one where they
+   * are Editor takes `Permission Model` away (§3:57 — View for Admin, Hidden for Editor). Left as
+   * plain state, `activeTab` would then address a tab with no row in the strip and keep rendering a
+   * surface the BA hides. Falling back to the first visible entry cannot fail: both `Personal` items
+   * carry `requires: null`, so `Profile & Account` is visible at every level (§3:52) and there is
+   * always somewhere to land.
+   *
+   * Deliberately NOT held while the permission read is in flight, which was tried: `hasPermission`
+   * falls back to the WORKSPACE baseline during the fetch (empty for a normal user), so holding the
+   * panel while the strip re-derived left a hidden surface mounted with no row addressing it — a dead
+   * tab-bar reached from the other side. Showing the ROW during the fetch instead would advertise a
+   * hidden surface on no evidence, which is the defect this whole change is about. The cost is a brief
+   * flip to Profile & Account on a project switch, and only for a project not yet resolved (the read
+   * has a 60s `staleTime`).
+   *
+   * `activeTab` itself is deliberately NOT rewritten, so once the grants land the reader is returned
+   * to the tab they chose rather than stranded on Profile.
+   */
+  const activeKey = visibleItems.some((i) => i.key === activeTab)
+    ? activeTab
+    : (visibleItems[0]?.key ?? 'profile')
+
+  const activeItem = SIDEBAR.flatMap((g) => g.items).find((i) => i.key === activeKey)
   const activeLabel = activeItem ? t(activeItem.label) : t('common:settings')
   const tabEl =
-    activeTab === 'profile' ? (
+    activeKey === 'profile' ? (
       <ProfileTab />
-    ) : activeTab === 'my-permissions' ? (
+    ) : activeKey === 'my-permissions' ? (
       <MyPermissionsTab />
-    ) : activeTab === 'members' ? (
+    ) : activeKey === 'members' ? (
       <MembersTab />
-    ) : activeTab === 'workspace' ? (
+    ) : activeKey === 'workspace' ? (
       <WorkspaceSettingsTab />
-    ) : activeTab === 'audit' ? (
+    ) : activeKey === 'audit' ? (
       <AuditLogTab />
-    ) : activeTab === 'projects-access' ? (
+    ) : activeKey === 'projects-access' ? (
       <WorkspaceProjectsPanel />
-    ) : activeTab === 'permission-model' ? (
+    ) : activeKey === 'permission-model' ? (
       <PermissionModelTab />
-    ) : activeTab === 'integrations' ? (
+    ) : activeKey === 'integrations' ? (
       <IntegrationsTab />
     ) : (
       <ComingSoonTab label={activeLabel} />
@@ -162,24 +215,19 @@ export function SettingsPage() {
     <div className="flex flex-1 overflow-hidden bg-background">
       {/* ── Left sidebar ── */}
       <aside className="w-52 shrink-0 overflow-y-auto border-r border-border-strong bg-card px-3 py-4">
-        {SIDEBAR.map((group) => (
+        {visibleGroups.map((group) => (
           <div key={group.group} className="mb-4">
             <p className="mb-1 px-2 text-ui-xs font-semibold tracking-wider text-foreground-subtle uppercase">
               {t(group.group)}
             </p>
             {group.items.map((item) => {
               const Icon = item.icon
-              const isActive = activeTab === item.key
-              // Locked when the tab requires a permission the user doesn't hold.
-              const locked = item.requires !== null && !hasPermission(item.requires)
-              const clickable = !locked
+              const isActive = activeKey === item.key
               return (
                 <button
                   key={item.key}
-                  onClick={() => clickable && setActiveTab(item.key)}
-                  disabled={locked}
-                  title={locked ? 'Requires admin role' : undefined}
-                  className="mb-0.5 flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-ui-md transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => setActiveTab(item.key)}
+                  className="mb-0.5 flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-ui-md transition-colors"
                   style={{
                     backgroundColor: isActive ? BRAND.primaryLighter : 'transparent',
                     color: isActive ? BRAND.primary : BRAND.textSecondary,
@@ -188,7 +236,6 @@ export function SettingsPage() {
                 >
                   <Icon size={13} style={{ color: isActive ? BRAND.primary : BRAND.textMuted }} />
                   {t(item.label)}
-                  {locked && <Lock size={10} className="ml-auto text-border-strong" />}
                 </button>
               )
             })}

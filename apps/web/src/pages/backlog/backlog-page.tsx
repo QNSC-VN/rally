@@ -41,6 +41,8 @@ import {
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
+import { PERMISSION } from '@/shared/config/permissions'
 import { useProjectMemberOptions } from '@/features/teams/api'
 import { useAssignableIterations, useIterationOptions } from '@/features/iterations/api'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
@@ -82,6 +84,8 @@ export function BacklogPage() {
 
   const { can } = useProjectPermissions(projectId)
   const canEdit = can('work_item:edit')
+  // `release:view` — the code the server checks before letting a write move `releaseId`.
+  const canAssignRelease = can(PERMISSION.RELEASE_VIEW)
 
   // ── Filters ──────────────────────────────────────────────────────────────────
   // Quick search is the page's OWN state and its own `q` parameter — P2-BL-TS-015
@@ -352,6 +356,7 @@ export function BacklogPage() {
                     releases={releaseChoices}
                     iterations={iterationChoices}
                     canEdit={canEdit}
+                    canAssignRelease={canAssignRelease}
                   />
                   <BulkDeleteCopy
                     selection={sel}
@@ -409,6 +414,7 @@ export function BacklogPage() {
                 selected={selected}
                 active={item.itemKey === summaryItemKey}
                 onToggleSelect={onToggleSelect}
+                canAssignRelease={canAssignRelease}
                 onOpen={() => openItem(item)}
                 colStyles={colStyles}
                 canEdit={canEdit}
@@ -542,6 +548,13 @@ interface BacklogRowProps {
   onOpen: () => void
   colStyles: Record<ColumnKey, React.CSSProperties>
   canEdit: boolean
+  /**
+   * `release:view` — the code `WorkItemsService.assertMayAssignRelease` checks, so this cell and the
+   * server agree on one code. False makes the cell READ-ONLY text rather than absent: `P3…:71` hides
+   * the ACTION `Assign to Release` from an Editor, and the release a story sits in is still data on a
+   * grid they own.
+   */
+  canAssignRelease: boolean
   /** The assignee feed (`useProjectMemberOptions`) — the shared picker shape, which permits null. */
   members: OwnerSelectMember[]
   releases: Array<{ id: string; name: string; releaseKey?: string | null }>
@@ -550,6 +563,20 @@ interface BacklogRowProps {
 }
 
 // inline table selects use <InlineSelect> component directly
+
+/**
+ * The release a row sits in, as text. `EMPTY_VALUE` (`--`) for none, per its own docblock — never an
+ * em-dash, and never a blank cell, which would read as "not loaded".
+ */
+function releaseLabel(
+  releaseId: string | null | undefined,
+  releases: Array<{ id: string; name: string; releaseKey?: string | null }>,
+): string {
+  if (!releaseId) return EMPTY_VALUE
+  const match = releases.find((r) => r.id === releaseId)
+  if (!match) return EMPTY_VALUE
+  return match.releaseKey ? `${match.releaseKey}: ${match.name}` : match.name
+}
 
 function BacklogRow({
   item,
@@ -560,6 +587,7 @@ function BacklogRow({
   onOpen,
   colStyles,
   canEdit,
+  canAssignRelease,
   members,
   releases,
   iterations,
@@ -754,22 +782,31 @@ function BacklogRow({
         style={colStyles.release}
         onClick={stop}
       >
-        <SearchableSelect
-          value={item.releaseId ?? ''}
-          readOnly={!canEdit}
-          ariaLabel="Release"
-          placeholder="--"
-          options={[
-            { value: '', label: '--' },
-            ...releases.map((r) => ({
-              value: r.id,
-              label: r.releaseKey ? `${r.releaseKey}: ${r.name}` : r.name,
-              searchText: `${r.releaseKey ?? ''} ${r.name}`,
-              icon: <TypeBadge type="release" size={16} />,
-            })),
-          ]}
-          onChange={(v) => patch({ releaseId: v || null })}
-        />
+        {canAssignRelease ? (
+          <SearchableSelect
+            value={item.releaseId ?? ''}
+            readOnly={!canEdit}
+            ariaLabel="Release"
+            placeholder="--"
+            options={[
+              { value: '', label: '--' },
+              ...releases.map((r) => ({
+                value: r.id,
+                label: r.releaseKey ? `${r.releaseKey}: ${r.name}` : r.name,
+                searchText: `${r.releaseKey ?? ''} ${r.name}`,
+                icon: <TypeBadge type="release" size={16} />,
+              })),
+            ]}
+            onChange={(v) => patch({ releaseId: v || null })}
+          />
+        ) : (
+          /* Read-only: the ACTION is withheld (`P3…:71`), the VALUE is this column's data. A live
+             select here was refused only on save, and the refusal discarded the rest of the row's
+             pending edits with it. */
+          <span className="truncate px-2 text-ui-sm text-foreground">
+            {releaseLabel(item.releaseId, releases)}
+          </span>
+        )}
       </div>
 
       {/* Iteration — shared SearchableSelect */}

@@ -61,6 +61,7 @@ export function StatusRow({
   iterationOptions,
   selectedIterationId,
   canEdit,
+  canOpenPortfolio,
   colStyles,
   dragEnabled,
   selected,
@@ -75,6 +76,13 @@ export function StatusRow({
   iterationOptions: readonly { id: string; name: string; iterationKey?: string | null }[]
   selectedIterationId: string
   canEdit: boolean
+  /**
+   * `portfolio:view` — whether this reader can open Portfolio detail at all. False makes the Feature
+   * cell TEXT instead of a link: §3.2:85 hides Portfolio Items from an Editor, so the cell used to
+   * navigate them straight into Access Denied. The KEY still shows, because a Story's Feature is data
+   * on a grid the Editor owns; only the journey to a surface they cannot open is withheld.
+   */
+  canOpenPortfolio: boolean
   colStyles: Record<string, CSSProperties>
   dragEnabled: boolean
   selected: boolean
@@ -225,9 +233,9 @@ export function StatusRow({
               // A Feature is a portfolio item, so it opens portfolio detail. Sending
               // its key to `/item/:itemKey` used to work when Feature was a
               // work-item type; that lookup can no longer resolve it.
-              onOpen={() =>
-                featureId
-                  ? void navigate({ to: '/portfolio/$itemId', params: { itemId: featureId } })
+              onOpen={
+                canOpenPortfolio && featureId
+                  ? () => void navigate({ to: '/portfolio/$itemId', params: { itemId: featureId } })
                   : undefined
               }
             />

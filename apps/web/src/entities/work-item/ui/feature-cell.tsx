@@ -6,8 +6,11 @@ interface FeatureCellProps {
   featureKey: string
   /** Feature title; when present it is appended as `KEY: Title` (Rally parity). */
   featureTitle?: string | null
-  /** Open the feature (navigation is owned by the caller). */
-  onOpen: () => void
+  /**
+   * Open the feature (navigation is owned by the caller). ABSENT means the reader cannot open
+   * Portfolio detail — §3.2:85 hides it from an Editor — so the cell renders as text.
+   */
+  onOpen?: () => void
 }
 
 /**

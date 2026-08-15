@@ -14,7 +14,13 @@ interface WorkItemRefCellProps {
   /** Optional title; when present it is appended as `KEY: Title` (Rally parity). */
   title?: string | null
   /** Open the referenced item (navigation is owned by the caller). */
-  onOpen: () => void
+  /**
+   * Absent means NOT A LINK: the label renders as plain text with the same glyph and no button
+   * semantics. A grid may hold a reference to a record the reader cannot open — §3.2:85 hides
+   * Portfolio Items from an Editor while their Story still names its Feature — and a link that lands
+   * on Access Denied is worse than a label, because it is offered as the way forward.
+   */
+  onOpen?: () => void
   /**
    * Visual treatment:
    * - `inline` (default) — bare glyph + text for use inside grid cells.
@@ -45,7 +51,23 @@ export function WorkItemRefCell({
   const label = title ? `${itemKey}: ${title}` : itemKey
   const open = (e: { stopPropagation: () => void }) => {
     e.stopPropagation()
-    onOpen()
+    onOpen?.()
+  }
+
+  if (!onOpen) {
+    return (
+      <span
+        title={label}
+        className={
+          variant === 'pill'
+            ? 'flex w-full items-center gap-1.5 truncate rounded border border-input px-2.5 py-1.5 text-ui-sm text-foreground'
+            : 'inline-flex max-w-full items-start gap-1.5 text-foreground'
+        }
+      >
+        <TypeBadge type={type} size={16} />
+        <span className="truncate">{label}</span>
+      </span>
+    )
   }
 
   if (variant === 'pill') {

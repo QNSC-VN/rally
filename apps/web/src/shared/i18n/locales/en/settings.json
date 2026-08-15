@@ -299,6 +299,7 @@
     "back": "Back",
     "noTeamMembership": "No team membership",
     "noAccess": "No Access",
+    "workspaceAdmin": "Workspace Admin",
     "noProjectAccess": "This user will have no project access.",
     "accessRemoved": "Access will be removed (No Access)",
     "noChanges": "Nothing to save — no access changes are pending.",

@@ -14,8 +14,10 @@ import {
   type WorkItem,
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
-import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
+import { useProjectTeams, useProjectMemberOptions } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
+import { useProjectPermissions } from '@/features/access/api'
+import { PERMISSION } from '@/shared/config/permissions'
 import { usePortfolioFeatureOptions } from '@/features/portfolio/api'
 import { listResource } from '@/shared/lib/query/resource'
 import { useMilestoneOptions } from '@/features/milestones/api'
@@ -139,7 +141,16 @@ export function DetailSidebar({
   const { t } = useTranslation('work-items')
   const { project } = useAppContext()
   const { data: teams = [] } = useProjectTeams(item.projectId)
-  const { data: members = [] } = useProjectMembers(item.projectId)
+  // The ASSIGNEE feed, NOT the administrative roster: `GET /projects/:id/members` carries
+  // accessLevel/status/teamCount and is Admin-only (§3.1:71), while §3.2:79/:81 give an Editor
+  // Create/View/Edit on the Story, Defect and Task this sidebar edits. The Owner field both names
+  // and SETS the owner, so a 403 defaulted to `[]` left it unreadable and unwritable at once.
+  const membersQuery = useProjectMemberOptions(item.projectId)
+  const memberFeed = listResource(membersQuery)
+  // `release:view` is what `WorkItemsService.assertMayAssignRelease` checks, so the control and the
+  // server agree on one code rather than the client guessing a weaker one.
+  const { can } = useProjectPermissions(item.projectId)
+  const canAssignRelease = can(PERMISSION.RELEASE_VIEW)
   const { data: releases = [] } = useReleases(item.projectId)
   // The reference feed, NOT the Portfolio grid's: that one takes `portfolio:view`, which
   // P5-PI-FR-017 withholds from an Editor. Scoped to the ITEM's project per §5.3:133.
@@ -275,7 +286,7 @@ export function DetailSidebar({
         <OwnerSelectField
           value={item.assigneeId}
           onChange={(v) => onUpdate({ assigneeId: v || null })}
-          members={members}
+          members={memberFeed.rows}
           disabled={disabled}
         />
 
@@ -479,25 +490,40 @@ export function DetailSidebar({
                 }}
               />
             </FormField>
-            <FormField label={t('sidebar.release')}>
-              <SearchableSelect
-                variant="field"
-                value={item.releaseId ?? ''}
-                readOnly={disabled}
-                ariaLabel={t('sidebar.release')}
-                placeholder={t('sidebar.noRelease')}
-                options={[
-                  { value: '', label: t('sidebar.noRelease') },
-                  ...releases.map((r) => ({
-                    value: r.id,
-                    label: r.releaseKey ? `${r.releaseKey}: ${r.name}` : r.name,
-                    searchText: `${r.releaseKey ?? ''} ${r.name}`,
-                    icon: <TypeBadge type="release" size={16} />,
-                  })),
-                ]}
-                onChange={(v) => onUpdate({ releaseId: v || null })}
-              />
-            </FormField>
+            {/*
+              Release — HIDDEN, not disabled, for a caller who may not assign one.
+
+              The BA wrote this twice and the second time in the imperative:
+              `P3_RBAC_AND_SYSTEM_STATES.md:71` puts `Assign to Release` at Hidden for an Editor, and
+              `P4_SCREEN_ANNOTATIONS.md:47` says "The `Release` field in the aside must render as `H`
+              (not merely disabled)". `release:view` is the code the server checks — `admin` holds it,
+              `editor` does not, which is exactly §294's line ("Editor … cannot assign Release").
+
+              Until now this select was live and populated for an Editor, and the refusal arrived only
+              on save — where it discarded every OTHER pending edit in the same request. So the
+              control was worse than merely wrong: it lost work that had nothing to do with releases.
+            */}
+            {canAssignRelease && (
+              <FormField label={t('sidebar.release')}>
+                <SearchableSelect
+                  variant="field"
+                  value={item.releaseId ?? ''}
+                  readOnly={disabled}
+                  ariaLabel={t('sidebar.release')}
+                  placeholder={t('sidebar.noRelease')}
+                  options={[
+                    { value: '', label: t('sidebar.noRelease') },
+                    ...releases.map((r) => ({
+                      value: r.id,
+                      label: r.releaseKey ? `${r.releaseKey}: ${r.name}` : r.name,
+                      searchText: `${r.releaseKey ?? ''} ${r.name}`,
+                      icon: <TypeBadge type="release" size={16} />,
+                    })),
+                  ]}
+                  onChange={(v) => onUpdate({ releaseId: v || null })}
+                />
+              </FormField>
+            )}
             {/* Feature — the portfolio link every rollup aggregates by, and per §5.2:124 the ONLY
                 place a Story's Feature membership can be set.
                 Only active FEATURES are offered: Rally attaches the story hierarchy to the lowest
