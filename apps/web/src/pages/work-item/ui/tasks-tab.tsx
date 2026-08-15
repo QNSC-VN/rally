@@ -16,7 +16,7 @@ import {
   type WorkItem,
 } from '@/features/work-items/api'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
-import { useProjectMembers, useProjectTeams } from '@/features/teams/api'
+import { useProjectMemberOptions, useProjectTeams } from '@/features/teams/api'
 import {
   ScheduleState,
   SCHEDULE_STATE_LABEL,
@@ -98,7 +98,12 @@ export function TasksTab({
   const selection = useRowSelection(tasks)
   // Tasks inherit their parent's project; team/owner names are resolved for display.
   const { data: teams = [] } = useProjectTeams(projectId)
-  const { data: members = [] } = useProjectMembers(projectId)
+  // The ASSIGNEE feed, not the administrative roster (Admin-only, §3.1:71): every Task row resolves
+  // its owner NAME from this list and its Owner cell writes back through it, and §3.2:81 gives an
+  // Editor the Task. A 403 defaulted to `[]` made each row read `--` with an empty owner picker.
+  const membersQuery = useProjectMemberOptions(projectId)
+  const memberFeed = listResource(membersQuery)
+  const members = memberFeed.rows
   const { project } = useAppContext()
   // Kept as a pair, not flattened to one string: `ProjectCell` renders the key as a `KeyChip`
   // beside the name, the way the Portfolio grid's Project column does.

@@ -10,6 +10,7 @@
  * 3-level access (WA / Admin / Editor) — no Viewer.
  */
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Loader2,
   ChevronRight,
@@ -34,6 +35,12 @@ import {
   type Project,
 } from '@/features/projects/api'
 import { useProjectTeams, type Team } from '@/features/teams/api'
+import { useProjectPermissions } from '@/features/access/api'
+import {
+  canViewProjectRoster,
+  effectiveProjectLevel,
+  projectLevelLabel,
+} from '../model/effective-access'
 import { TeamDetail } from './project-teams-tab'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { SettingsTabHeader } from './settings-tab-header'
@@ -48,8 +55,6 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { FormField } from '@/shared/ui/form-field'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
-import { useQuery } from '@tanstack/react-query'
-import { apiClient } from '@/shared/api/http-client'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 
 type TabKey = 'details' | 'users' | 'teams'
@@ -428,11 +433,50 @@ function ProjectDetail({
   const [archiveOpen, setArchiveOpen] = useState(false)
   const updateProject = useUpdateProject()
   const deleteProject = useDeleteProject()
+
+  /**
+   * `Users & Permissions` is HIDDEN for an Editor, so the TAB is absent — not rendered and then
+   * refused.
+   *
+   * §3.1:71 — "View Project `Users & Permissions` | Edit | Read-only | Hidden | Hidden" — and
+   * `P3_RBAC_AND_SYSTEM_STATES.md:56` states the same three outcomes. What it used to do is the worst
+   * available combination: the tab rendered for every reader, and `ProjectAccessList`'s first request
+   * (`GET /projects/:id/members`) then 403'd for an Editor, whose silent failure printed "No members
+   * in this project yet." So the surface confirmed its own existence and answered with a fabricated
+   * fact about the project. `:38` of the same file forbids exactly this ("Disabled ... must not be
+   * used as a replacement for No Access"), and disabling it would have been no better.
+   *
+   * The rule is derived from the reader's own self-scoped permissions, so it mirrors the check the
+   * SERVER makes on the feed the tab reads — `listProjectMembers` refuses any level but `admin` —
+   * rather than approximating it. `Details` and `Teams` stay for every level: §3.1:70 gives an Editor
+   * "Read-only, scoped" on "View Project Details and Teams".
+   */
+  const { can } = useProjectPermissions(project.id)
+  const canViewRoster = canViewProjectRoster(effectiveProjectLevel(can))
+
   const tabs: Array<{ key: TabKey; label: string }> = [
     { key: 'details', label: 'Details' },
-    { key: 'users', label: 'Users & Permissions' },
+    ...(canViewRoster ? [{ key: 'users' as TabKey, label: 'Users & Permissions' }] : []),
     { key: 'teams', label: 'Teams' },
   ]
+  /**
+   * DERIVED from the same `tabs` the strip renders, so the two cannot disagree — the strip and the
+   * panel answer with ONE predicate.
+   *
+   * The tree switches project WITHOUT remounting this component, so the open tab outlives the project
+   * it was opened on: a reader who opens `Users & Permissions` on a project they administer and then
+   * selects one they only edit would otherwise keep the hidden surface mounted under a strip that no
+   * longer offers it. `details` is visible at every level (§3.1:70), so the fallback always lands and
+   * the panel can never go blank.
+   *
+   * Deliberately NOT held while the permission read is in flight, which was tried: `canViewRoster` is
+   * false during the fetch (the hook falls back to the workspace baseline, which holds nothing for a
+   * normal user), so holding the panel produced a mounted roster under a strip with no tab for it —
+   * the dead panel this rule exists to prevent, reached from the other side. `tab` state is left
+   * alone, so once the grants land the reader is returned to the tab they chose rather than stranded
+   * on Details.
+   */
+  const activeTab: TabKey = tabs.some((tt) => tt.key === tab) ? tab : 'details'
 
   function setStatus(status: 'active' | 'archived') {
     updateProject.mutate(
@@ -523,7 +567,7 @@ function ProjectDetail({
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`-mb-px border-b-2 px-3 py-2 text-ui-sm transition-colors ${
-              tab === t.key
+              activeTab === t.key
                 ? 'border-primary font-medium text-foreground'
                 : 'border-transparent text-foreground-subtle hover:text-foreground'
             }`}
@@ -533,9 +577,9 @@ function ProjectDetail({
         ))}
       </div>
 
-      {tab === 'details' && <DetailsTab project={project} isWA={isWA} />}
-      {tab === 'users' && <ProjectAccessList projectId={project.id} isWA={isWA} />}
-      {tab === 'teams' && (
+      {activeTab === 'details' && <DetailsTab project={project} isWA={isWA} />}
+      {activeTab === 'users' && <ProjectAccessList projectId={project.id} isWA={isWA} />}
+      {activeTab === 'teams' && (
         <ProjectTeamsTab projectId={project.id} isWA={isWA} onOpenTeam={onOpenTeam} />
       )}
 
@@ -571,30 +615,45 @@ function ProjectDetail({
   )
 }
 
-/** PM-FR-005 / mockup:424 — a non-WA viewer sees their effective access beside the
- *  project name (the WA sees everything, so no chip). Reads the same feed
- *  MyPermissions renders from. */
+/**
+ * PM-FR-005 / mockup:424 — a non-WA reader sees their effective access beside the project name (the WA
+ * sees everything, so no chip).
+ *
+ * IT USED TO SAY "No Access" TO EVERYONE. The chip read `accessLevel` off
+ * `GET /projects/:projectId/my-permissions`, and that response has never carried the field —
+ * `ProjectPermissionsResponseSchema` is `{ projectId, permissions }`. So `data.accessLevel` was always
+ * `undefined`, `?? 'no_access'` turned that into a claim, and an Admin or Editor was told, beside their
+ * own project's name, that they had no access to it. Its docblock said it "reads the same feed
+ * MyPermissions renders from", which was true of the URL and false of the field.
+ *
+ * Now it derives the level from the PERMISSIONS that feed really returns, through the same
+ * `effectiveProjectLevel` the tab strip and the roster gate use — so the chip, the visible tabs and
+ * the server's own refusal cannot disagree about who the reader is. `useProjectPermissions` also means
+ * one shared cache entry instead of this component's hand-rolled key, which never matched
+ * `accessKeys.myProjectPermissions` and so refetched per row.
+ *
+ * An UNRESOLVED read renders nothing rather than "No Access": absent is not denied, and a chip is not
+ * worth a fabricated claim about the reader while the answer is still in flight.
+ */
 function EffectiveAccessChip({ projectId }: { projectId: string }) {
-  const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
-  const { data } = useQuery({
-    queryKey: ['my-project-permissions', workspaceId ?? '', projectId],
-    queryFn: async () => {
-      const res = await apiClient.GET('/v1/projects/{projectId}/my-permissions', {
-        params: { path: { projectId } },
-      })
-      if (res.error) return { accessLevel: null }
-      return {
-        accessLevel: ((res.data as { accessLevel?: string | null }) ?? {}).accessLevel ?? null,
-      }
-    },
-    staleTime: 60_000,
-  })
-  const level = data?.accessLevel ?? 'no_access'
-  const label = level === 'no_access' ? 'No Access' : level === 'admin' ? 'Admin' : 'Editor'
+  const { t } = useTranslation('settings')
+  const { can, isLoading } = useProjectPermissions(projectId)
+  if (isLoading) return null
+
+  const level = effectiveProjectLevel(can)
+  // `workspace_admin` is not a per-project LEVEL, so it has no entry in the option list the labels
+  // come from — it gets its own string, and `null` gets "No Access", which is the absence of a level
+  // rather than one of them.
+  const label =
+    level === null
+      ? t('access.noAccess')
+      : level === 'workspace_admin'
+        ? t('access.workspaceAdmin')
+        : projectLevelLabel(level)
   return (
     <span
       className={
-        level === 'admin'
+        level === 'admin' || level === 'workspace_admin'
           ? 'rounded bg-primary-lighter px-1.5 py-0.5 text-ui-xs font-medium text-primary'
           : 'rounded bg-surface-hover px-1.5 py-0.5 text-ui-xs font-medium text-foreground-subtle'
       }

@@ -22,8 +22,9 @@ import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { TeamAvatar } from '@/shared/ui/team-cell'
 import { formatDateIso } from '@/shared/lib/utils'
 import { usePendingPatch } from '@/shared/lib/hooks/use-pending-patch'
-import { useProjectPermissions } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { PERMISSION } from '@/shared/config/permissions'
 import {
   useProjects,
   useUpdateProject,
@@ -51,6 +52,7 @@ export function ProjectDetailPage() {
   const { projectKey } = useParams({ from: '/auth/projects/$projectKey' })
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId ?? ''
+  const { hasPermission } = useAuthStore()
 
   // The record is resolved out of the LIST — there is no `GET /projects/by-key` — so this page
   // inherits the list's paging. `isLoadingMore` is therefore load-bearing here and not a nicety: with
@@ -65,9 +67,28 @@ export function ProjectDetailPage() {
   const isError = projectsRes.isError
   const update = useUpdateProject()
 
-  const { can } = useProjectPermissions(project?.id)
-  // Archived projects are read-only (the backend rejects edits on them).
-  const canManage = can('project:edit') && project?.status === 'active'
+  /**
+   * `workspace:edit`, not `project:edit`, and the difference is a whole access level.
+   *
+   * Everything `canManage` opens on this page is a `PATCH /projects/:id` field (title, description,
+   * lead, dates, status) or a `POST|DELETE /projects/:id/teams` link, and all three routes carry
+   * `@RequirePermission('workspace:edit')` (`projects.controller.ts:276,505,520`). `project:edit`
+   * is a PROJECT-tier code a per-project Admin holds — it gates label and workflow-status
+   * configuration — so this page handed a per-project Admin an editable name, description, lead,
+   * dates, status and Teams picker for six writes the server refuses. The BA gives that level
+   * "View Project Details and Teams | Edit | Read-only | Read-only, scoped | Hidden"
+   * (`Phase 4/02_Roles_Permissions/SRS.md:70`) and marks project edit Hidden for it (`:68`,
+   * restated at `P3_RBAC_AND_SYSTEM_STATES.md:57`). Same defect class as the list's Teams cell, and
+   * the same `ProjectCtx.canEdit` reasoning applies to the check used — a workspace-tier code
+   * cannot be granted by a project-scoped assignment, so the auth store is the right source.
+   *
+   * ANDed with the lifecycle state: archived projects are read-only (`SRS.md:93`, and the backend
+   * rejects edits on them).
+   */
+  // `workspace:edit` — the code `PATCH /projects/:id` and the `:id/teams` writes carry. NOT
+  // `project:edit`: a per-project Admin holds that (labels, workflow statuses) and §3.1:70 gives them
+  // Read-only on project details, so gating on it offered six writes the server refuses.
+  const canManage = hasPermission(PERMISSION.WORKSPACE_EDIT) && project?.status === 'active'
 
   const [activeTab, setActiveTab] = useState<TabKey>('details')
   const activityQuery = useProjectActivityLog(project?.id)

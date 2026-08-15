@@ -261,16 +261,25 @@ export class WorkspaceService {
    *   • `[]`    (No Access: no active `project_members` row anywhere, and no workspace grant) → an
    *             empty list. Before this, a principal with zero grants read the company directory
    *             including phone numbers and last-login times.
-   *   • ids     (an Editor or per-project Admin) → the whole roster, at these four fields.
+   *   • ids     (an Editor or per-project Admin) → only the people THOSE projects reference.
    *
-   * THE LAST CASE IS DELIBERATELY NOT NARROWED FURTHER, and that is worth stating because it looks
-   * like a missing filter. Narrowing the POPULATION to the rosters of readable projects is not
-   * available: §2.1 (migration 0118) keeps a Workspace Admin OFF every `project_members` roster,
-   * and a Workspace Admin is exactly who owns a project — the seeded projects' `lead_id` is the
-   * admin user, with no membership row by design. A picker narrowed that way could neither RESOLVE
-   * nor OFFER the current owner, which is the both-directions failure this split exists to avoid.
-   * What the four fields are worth is bounded by the fact that they are already on screen wherever
-   * a person is an assignee, a lead or a team member; the sensitive columns are on the route above.
+   * THE LAST CASE IS NARROWED, AND THE PREVIOUS NOTE HERE ARGUED IT COULD NOT BE. That argument was
+   * half right and the conclusion was wrong, so both halves are recorded. Measured, the route handed
+   * a project Editor every one of 1105 workspace members — the whole company directory, at four
+   * fields — where §3.1:62 hides `View company Users` from them. The readable-project list was being
+   * used as a BINARY gate ("may you read anything?") and then discarded, which is the same defect
+   * class as a boundary that takes a permission and ignores it.
+   *
+   * What the old note got right: the roster ALONE cannot name a project's owner. §2.1 (migration
+   * 0118) keeps a Workspace Admin off every `project_members` roster, and a WA is exactly who tends
+   * to own a project — every seeded project's `lead_id` is the admin user, with no membership row by
+   * design. A picker narrowed to rosters could neither resolve nor offer the current owner.
+   *
+   * So the population is the UNION of the two things a readable project actually references: its
+   * active members, and its lead. That resolves every owner a reader can see by construction, offers
+   * exactly the people their own projects already name, and stops being a directory. The four fields
+   * remain the four that are already on screen wherever someone is an assignee, a lead or a team
+   * member; the sensitive columns are on the route above.
    */
   async listMemberOptions(workspaceId: string, actorId: string): Promise<WorkspaceMemberOption[]> {
     await this.getWorkspace(workspaceId);
@@ -278,7 +287,9 @@ export class WorkspaceService {
     // `readable === null` is UNRESTRICTED, so it must be tested for explicitly — `!readable?.length`
     // would collapse it into the empty case and fail closed for a Workspace Admin.
     if (readable !== null && readable.length === 0) return [];
-    return this.memberRepo.listMemberOptions(workspaceId);
+    // `null` travels through as UNRESTRICTED. An empty list cannot reach the repository, so its
+    // `inArray` is never handed one — not portable as "match nothing".
+    return this.memberRepo.listMemberOptions(workspaceId, readable);
   }
 
   @Span('workspace.addMember')

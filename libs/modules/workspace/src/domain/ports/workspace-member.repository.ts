@@ -29,7 +29,16 @@ export interface IWorkspaceMemberRepository {
    * every delivery participant may read. A separate QUERY, not a projection of the one above: the
    * sensitive columns must not be selected on a path that does not need them.
    */
-  listMemberOptions(workspaceId: string): Promise<WorkspaceMemberOption[]>;
+  /**
+   * The picker feed. `projectIds === null` is UNRESTRICTED (a workspace-wide grant) and returns every
+   * member; a list NARROWS the population to people those projects actually reference — their active
+   * members plus their leads. See `WorkspaceService.listMemberOptions` for why the lead has to be
+   * unioned in separately.
+   */
+  listMemberOptions(
+    workspaceId: string,
+    projectIds: string[] | null,
+  ): Promise<WorkspaceMemberOption[]>;
   addMember(input: AddMemberInput, tx?: DbExecutor): Promise<WorkspaceMember>;
   updateMember(id: string, input: UpdateMemberInput, tx?: DbExecutor): Promise<WorkspaceMember>;
   removeMember(workspaceId: string, userId: string, tx?: DbExecutor): Promise<void>;

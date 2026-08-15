@@ -123,7 +123,10 @@ beforeEach(() => {
         response: { status: 200 },
       })
     }
-    if (path === '/v1/projects/{id}/members') {
+    // The REFERENCE feed, matching the panel: it reads `member-options` (`project:view`) rather than
+    // the administrative roster, because §3.2:79 gives an Editor the Story this panel summarises and
+    // the roster's 403 blanked the owner NAME on a screen they own.
+    if (path === '/v1/projects/{id}/member-options') {
       return Promise.resolve({
         data: [{ userId: 'u1', displayName: 'Marcus Webb' }],
         error: undefined,

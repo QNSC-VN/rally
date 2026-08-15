@@ -12,6 +12,17 @@
  */
 export const PERMISSION = {
   WORKSPACE_ALL: 'workspace:*',
+  /**
+   * The code the STRUCTURAL project routes actually carry — `PATCH /projects/:id` and the two
+   * `:id/teams` link/unlink writes. §3.1:68/:69 make project and team CRUD Workspace Admin's alone,
+   * so a client control for those must gate on this and not on `project:edit`, which a per-project
+   * Admin legitimately holds for labels and workflow configuration.
+   *
+   * Equivalent to `WORKSPACE_ALL` today, since `workspace:*` grants it and `workspace_admin` is the
+   * only holder of either — but gating on the code the route requires is the rule this repo keeps
+   * relearning, and it stops being equivalent the moment a role holds one and not the other.
+   */
+  WORKSPACE_EDIT: 'workspace:edit',
   WORKSPACE_VIEW: 'workspace:view',
 
   // Company member/role/team/integration management (split out of the former

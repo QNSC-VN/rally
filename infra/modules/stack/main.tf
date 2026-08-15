@@ -1730,3 +1730,59 @@ resource "aws_scheduler_schedule" "ecs_scale_up" {
 # no cache, REDIS_URL falling back to localhost, denylist and rate limiter failing
 # open — except on a timer, at 08:00, with nobody watching.
 
+
+# ── Outbound email: the permission half ───────────────────────────────────────
+#
+# The IDENTITY is created once in `infra/live/_shared` (per account+region, and both environments
+# share both). What belongs here is the runtime grant: without `ses:SendEmail` on the task role, every
+# send fails with AccessDenied before the sender is even looked at — which is what both environments
+# did, while `EMAIL_PROVIDER=ses` and `MAIL_FROM_EMAIL` sat correctly configured beside it. Three
+# failures then opened the app's in-process email circuit breaker and the API kept reporting healthy,
+# so invitations and notifications were silently dead.
+#
+# The shared `ecs-service` module takes no policy input, so this attaches to the role it outputs.
+# `split("/", arn)[1]` is the same idiom `infra/live/_shared` already uses for the deploy-role guards.
+#
+# SCOPED TWO WAYS, because a bare `ses:SendEmail` on `"*"` would let a compromised task send as any
+# verified identity in the account — including prod's — from either environment:
+#   • `Resource` is this account's identity for the sender's own domain, so develop cannot send
+#     through an identity it does not share;
+#   • `ses:FromAddress` pins the envelope sender to `MAIL_FROM_EMAIL` exactly, so the grant cannot be
+#     used to impersonate another address on the same domain.
+# The ARN is CONSTRUCTED rather than read from the shared state on purpose: IAM happily references a
+# resource that does not exist yet, so the two applies can run in either order and the permission
+# simply starts working once the identity is verified. A remote-state dependency would make this
+# stack fail until `_shared` had been applied.
+locals {
+  mail_domain      = split("@", var.mail_from_email)[1]
+  ses_identity_arn = "arn:aws:ses:${var.region}:${data.aws_caller_identity.current.account_id}:identity/${local.mail_domain}"
+
+  ses_send_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+        Resource = local.ses_identity_arn
+        Condition = {
+          StringEquals = { "ses:FromAddress" = var.mail_from_email }
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "api_ses_send" {
+  name   = "${local.name}-api-ses-send"
+  role   = split("/", module.api.task_role_arn)[1]
+  policy = local.ses_send_policy
+}
+
+# The worker relays the outbox, so it sends MORE mail than the API does — the API only sends inline
+# where a caller waits for the result. Both need it; a grant on one is a half outage that looks like a
+# flake.
+resource "aws_iam_role_policy" "worker_ses_send" {
+  name   = "${local.name}-worker-ses-send"
+  role   = split("/", module.worker.task_role_arn)[1]
+  policy = local.ses_send_policy
+}

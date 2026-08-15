@@ -1,17 +1,38 @@
 /**
  * Settings > My Permissions — shows the current user's effective access.
- * Always visible to every authenticated user (requires: null).
- * SRS Phase 4.3 §1/§3.
+ *
+ * Available to EVERY authenticated reader (`requires: null`), at every level: Phase 4
+ * `03_Settings_Audit/SRS.md:53` gives all four principals a row — "View all effective access" for a
+ * Workspace Admin, "View own assigned Projects" for an Admin, "View own assigned Projects/Teams" for
+ * an Editor and "View own access or no-access state" for No Access.
+ *
+ * THE DEFECT THIS FILE CARRIED
+ * ----------------------------
+ * Every row read `useProjectMembers` — `GET /projects/:id/members`, the ADMINISTRATIVE roster, which
+ * `ProjectsService.listProjectMembers` refuses for any level but `admin` (§3.1:71 hides it from an
+ * Editor). A refused READ is silent by design (`http-client.ts`: a 403 belongs to the surface that
+ * asked), and `const { data: members = [] }` turns it into "you are in no project" — so an Editor's
+ * own access screen reported `No Access` for every project they are an Editor of. The screen that
+ * exists to explain a reader's access was the one screen denying it to them.
+ *
+ * It now reads the SELF-SCOPED feed instead (`useProjectPermissionsFor` →
+ * `GET /projects/:id/my-permissions`, `@SelfScoped`) and derives the level from it — see
+ * `../model/effective-access.ts` for the derivation and what would let it be deleted. An unresolved
+ * or failed read renders `EMPTY_VALUE`, never `No Access`: absent is not a level, and this is the one
+ * screen where guessing it is a claim about the reader.
  */
 import { Loader2 } from 'lucide-react'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useTranslation } from 'react-i18next'
 import { useProjects } from '@/features/projects/api'
-import { useProjectMembers } from '@/features/teams/api'
+import { useProjectPermissionsFor } from '@/features/access/api'
 import { PERMISSION } from '@/shared/config/permissions'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { SettingsTabHeader } from './settings-tab-header'
 import { StatusBadge } from '@/shared/ui/status-badge'
 import { BRAND } from '@/shared/config/brand'
+import { effectiveProjectLevel, projectLevelLabel } from '../model/effective-access'
 
 export function MyPermissionsTab() {
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
@@ -47,9 +68,7 @@ export function MyPermissionsTab() {
           </div>
 
           {/* Per-Project access */}
-          {!isWA && (
-            <ProjectAccessSummary workspaceId={workspaceId ?? ''} userId={user?.id ?? ''} />
-          )}
+          {!isWA && <ProjectAccessSummary workspaceId={workspaceId ?? ''} />}
 
           {/* Quick capability reference */}
           <div className="rounded-lg border border-border-subtle p-4">
@@ -76,9 +95,24 @@ export function MyPermissionsTab() {
   )
 }
 
-/** Lists the user's access_level per project. */
-function ProjectAccessSummary({ workspaceId, userId }: { workspaceId: string; userId: string }) {
+/**
+ * The reader's own level in each project they can see, from the self-scoped permission feed.
+ *
+ * `useProjects` is already narrowed server-side by `AccessService.listReadableProjectIds`, so a No
+ * Access project never reaches this list — §3:53's "no-access state" for a reader with none is the
+ * empty state below, not a row per project saying so.
+ *
+ * `useProjectPermissionsFor` is the cross-project form of the same read the whole SPA gates on, so
+ * every project already resolved (the selected one, always, because `settings-page.tsx` reads it)
+ * costs no extra request. Its `can` falls back to the WORKSPACE baseline while a project is in
+ * flight, which for a non-admin holds nothing — so the level is only derived once `isLoading` is
+ * false. Deriving through the fallback would print `No Access` for a moment on every load, which is
+ * the same false claim this screen was fixed to stop making.
+ */
+function ProjectAccessSummary({ workspaceId }: { workspaceId: string }) {
+  const { t } = useTranslation('settings')
   const { data: projects = [], isLoading } = useProjects(workspaceId)
+  const { can, isLoading: levelsLoading } = useProjectPermissionsFor(projects.map((p) => p.id))
 
   if (isLoading) {
     return (
@@ -98,42 +132,30 @@ function ProjectAccessSummary({ workspaceId, userId }: { workspaceId: string; us
           No Projects available.
         </p>
       ) : (
-        projects.map((p) => (
-          <ProjectAccessRow
-            key={p.id}
-            projectId={p.id}
-            name={p.name}
-            key_code={p.key}
-            userId={userId}
-          />
-        ))
+        projects.map((p) => {
+          const level = levelsLoading ? undefined : effectiveProjectLevel((c) => can(p.id, c))
+          return (
+            <div
+              key={p.id}
+              className="flex items-center justify-between border-b border-border-subtle px-4 py-2 last:border-b-0"
+            >
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-ui-xs text-foreground-subtle">{p.key}</span>
+                <span className="text-ui-sm text-foreground">{p.name}</span>
+              </div>
+              <span className="text-ui-sm text-foreground-subtle">
+                {level === undefined
+                  ? EMPTY_VALUE
+                  : level === null
+                    ? t('access.noAccess')
+                    : level === 'workspace_admin'
+                      ? t('access.workspaceAdmin')
+                      : projectLevelLabel(level)}
+              </span>
+            </div>
+          )
+        })
       )}
-    </div>
-  )
-}
-
-function ProjectAccessRow({
-  projectId,
-  name,
-  key_code,
-  userId,
-}: {
-  projectId: string
-  name: string
-  key_code: string
-  userId: string
-}) {
-  const { data: members = [] } = useProjectMembers(projectId)
-  const me = members.find((m) => m.userId === userId)
-  const level = me?.accessLevel
-
-  return (
-    <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2 last:border-b-0">
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-ui-xs text-foreground-subtle">{key_code}</span>
-        <span className="text-ui-sm text-foreground">{name}</span>
-      </div>
-      <span className="text-ui-sm text-foreground-subtle capitalize">{level ?? 'No Access'}</span>
     </div>
   )
 }

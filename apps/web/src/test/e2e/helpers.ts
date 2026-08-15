@@ -1,6 +1,14 @@
 import { type Page, expect } from '@playwright/test'
 
 export const ADMIN = { email: 'admin@qnsc.dev' }
+/**
+ * The seeded per-project EDITOR (`access_level = 'editor'` on NXP, no workspace baseline).
+ *
+ * Every journey before this one logged in as a Workspace Admin, whose `workspace:*` matches every
+ * code and therefore cannot fail a project-tier gate. That is why three role defects reached the day
+ * the BA asked for a non-admin login.
+ */
+export const EDITOR = { email: 'dev@qnsc.dev' }
 export const SEED_PROJECT = 'NX Platform'
 
 const SEED_CONTEXT = {
@@ -35,21 +43,31 @@ const SEED_CONTEXT = {
  * stream open so the network never idles; use 'domcontentloaded' + explicit
  * element waits.
  */
-export async function login(page: Page): Promise<void> {
+export async function login(
+  page: Page,
+  who: { email: string } = ADMIN,
+  opts: { seedContext?: boolean } = {},
+): Promise<void> {
+  const seedContext = opts.seedContext ?? true
   await page.goto('/login', { waitUntil: 'domcontentloaded' })
   // Scope to the dev-login form specifically: the page also renders the
   // email-first multi-IdP broker form and the Microsoft SSO button, each with
   // their own email input / submit. `#dev-email` is the dev form's stable id.
   const devForm = page.locator('form:has(#dev-email)')
-  await devForm.locator('input[type="email"]').fill(ADMIN.email)
+  await devForm.locator('input[type="email"]').fill(who.email)
   await devForm.locator('button[type="submit"]').click()
   await page.waitForURL((u) => !u.pathname.includes('login'), { timeout: 20_000 })
   // Seed the project/workspace context so project-scoped screens work without
   // driving the selector UI. The app re-syncs workspace from the API on load.
-  await page.evaluate((ctx) => {
-    localStorage.setItem('rally-context', JSON.stringify({ state: ctx, version: 0 }))
-  }, SEED_CONTEXT)
-  await page.reload({ waitUntil: 'domcontentloaded' })
+  // `seedContext: false` leaves the app to choose its own project, which is the REAL first-login
+  // path — and the reason this helper hid a defect: pre-seeding `rally-context` meant no journey ever
+  // exercised `useInitialProject`, so a granted user landing in a No Access shell was invisible here.
+  if (seedContext) {
+    await page.evaluate((ctx) => {
+      localStorage.setItem('rally-context', JSON.stringify({ state: ctx, version: 0 }))
+    }, SEED_CONTEXT)
+    await page.reload({ waitUntil: 'domcontentloaded' })
+  }
   // Wait for the authenticated shell to be present (not the login page) before
   // returning — a fixed timeout races the auth-context hydration on cold start.
   await page.waitForURL((u) => !u.pathname.includes('login'), { timeout: 20_000 }).catch(() => {})

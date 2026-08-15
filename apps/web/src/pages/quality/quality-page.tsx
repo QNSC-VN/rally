@@ -21,7 +21,8 @@ import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
 import { useDefects, type DefectRow } from '@/features/quality/api'
-import { useProjectMembers } from '@/features/teams/api'
+import { useProjectMemberOptions } from '@/features/teams/api'
+import { listResource } from '@/shared/lib/query/resource'
 import { useReleases } from '@/features/releases/api'
 import { useRankAnyWorkItem, useCreateWorkItem } from '@/features/work-items/api'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
@@ -84,7 +85,12 @@ export function QualityPage() {
    * control, nothing saying rows were withheld. Silent truncation, which is worse than a long list.
    */
   const [pageSize, setPageSize] = useState(25)
-  const { data: members } = useProjectMembers(project?.projectId)
+  // The ASSIGNEE feed, not the administrative roster: this only fills the Owner FILTER's option
+  // list, and `GET /projects/:id/members` carries accessLevel/status/teamCount so it is Admin-only
+  // (§3.1:71) — while §3.2:79 grants an Editor the Defect and therefore this screen. Reading the
+  // roster here 403'd, and the 403 defaulted to `[]`, so the Owner filter offered nobody.
+  const membersQuery = useProjectMemberOptions(project?.projectId)
+  const memberFeed = listResource(membersQuery)
   const { data: releases } = useReleases(project?.projectId)
 
   /**
@@ -327,7 +333,7 @@ export function QualityPage() {
               onChange={setOwnerFilter}
               options={[
                 { value: 'all', label: t('filters.allOwners') },
-                ...(members ?? []).map((m) => ({
+                ...memberFeed.rows.map((m) => ({
                   value: m.userId,
                   label: m.displayName ?? m.email ?? m.userId,
                 })),

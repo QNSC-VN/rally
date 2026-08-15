@@ -24,6 +24,14 @@ interface BulkScheduleActionsProps {
   iterations: ScheduleOption[]
   /** Gate the controls behind the caller's edit/manage permission. */
   canEdit: boolean
+  /**
+   * `release:view` — the code `WorkItemsService.assertMayAssignRelease` checks on the bulk path too.
+   * False hides the Release control and leaves Iteration, which an Editor legitimately owns
+   * (`Phase 2/02_Iterations/SRS.md:393`: "Timeboxes hidden; may update Work Item Iteration through
+   * approved Backlog/Iteration Status flows only"). Optional so existing callers keep their shape;
+   * they pass it where the distinction exists.
+   */
+  canAssignRelease?: boolean
   /** Optional hook run after a successful bulk assign (e.g. cache invalidation). */
   onAssigned?: () => void | Promise<void>
 }
@@ -36,6 +44,7 @@ export function BulkScheduleActions({
   releases,
   iterations,
   canEdit,
+  canAssignRelease = true,
   onAssigned,
 }: BulkScheduleActionsProps) {
   const bulkRelease = useBulkAssignRelease()
@@ -70,24 +79,29 @@ export function BulkScheduleActions({
 
   return (
     <>
-      <InlineSelect
-        value=""
-        disabled={bulkRelease.isPending}
-        onChange={(e) => {
-          if (!e.target.value) return
-          void assignReleaseToSelected(e.target.value === '__none__' ? null : e.target.value)
-        }}
-        className="w-auto"
-        aria-label="Assign release to selected"
-      >
-        <option value="">Assign Release…</option>
-        <option value="__none__">— Unschedule —</option>
-        {releases.map((r) => (
-          <option key={r.id} value={r.id}>
-            {r.name}
-          </option>
-        ))}
-      </InlineSelect>
+      {/* Release — absent, not disabled, for a caller the server will refuse. `P3…:71` puts
+          `Assign to Release` at Hidden for an Editor, and a bulk control is the worst place to learn
+          that: it refuses the whole selection at once. */}
+      {canAssignRelease && (
+        <InlineSelect
+          value=""
+          disabled={bulkRelease.isPending}
+          onChange={(e) => {
+            if (!e.target.value) return
+            void assignReleaseToSelected(e.target.value === '__none__' ? null : e.target.value)
+          }}
+          className="w-auto"
+          aria-label="Assign release to selected"
+        >
+          <option value="">Assign Release…</option>
+          <option value="__none__">— Unschedule —</option>
+          {releases.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </InlineSelect>
+      )}
 
       <InlineSelect
         value=""

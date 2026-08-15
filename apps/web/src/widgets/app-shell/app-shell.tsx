@@ -22,6 +22,7 @@ import { Avatar } from '@/shared/ui/avatar'
 import { KeyChip } from '@/shared/ui/key-chip'
 import { useWorkspaces } from '@/features/workspaces/api'
 import { useProjects } from '@/features/projects/api'
+import { useInitialProject } from '@/features/projects/use-initial-project'
 import { useProjectTeams, type Team } from '@/features/teams/api'
 import { useNotificationUnreadCount, useNotificationSse } from '@/features/notifications/api'
 import { useProjectPermissions } from '@/features/access/api'
@@ -193,8 +194,15 @@ export function AppShell() {
 
   // Bootstrap workspace context from API — always sync name/slug in case they changed
   const { data: workspaces } = useWorkspaces()
-  const { data: activeProjects = [] } = useProjects(workspace?.workspaceId)
+  const projectsQuery = useProjects(workspace?.workspaceId)
+  const activeProjects = projectsQuery.data ?? []
   const navProjects = activeProjects.filter((p) => p.status === 'active')
+  // Somebody has to pick the first one, and until this hook nobody did: with `project === null`
+  // every nav item and route guard resolves its permission against no project, so a freshly granted
+  // per-project Admin saw Home and Access Denied everywhere — a No Access experience for a user who
+  // has access. Passes the RAW `data`, not the defaulted array: `undefined` means "not resolved" and
+  // the hook must not decide on it.
+  useInitialProject(projectsQuery.data)
 
   // Prefix the route breadcrumb with the active scope so a project page reads
   // "Workspace › Project › [Section] › Page" (SHELL-FR-007, P3-TS-FR-002).
@@ -495,6 +503,27 @@ export function AppShell() {
             const comingSoon = state === 'coming-soon'
 
             if (children) {
+              /**
+               * A dropdown whose every CHILD is hidden must not render at all.
+               *
+               * The Portfolio menu is the live case: its trigger carries `project:view`, which every
+               * access level holds, while all three children carry codes an Editor does not
+               * (`portfolio:view`, `capacity:view`, `report:view`). So an Editor saw a `Portfolio`
+               * menu, clicked it, and got an empty panel — the surface announced as existing and then
+               * offering nothing. A parent is a route to its children; with none visible it is not a
+               * route to anywhere.
+               *
+               * The BA is SILENT on this case, so it is a declared decision rather than a rule: their
+               * own mockup filters the nav per role (`03_Mockup Design/src/app/components/layout.tsx`)
+               * and simply has no persona for whom a parent outlives its children.
+               *
+               * `coming-soon` children still count as visible: that state is deliberately shown, not
+               * hidden (a flag-disabled feature announces itself), so a menu holding only those is
+               * still a menu with contents.
+               */
+              const visibleChildren = children.filter((child) => navItemState(child) !== 'hidden')
+              if (visibleChildren.length === 0) return null
+
               return (
                 // Plan dropdown
                 <div key={label} className="relative">
@@ -544,7 +573,7 @@ export function AppShell() {
                       <div className="px-3 py-1.5 text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
                         {label}
                       </div>
-                      {children.map((child) => {
+                      {visibleChildren.map((child) => {
                         const childState = navItemState(child)
                         if (childState === 'hidden') return null
                         const childComingSoon = childState === 'coming-soon'

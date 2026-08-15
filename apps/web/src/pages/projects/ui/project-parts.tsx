@@ -433,7 +433,11 @@ export function NewProjectModal({
 /** Teams cell — editable inline multi-select (Project↔Team is M2M), matching the
  *  Milestones cell on Iteration Status: stacked chips + a searchable picker.
  *  Edited via the dedicated link/unlink endpoints (the project PATCH carries no
- *  teamIds), so each add/remove commits immediately from the multi-select diff. */
+ *  teamIds), so each add/remove commits immediately from the multi-select diff.
+ *
+ *  `canEdit` is the caller's `workspace:edit`, ANDed with the project's lifecycle state — read-only
+ *  it renders the linked teams as plain chips, the BA's Read-only state for a surface Admin and
+ *  Editor may see but not change (`SRS.md:64,70`). See `ProjectCtx.canEdit`. */
 function ProjectTeamsCell({
   projectId,
   workspaceId,
@@ -537,7 +541,10 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
       ) : (
         <InlineEditableCell
           value={p.name}
-          canEdit
+          // `canEdit` was the literal `true`: the cell opened an input for every reader, took the
+          // keystrokes and reverted, because `onPatch` is undefined without `workspace:edit`.
+          // Read-only for Admin/Editor per SRS.md:70 — see `ProjectCtx.canEdit`.
+          canEdit={ctx.canEdit}
           fullCell
           ariaLabel="Name"
           title={p.name}
@@ -560,6 +567,9 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     cell: (p, ctx) => (
       <SearchableSelect
         value={p.status}
+        // Archive/restore is `PATCH /projects/:id` — WA-only (SRS.md:68 marks it Hidden for Admin
+        // AND Editor), so without the code this is the plain status value, not a dead dropdown.
+        readOnly={!ctx.canEdit}
         ariaLabel="Status"
         options={[
           { value: 'active', label: 'Active' },
@@ -584,7 +594,9 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
         }
         assigneeId={p.leadId}
         members={ctx.members}
-        canEdit={p.status !== 'archived'}
+        // Two conditions, and only the lifecycle one was here: an archived project is read-only
+        // (SRS.md:93) and the owner is a `PATCH /projects/:id` field, so `workspace:edit` too.
+        canEdit={ctx.canEdit && p.status !== 'archived'}
         ariaLabel="Owner"
         onChange={(v) => ctx.onPatch?.(p.id, { leadId: v })}
       />
@@ -596,11 +608,15 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     defaultWidth: 190,
     minWidth: 120,
     cellClassName: 'flex items-center px-0',
-    cell: (p) => (
+    cell: (p, ctx) => (
       <ProjectTeamsCell
         projectId={p.id}
         workspaceId={p.workspaceId}
-        canEdit={p.status === 'active'}
+        // `p.status === 'active'` alone was the whole gate — a LIFECYCLE test standing in for an
+        // authorization one, so an Editor (and a per-project Admin) got a live picker whose
+        // link/unlink the server then refused. Team membership is Workspace Admin's alone
+        // (SRS.md:64,69) and this is the same `workspace:edit` the five PATCH cells need.
+        canEdit={ctx.canEdit && p.status === 'active'}
       />
     ),
   },
@@ -623,7 +639,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     cell: (p, ctx) => (
       <DateField
         value={p.startDate}
-        readOnly={p.status === 'archived'}
+        readOnly={!ctx.canEdit || p.status === 'archived'}
         ariaLabel="Start Date"
         onChange={(v) => ctx.onPatch?.(p.id, { startDate: v })}
       />
@@ -639,7 +655,7 @@ export const PROJECT_COLUMNS: ColumnSpec<Project, ProjectCtx, ProjectColKey>[] =
     cell: (p, ctx) => (
       <DateField
         value={p.endDate}
-        readOnly={p.status === 'archived'}
+        readOnly={!ctx.canEdit || p.status === 'archived'}
         ariaLabel="End Date"
         onChange={(v) => ctx.onPatch?.(p.id, { endDate: v })}
       />

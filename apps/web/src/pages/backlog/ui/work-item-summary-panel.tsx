@@ -29,7 +29,7 @@ import { TypeBadge, ScheduleStateBadge, PriorityBadge } from '@/entities/work-it
 import { useWorkItemByKey } from '@/features/work-items/api'
 import { useReleases } from '@/features/releases/api'
 import { useIterationOptions } from '@/features/iterations/api'
-import { useProjectMembers } from '@/features/teams/api'
+import { useProjectMemberOptions } from '@/features/teams/api'
 
 interface NamedRef {
   id: string
@@ -88,7 +88,14 @@ export function WorkItemSummaryPanel({
   const iterationFeed = listResource(useIterationOptions(item?.projectId))
   const iterations = iterationFeed.rows
   const iterationsLoading = iterationFeed.isLoading || iterationFeed.isError
-  const { data: members = [], isLoading: membersLoading } = useProjectMembers(item?.projectId)
+  // The ASSIGNEE feed, not the administrative roster: this panel only resolves an id to an owner
+  // NAME, and `GET /projects/:id/members` is Admin-only (§3.1:71) while §3.2:79 grants an Editor
+  // the Story/Defect it summarises. A resource for the same reason as the iterations above — a
+  // FAILED roster read must not print EMPTY_VALUE, which is the answer for "assigned to nobody".
+  const membersQuery = useProjectMemberOptions(item?.projectId)
+  const memberFeed = listResource(membersQuery)
+  const members = memberFeed.rows
+  const membersLoading = memberFeed.isLoading || memberFeed.isError
 
   if (isLoading || item === undefined) {
     return (

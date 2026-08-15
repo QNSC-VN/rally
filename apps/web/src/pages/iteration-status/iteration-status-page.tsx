@@ -23,6 +23,7 @@ import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
+import { PERMISSION } from '@/shared/config/permissions'
 import {
   useIterationOptions,
   useIterationStatus,
@@ -406,26 +407,31 @@ export function IterationStatusPage() {
         style={{ fontSize: 13 }}
       >
         <span>{t('noIterations')}</span>
-        <button
-          onClick={() => navigate({ to: '/timeboxes' })}
-          className="text-primary"
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: 'pointer',
-            background: 'none',
-            border: 'none',
-            textDecoration: 'none',
-          }}
-          onMouseOver={(e) => {
-            ;(e.target as HTMLElement).style.textDecoration = 'underline'
-          }}
-          onMouseOut={(e) => {
-            ;(e.target as HTMLElement).style.textDecoration = 'none'
-          }}
-        >
-          {t('goToTimeboxes')}
-        </button>
+        {/* Offered only to a reader who can open Timeboxes — §3.2:82 hides that surface from an
+            Editor, for whom this was the one next step on an empty screen and it landed on Access
+            Denied. Same fix as Team Status' identical affordance. */}
+        {can(PERMISSION.TIMEBOX_VIEW) && (
+          <button
+            onClick={() => navigate({ to: '/timeboxes' })}
+            className="text-primary"
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: 'none',
+              border: 'none',
+              textDecoration: 'none',
+            }}
+            onMouseOver={(e) => {
+              ;(e.target as HTMLElement).style.textDecoration = 'underline'
+            }}
+            onMouseOut={(e) => {
+              ;(e.target as HTMLElement).style.textDecoration = 'none'
+            }}
+          >
+            {t('goToTimeboxes')}
+          </button>
+        )}
       </div>
     )
   }
@@ -588,6 +594,9 @@ export function IterationStatusPage() {
               iterationOptions={iterationOptions}
               selectedIterationId={selectedId!}
               canEdit={canEdit}
+              // §3.2:85 hides Portfolio Items from an Editor, so the Feature cell must name the
+              // Feature without offering a journey into Access Denied.
+              canOpenPortfolio={can(PERMISSION.PORTFOLIO_VIEW)}
               colStyles={colStyles}
               dragEnabled={!sortCol}
               selected={selected}

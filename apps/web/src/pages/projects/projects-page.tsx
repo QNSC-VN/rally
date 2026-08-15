@@ -146,10 +146,25 @@ export function ProjectsPage() {
   const counted = !projectsRes.isError && !projectsRes.isLoading && !projectsQuery.isLoadingMore
   const metric = (n: number) => (counted ? n : EMPTY_VALUE)
 
+  /**
+   * `canEdit` and `onPatch` are set from ONE condition, deliberately: every mutating cell on this
+   * grid needs `workspace:edit` and nothing else (`projects.controller.ts:276,505,520`), and the two
+   * defects being fixed here were exactly a control whose gate and whose write had come apart —
+   * five editors that opened with `onPatch` undefined, and a Teams picker with no gate at all.
+   *
+   * `hasPermission(WORKSPACE_ALL)` is the check the rest of this page already uses for "is this a
+   * Workspace Admin" (New Project, the bulk bar), and it answers the `workspace:edit` question
+   * exactly: `workspace_admin` is the only role holding either code (`db/permissions.catalog.ts`
+   * :379-384 — `workspace:*` is admin-reserved and no `ACCESS_LEVEL_PERMISSIONS` entry carries a
+   * `workspace:` code), and `grants()` treats `workspace:*` as granting everything. Not
+   * `useProjectPermissions`: a project-tier lookup cannot add a workspace-tier code, and this is
+   * one row per project rather than one project.
+   */
   const cellCtx: ProjectCtx = {
     currentUserId: currentUser?.id,
     currentUserName: currentUser?.displayName,
     members: wsMembers,
+    canEdit: isWorkspaceAdmin,
     onPatch: isWorkspaceAdmin ? (id, input) => update.mutate({ id, input }) : undefined,
     onOpen: (key) => void navigate({ to: '/projects/$projectKey', params: { projectKey: key } }),
   }
