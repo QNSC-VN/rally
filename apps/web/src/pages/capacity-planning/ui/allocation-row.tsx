@@ -9,6 +9,7 @@ import { CapacityBarTooltip } from './capacity-bar-tooltip'
 import { MetricValue } from '@/shared/ui/metric-value'
 import { portfolioStateColor } from '@/features/portfolio/status-colors'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { notify } from '@/shared/lib/toast'
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { type AllocColKey } from '../model/columns'
@@ -181,7 +182,7 @@ export function AllocationRow({
         style={colStyleFor('rank', { flexShrink: 0 })}
         className="px-2 text-right text-muted-foreground tabular-nums"
       >
-        {rankPosition ?? '--'}
+        {rankPosition ?? EMPTY_VALUE}
       </div>
 
       <div style={colStyleFor('id', { flexShrink: 0 })} className="min-w-0 px-2">
@@ -231,10 +232,21 @@ export function AllocationRow({
         style={colStyleFor('allocation', { flexShrink: 0 })}
         className="flex min-w-0 items-center px-2"
       >
-        {/* BLANK when the Feature is assigned here and allocated nowhere else — Rally leaves the
-            field empty rather than printing a dash, because the cell reports a relationship and
-            there is none. */}
-        {sharing !== null && (
+        {/**
+         * `EMPTY_VALUE` when there is no relationship to report — the row sits under the Feature's OWN
+         * team with nothing allocated away, or under the Unallocated bucket, where there is no
+         * assignment for the cell to be relative to.
+         *
+         * This cell rendered NOTHING in that case, on the reading that Rally leaves the field blank
+         * because the value is a relationship rather than a quantity. P5-CP-025 rules against it: an
+         * empty cell in a table where every neighbour carries a value reads as "not loaded", and this
+         * app answers an absent value one way everywhere (`EMPTY_VALUE`). Note the BA writes the dash
+         * as `—` in prose and the string here is `--` — see `EMPTY_VALUE`'s own docblock, which is
+         * deliberate and not a transcription slip.
+         */}
+        {sharing === null ? (
+          <span className="text-ui-sm text-muted-foreground">{EMPTY_VALUE}</span>
+        ) : (
           <span
             className="text-ui-sm break-words whitespace-normal text-muted-foreground italic"
             title={sharing.title}

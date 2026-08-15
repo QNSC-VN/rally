@@ -30,6 +30,23 @@ const ROW = {
   changes: null,
 }
 
+/**
+ * A state change, as the API reports it for each entity (GAP-P1-HIST-002).
+ *
+ * `changes.field` is `scheduleState` on BOTH — it is the DTO/wire field name, mirrored onto
+ * `work.tasks.state` — and the ACTION is what distinguishes them (`activity-diff.ts`). The renderer
+ * used to humanise the field name alone and consult `action` only when `changes` was null, so a
+ * Task's state change was labelled "Schedule State": a dimension a Task does not have.
+ */
+function stateChangeRow(id: string, action: string) {
+  return {
+    ...ROW,
+    id,
+    action,
+    changes: { field: 'scheduleState', old: 'Defined', new: 'In-Progress' },
+  }
+}
+
 function renderTab(q: Parameters<typeof listResource>[0]) {
   return render(
     <ActivityHistoryTab
@@ -71,5 +88,43 @@ describe('ActivityHistoryTab', () => {
     expect(screen.getByText('Marcus Webb')).toBeInTheDocument()
     expect(screen.queryByText('No revisions yet.')).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('labels a TASK state change "Task State", never "Schedule State"', () => {
+    renderTab({ data: [stateChangeRow('a-2', 'task.state_changed')], isLoading: false })
+
+    expect(screen.getByText('Task State changed from Defined to In-Progress')).toBeInTheDocument()
+    // The negative is the defect: the field name alone humanises to this, and it names a dimension
+    // a Task does not have. Asserting only the positive would pass if both were rendered.
+    expect(screen.queryByText(/Schedule State/)).not.toBeInTheDocument()
+  })
+
+  it('still labels a WORK ITEM state change "Schedule State" (the field is shared)', () => {
+    // The discriminant is the action, not the field — a per-field rename would have relabelled this
+    // row too, and Schedule State is exactly what a work item has.
+    renderTab({
+      data: [stateChangeRow('a-3', 'work_item.schedule_state_changed')],
+      isLoading: false,
+    })
+
+    expect(
+      screen.getByText('Schedule State changed from Defined to In-Progress'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Task State/)).not.toBeInTheDocument()
+  })
+
+  it('keeps both labels straight when the two rows sit in one feed', () => {
+    renderTab({
+      data: [
+        stateChangeRow('a-2', 'task.state_changed'),
+        stateChangeRow('a-3', 'work_item.schedule_state_changed'),
+      ],
+      isLoading: false,
+    })
+
+    expect(screen.getByText('Task State changed from Defined to In-Progress')).toBeInTheDocument()
+    expect(
+      screen.getByText('Schedule State changed from Defined to In-Progress'),
+    ).toBeInTheDocument()
   })
 })

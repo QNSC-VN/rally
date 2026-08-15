@@ -63,6 +63,13 @@ function ProjectTreeItem({
   onSelectTeam: (team: Team | null) => void
 }) {
   const { data: teams = [], isLoading } = useProjectTeams(expanded ? project.id : undefined)
+  /**
+   * `status` here is the project↔team LINK's, not the team's own — `GET /projects/:id/teams` projects
+   * `project_teams.status` over the `teams` row it joins, and `useProjectTeams` keeps that field. So
+   * this filter never hid an ARCHIVED team, which is what it is often read as doing; the server does
+   * that, and only since the feed gained a `teams.status` predicate (P5-CP-006). Kept because an
+   * unlinked row reaching a delivery-context picker would still be wrong.
+   */
   const activeTeams = teams.filter((t) => t.status === 'active')
 
   return (
@@ -411,84 +418,86 @@ export function AppShell() {
                 {/* Single-company MVP: no workspace switcher (COMPANY-FR-010 /
                     SHELL-FR-002). The current workspace is shown above, read-only. */}
 
-                <div className="px-3 py-2 text-ui-sm text-muted-foreground">
-                  {/* Projects & Teams — searchable, scrollable accordion tree.
-                      Each project expands to reveal its teams (lazy-loaded). */}
-                  {navProjects.length > 0 && (
-                    <>
-                      <div className="mb-1 flex items-center justify-between">
-                        <div className="text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
-                          Projects & Teams
-                        </div>
-                        <span className="text-ui-2xs text-foreground-subtle">
-                          {navProjects.length}
-                        </span>
+                {/* Projects & Teams — searchable, scrollable accordion tree.
+                    Each project expands to reveal its teams (lazy-loaded).
+
+                    DELIVERY CONTEXT ONLY. This panel used to end with a divider and a
+                    `Manage Projects` link into `/projects`, which made the context switcher a second
+                    entrance to project administration; the BA's ruling (GAP-P0-SHELL-007) is that the
+                    switcher only changes which project and team the app is pointed at, and that
+                    administration is reached solely through the Settings gear's `Workspaces &
+                    Projects`. `/projects` keeps its own `project:view` gate either way — see
+                    `NON_NAV_SURFACES` in `shared/config/nav.ts` — so nothing here was the thing
+                    protecting it.
+
+                    The whole block is conditional now rather than the tree inside it: with the link
+                    gone a project-less caller would otherwise get a padded empty panel under the
+                    workspace header. */}
+                {navProjects.length > 0 && (
+                  <div className="px-3 py-2 text-ui-sm text-muted-foreground">
+                    <div className="mb-1 flex items-center justify-between">
+                      <div className="text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
+                        Projects & Teams
                       </div>
-                      {/* Filter — only worth surfacing once the list gets long */}
-                      {navProjects.length > 7 && (
-                        <div className="relative mb-1">
-                          <Search
-                            size={11}
-                            className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-foreground-subtle"
-                          />
-                          <input
-                            value={projectSearch}
-                            onChange={(e) => setProjectSearch(e.target.value)}
-                            placeholder="Filter projects…"
-                            aria-label="Filter projects"
-                            className="w-full rounded border border-border-subtle py-1 pr-2 pl-6 text-ui-sm text-foreground outline-none"
-                          />
+                      <span className="text-ui-2xs text-foreground-subtle">
+                        {navProjects.length}
+                      </span>
+                    </div>
+                    {/* Filter — only worth surfacing once the list gets long */}
+                    {navProjects.length > 7 && (
+                      <div className="relative mb-1">
+                        <Search
+                          size={11}
+                          className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-foreground-subtle"
+                        />
+                        <input
+                          value={projectSearch}
+                          onChange={(e) => setProjectSearch(e.target.value)}
+                          placeholder="Filter projects…"
+                          aria-label="Filter projects"
+                          className="w-full rounded border border-border-subtle py-1 pr-2 pl-6 text-ui-sm text-foreground outline-none"
+                        />
+                      </div>
+                    )}
+                    <div className="-mx-0.5 max-h-64 overflow-y-auto px-0.5">
+                      {filteredNavProjects.map((p) => (
+                        <ProjectTreeItem
+                          key={p.id}
+                          project={p}
+                          selected={project?.projectId === p.id}
+                          expanded={expandedProjectId === p.id}
+                          currentTeamId={team?.teamId ?? null}
+                          onToggleExpand={() =>
+                            setExpandedProjectId((cur) => (cur === p.id ? null : p.id))
+                          }
+                          onSelectProject={() => {
+                            setProject({
+                              projectId: p.id,
+                              projectKey: p.key,
+                              projectName: p.name,
+                            })
+                            setTeam(null)
+                            closeAll()
+                          }}
+                          onSelectTeam={(t) => {
+                            setProject({
+                              projectId: p.id,
+                              projectKey: p.key,
+                              projectName: p.name,
+                            })
+                            setTeam(t ? { teamId: t.id, teamName: t.name } : null)
+                            closeAll()
+                          }}
+                        />
+                      ))}
+                      {filteredNavProjects.length === 0 && (
+                        <div className="px-1.5 py-2 text-center text-ui-xs text-foreground-subtle">
+                          No projects match “{projectSearch.trim()}”
                         </div>
                       )}
-                      <div className="-mx-0.5 max-h-64 overflow-y-auto px-0.5">
-                        {filteredNavProjects.map((p) => (
-                          <ProjectTreeItem
-                            key={p.id}
-                            project={p}
-                            selected={project?.projectId === p.id}
-                            expanded={expandedProjectId === p.id}
-                            currentTeamId={team?.teamId ?? null}
-                            onToggleExpand={() =>
-                              setExpandedProjectId((cur) => (cur === p.id ? null : p.id))
-                            }
-                            onSelectProject={() => {
-                              setProject({
-                                projectId: p.id,
-                                projectKey: p.key,
-                                projectName: p.name,
-                              })
-                              setTeam(null)
-                              closeAll()
-                            }}
-                            onSelectTeam={(t) => {
-                              setProject({
-                                projectId: p.id,
-                                projectKey: p.key,
-                                projectName: p.name,
-                              })
-                              setTeam(t ? { teamId: t.id, teamName: t.name } : null)
-                              closeAll()
-                            }}
-                          />
-                        ))}
-                        {filteredNavProjects.length === 0 && (
-                          <div className="px-1.5 py-2 text-center text-ui-xs text-foreground-subtle">
-                            No projects match “{projectSearch.trim()}”
-                          </div>
-                        )}
-                      </div>
-                      <div className="my-1.5 border-t border-border-subtle" />
-                    </>
-                  )}
-                  <Link
-                    to="/projects"
-                    onClick={closeAll}
-                    className="flex items-center gap-2 hover:underline"
-                  >
-                    <Settings size={12} />
-                    Manage Projects
-                  </Link>
-                </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
