@@ -2,6 +2,10 @@ terraform {
   required_version = ">= 1.9"
   required_providers {
     aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    # For the SES domain's DKIM records. The zone (`qnsc.vn`) is Cloudflare-managed and its id
+    # arrives from the platform remote state below, so the records that PROVE the identity can be
+    # created beside it rather than pasted by hand.
+    cloudflare = { source = "cloudflare/cloudflare", version = "~> 4.0" }
   }
 
   backend "s3" {
@@ -26,6 +30,16 @@ provider "aws" {
 
 locals {
   github_org = var.github_org
+  # `try(..., "")` for the same reason `outputs.tf` uses it: an account whose DNS is not
+  # Cloudflare-managed yet still has to be able to apply this stack.
+  cloudflare_zone_id = try(data.terraform_remote_state.platform.outputs.cloudflare_zone_id, "")
+}
+
+# Token from `CLOUDFLARE_API_TOKEN` in CI (never committed), mirroring `infra/live/*/main.tf`. `null`
+# rather than `""` when unset: an empty string is a credential the provider would try and fail with,
+# where `null` lets it fall back to the environment.
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token != "" ? var.cloudflare_api_token : null
 }
 
 data "aws_caller_identity" "current" {}
@@ -210,3 +224,60 @@ resource "aws_iam_role_policy" "deploy_rds_prod_guard" {
 # of truth for these roles.
 
 
+# ── Outbound email (SES) ──────────────────────────────────────────────────────
+#
+# WHY THIS LIVES IN THE SHARED LAYER, NOT IN AN ENV STACK
+# An SES identity is per (account, region), and `develop` and `prod` share both — same account, same
+# `ap-southeast-1`, same `qnsc.vn` zone. Two env stacks each declaring `qnsc.vn` would be two states
+# fighting over one resource, and the DKIM CNAMEs would collide in the zone as well. So the identity
+# is created ONCE here and the env stacks only take the IAM permission to send through it.
+#
+# WHAT WAS BROKEN BEFORE THIS
+# `EMAIL_PROVIDER=ses` and `MAIL_FROM_EMAIL` were wired in both environments, and neither of the two
+# things a send actually needs existed: no verified identity, and no `ses:SendEmail` on any task role.
+# Every invitation and notification therefore failed, three failures opened the in-process email
+# circuit breaker, and the API went on reporting healthy — a silent outage of the one flow that
+# onboards every user. `mail_from_email`'s own variable docs already warned that Terraform could not
+# check the identity for you; now it creates it.
+#
+# A DOMAIN identity, not an email one, deliberately: an email identity is verified by a human
+# clicking a link AWS mails to that address, which cannot be automated and has to be repeated per
+# sender. A domain verifies once, covers every `@qnsc.vn` sender both environments use, and carries
+# DKIM signing, which is what keeps the mail out of spam folders.
+#
+# NOT HANDLED HERE, AND IT CANNOT BE: the SES SANDBOX. A new account may only send to VERIFIED
+# recipients, so invitations to a colleague's address are refused no matter how correct this is.
+# Check with `aws sesv2 get-account --query ProductionAccessEnabled`; leaving the sandbox is a support
+# request, not a resource.
+resource "aws_sesv2_email_identity" "mail_domain" {
+  email_identity = var.mail_domain
+
+  dkim_signing_attributes {
+    # AWS-managed keys (Easy DKIM). The alternative is BYODKIM, which means holding a private key in
+    # state or a secret for no gain here.
+    next_signing_key_length = "RSA_2048_BIT"
+  }
+}
+
+/**
+ * The three CNAMEs that prove the domain. Without them the identity stays `PENDING` forever and every
+ * send is refused, so they belong in the same apply as the identity rather than in a runbook step.
+ *
+ * `count` guards on the zone id: `_shared` reads it from the platform state with a `try(..., "")`, so
+ * an environment whose DNS is not Cloudflare-managed degrades to "identity created, records to be
+ * added by hand" instead of failing the apply.
+ */
+resource "cloudflare_record" "ses_dkim" {
+  count = local.cloudflare_zone_id != "" ? 3 : 0
+
+  zone_id = local.cloudflare_zone_id
+  name    = "${aws_sesv2_email_identity.mail_domain.dkim_signing_attributes[0].tokens[count.index]}._domainkey"
+  type    = "CNAME"
+  value   = "${aws_sesv2_email_identity.mail_domain.dkim_signing_attributes[0].tokens[count.index]}.dkim.amazonses.com"
+  # Never proxied: DKIM is a DNS lookup by a receiving mail server, not HTTP traffic. Proxying it
+  # would return Cloudflare's own record and the verification would never complete.
+  proxied = false
+  ttl     = 300
+
+  comment = "SES DKIM for ${var.mail_domain} (managed by rally-infra _shared)"
+}
