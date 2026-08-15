@@ -194,6 +194,29 @@ const notificationsRoute = createRoute({
   ),
 })
 
+// The target of the invitation email's link — `${APP_BASE_URL}/accept-invitation?token=<raw token>`,
+// which `WorkspaceService.inviteMember` has always sent to a route that did not exist, so every
+// invitation landed on `notFoundRoute` and `POST /v1/invitations/accept` was never called by anything.
+//
+// A CHILD OF `authRoute`, and that placement is the whole sign-in-then-accept design: acceptance needs
+// an authenticated caller (the API binds it to the signed-in user's email), and `requireAuth` above
+// already redirects to `/login` with `returnTo = pathname + search`, so `?token=` survives the round
+// trip and the BFF callback returns here.
+//
+// `lazyPage`, NOT `guardedPage`: no permission code, and no entry in `NON_NAV_SURFACES`. Any
+// authenticated caller may open it, the authority that matters is the token plus the email binding
+// (both server-side), and a fresh member holds nothing yet — so gating this on a code would deny the
+// very population the link is for. Same shape as `/`, `/settings` and `/notifications`.
+const acceptInvitationRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/accept-invitation',
+  staticData: { breadcrumb: 'Accept Invitation' },
+  component: lazyPage(
+    () => import('@/pages/accept-invitation/accept-invitation-page'),
+    'AcceptInvitationPage',
+  ),
+})
+
 const forbiddenRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/403',
@@ -447,6 +470,7 @@ const routeTree = rootRoute.addChildren([
     projectDetailRoute,
     settingsRoute,
     notificationsRoute,
+    acceptInvitationRoute,
     forbiddenRoute,
     backlogRoute,
     timeboxesRoute,

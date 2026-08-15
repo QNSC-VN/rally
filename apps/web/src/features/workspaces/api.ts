@@ -3,7 +3,7 @@
  */
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
-import { apiErrorMessage } from '@/shared/api/api-error'
+import { ApiError, apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
 
 export interface Workspace {
@@ -204,5 +204,46 @@ export function useUpdateWorkspaceSettings(id: string | undefined) {
       return data
     },
     meta: { invalidates: ['workspace'] },
+  })
+}
+
+// ── Invitations ──────────────────────────────────────────────────────────────
+
+/**
+ * Redeem an emailed invitation — `POST /v1/invitations/accept`, 204 No Content.
+ *
+ * Nothing in the SPA called this route until now, which made
+ * `WorkspaceService.acceptInvitation` dead code in production — and it is the ONLY place the invited
+ * workspace role (`grantWorkspaceRole`) and the invited per-project access (`grantProjectAccess`) are
+ * ever applied. Invitations sat `pending` until the expiry cron closed them, and the fault was masked
+ * by JIT provisioning enrolling a same-domain user anyway, at the SSO connection's default role. So
+ * an admin who invited someone as Workspace Admin with Admin on two projects got a member with
+ * neither, and no error anywhere.
+ *
+ * Takes the RAW token from the `?token=` query string. The route is `@Auth()` only — acceptance is
+ * authorized by the token plus a case-insensitive match against the signed-in user's email, so there
+ * is no permission code to hold and no workspace id to pass.
+ *
+ * Throws {@link ApiError} rather than a plain `Error`: the accept page renders six DISTINCT refusals
+ * and has to branch on the envelope's `code`. Every other hook in this file throws a plain `Error`
+ * because it only ever prints the message.
+ *
+ * Invalidation, and why three tags: acceptance writes a `workspace_members` row (`workspace` →
+ * `workspaces`, `workspace-invitations`, the roster), a `user_role_assignments` row and a set of
+ * `project_members` rows (`access` → `my-project-permissions`, so the route guards re-resolve), and
+ * it changes which projects `listReadableProjectIds` returns (`project` → `projects`, which is the
+ * feed `useInitialProject` picks the reader's FIRST project from). The permission cache is server-side
+ * and 5-minute TTL'd, but the service already calls `AccessService.invalidateUser` after commit, so
+ * the grant lands on the next request — these tags are the client half of the same thing.
+ */
+export function useAcceptInvitation() {
+  return useMutation({
+    mutationFn: async (token: string) => {
+      const { error, response } = await apiClient.POST('/v1/invitations/accept', {
+        body: { token },
+      })
+      if (error) throw new ApiError(error, response.status)
+    },
+    meta: { invalidates: ['workspace', 'access', 'project'] },
   })
 }
