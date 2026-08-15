@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import { workspaces, workspaceMembers } from '../../../../../../db/schema/workspace';
 import { users } from '../../../../../../db/schema/identity';
+import { projectMembers, projects } from '../../../../../../db/schema/work';
 import { systemRoles, userRoleAssignments } from '../../../../../../db/schema/access';
 import { teams, teamMembers } from '../../../../../../db/schema/work';
 import type {
@@ -107,7 +108,48 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
    * No `teams` fan-out either — that second query exists for the User Management Teams column and a
    * picker has no use for it.
    */
-  async listMemberOptions(workspaceId: string): Promise<WorkspaceMemberOption[]> {
+  async listMemberOptions(
+    workspaceId: string,
+    projectIds: string[] | null,
+  ): Promise<WorkspaceMemberOption[]> {
+    /**
+     * The narrowed population: people the caller's OWN projects reference.
+     *
+     * Two sources, unioned, and the second is not optional. `project_members` alone cannot name a
+     * project's owner — §2.1 (migration 0118) keeps a Workspace Admin OFF every roster, and a WA is
+     * exactly who tends to own a project (every seeded project's `lead_id` is the admin user, with no
+     * membership row by design). A picker built from the roster alone could therefore neither RESOLVE
+     * nor OFFER the current owner, which is the both-directions failure the roster split exists to
+     * avoid.
+     *
+     * An EMPTY list never reaches here — the service returns early — so `inArray` is never handed one,
+     * which is not portable as "match nothing".
+     */
+    const scoped =
+      projectIds === null
+        ? undefined
+        : or(
+            inArray(
+              workspaceMembers.userId,
+              this.db
+                .select({ userId: projectMembers.userId })
+                .from(projectMembers)
+                .where(
+                  and(
+                    inArray(projectMembers.projectId, projectIds),
+                    eq(projectMembers.status, 'active'),
+                  ),
+                ),
+            ),
+            inArray(
+              workspaceMembers.userId,
+              this.db
+                .select({ userId: sql<string>`${projects.leadId}` })
+                .from(projects)
+                .where(and(inArray(projects.id, projectIds), isNotNull(projects.leadId))),
+            ),
+          );
+
     const rows = await this.db
       .select({
         userId: workspaceMembers.userId,
@@ -118,7 +160,7 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       })
       .from(workspaceMembers)
       .leftJoin(users, eq(users.id, workspaceMembers.userId))
-      .where(eq(workspaceMembers.workspaceId, workspaceId))
+      .where(and(eq(workspaceMembers.workspaceId, workspaceId), scoped))
       .orderBy(workspaceMembers.joinedAt, asc(workspaceMembers.id));
 
     return rows.map((r) => ({

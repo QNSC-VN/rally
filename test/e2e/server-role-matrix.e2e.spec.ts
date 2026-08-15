@@ -55,7 +55,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
 import { WORKSPACE_ID } from '../../db/seeds/constants';
-import { grantProjectAccess, SEEDED } from './support/flow-harness';
+import { ADMIN_USER_ID, grantProjectAccess, SEEDED } from './support/flow-harness';
 
 const NXP = SEEDED.nxp.projectId;
 const ITER = SEEDED.nxp.iterationCurrentId;
@@ -1629,7 +1629,9 @@ describe('server role matrix (e2e)', () => {
    * §3.1:62 hides `View company Users` from everyone but a Workspace Admin, and the ADMINISTRATIVE
    * roster honours that (measured above). This feed is the other half, and the BA writes no row for
    * it — so it is recorded as SILENT, with the row COUNT measured, because "200" and "200 with the
-   * whole company directory in it" are very different answers.
+   * whole company directory in it" are very different answers. That distinction is the whole reason
+   * the count is asserted and not just the status: this test is what caught the feed returning 1149
+   * rows to a per-project Editor, and it is what now holds the narrowing in place.
    */
   it('BA SILENT — the company picker feed answers everyone, scoped by readable projects', async () => {
     const counts: Partial<Record<Role, number>> = {};
@@ -1658,16 +1660,27 @@ describe('server role matrix (e2e)', () => {
       'a No Access principal must see NOBODY — the feed is scoped by readable projects, and an ' +
         'unscoped answer here is the company directory reached through a picker',
     ).toBe(0);
-    // The row count an Editor gets, recorded so the gap below has a measured size.
-    expect(counts.editor, 'measured for the audit').toBe(counts.wa);
+    /**
+     * An Editor sees STRICTLY FEWER than a Workspace Admin, and both bounds matter.
+     *
+     * It used to be `toBe(counts.wa)` — an assertion that recorded the leak rather than refusing it,
+     * which was right while the fix was out of scope and is wrong now that it is not. Fewer, because
+     * §3.1:62 hides the company user list from them; more than none, because their own project's
+     * members are what the Projects list renders as owner names, and an emptied picker is the
+     * regression the roster split (RBE-07) already caused once.
+     */
+    expect(counts.editor, 'an Editor must not receive the company directory').toBeLessThan(
+      counts.wa ?? 0,
+    );
+    expect(counts.editor, 'nor an empty picker — their own project has members').toBeGreaterThan(0);
   });
 
   /**
-   * THE ONE MEASURED MISMATCH IN THE "a role can do what the BA hides" DIRECTION.
+   * THE ONE MEASURED MISMATCH IN THE "a role can do what the BA hides" DIRECTION — NOW CLOSED.
    *
-   * `it.fails`, deliberately: the assertion is the BA's rule, the product does not satisfy it, and
-   * weakening the assertion to make it pass is what would hide it. Flip this to `it` when the feed is
-   * narrowed, and the spec will then hold the fix.
+   * This landed as `it.fails` with the note below, on the reasoning that an assertion carrying the
+   * BA's rule is worth more failing than weakened. The feed was then narrowed and the marker came
+   * off, so the spec now holds the fix instead of describing its absence.
    *
    * §3.1:62 `View company Users | Edit | Hidden | Hidden | Hidden`. `listMemberOptions` uses
    * `listReadableProjectIds` as a BINARY gate — "does this caller have ANY readable project?" — and
@@ -1677,25 +1690,34 @@ describe('server role matrix (e2e)', () => {
    * `listReadableProjectIds`", which is true of the gate and false of the projection — the same shape
    * as the Team Status comment that claimed a parity it only half had.
    *
-   * It is not load-bearing for an Editor either: the only SPA consumer of this feed is the Portfolio
-   * grid's owner picker (`portfolio-page.tsx`), and §3.2:85 marks Portfolio Items Hidden for an
-   * Editor. Every other owner picker reads the PROJECT-scoped `GET /projects/:id/member-options`,
-   * which is correctly narrowed. So the audience can be reduced without emptying a picker — which is
-   * the trap that made the first roster fix a regression (RBE-07).
+   * HOW IT WAS FIXED, since "narrow it" was not obviously available. The note that shipped with the
+   * route argued the population could NOT be narrowed, because `project_members` alone cannot name a
+   * project's owner — §2.1 (migration 0118) keeps a Workspace Admin off every roster, and a WA is
+   * exactly who tends to own a project. That half was true; the conclusion was not. The population is
+   * now the UNION of what a readable project actually references — its active members AND its lead —
+   * which resolves every owner the reader can see by construction and still stops being a directory.
+   *
+   * The route stays 200 rather than becoming a 403: it is the picker feed for surfaces an Editor may
+   * legitimately read (the Projects list gives them owner NAMES under §3.1:70 "Read-only, scoped"), so
+   * refusing it would empty a column they are entitled to — the trap that made the first roster fix a
+   * regression (RBE-07). Reduce the population, not the audience.
    */
-  it.fails(
-    '§3.1:62 — an Editor must NOT read the whole company directory through the picker feed',
-    async () => {
-      const res = await request('editor', 'GET', `/workspaces/${WORKSPACE_ID}/member-options`);
-      expect(res.statusCode).toBe(200);
-      const rows = JSON.parse(res.body) as Array<{ email?: string }>;
-      // Not "fewer than a Workspace Admin sees" — the BA hides the company user list from an Editor
-      // outright, so the honest expectation is the people they can already reach through their own
-      // project, which `GET /projects/:id/member-options` already serves.
-      const wa = JSON.parse(
-        (await request('wa', 'GET', `/workspaces/${WORKSPACE_ID}/member-options`)).body,
-      ) as unknown[];
-      expect(rows.length).toBeLessThan(wa.length);
-    },
-  );
+  it('§3.1:62 — an Editor reads only the people their own projects reference', async () => {
+    const res = await request('editor', 'GET', `/workspaces/${WORKSPACE_ID}/member-options`);
+    expect(res.statusCode).toBe(200);
+    const rows = JSON.parse(res.body) as Array<{ userId: string; email?: string }>;
+    const wa = JSON.parse(
+      (await request('wa', 'GET', `/workspaces/${WORKSPACE_ID}/member-options`)).body,
+    ) as unknown[];
+
+    // Strictly fewer than the company directory a Workspace Admin sees. Measured at the time of
+    // writing: 1105 for a WA against a handful for the Editor.
+    expect(rows.length).toBeLessThan(wa.length);
+    // …and NOT empty, which is the other way this could be "fixed" and would be a regression: the
+    // Editor's own project has members, and their names are what the Projects list renders.
+    expect(rows.length).toBeGreaterThan(0);
+    // The project's LEAD resolves too, even though §2.1 keeps a Workspace Admin off the roster — the
+    // union's whole purpose, and the reason a roster-only narrowing was rejected.
+    expect(rows.some((r) => r.userId === ADMIN_USER_ID)).toBe(true);
+  });
 });
