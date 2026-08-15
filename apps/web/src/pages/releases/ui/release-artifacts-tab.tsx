@@ -7,9 +7,12 @@ import { useReleaseArtifacts, useSetReleaseArtifacts } from '@/features/releases
 import { useWorkItems } from '@/features/work-items/api'
 import { useProjectPermissions } from '@/features/access/api'
 import { ArtifactsTabView } from '@/entities/work-item/ui/artifacts-tab'
+import type { ArtifactTableItem } from '@/entities/work-item/ui/artifact-table'
 import { listResource } from '@/shared/lib/query/resource'
 import { useArtifactPagination } from '@/entities/work-item/ui/use-artifact-pagination'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { PORTFOLIO_TYPE_CONFIG } from '@/entities/work-item/model/types'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { SelectionModal } from '@/shared/ui/selection-modal'
 
@@ -18,6 +21,29 @@ import { SelectionModal } from '@/shared/ui/selection-modal'
  * ceiling `useProjects` already lives with, and the reason the modal carries its own search box.
  */
 const CANDIDATE_LIMIT = 100
+
+/**
+ * A release's artifacts come from TWO tables — `work_items.release_id` and, for a Feature,
+ * `portfolio_items.release_id` — so a row's detail surface depends on which one it is.
+ *
+ * The discriminator is the row's own `type`: `work_item_type` and `portfolio_item_type` are
+ * disjoint enums (`story|defect|task` against `epic|feature`), which is also why `TypeBadge` already
+ * resolves a glyph for all five from one prop. No extra DTO field is served for this — one that only
+ * restated `type` would be a second source for the same fact.
+ */
+function isPortfolioArtifact(type: string): boolean {
+  return type in PORTFOLIO_TYPE_CONFIG
+}
+
+/**
+ * A portfolio row's Priority is ABSENT, not blank: `portfolio_items` has no priority column, so the
+ * feed sends `''` (deliberately not a member of the enum, so nothing can read it as a value) and the
+ * placeholder is applied here, because `EMPTY_VALUE` is a presentation rule. Schedule State gets no
+ * equivalent — the shared table renders it as a segmented stepper, which has no text slot.
+ */
+function withAbsentPlaceholders(rows: ArtifactTableItem[]): ArtifactTableItem[] {
+  return rows.map((r) => (r.priority === '' ? { ...r, priority: EMPTY_VALUE } : r))
+}
 
 /**
  * Release Artifacts — the dashboard rows PLUS add/remove (P3-REL-FR-029: "User can MANAGE assigned
@@ -62,7 +88,11 @@ export function ReleaseArtifactsTab({
   })
   // The rows and the page cursor come out of one response; `listResource` keeps the FAILURE with
   // the rows so the table cannot print "No artifacts linked to this release" for a 400.
-  const artifacts = listResource({ ...artifactsQuery, data: artifactsQuery.data?.data })
+  const rows = useMemo(
+    () => (artifactsQuery.data ? withAbsentPlaceholders(artifactsQuery.data.data) : undefined),
+    [artifactsQuery.data],
+  )
+  const artifacts = listResource({ ...artifactsQuery, data: rows })
 
   // One feed for both halves of the picker: the project's stories/defects are the candidates, and the
   // subset already pointing at this release is the current selection. Reading membership from the
@@ -108,7 +138,13 @@ export function ReleaseArtifactsTab({
         pageInfo={artifactsQuery.data?.pageInfo}
         entityNoun="release"
         pagination={pagination}
-        onOpenItem={(item) => navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })}
+        onOpenItem={(item) =>
+          isPortfolioArtifact(item.type)
+            ? // A Feature's detail lives on the Portfolio surface and is addressed by ID, not by key
+              // — `/item/$itemKey` resolves against `work_items` only, so it would 404 for FE-6.
+              navigate({ to: '/portfolio/$itemId', params: { itemId: item.id } })
+            : navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
+        }
       />
 
       <SelectionModal

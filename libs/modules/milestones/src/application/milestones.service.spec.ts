@@ -443,17 +443,44 @@ describe('MilestonesService', () => {
       updatedAt: now,
     };
 
-    it('returns the linked work items as dashboard ROWS, with the footer total', async () => {
-      // Two selects: the page, then the COUNT. `makeDb` serves one result to every call, so the
-      // order is pinned here rather than left to whichever query happens to run first.
+    /**
+     * The PORTFOLIO half of the same polymorphic link table (`GAP-P3-MS-002`). `entity_type` has
+     * been `work_item | portfolio_item` since migration 0084 and the Feature/Epic detail rail writes
+     * the second kind, so an assigned Feature persisted and displayed on the Feature while this feed
+     * hardcoded `'work_item'` and reported it as absent.
+     */
+    const featureRow = {
+      id: 'pi-1',
+      itemKey: 'FE-6',
+      type: 'feature',
+      title: 'Guest checkout',
+      // Absent, not blank: a Feature carries no Schedule State and no priority column exists at all.
+      scheduleState: '',
+      priority: '',
+      assigneeId: 'user-2',
+      assigneeName: 'Owner Two',
+      storyPoints: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    it('returns work items AND portfolio items as dashboard ROWS, with the summed total', async () => {
+      // FOUR selects, in the order the `Promise.all` array evaluates: the work-item page (direct
+      // links plus the inherited descendants of a linked Feature/Epic), the portfolio page, then a
+      // COUNT for each. `makeDb` serves one result to every call, so the order is pinned here.
       db.select
-        .mockReturnValueOnce(makeChain([row]))
+        .mockReturnValueOnce(makeChain([{ ...row, sortKey: '20260101000000000001' }]))
+        .mockReturnValueOnce(makeChain([{ ...featureRow, sortKey: '20260101000000000002' }]))
+        .mockReturnValueOnce(makeChain([{ total: 1 }]))
         .mockReturnValueOnce(makeChain([{ total: 1 }]));
 
       const page = await service.listMilestoneArtifacts(actor, 'ms-1', { limit: 25, cursor: null });
 
-      expect(page.data).toEqual([row]);
-      expect(page.pageInfo.total).toBe(1);
+      // Newest-first on the exact MICROSECOND key, not on the JS `Date` — both fixtures share one
+      // `now`, so a millisecond comparison would tie and order them by id instead.
+      expect(page.data).toEqual([featureRow, row]);
+      // Summed across both branches, and the sort key never reaches the response.
+      expect(page.pageInfo.total).toBe(2);
       expect(page.pageInfo.hasNextPage).toBe(false);
     });
 
