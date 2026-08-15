@@ -760,3 +760,19 @@ variable "monitor_ingress" {
   type        = bool
   default     = true
 }
+
+variable "vendor_sso_client_id" {
+  description = <<-EOT
+    OAuth client id for the VENDOR SSO connection — a consumer IdP (Google) used by invited external
+    collaborators whose email domains we do not own.
+
+    Empty leaves the connection UNSEEDED rather than half-configured: `db/seeds/bootstrap.ts` writes
+    the row only when this and the secret ref are both present, because a row without them fails the
+    broker's `isBrokerConfigured` check and resolves to null at login.
+
+    Not a secret — a public OAuth client id, like `entra_client_id`. The secret half lives in Secrets
+    Manager as `vendor-sso-client-secret`.
+  EOT
+  type        = string
+  default     = ""
+}

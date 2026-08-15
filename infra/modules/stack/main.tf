@@ -132,6 +132,11 @@ locals {
     # rollback, not a silent downgrade, which is the intent).
     "cookie-secret"       = "Cookie signing secret (distinct from csrf-secret)"
     "entra-client-secret" = "Microsoft Entra confidential-client secret (BFF OIDC)"
+    # The VENDOR (shared, invite-gated) SSO connection's confidential-client secret — a consumer IdP
+    # (Google) that authenticates external collaborators on gmail.com and on domains we do not own.
+    # Terraform only scaffolds the container; the value is pasted by hand like the GitHub App key.
+    # Empty leaves the connection unseeded rather than half-configured — see `db/seeds/bootstrap.ts`.
+    "vendor-sso-client-secret" = "Consumer-IdP (Google) client secret for the shared vendor SSO connection"
     # SCM (GitHub App) — minted in GitHub, pasted by hand (Terraform only scaffolds
     # empty containers). Both stay empty until the App is registered, which keeps the
     # SCM backfill and webhook paths dormant.
@@ -709,6 +714,11 @@ module "api" {
     # home path dormant (legacy GET /bff/login unaffected). The task role is
     # granted GetSecretValue on it via task_secret_arns below.
     { name = "IDENTITY_HOME_SECRET_REF", value = module.secrets.secret_arns["entra-client-secret"] },
+    # The vendor connection resolves its secret at runtime from this ref, exactly as the home
+    # connection does. The row itself is seeded by the migrator (below); this is what lets the BFF
+    # complete the token exchange when an invited vendor signs in.
+    { name = "VENDOR_SSO_SECRET_REF", value = module.secrets.secret_arns["vendor-sso-client-secret"] },
+    { name = "VENDOR_SSO_CLIENT_ID", value = var.vendor_sso_client_id },
     # Comma-separated emails auto-granted workspace_admin on every SSO login
     { name = "PLATFORM_ADMIN_EMAILS", value = join(",", var.platform_admin_emails) },
     # Messaging — SQS queue URLs injected at deploy time from module outputs
@@ -970,6 +980,18 @@ module "migrator" {
     # connection, so SSO authenticates but only invited / already-provisioned
     # users (+ platform-admins) get in. No silent auto-join for any qnsc.vn user.
     SSO_JIT_ENABLED = "false"
+    # The VENDOR connection (shared, invite-gated) the seed writes beside the home one, so an invited
+    # collaborator on gmail.com — or on any domain we do not own — can sign in through the same Work
+    # email box staff use. Both values are required together: the seed skips the row entirely when
+    # either is absent, because a connection missing `clientId` or `clientSecretRef` fails
+    # `isBrokerConfigured` and resolves to null, which a vendor experiences as "contact your
+    # administrator" with nothing to act on.
+    #
+    # These are also passed to the API above — the seed WRITES the ref, the BFF DEREFERENCES it at
+    # login. Like the home connection, the ref travels as a plain env var and only
+    # `SecretsManagerSecretResolver` may read the value behind it.
+    VENDOR_SSO_CLIENT_ID  = var.vendor_sso_client_id
+    VENDOR_SSO_SECRET_REF = module.secrets.secret_arns["vendor-sso-client-secret"]
   }
 
   secrets = merge({

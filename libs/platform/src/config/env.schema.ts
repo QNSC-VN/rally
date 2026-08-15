@@ -268,6 +268,18 @@ export const EnvSchema = z
      */
     IDENTITY_HOME_SECRET_REF: z.string().optional(),
     /**
+     * The VENDOR SSO connection — a `shared` consumer IdP (Google) for invited external
+     * collaborators whose email domains we do not own. Public client id, and a Secrets Manager REF
+     * for its secret; the ref is dereferenced only by `SecretsManagerSecretResolver`, never read here.
+     *
+     * BOTH optional and meaningless apart: `db/seeds/bootstrap.ts` seeds the connection only when the
+     * pair is present, because a row lacking either fails the broker's `isBrokerConfigured` check and
+     * resolves to `null` at login — which a vendor experiences as "contact your administrator" with
+     * nothing to act on. Absent config therefore means no vendor connection, not a broken one.
+     */
+    VENDOR_SSO_CLIENT_ID: z.string().optional(),
+    VENDOR_SSO_SECRET_REF: z.string().optional(),
+    /**
      * Same-origin path the browser lands on after a successful BFF login when no
      * safe `returnTo` was supplied. Must be a root-relative path.
      */

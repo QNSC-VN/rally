@@ -235,6 +235,80 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
       .onConflictDoNothing({ target: ssoConnectionDomains.domain });
   }
 
+  /**
+   * The VENDOR connection: a `shared` consumer IdP, reached by INVITATION rather than by domain.
+   *
+   * WHY IT EXISTS. Staff are `@qnsc.vn`, so the home connection above owns that domain and routes them.
+   * Vendors are on `gmail.com` and on domains we will never own, and a `directory` connection cannot
+   * serve them: `findDirectoryByEmailDomain` matches an OWNED domain, and claiming `gmail.com` would
+   * assert that our Entra tenant authenticates every Gmail user. Consumer IdPs are the case
+   * `kind: 'shared'` was built for — `ConnectionRegistry.resolveForEmail` falls through to
+   * `findSharedByInvitedEmail`, so an invited vendor types their own address in the same Work email box
+   * staff use and is routed here.
+   *
+   * WHAT GATES IT, since it deliberately has NO domain restriction (`assertConnectionAllows` skips the
+   * domain check when `kind === 'shared'`):
+   *   • `jitEnabled: false` — the invite-only rule. An uninvited Gmail user matches no connection at
+   *     all (`findSharedByInvitedEmail` joins on a PENDING invitation), so they are refused BEFORE any
+   *     external IdP is involved.
+   *   • acceptance binds to the invited address (`INVITATION_EMAIL_MISMATCH`), so a forwarded
+   *     invitation cannot admit a different person.
+   * The invitation is therefore the whole authorization boundary — which is why "any domain" is safe
+   * here and would not be on the home connection.
+   *
+   * NO `sso_connection_domains` ROWS, deliberately: a row there would make this connection
+   * domain-routed and would claim ownership of a domain we do not own. The schema comment says the
+   * same ("`shared` connections have no rows here — they are invite-gated").
+   *
+   * Seeded only when configured, exactly like the broker fields above: without `clientId` and
+   * `clientSecretRef` the row would fail `isBrokerConfigured` and be resolved as `null`, which reads
+   * to a vendor as "contact your administrator" with nothing to act on. Absent config therefore leaves
+   * the connection out entirely rather than half-present.
+   */
+  const vendorClientId = process.env['VENDOR_SSO_CLIENT_ID'] ?? null;
+  const vendorSecretRef = process.env['VENDOR_SSO_SECRET_REF'] ?? null;
+  const vendorConfigured = Boolean(vendorClientId && vendorSecretRef);
+
+  if (vendorConfigured) {
+    const vendorFields = {
+      kind: 'shared' as const,
+      // Google's OIDC issuer. Discovery is mandatory (Decision 6), so this is the only endpoint
+      // configuration there is — authorize/token URLs come from `.well-known`.
+      authorityUrl: 'https://accounts.google.com',
+      acceptedIssuers: ['https://accounts.google.com', 'accounts.google.com'],
+      clientId: vendorClientId,
+      clientSecretRef: vendorSecretRef,
+      displayName: 'Google',
+      // Vendors land with NO project access. §6.4's `projectAccess` on the invitation is what grants
+      // it, so the default role must not quietly hand out more than the inviter chose.
+      defaultRoleSlug: 'project_member' as const,
+      // Empty = no domain restriction. Redundant with the `kind === 'shared'` skip, and set anyway so
+      // the row does not read as "restricted to nothing" to someone inspecting the table.
+      allowedEmailDomains: [] as string[],
+      jitEnabled: false,
+      status: 'active' as const,
+    };
+
+    await database
+      .insert(ssoConnections)
+      .values({
+        workspaceId: WORKSPACE_ID,
+        provider: 'google',
+        // One shared Google connection per workspace. `externalTenantId` is part of the uniqueness
+        // key and Google has no tenant, so the workspace id is what makes the upsert idempotent.
+        externalTenantId: WORKSPACE_ID,
+        ...vendorFields,
+      })
+      .onConflictDoUpdate({
+        target: [ssoConnections.provider, ssoConnections.externalTenantId],
+        set: { workspaceId: WORKSPACE_ID, updatedAt: new Date(), ...vendorFields },
+      });
+  }
+
+  console.log(
+    `\u2705  Vendor SSO (shared, invite-gated): ${vendorConfigured ? 'Google connection reconciled' : 'SKIPPED (VENDOR_SSO_CLIENT_ID / VENDOR_SSO_SECRET_REF unset)'}`,
+  );
+
   console.log(
     `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ` +
       `+ ${CANONICAL_TIER_SLUGS.length} editable tier roles + Entra SSO connection ` +
