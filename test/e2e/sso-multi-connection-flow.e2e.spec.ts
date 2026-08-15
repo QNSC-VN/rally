@@ -154,7 +154,24 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
         status: 'pending',
         expiresAt: new Date(Date.now() + 86_400_000),
       })
-      .onConflictDoNothing({ target: workspaceInvitations.tokenHash });
+      /**
+       * REFRESH the window, do not skip on conflict.
+       *
+       * `db/seeds/reset.ts` deliberately truncates nothing in `workspace.*`, so this row survives
+       * every run — and with `onConflictDoNothing` it kept the FIRST run's `expires_at` for ever.
+       * The local row was thirteen days past expiry and still `pending`, so once
+       * `findSharedByInvitedEmail` started checking the expiry (as `hasPendingInvitation` always
+       * had), this fixture asserted routing for an invitation that must not route. The test was
+       * passing on a row that contradicted its own intent.
+       *
+       * Note what that also demonstrates: `status` is a LAGGING projection of `expires_at` — the
+       * cleanup cron flips rows to `expired` and does not run here at all. Only the timestamp can
+       * gate access, which is exactly why the predicate checks it.
+       */
+      .onConflictDoUpdate({
+        target: workspaceInvitations.tokenHash,
+        set: { status: 'pending', expiresAt: new Date(Date.now() + 86_400_000) },
+      });
   });
 
   afterAll(async () => {
@@ -186,6 +203,35 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
     const invited = await repo.findSharedByInvitedEmail(INVITED_EMAIL);
     expect(invited?.externalTenantId).toBe(GOOGLE_TID);
     expect(await repo.findSharedByInvitedEmail('uninvited@shared-e2e.test')).toBeNull();
+  });
+
+  /**
+   * An EXPIRED invitation must not route, even while its row still says `pending`.
+   *
+   * Against a real database, because the predicate is the point: `findSharedByInvitedEmail` used to
+   * check the status alone, so an expired invitation still selected its connection and was then
+   * refused a moment later at the invite-only gate — `SSO_JIT_DISABLED`, surfacing from the BFF
+   * callback as an opaque `AUTH_TOKEN_INVALID`, where `NO_CONNECTION` is the honest answer.
+   *
+   * The row is written `pending` with a PAST `expires_at` on purpose. That is not a contrived state:
+   * the cleanup cron is what flips rows to `expired`, so every invitation passes through exactly
+   * this shape between its expiry and the next tick — and this suite's own fixture sat in it for
+   * thirteen days.
+   */
+  it('does NOT route an expired invitation, even while its status is still pending', async () => {
+    const expiredEmail = `expired-${Date.now()}@shared-e2e.test`;
+    await db.insert(workspaceInvitations).values({
+      workspaceId: WORKSPACE_ID,
+      email: expiredEmail,
+      tokenHash: `e2e-mconn-expired-${Date.now()}`,
+      invitedBy: ADMIN_USER_ID,
+      status: 'pending',
+      expiresAt: new Date(Date.now() - 1_000),
+    });
+
+    expect(await repo.findSharedByInvitedEmail(expiredEmail)).toBeNull();
+    // And the gate agrees, so the two predicates cannot drift apart again.
+    expect(await repo.hasPendingInvitation(WORKSPACE_ID, expiredEmail)).toBe(false);
   });
 
   it('provisions a federated user into the resolved connection workspace + role', async () => {

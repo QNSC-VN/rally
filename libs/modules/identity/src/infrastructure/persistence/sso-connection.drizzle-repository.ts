@@ -11,6 +11,29 @@ function emailDomain(email: string): string | null {
   return email.split('@')[1]?.toLowerCase() ?? null;
 }
 
+/**
+ * A LIVE pending invitation for `email` — `pending` AND not yet expired.
+ *
+ * Extracted because it was a rule with two homes and one of them was missing a clause:
+ * `hasPendingInvitation` checked the expiry, `findSharedByInvitedEmail` did not. So an expired
+ * invitation still ROUTED a login to its shared connection, which then refused it at the
+ * invite-only gate — surfacing as `SSO_JIT_DISABLED` (and, from the BFF callback, as an opaque
+ * `AUTH_TOKEN_INVALID`) where `NO_CONNECTION` is the honest answer. Two different refusals for
+ * one cause, neither naming it.
+ *
+ * `status = 'pending'` alone is not the same question: a cron flips rows to `expired`
+ * (`apps/worker/src/cron/cleanup.cron.ts`), so between a row's expiry and the next tick it is
+ * still `pending` and must not admit anyone. The timestamp is authoritative; the status is a
+ * projection of it that lags.
+ */
+function liveInvitationFor(email: string) {
+  return and(
+    eq(workspaceInvitations.status, 'pending'),
+    sql`lower(${workspaceInvitations.email}) = ${email.toLowerCase()}`,
+    gt(workspaceInvitations.expiresAt, new Date()),
+  );
+}
+
 @Injectable()
 export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
@@ -56,8 +79,10 @@ export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository 
   }
 
   /**
-   * Active `shared` (consumer-IdP) connection the email has a PENDING invitation
-   * to. Consumer IdPs are never domain-routed — access is gated by invite.
+   * Active `shared` (consumer-IdP) connection the email has a LIVE pending invitation to —
+   * pending and unexpired, per `liveInvitationFor`. Consumer IdPs are never domain-routed;
+   * access is gated by the invitation, which makes its expiry part of the routing decision
+   * rather than a detail the login path can check later.
    */
   async findSharedByInvitedEmail(email: string): Promise<SsoConnection | null> {
     const rows = await this.db
@@ -71,8 +96,7 @@ export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository 
         and(
           eq(ssoConnections.status, 'active'),
           eq(ssoConnections.kind, 'shared'),
-          eq(workspaceInvitations.status, 'pending'),
-          sql`lower(${workspaceInvitations.email}) = ${email.toLowerCase()}`,
+          liveInvitationFor(email),
         ),
       )
       // Deterministic when a workspace has >1 shared connection: oldest wins.
@@ -124,14 +148,7 @@ export class SsoConnectionDrizzleRepository implements ISsoConnectionRepository 
     const rows = await this.db
       .select({ id: workspaceInvitations.id })
       .from(workspaceInvitations)
-      .where(
-        and(
-          eq(workspaceInvitations.workspaceId, workspaceId),
-          eq(workspaceInvitations.status, 'pending'),
-          sql`lower(${workspaceInvitations.email}) = ${email.toLowerCase()}`,
-          gt(workspaceInvitations.expiresAt, new Date()),
-        ),
-      )
+      .where(and(eq(workspaceInvitations.workspaceId, workspaceId), liveInvitationFor(email)))
       .limit(1);
     return rows.length > 0;
   }
