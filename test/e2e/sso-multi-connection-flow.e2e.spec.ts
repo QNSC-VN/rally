@@ -86,6 +86,12 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
           authorityUrl: row.authorityUrl,
           clientId: row.clientId,
           clientSecretRef: row.clientSecretRef,
+          // Reconciled on conflict, not left at whatever the first run wrote: `created_at` is the
+          // tiebreak `findSharedByInvitedEmail` orders on, so a row surviving from an earlier run
+          // must adopt the caller's value or the shared-routing assertion depends on run history.
+          // Only ever set from an explicit value — `$inferInsert` leaves it undefined otherwise, and
+          // drizzle omits an undefined column rather than nulling it.
+          ...(row.createdAt !== undefined && { createdAt: row.createdAt }),
           updatedAt: new Date(),
         },
       });
@@ -122,6 +128,21 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
       status: 'active',
       ...BROKER,
     });
+    /**
+     * `createdAt` is PINNED, and that is load-bearing rather than tidiness.
+     *
+     * The bootstrap seed now provisions its own `shared` connection in this same workspace (the
+     * Entra "QNSC (guest)" row that lets an invited external type their address in the login box),
+     * so two shared rows can match one invitation. `findSharedByInvitedEmail` breaks that tie with
+     * `ORDER BY created_at, id` — oldest wins — which means the winner otherwise depends on whether
+     * the seed or this fixture was written first.
+     *
+     * That is exactly the shape that passes locally and fails in CI: `db/seeds/reset.ts` truncates
+     * nothing in `identity.*`, so a long-lived database keeps this fixture from an earlier run and it
+     * is older than the seed's row; on a fresh database the seed runs first in global setup and wins
+     * instead. Fixing the timestamp makes the tiebreak deterministic in both, and keeps this spec
+     * asserting the routing rule rather than the order two writers happened to run in.
+     */
     await upsertConnection({
       workspaceId: WORKSPACE_ID,
       provider: 'google',
@@ -131,6 +152,7 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
       allowedEmailDomains: [],
       jitEnabled: true,
       status: 'active',
+      createdAt: new Date('2020-01-01T00:00:00Z'),
       ...BROKER,
     });
 
@@ -199,9 +221,29 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
     expect(await repo.connectionOwnsEmailDomain(hit!.id, 'x@other-e2e.test')).toBe(false);
   });
 
+  /**
+   * The rule is "an INVITED address reaches a shared connection, an uninvited one reaches nothing".
+   * It is deliberately NOT asserted as "reaches THIS shared connection".
+   *
+   * The bootstrap seed provisions its own `shared` row in this workspace — the Entra guest
+   * connection that lets an invited external type their address in the login box — so two shared
+   * rows legitimately match one invitation, and `findSharedByInvitedEmail` picks between them with
+   * `ORDER BY created_at, id`. Which one wins is a property of that tiebreak, not of routing, and it
+   * varies with whether the seed or this fixture was written first: `db/seeds/reset.ts` truncates
+   * nothing in `identity.*`, so a long-lived database keeps this fixture from an earlier run while a
+   * fresh one seeds first. Pinning the fixture's `created_at` makes the tiebreak deterministic (and
+   * it is pinned, above), but asserting the winner here would still be asserting the wrong thing —
+   * a second legitimate shared connection must not be able to fail this spec.
+   */
   it('routes a shared connection only for an invited email', async () => {
     const invited = await repo.findSharedByInvitedEmail(INVITED_EMAIL);
-    expect(invited?.externalTenantId).toBe(GOOGLE_TID);
+    expect(invited).not.toBeNull();
+    expect(invited?.kind).toBe('shared');
+    expect(invited?.status).toBe('active');
+    // Never domain-routed: a shared connection owns no `sso_connection_domains` rows, which is what
+    // stops it admitting every address on a domain rather than only invited ones.
+    expect(await repo.findDirectoryByEmailDomain(INVITED_EMAIL)).toBeNull();
+    // The gate, and the whole point: without an invitation, nothing routes at all.
     expect(await repo.findSharedByInvitedEmail('uninvited@shared-e2e.test')).toBeNull();
   });
 
