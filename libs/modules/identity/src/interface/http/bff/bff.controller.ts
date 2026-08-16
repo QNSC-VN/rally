@@ -65,7 +65,7 @@ export class BffController {
   // browser-bound `state` cookie and returns the IdP authorize URL for the SPA.
   @Post('login/sso')
   @Public()
-  @RateLimit('AUTH_LOGIN')
+  @RateLimit('AUTH_SSO_START')
   @HttpCode(200)
   async loginSso(
     @Body() dto: LoginSsoDto,
@@ -94,7 +94,7 @@ export class BffController {
   // surfaces as 401 `NO_CONNECTION` ("contact your administrator").
   @Post('login/start')
   @Public()
-  @RateLimit('AUTH_LOGIN')
+  @RateLimit('AUTH_IDP_LOOKUP')
   @HttpCode(200)
   async loginStart(
     @Body() dto: LoginStartDto,
@@ -153,6 +153,11 @@ export class BffController {
   // (sets the `__Host-` session cookie) rather than handing tokens to the browser.
   @Post('dev-login')
   @Public()
+  // The ONE route here that submits something secret and mints a session from it, so the
+  // brute-force tier belongs on this one and not on the two SSO-initiation routes above. It had no
+  // limit at all: 404 in production, but `NODE_ENV` defaults to `development` in `env.schema.ts`, so
+  // a lost environment variable fails open to an unlimited passwordless-login oracle.
+  @RateLimit('AUTH_LOGIN')
   @HttpCode(204)
   async devLogin(
     @Body() dto: DevLoginDto,
