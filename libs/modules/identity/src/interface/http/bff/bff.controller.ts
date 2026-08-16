@@ -149,8 +149,8 @@ export class BffController {
   // ── POST /bff/dev-login ──────────────────────────────────────────────────
   // DEV/E2E ONLY (404 in production): passwordless mint of a real server-side
   // session so the same-origin cookie flow can be exercised locally without an
-  // Entra tenant. Mirrors POST /v1/auth/dev-login but lands the session on the
-  // SERVER (sets the `__Host-` session cookie), not the browser.
+  // Entra tenant. Unlike a bearer mint, this lands the session on the SERVER
+  // (sets the `__Host-` session cookie) rather than handing tokens to the browser.
   @Post('dev-login')
   @Public()
   @HttpCode(204)

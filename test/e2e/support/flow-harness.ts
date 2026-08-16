@@ -142,9 +142,9 @@ export async function bootAuditProjectionRelay(): Promise<{
 
 /**
  * Build a `JwtPayload` actor exactly as the auth guard would after minting an
- * access token. The application services read only `sub`, `workspaceId` and
- * `permissions`; the remaining JWT fields are inert values so the shape
- * type-checks.
+ * access token. The application services read only `sub` and `workspaceId`; the
+ * remaining JWT fields — `permissions` included, see `viewerActor` below — are
+ * inert values so the shape type-checks.
  */
 export function makeActor(userId: string, permissions: string[] = []): JwtPayload {
   return {
@@ -163,7 +163,11 @@ export function makeActor(userId: string, permissions: string[] = []): JwtPayloa
   };
 }
 
-/** Workspace-admin actor: `workspace:*` grants every permission via the fast path. */
+/**
+ * Workspace-admin actor. The `workspace:*` list is decorative — like every principal's
+ * `permissions`, it is inert (see `viewerActor`). What makes this actor an admin is the seeded
+ * `user_role_assignments` row for `ADMIN_USER_ID`, which is what `AccessService` reads.
+ */
 export const adminActor = (): JwtPayload => makeActor(ADMIN_USER_ID, ['workspace:*']);
 
 /**

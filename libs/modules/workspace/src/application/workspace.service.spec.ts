@@ -94,7 +94,6 @@ const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> => ({
   findMember: vi.fn(),
   findMemberById: vi.fn(),
   findMembershipsForUser: vi.fn().mockResolvedValue([]),
-  listMembers: vi.fn(),
   listMembersWithProfile: vi.fn().mockResolvedValue([]),
   listMemberOptions: vi.fn().mockResolvedValue([]),
   addMember: vi.fn(),

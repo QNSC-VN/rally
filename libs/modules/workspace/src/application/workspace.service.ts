@@ -235,7 +235,8 @@ export class WorkspaceService {
 
   // `listMembers` is GONE with `GET /workspaces/:id/members` — see that route's own note in
   // `workspace.controller.ts`. It had exactly one caller, the deleted handler. The repository method
-  // it wrapped stays: `WorkspaceMemberService` still uses it.
+  // it wrapped is gone too: its only remaining reader was `WorkspaceMemberService`, an orphan no
+  // module ever provided, and both went with it.
 
   /**
    * The ADMINISTRATIVE roster — phone, last login, role ids and team memberships.

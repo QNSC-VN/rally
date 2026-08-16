@@ -23,18 +23,6 @@ export interface JwtPayload extends CoreJwtPayload {
    * rotation, so stale permissions are bounded by the access-token TTL.
    */
   permissions: string[];
-  /**
-   * The authorization epoch the above `permissions` were resolved at — rally's
-   * flattened mirror of `claims.authzEpoch`. {@link JwtAuthGuard} compares it
-   * against the live epoch so a permission change invalidates this snapshot on
-   * the next request instead of at token expiry. `0` on tokens minted before the
-   * epoch existed.
-   *
-   * Optional because it is genuinely absent from tokens minted before this claim
-   * shipped (and from synthetic principals in tests); a missing value is read as
-   * `0`, i.e. "older than any bump".
-   */
-  authzEpoch?: number;
 }
 
 @Injectable()
