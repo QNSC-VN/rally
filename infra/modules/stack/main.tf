@@ -697,6 +697,9 @@ module "api" {
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
     { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
+    # Enqueue-side of Entra B2B guest provisioning: `inviteMember` writes a guest_invite_outbox row
+    # only while this is true. The worker carries the same value for the drain side.
+    { name = "ENTRA_GUEST_INVITE_ENABLED", value = tostring(var.entra_guest_invite_enabled) },
     # GitHub App (SCM org-level auto-discovery + backfill). The API enumerates
     # the App's installations and mints installation tokens, so — like the worker —
     # it needs the App ID + private-key ref. Empty App ID keeps it dormant
@@ -889,6 +892,10 @@ module "worker" {
     # mailed a localhost link and nothing would error — exactly the silent class of failure this file
     # keeps warning about. The other relays only send notifications, which is why it was never needed.
     { name = "APP_BASE_URL", value = local.app_base_url },
+    # Drain-side of the same flag. Deliberately passed even when false: the flag gates ENQUEUEING,
+    # and the relay must keep draining rows committed before it was turned off — a queued row also
+    # owes the invitation email, so abandoning it leaves the invitee silent with no alarm.
+    { name = "ENTRA_GUEST_INVITE_ENABLED", value = tostring(var.entra_guest_invite_enabled) },
     # GitHub App (SCM backfill). App ID stays empty until the App is registered,
     # keeping backfill dormant (GithubAppAuthService.isConfigured() = false). The
     # private-key ref is the SM ARN, resolved at runtime via the task role above.
