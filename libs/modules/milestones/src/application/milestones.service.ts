@@ -5,14 +5,14 @@ import {
   NotFoundException,
   PreconditionFailedException,
   buildPageResult,
-  keysetCondition,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platform';
-import { and, asc, desc, eq, isNull, sql, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql, inArray, type Column, type SQL } from 'drizzle-orm';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import {
   workItems,
+  portfolioItems,
   milestones,
   milestoneArtifacts,
   milestoneReleases,
@@ -61,6 +61,14 @@ export interface MilestoneProgress {
  * Deliberately the same column set `ReleasesService.listReleaseArtifacts` returns plus
  * `assigneeName`: the SPA renders both through one shared table, whose Owner column had nothing to
  * read on either surface.
+ *
+ * `scheduleState` and `priority` are `''` for a PORTFOLIO row, and `storyPoints` is null — a
+ * Feature or Epic carries none of the three. Its `state` is a different axis from a Story's Schedule
+ * State, `portfolio_items` has no priority column at all, and a portfolio forecast is the tiered
+ * top-down estimate the Portfolio surface resolves (AC-014) rather than a leaf Plan Estimate; Rally
+ * keeps those apart as `Plan Estimate` and `Leaf Story Plan Estimate Total`. `''` is not a member of
+ * either enum, so nothing can mistake it for a value. See `ReleaseArtifactRow`, which says the same
+ * for the same reason on the same shared table.
  */
 export interface MilestoneArtifactRow {
   id: string;
@@ -74,6 +82,26 @@ export interface MilestoneArtifactRow {
   storyPoints: number | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * A MICROSECOND, lexicographically ordered rendering of a timestamp, used to merge two tables'
+ * pages into one order. Duplicated from `ReleasesService` deliberately — one line of SQL in each
+ * of two modules, rather than a new cross-module export for it.
+ *
+ * `Date.getTime()` is MILLISECONDS and `timestamptz` is microseconds — the precision mismatch
+ * `keysetCondition`'s own docblock is built around. Sorting the merged rows on `getTime()` would tie
+ * two rows the database orders strictly, so the row a page ends on would not be the row the database
+ * calls last and the next cursor would skip the straddling row for ever.
+ */
+function microsecondSortKey(col: Column): SQL<string> {
+  return sql<string>`to_char(${col} at time zone 'UTC', 'YYYYMMDDHH24MISSUS')`;
+}
+
+/** Newest-first on the exact timestamp, id ascending — the `ORDER BY` both branches carry. */
+function bySortKeyDesc(a: { sortKey: string; id: string }, b: { sortKey: string; id: string }) {
+  if (a.sortKey !== b.sortKey) return a.sortKey < b.sortKey ? 1 : -1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 interface ReleaseStats {
@@ -591,6 +619,47 @@ export class MilestonesService {
    *
    * `q` is honoured here (item key or title), unlike on the release side, because the shared toolbar
    * puts a search box above this table and sends the term.
+   *
+   * THE TABLE IS POLYMORPHIC AND THIS READ WAS NOT (`GAP-P3-MS-002`). `milestone_artifacts` became
+   * `(entity_type, entity_id)` in migration 0084 because "a milestone can be assigned to a work item
+   * OR to a portfolio item" — the Feature/Epic detail rail writes `'portfolio_item'` rows and reads
+   * them back, which is why the Feature shows its Milestone. This query hardcoded
+   * `entity_type = 'work_item'`, so there were two writers and one reader: FE-6 assigned to MS-1
+   * persisted, displayed on the Feature, and was absent from MS-1's own Artifacts tab.
+   *
+   * INHERITED DESCENDANTS ARE COMPUTED ON READ, and only on read. A Feature or Epic assigned to a
+   * milestone brings its leaf Stories/Defects into the milestone's display scope — which is what
+   * Rally's own milestone Artifacts roll-ups mean by `Leaf Story Plan Estimate Total` and
+   * `Accepted Leaf Story Count`. Three reasons it is not materialised into link rows:
+   *   • `portfolio_items` already computes every rollup on read for a stated reason (`work.ts`: Rally
+   *     stores its rollups and consequently ships a "Correct rollup discrepancy" action to repair
+   *     drift; computing on read means that cannot happen). This is the same aggregate, on the same
+   *     hierarchy, one table over.
+   *   • materialised rows would need triggers on `work_items.feature_id`, on `portfolio_items.parent_id`
+   *     and on every insert into either — and `db/seeds/**` writes both directly.
+   *   • worse, `getArtifactIds` feeds the §5.2 replace-SET picker. Inherited rows in that list would
+   *     come back as DIRECT links on the next save, silently promoting a descendant to an assignment
+   *     the user never made.
+   * Note this is a derived VIEW, not the read-repair the working notes warn about: nothing is
+   * written, so no other reader can go stale.
+   *
+   * ONCE, NOT TWICE. "Descendants enter the inherited scope once, without duplicate counting" is
+   * structural here rather than a de-duplication pass: the work-item branch is ONE scan of
+   * `work_items` whose predicate is `directly linked OR reachable through a linked Feature/Epic`, so a
+   * Story that is both cannot produce two rows and cannot be counted twice. A `UNION` of two
+   * work-item selects plus a `DISTINCT` would have been the same population by a route where the
+   * count and the rows could disagree.
+   *
+   * TWO BRANCHES, `limit + 1` EACH, merged. See `ReleasesService.listReleaseArtifacts`: each branch
+   * is paged under the same keyset predicate and the same `ORDER BY`, and the merge takes `limit + 1`
+   * of the union, which is exact. A per-branch `limit` would silently truncate. The two branches are
+   * different TABLES, so their counts sum.
+   *
+   * No `type` predicate on the work-item branch, deliberately, because the previous query had none:
+   * `assertArtifactsInMilestoneScope` refuses anything but a Story or Defect today, but the work-item
+   * write path enforced less than that before it was unified, so a Task-typed row may exist in an
+   * older database and hiding a link that really is there is not this read's job. The inherited half
+   * needs no predicate either — `feature_id` is a leaf-item column.
    */
   async listMilestoneArtifacts(
     actor: JwtPayload,
@@ -599,59 +668,152 @@ export class MilestonesService {
   ): Promise<PagedResult<MilestoneArtifactRow>> {
     await this.getMilestoneForView(actor, milestoneId);
 
-    const conditions = [
-      eq(milestoneArtifacts.milestoneId, milestoneId),
-      eq(milestoneArtifacts.entityType, 'work_item'),
+    /** The milestone's DIRECT work-item links — the set that decides `direct` from `inherited`. */
+    const directWorkItemIds = sql`(
+      select ma.entity_id from ${milestoneArtifacts} ma
+      where ma.milestone_id = ${milestoneId} and ma.entity_type = 'work_item'
+    )`;
+    /**
+     * Its DIRECT portfolio links. `milestone_artifacts` carries no `workspace_id`, so the tenant
+     * predicate rides on the joined row — the same reason the portfolio repository's own reader
+     * joins `milestones` for it. Archived items are excluded here, which is what also keeps an
+     * archived Feature's children out of the inherited set below.
+     */
+    const directPortfolioIds = sql`(
+      select pi.id from ${milestoneArtifacts} ma
+      join ${portfolioItems} pi on pi.id = ma.entity_id
+      where ma.milestone_id = ${milestoneId}
+        and ma.entity_type = 'portfolio_item'
+        and pi.workspace_id = ${actor.workspaceId}
+        and pi.archived_at is null
+    )`;
+    /**
+     * The Features whose leaves are inherited: a directly linked Feature, plus the child Features of
+     * a directly linked Epic. TWO LEVELS and no more, and the same shape as
+     * `PortfolioItemDrizzleRepository.rollupSubqueries()`'s `linked` predicate — a work item attaches
+     * to the LOWEST portfolio level only, so a Story never names an Epic and an Epic is reached
+     * through its Features. Reusing that shape is what keeps a milestone's inherited set and a
+     * Feature's own rollup describing the same children.
+     */
+    const inheritedFeatureIds = sql`(
+      select pf.id from ${portfolioItems} pf
+      where pf.archived_at is null
+        and (pf.id in ${directPortfolioIds} or pf.parent_id in ${directPortfolioIds})
+    )`;
+
+    const term = args.q?.trim();
+    const like = term ? `%${term}%` : null;
+
+    const workConditions = [
       eq(workItems.workspaceId, actor.workspaceId),
       isNull(workItems.deletedAt),
+      sql`(${workItems.id} in ${directWorkItemIds} or ${workItems.featureId} in ${inheritedFeatureIds})`,
     ];
-    const term = args.q?.trim();
-    if (term) {
-      const like = `%${term}%`;
-      conditions.push(
+    if (like) {
+      workConditions.push(
         sql`(${workItems.itemKey} ilike ${like} or ${workItems.title} ilike ${like})`,
       );
     }
 
-    // Total before the cursor/limit, for the footer count.
-    const baseConditions = [...conditions];
-    if (args.cursor) {
-      conditions.push(keysetCondition(workItems.createdAt, workItems.id, args.cursor));
+    const portfolioConditions = [sql`${portfolioItems.id} in ${directPortfolioIds}`];
+    if (like) {
+      portfolioConditions.push(
+        sql`(${portfolioItems.itemKey} ilike ${like} or ${portfolioItems.name} ilike ${like})`,
+      );
     }
 
-    const rows = await this.db
-      .select({
-        id: workItems.id,
-        itemKey: workItems.itemKey,
-        type: workItems.type,
-        title: workItems.title,
-        scheduleState: workItems.scheduleState,
-        priority: workItems.priority,
-        assigneeId: workItems.assigneeId,
-        assigneeName: sql<string | null>`assignee_user.display_name`,
-        storyPoints: sql<number | null>`${workItems.storyPoints}::float8`,
-        createdAt: workItems.createdAt,
-        updatedAt: workItems.updatedAt,
-      })
-      .from(milestoneArtifacts)
-      .innerJoin(workItems, eq(workItems.id, milestoneArtifacts.entityId))
-      .leftJoin(sql`identity.users assignee_user`, sql`assignee_user.id = work_items.assignee_id`)
-      .where(and(...conditions))
-      .orderBy(desc(workItems.createdAt), asc(workItems.id))
-      .limit(args.limit + 1);
+    // Totals before the cursor/limit, for the footer count.
+    const workCountConditions = [...workConditions];
+    const portfolioCountConditions = [...portfolioConditions];
 
-    const [countRow] = await this.db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(milestoneArtifacts)
-      .innerJoin(workItems, eq(workItems.id, milestoneArtifacts.entityId))
-      .where(and(...baseConditions));
+    if (args.cursor) {
+      // The boundary is resolved IN the database from whichever table holds the cursor's row —
+      // `keysetCondition` reads it from one table only, and a `timestamptz` must not round-trip
+      // through the cursor at millisecond precision. See the release side for the full account.
+      const cursorId = args.cursor.id;
+      const boundary = sql`(select b.ts from (
+          select cw.created_at as ts from ${workItems} cw where cw.id = ${cursorId}
+          union all
+          select cp.created_at as ts from ${portfolioItems} cp where cp.id = ${cursorId}
+        ) b limit 1)`;
+      const after = (createdAt: Column, id: Column) =>
+        sql`(${createdAt} < ${boundary} or (${createdAt} = ${boundary} and ${id} > ${cursorId}))`;
+      workConditions.push(after(workItems.createdAt, workItems.id));
+      portfolioConditions.push(after(portfolioItems.createdAt, portfolioItems.id));
+    }
+
+    const [workRows, portfolioRows, workCount, portfolioCount] = await Promise.all([
+      this.db
+        .select({
+          sortKey: microsecondSortKey(workItems.createdAt),
+          id: workItems.id,
+          itemKey: workItems.itemKey,
+          type: sql<string>`${workItems.type}::text`,
+          title: workItems.title,
+          scheduleState: sql<string>`${workItems.scheduleState}::text`,
+          priority: sql<string>`${workItems.priority}::text`,
+          assigneeId: workItems.assigneeId,
+          assigneeName: sql<string | null>`assignee_user.display_name`,
+          storyPoints: sql<number | null>`${workItems.storyPoints}::float8`,
+          createdAt: workItems.createdAt,
+          updatedAt: workItems.updatedAt,
+        })
+        .from(workItems)
+        .leftJoin(sql`identity.users assignee_user`, sql`assignee_user.id = work_items.assignee_id`)
+        .where(and(...workConditions))
+        .orderBy(desc(workItems.createdAt), asc(workItems.id))
+        .limit(args.limit + 1),
+      this.db
+        .select({
+          sortKey: microsecondSortKey(portfolioItems.createdAt),
+          id: portfolioItems.id,
+          itemKey: portfolioItems.itemKey,
+          type: sql<string>`${portfolioItems.type}::text`,
+          title: portfolioItems.name,
+          scheduleState: sql<string>`''`,
+          priority: sql<string>`''`,
+          assigneeId: portfolioItems.ownerId,
+          assigneeName: sql<string | null>`owner_user.display_name`,
+          storyPoints: sql<number | null>`null::float8`,
+          createdAt: portfolioItems.createdAt,
+          updatedAt: portfolioItems.updatedAt,
+        })
+        .from(portfolioItems)
+        .leftJoin(sql`identity.users owner_user`, sql`owner_user.id = portfolio_items.owner_id`)
+        .where(and(...portfolioConditions))
+        .orderBy(desc(portfolioItems.createdAt), asc(portfolioItems.id))
+        .limit(args.limit + 1),
+      this.db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(workItems)
+        .where(and(...workCountConditions)),
+      this.db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(portfolioItems)
+        .where(and(...portfolioCountConditions)),
+    ]);
+
+    const merged = [...workRows, ...portfolioRows].sort(bySortKeyDesc).slice(0, args.limit + 1);
+    const total = Number(workCount[0]?.total ?? 0) + Number(portfolioCount[0]?.total ?? 0);
 
     return buildPageResult(
-      rows,
+      merged.map((r) => ({
+        id: r.id,
+        itemKey: r.itemKey,
+        type: r.type,
+        title: r.title,
+        scheduleState: r.scheduleState,
+        priority: r.priority,
+        assigneeId: r.assigneeId,
+        assigneeName: r.assigneeName,
+        storyPoints: r.storyPoints === null ? null : Number(r.storyPoints),
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      })),
       args.limit,
       (w) => [w.createdAt.toISOString()],
       'desc',
-      Number(countRow?.total ?? 0),
+      total,
     );
   }
 

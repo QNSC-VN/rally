@@ -139,9 +139,14 @@ export function CapacityTeamRow({
           children with no trace would make an empty team and a full one look identical. */}
       {/* `inline-flex` + `items-center`, not a text block: the badge is a pill with its own line
           height, so inside plain text it rode ABOVE the count's baseline. */}
+      {/* `justify-start`, matching the column's own alignment (SRS §121: "Count of allocated
+          Features, left-aligned"). Right-aligned, the count and its warning badge sat against the
+          progress bar to their right and read as that bar's label rather than as the team's Feature
+          count — and the header, which takes its alignment from the ColumnSpec, has to agree with the
+          cell or the digits hang under nothing. */}
       <div
         style={colStyleFor('features', { flexShrink: 0 })}
-        className="flex items-center justify-end gap-1 px-2 text-muted-foreground tabular-nums"
+        className="flex items-center justify-start gap-1 px-2 text-muted-foreground tabular-nums"
       >
         {featureCount}
         {/* The warning COUNT, as Rally shows it: on a plan with a dozen teams "⚠5" says which row

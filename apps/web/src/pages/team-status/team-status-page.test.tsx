@@ -196,6 +196,41 @@ describe('Team Status read-only fields', () => {
   })
 })
 
+/**
+ * GAP-P3-TS-008 makes this group far more reachable: an off-roster owner's task now lands under
+ * `Unassigned` rather than in a named group of its own, so a Capacity cell that could only ever fail
+ * would be hit routinely. `owner.id` is the literal `'unassigned'` and `UpdateCapacitySchema` requires
+ * a uuid, so the edit was a guaranteed 400 with a bare "Validation failed" toast. The AC's own wording
+ * is the rule: "Null-owner Tasks appear under Unassigned WITH 0h CAPACITY".
+ */
+describe('the Unassigned group has no capacity to plan', () => {
+  const UNASSIGNED_GROUP = {
+    ...TEAM_STATUS,
+    groups: [
+      {
+        ...TEAM_STATUS.groups[0],
+        owner: { id: 'unassigned', displayName: 'Unassigned', avatarUrl: null },
+        capacityHours: 0,
+      },
+    ],
+  }
+
+  it('renders its Capacity as a value, not an editor, for a caller with full rights', async () => {
+    mockGET.mockResolvedValue({
+      data: UNASSIGNED_GROUP,
+      error: undefined,
+      response: { status: 200 },
+    })
+    const { container } = renderPage()
+    fireEvent.click(await screen.findByText('Unassigned'))
+    await screen.findByText('DEV - wire SSO')
+
+    // Only the two Task Name cells remain editable — the group Capacity is gone from the count.
+    expect(container.querySelectorAll('.inline-edit-cell')).toHaveLength(2)
+    expect(screen.queryByRole('textbox', { name: 'Capacity' })).toBeNull()
+  })
+})
+
 describe('the member progress bar keeps ONE formula under a filter', () => {
   it('shows the §10 hours ratio unfiltered', async () => {
     renderPage()

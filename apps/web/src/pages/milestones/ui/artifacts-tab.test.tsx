@@ -48,6 +48,35 @@ const LINKED = {
   assigneeName: 'Dev One',
   storyPoints: 5,
 }
+/**
+ * A directly assigned FEATURE (`GAP-P3-MS-002`). `milestone_artifacts` has been polymorphic since
+ * migration 0084 and the Feature/Epic detail rail writes `entity_type = 'portfolio_item'`, so the
+ * assignment persisted and displayed on the Feature while this feed hardcoded `'work_item'`.
+ *
+ * `priority: ''` is how the feed says ABSENT — a Feature has neither a priority column nor a
+ * Schedule State.
+ */
+const LINKED_FEATURE = {
+  id: 'pi-1',
+  itemKey: 'FE-6',
+  type: 'feature',
+  title: 'Linked feature',
+  scheduleState: '',
+  priority: '',
+  assigneeName: 'Owner Two',
+  storyPoints: null,
+}
+/** A leaf story reached THROUGH that Feature — inherited scope, not a link row of its own. */
+const INHERITED = {
+  id: 'wi-9',
+  itemKey: 'US-9',
+  type: 'story',
+  title: 'Inherited descendant',
+  scheduleState: 'in_progress',
+  priority: 'normal',
+  assigneeName: 'Dev Nine',
+  storyPoints: 3,
+}
 const UNLINKED = {
   id: 'wi-2',
   itemKey: 'US-2',
@@ -101,8 +130,8 @@ describe('Milestone ArtifactsTab', () => {
       if (url === '/v1/milestones/{id}/artifacts/items') {
         return Promise.resolve({
           data: {
-            data: [LINKED],
-            pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 1 },
+            data: [LINKED, LINKED_FEATURE, INHERITED],
+            pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 3 },
           },
           error: undefined,
           response: { status: 200 },
@@ -127,6 +156,23 @@ describe('Milestone ArtifactsTab', () => {
     expect(await screen.findByText('Linked story')).toBeInTheDocument()
   })
 
+  it('renders a directly assigned Feature and its inherited descendants', async () => {
+    renderTab()
+    expect(await screen.findByText('Linked feature')).toBeInTheDocument()
+    expect(screen.getByText('Inherited descendant')).toBeInTheDocument()
+    // `portfolio_items` has no priority column, so `''` becomes the app's one absent-value marker.
+    expect(screen.getAllByText('--').length).toBeGreaterThan(0)
+  })
+
+  it('opens a Feature row on the Portfolio surface, not on /item/$itemKey', async () => {
+    renderTab()
+    fireEvent.click(await screen.findByRole('button', { name: /FE-6/ }))
+    expect(navigate).toHaveBeenCalledWith({ to: '/portfolio/$itemId', params: { itemId: 'pi-1' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /US-9/ }))
+    expect(navigate).toHaveBeenCalledWith({ to: '/item/$itemKey', params: { itemKey: 'US-9' } })
+  })
+
   it('ADDS an artifact through the milestone end, preserving the ones already linked', async () => {
     renderTab()
     await openPicker()
@@ -136,6 +182,12 @@ describe('Milestone ArtifactsTab', () => {
 
     // The payload REPLACES the list, so it has to carry `wi-1` too — a set built from the visible
     // page alone would silently unlink everything else on the milestone.
+    //
+    // It must NOT carry `pi-1` or `wi-9`. The baseline comes from `:id/artifacts`, which is the
+    // DIRECT work-item link list, while the rows above also include a portfolio link and an inherited
+    // descendant. Building the baseline from the rows instead would post the Feature's id as a
+    // `workItemId` (refused) and promote the inherited story to a direct assignment nobody made —
+    // which is the whole reason the inherited set is computed on read and never materialised.
     await waitFor(() =>
       expect(mockPUT).toHaveBeenCalledWith('/v1/milestones/{id}/artifacts', {
         params: { path: { id: 'ms-1' } },

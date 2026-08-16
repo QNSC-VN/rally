@@ -55,7 +55,10 @@ const SIDEBAR: SettingsGroup[] = [
     ],
   },
   // Project-scoped settings intentionally NOT in the gear sidebar — the single
-  // entry point is Manage Projects > Projects (P4-SET-02).
+  // entry point is Workspaces & Projects (P4-SET-02), i.e. `workspace-projects-panel.tsx` below.
+  // It used to say "Manage Projects > Projects", which was the link at the bottom of the
+  // Project/Team switcher; GAP-P0-SHELL-007 removed it, because that dropdown may only change
+  // delivery context and project administration belongs under the gear alone.
   {
     group: 'groups.workspace',
     items: [

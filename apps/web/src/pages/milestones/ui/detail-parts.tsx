@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
@@ -10,13 +10,38 @@ import {
   useSetMilestoneArtifacts,
 } from '@/features/milestones/api'
 import { ArtifactsTabView } from '@/entities/work-item/ui/artifacts-tab'
+import type { ArtifactTableItem } from '@/entities/work-item/ui/artifact-table'
 import { listResource } from '@/shared/lib/query/resource'
 import { useArtifactPagination } from '@/entities/work-item/ui/use-artifact-pagination'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
+import { PORTFOLIO_TYPE_CONFIG } from '@/entities/work-item/model/types'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { SelectionModal } from '@/shared/ui/selection-modal'
 
 // ── Artifacts tab ──────────────────────────────────────────────────────────────
+
+/**
+ * A milestone's artifacts come from a POLYMORPHIC link table, so a row is either a work item or a
+ * portfolio item and its detail surface differs. The discriminator is the row's own `type`:
+ * `work_item_type` and `portfolio_item_type` are disjoint enums, which is why `TypeBadge` already
+ * resolves a glyph for all five from one prop and why no extra DTO field is served for it.
+ *
+ * Duplicated from the release Artifacts tab on purpose — a `pages/` module must not import from
+ * another `pages/` module, and two lines here is cheaper than promoting this into `entities/`.
+ */
+function isPortfolioArtifact(type: string): boolean {
+  return type in PORTFOLIO_TYPE_CONFIG
+}
+
+/**
+ * A portfolio row's Priority is ABSENT: `portfolio_items` has no priority column, so the feed sends
+ * `''` and the `EMPTY_VALUE` placeholder is applied here, where presentation rules live. Schedule
+ * State gets no equivalent — the shared table renders it as a stepper, which has no text slot.
+ */
+function withAbsentPlaceholders(rows: ArtifactTableItem[]): ArtifactTableItem[] {
+  return rows.map((r) => (r.priority === '' ? { ...r, priority: EMPTY_VALUE } : r))
+}
 
 /**
  * Milestone Artifacts — the dashboard rows PLUS the `Add Artifact` control (P3-MS-FR-028: "`Add
@@ -60,7 +85,11 @@ export function ArtifactsTab({
   })
   // See the release tab: the failure travels with the rows, so an unreachable endpoint reads as a
   // failure rather than as "no artifacts linked to this milestone".
-  const artifacts = listResource({ ...artifactsQuery, data: artifactsQuery.data?.data })
+  const rows = useMemo(
+    () => (artifactsQuery.data ? withAbsentPlaceholders(artifactsQuery.data.data) : undefined),
+    [artifactsQuery.data],
+  )
+  const artifacts = listResource({ ...artifactsQuery, data: rows })
 
   // The full link set, not the visible page: the write REPLACES the list, so a set built from one
   // page would unlink everything past the page boundary.
@@ -98,7 +127,13 @@ export function ArtifactsTab({
         pageInfo={artifactsQuery.data?.pageInfo}
         entityNoun="milestone"
         pagination={pagination}
-        onOpenItem={(item) => navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })}
+        onOpenItem={(item) =>
+          isPortfolioArtifact(item.type)
+            ? // A Feature/Epic's detail lives on the Portfolio surface and is addressed by ID:
+              // `/item/$itemKey` resolves against `work_items` only and would 404 for FE-6.
+              navigate({ to: '/portfolio/$itemId', params: { itemId: item.id } })
+            : navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
+        }
       />
 
       <SelectionModal

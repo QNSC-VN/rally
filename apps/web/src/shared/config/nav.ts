@@ -243,7 +243,9 @@ const NAV_PATH_ALIASES: Record<string, string> = {
  *
  * WHY NOT A NAV ROW. `NAV_ITEMS` is READ by `app-shell.tsx` to render the bar, so it is not usable as
  * a permission registry: a tenth row for `Manage Projects` would put an entry on screen that the BA's
- * nav does not have. The screen is reached from the workspace switcher instead. WHY NOT AN ALIAS: an
+ * nav does not have. The screen is reached from Settings > Workspaces & Projects instead — it used to
+ * also hang off the Project/Team switcher, until GAP-P0-SHELL-007 ruled that dropdown may only change
+ * delivery context. WHY NOT AN ALIAS: an
  * alias asserts two paths are ONE surface, and `/projects` is not another way into any nav screen —
  * it is the Projects list. Both properties the map defends survive: the code is still written down
  * once, and `router.tsx` still states none.

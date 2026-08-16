@@ -10,6 +10,7 @@
  */
 import { useState } from 'react'
 import { Loader2, Plus, Pencil, Archive, RotateCcw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import {
   useProjectTeams,
@@ -49,6 +50,7 @@ export function ProjectTeamsTab({
    *  team's own header is never stacked under the project's). */
   onOpenTeam: (team: Team) => void
 }) {
+  const { t } = useTranslation('settings')
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
   const { data: teams = [], isLoading } = useProjectTeams(projectId)
   /**
@@ -107,22 +109,23 @@ export function ProjectTeamsTab({
             <span className="w-20 text-center">Members</span>
             {isWA && <span className="w-20 text-center">Actions</span>}
           </div>
-          {teams.map((t) => (
+          {/* `team`, not `t` — `t` is the translator in this scope now. */}
+          {teams.map((team) => (
             <div
-              key={t.id}
+              key={team.id}
               role="button"
               tabIndex={0}
-              onClick={() => onOpenTeam(t)}
-              onKeyDown={(e) => e.key === 'Enter' && onOpenTeam(t)}
+              onClick={() => onOpenTeam(team)}
+              onKeyDown={(e) => e.key === 'Enter' && onOpenTeam(team)}
               className="flex cursor-pointer items-center gap-2 border-b border-border-subtle px-4 py-2.5 text-left transition-colors last:border-b-0 hover:bg-surface-hover"
             >
-              <span className="w-20 font-mono text-ui-xs text-foreground-subtle">{t.key}</span>
+              <span className="w-20 font-mono text-ui-xs text-foreground-subtle">{team.key}</span>
               <span className="flex-1 truncate text-ui-sm font-medium text-foreground">
-                {t.name}
+                {team.name}
               </span>
               <span className="flex w-28 min-w-0 items-center gap-1.5">
                 {(() => {
-                  const lead = wsMembers.find((m) => m.userId === t.leadId)
+                  const lead = wsMembers.find((m) => m.userId === team.leadId)
                   const name = lead?.displayName ?? lead?.email ?? '--'
                   return (
                     <>
@@ -133,10 +136,10 @@ export function ProjectTeamsTab({
                 })()}
               </span>
               <span className="w-24 text-ui-xs text-foreground-subtle capitalize">
-                {t.status === 'active' ? 'Active' : 'Deactivated'}
+                {team.status === 'active' ? 'Active' : 'Deactivated'}
               </span>
               <span className="w-20 text-center text-ui-sm text-foreground-subtle">
-                {t.memberCount ?? 0}
+                {team.memberCount ?? 0}
               </span>
               {isWA && (
                 /* stopPropagation: the row opens detail; the icon acts alone. */
@@ -149,22 +152,22 @@ export function ProjectTeamsTab({
                     size="sm"
                     aria-label="Edit team"
                     title="Edit"
-                    onClick={() => setEditing(t)}
+                    onClick={() => setEditing(team)}
                   >
                     <Pencil size={13} />
                   </IconButton>
-                  {t.status === 'active' ? (
+                  {team.status === 'active' ? (
                     <IconButton
                       size="sm"
                       aria-label="Deactivate team"
                       title="Deactivate"
-                      onClick={() => setDeactivateTarget(t)}
+                      onClick={() => setDeactivateTarget(team)}
                       className="text-destructive hover:text-destructive"
                     >
                       <Archive size={13} />
                     </IconButton>
                   ) : (
-                    <RestoreButton teamId={t.id} name={t.name} />
+                    <RestoreButton teamId={team.id} name={team.name} />
                   )}
                 </span>
               )}
@@ -173,15 +176,21 @@ export function ProjectTeamsTab({
         </div>
       )}
 
+      {/*
+        TYPED target confirmation (GAP-P4-SET-004). It already named the team; what it lacked was
+        `confirmText`, so a mis-aimed click on a 13px icon in a dense row committed immediately.
+        A Team deactivation is a MULTI-USER action — the team leaves every picker, assignment
+        surface and capacity-plan eligibility list at once — which is why it is gated harder than a
+        single user's Deactivate (that one stays a plain named confirm, `members-tab.tsx`).
+      */}
       <ConfirmDialog
         open={!!deactivateTarget}
-        title="Deactivate team"
+        title={t('teams.deactivateTitle')}
         message={
-          deactivateTarget
-            ? `Deactivate ${deactivateTarget.name}? It becomes unavailable for new membership. Delivery history is preserved.`
-            : ''
+          deactivateTarget ? t('teams.deactivateConfirm', { name: deactivateTarget.name }) : ''
         }
-        confirmLabel="Deactivate"
+        confirmText={deactivateTarget?.name}
+        confirmLabel={t('teams.deactivateConfirmLabel')}
         destructive
         pending={updateTeam.isPending}
         onConfirm={confirmDeactivate}
@@ -203,26 +212,55 @@ export function ProjectTeamsTab({
   )
 }
 
-/** Restore needs its own hook instance (per-teamId). Kept tiny on purpose. */
+/**
+ * Restore needs its own hook instance (per-teamId), and owns its own confirmation.
+ *
+ * TARGET-NAMED, not TYPED (GAP-P4-SET-004). The BA asks for "a target-specific confirmation" on
+ * Deactivate/restore Team and reserves typed confirmation for removing access; a restore is not
+ * destructive — it reverses a deactivation and destroys nothing — so making someone retype a team
+ * name here is friction with no safety value. What it DID lack is any confirmation at all: the
+ * mutation fired straight from `onClick`, so a stray click on a 13px icon silently put a disbanded
+ * team back into every picker and assignment surface. Naming the team is what makes the prompt
+ * useful, because the icon is identical on every row.
+ */
 function RestoreButton({ teamId, name }: { teamId: string; name: string }) {
+  const { t } = useTranslation('settings')
   const updateTeam = useUpdateTeam(teamId)
+  const [confirming, setConfirming] = useState(false)
+
+  function confirmRestore() {
+    updateTeam.mutate(
+      { status: 'active' },
+      {
+        onSuccess: () => {
+          notify.success(`Restored ${name}`)
+          setConfirming(false)
+        },
+        onError: (e) => notify.fromError(e, 'Failed to restore team'),
+      },
+    )
+  }
+
   return (
-    <IconButton
-      size="sm"
-      aria-label="Restore team"
-      title="Restore"
-      onClick={() =>
-        updateTeam.mutate(
-          { status: 'active' },
-          {
-            onSuccess: () => notify.success(`Restored ${name}`),
-            onError: (e) => notify.fromError(e, 'Failed to restore team'),
-          },
-        )
-      }
-    >
-      <RotateCcw size={13} />
-    </IconButton>
+    <>
+      <IconButton
+        size="sm"
+        aria-label="Restore team"
+        title="Restore"
+        onClick={() => setConfirming(true)}
+      >
+        <RotateCcw size={13} />
+      </IconButton>
+      <ConfirmDialog
+        open={confirming}
+        title={t('teams.restoreTitle')}
+        message={t('teams.restoreConfirm', { name })}
+        confirmLabel={t('teams.restoreConfirmLabel')}
+        pending={updateTeam.isPending}
+        onConfirm={confirmRestore}
+        onCancel={() => setConfirming(false)}
+      />
+    </>
   )
 }
 

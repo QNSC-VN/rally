@@ -64,6 +64,25 @@ const UNSCHEDULED = {
   teamId: null,
   releaseId: null,
 }
+/**
+ * The Feature half of the same feed (`GAP-P3-REL-002`). `portfolio_items.release_id` is a real
+ * assignment the Portfolio Feature detail writes, and this tab read only `work_items.release_id` — so
+ * an assigned Feature displayed its release on the Feature and the release reported `0 items`.
+ *
+ * `priority: ''` is how the feed says ABSENT: a Feature has no priority column and no Schedule State.
+ */
+const IN_RELEASE_FEATURE = {
+  id: 'pi-1',
+  itemKey: 'FE-6',
+  type: 'feature',
+  title: 'Checkout revamp',
+  scheduleState: '',
+  priority: '',
+  assigneeName: 'Owner Two',
+  storyPoints: null,
+  teamId: null,
+  releaseId: 'rel-1',
+}
 const OTHER_RELEASE = {
   id: 'wi-3',
   itemKey: 'US-3',
@@ -106,8 +125,8 @@ describe('ReleaseArtifactsTab', () => {
       if (url === '/v1/releases/{id}/artifacts') {
         return Promise.resolve({
           data: {
-            data: [IN_RELEASE],
-            pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 1 },
+            data: [IN_RELEASE, IN_RELEASE_FEATURE],
+            pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 2 },
           },
           error: undefined,
           response: { status: 200 },
@@ -127,6 +146,25 @@ describe('ReleaseArtifactsTab', () => {
   it('renders the assigned artifacts as rows', async () => {
     renderTab()
     expect(await screen.findByText('Already in this release')).toBeInTheDocument()
+  })
+
+  it('renders an assigned FEATURE beside the work items, with its absent fields as `--`', async () => {
+    renderTab()
+    expect(await screen.findByText('Checkout revamp')).toBeInTheDocument()
+    // `portfolio_items` has no priority column, so the feed sends `''` and the placeholder is the
+    // app's one absent-value marker — never a blank cell and never a coerced value.
+    expect(screen.getAllByText('--').length).toBeGreaterThan(0)
+  })
+
+  it('opens a FEATURE row on the Portfolio surface, not on /item/$itemKey', async () => {
+    renderTab()
+    // `/item/$itemKey` resolves against `work_items` only, so it would 404 for a Feature. The
+    // discriminator is the row's own `type`: the two type enums are disjoint.
+    fireEvent.click(await screen.findByRole('button', { name: /FE-6/ }))
+    expect(navigate).toHaveBeenCalledWith({ to: '/portfolio/$itemId', params: { itemId: 'pi-1' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /US-1/ }))
+    expect(navigate).toHaveBeenCalledWith({ to: '/item/$itemKey', params: { itemKey: 'US-1' } })
   })
 
   it('pre-ticks exactly the items whose release is this one', async () => {

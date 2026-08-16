@@ -1,10 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { and, asc, eq, isNull, sql, desc, inArray } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql, desc, inArray, type Column, type SQL } from 'drizzle-orm';
 import {
   InjectDrizzle,
   buildPageResult,
-  keysetCondition,
   NotFoundException,
   PreconditionFailedException,
 } from '@platform';
@@ -12,7 +11,7 @@ import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platfor
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
-import { capacityPlans, workItems, tasks } from '../../../../../db/schema/work';
+import { capacityPlans, workItems, tasks, portfolioItems } from '../../../../../db/schema/work';
 import { acceptedScheduleStatesSql, type ReleaseStatus } from '../../../../../db/schema/enums';
 import { IReleaseRepository, RELEASE_REPOSITORY } from '../domain/ports/release.repository';
 import type { Release, ReleaseOption, UpdateReleaseInput } from '../domain/release.types';
@@ -70,6 +69,56 @@ const EMPTY_TASK_ROLLUP: TaskRollup = {
   actualHours: 0,
   acceptedItems: 0,
 };
+
+/**
+ * One row of the Artifacts dashboard, whichever table it came from.
+ *
+ * `scheduleState` and `priority` are `''` for a portfolio row and that is deliberate: a Feature
+ * carries NEITHER field. Its `state` (`no_entry` … `done`) is a different axis from a Story's
+ * Schedule State — putting one in the other's column would misreport it — and there is no priority
+ * column on `portfolio_items` at all. `''` is not a member of either enum, so no reader can mistake
+ * it for a value, and the shared read-only `ArtifactTable` renders an unmatched schedule state as an
+ * empty track. `storyPoints` is null for the same reason and renders `EMPTY_VALUE`: a Feature's
+ * forecast is the TIERED top-down estimate the Portfolio surface resolves (AC-014), not a leaf Plan
+ * Estimate, and Rally keeps those two apart as `Plan Estimate` and `Leaf Story Plan Estimate Total`.
+ */
+export interface ReleaseArtifactRow {
+  id: string;
+  itemKey: string;
+  type: string;
+  title: string;
+  scheduleState: string;
+  priority: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  iterationId: string | null;
+  releaseId: string | null;
+  storyPoints: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * A MICROSECOND, lexicographically ordered rendering of a timestamp, used to merge two tables'
+ * pages into one order.
+ *
+ * `Date.getTime()` is MILLISECONDS and `timestamptz` is microseconds — the precision mismatch
+ * `keysetCondition`'s own docblock is built around. Sorting the merged rows on `getTime()` would
+ * therefore tie two rows the database orders strictly, the tie would break on `id` instead, and the
+ * row the page ends on would not be the row the database calls last: its cursor then skips the
+ * straddling row for ever. `to_char(… 'US')` is fixed-width and exact, so the merge order and the
+ * `ORDER BY` cannot disagree. It is stripped before the row is returned — it is a sort key, not a
+ * field of the contract.
+ */
+function microsecondSortKey(col: Column): SQL<string> {
+  return sql<string>`to_char(${col} at time zone 'UTC', 'YYYYMMDDHH24MISSUS')`;
+}
+
+/** Newest-first on the exact timestamp, id ascending — the `ORDER BY` both branches carry. */
+function bySortKeyDesc(a: { sortKey: string; id: string }, b: { sortKey: string; id: string }) {
+  if (a.sortKey !== b.sortKey) return a.sortKey < b.sortKey ? 1 : -1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
 
 @Injectable()
 export class ReleasesService {
@@ -462,93 +511,174 @@ export class ReleasesService {
   // ── Release Artifacts (P3) ──────────────────────────────────────────
 
   /**
-   * List work items (stories/defects) linked to a release.
-   * Reuses the same shape as the backlog list.
+   * The artifacts assigned to a release — Story/Defect work items AND Features, in one feed.
+   *
+   * TWO TABLES, ONE LIST. `work_items.release_id` is not the only way a release is assigned:
+   * `portfolio_items.release_id` exists too (Feature-only, `ON DELETE SET NULL`), it is what the
+   * Portfolio Feature detail writes, and P3-REL-FR-032's own acceptance sentence covers "directly
+   * assigned US/DE/Feature after assignment from Backlog/Work Item Detail **or Portfolio Feature**".
+   * This module never touched `portfolio_items`, so a Feature assigned to a release showed that
+   * release on the Feature, survived a reload, and the release's Artifacts tab reported `0 items` —
+   * `GAP-P3-REL-002`. The seed has had `FE-1 → RE-1` since it was written, so every environment
+   * displayed the fault. The work-item half is unchanged, down to `type IN ('story','defect')`:
+   * tasks live in `work.tasks` and carry no release, and an Epic is project-level with no Release
+   * field, so `portfolio_items.release_id` is a Feature's column in practice as well as by rule.
+   *
+   * TWO BRANCHES, NOT ONE PER-BRANCH PAGE. Each branch fetches `limit + 1` under the SAME keyset
+   * predicate and the same `ORDER BY`, and the merge below takes `limit + 1` of the UNION. That is
+   * exact, not approximate: any row among the union's next `limit + 1` is among its own branch's next
+   * `limit + 1`. A per-branch `limit` would be a silent truncation instead — the Feature would
+   * reappear only to push a Story off the page. The count sums both branches because they are
+   * disjoint by construction (two tables, two id spaces).
    *
    * `assigneeName` is joined because the shared artifact table renders an Owner column and had
-   * nothing to fill it with — the SPA's own row type declared the field, the feed never sent it.
-   * `q` (item key or title) is honoured for the same reason: the toolbar above this table has always
+   * nothing to fill it with — the SPA's own row type declared the field, the feed never sent it. On
+   * the portfolio branch the Owner is `owner_id`, which is that table's name for the same column.
+   * `q` (item key or title) is honoured on both branches: the toolbar above this table has always
    * had a search box and has always sent the term (P3-REL-FR-033).
    */
   async listReleaseArtifacts(
     actor: JwtPayload,
     releaseId: string,
     args: { limit: number; cursor: CursorPayload | null; q?: string },
-  ): Promise<
-    PagedResult<{
-      id: string;
-      itemKey: string;
-      type: string;
-      title: string;
-      scheduleState: string;
-      priority: string;
-      assigneeId: string | null;
-      assigneeName: string | null;
-      iterationId: string | null;
-      releaseId: string | null;
-      storyPoints: number | null;
-      createdAt: Date;
-      updatedAt: Date;
-    }>
-  > {
+  ): Promise<PagedResult<ReleaseArtifactRow>> {
     // Validates the release exists and the actor may view it (project-scoped).
     await this.getReleaseForView(actor, releaseId);
 
-    const conditions = [
+    const term = args.q?.trim();
+    const like = term ? `%${term}%` : null;
+
+    const workConditions = [
       eq(workItems.releaseId, releaseId),
       eq(workItems.workspaceId, actor.workspaceId),
       isNull(workItems.deletedAt),
       sql`type IN ('story', 'defect')`,
     ];
-
-    const term = args.q?.trim();
-    if (term) {
-      const like = `%${term}%`;
-      conditions.push(
+    if (like) {
+      workConditions.push(
         sql`(${workItems.itemKey} ilike ${like} or ${workItems.title} ilike ${like})`,
       );
     }
 
-    // Total artifacts on this release (before cursor/limit) for the footer count.
-    const baseConditions = [...conditions];
-
-    if (args.cursor) {
-      conditions.push(keysetCondition(workItems.createdAt, workItems.id, args.cursor));
+    // Archived, not soft-deleted: a portfolio item is archived and never hard-deleted (SRS §5.5), and
+    // an archived Feature is out of every list — the same `archived_at is null` the portfolio
+    // rollups filter their child Features on.
+    const portfolioConditions = [
+      eq(portfolioItems.releaseId, releaseId),
+      eq(portfolioItems.workspaceId, actor.workspaceId),
+      isNull(portfolioItems.archivedAt),
+    ];
+    if (like) {
+      portfolioConditions.push(
+        sql`(${portfolioItems.itemKey} ilike ${like} or ${portfolioItems.name} ilike ${like})`,
+      );
     }
 
-    const rows = await this.db
-      .select({
-        id: workItems.id,
-        itemKey: workItems.itemKey,
-        type: workItems.type,
-        title: workItems.title,
-        scheduleState: workItems.scheduleState,
-        priority: workItems.priority,
-        assigneeId: workItems.assigneeId,
-        assigneeName: sql<string | null>`assignee_user.display_name`,
-        iterationId: workItems.iterationId,
-        releaseId: workItems.releaseId,
-        storyPoints: sql<number | null>`${workItems.storyPoints}::float8`,
-        createdAt: workItems.createdAt,
-        updatedAt: workItems.updatedAt,
-      })
-      .from(workItems)
-      .leftJoin(sql`identity.users assignee_user`, sql`assignee_user.id = work_items.assignee_id`)
-      .where(and(...conditions))
-      .orderBy(desc(workItems.createdAt), asc(workItems.id))
-      .limit(args.limit + 1);
+    // Totals before the cursor/limit, for the footer count.
+    const workCountConditions = [...workConditions];
+    const portfolioCountConditions = [...portfolioConditions];
 
-    const [countRow] = await this.db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(workItems)
-      .where(and(...baseConditions));
+    if (args.cursor) {
+      /**
+       * The keyset boundary, resolved IN the database from whichever table holds the cursor's row.
+       *
+       * `keysetCondition` cannot be used here: for a date column it reads the boundary back from
+       * `sortCol.table`, which is one table, and the cursor's row may be in the other. Its reason for
+       * doing so still holds and is why the value is not carried in the cursor instead — a
+       * `timestamptz` is microseconds and the `Date` the driver hands back is milliseconds, so a
+       * round-tripped boundary is strictly smaller than the row it names and skips every row inside
+       * that millisecond. The ids are UUIDs from two disjoint spaces, so at most one branch matches.
+       */
+      const cursorId = args.cursor.id;
+      const boundary = sql`(select b.ts from (
+          select cw.created_at as ts from ${workItems} cw where cw.id = ${cursorId}
+          union all
+          select cp.created_at as ts from ${portfolioItems} cp where cp.id = ${cursorId}
+        ) b limit 1)`;
+      const after = (createdAt: Column, id: Column) =>
+        sql`(${createdAt} < ${boundary} or (${createdAt} = ${boundary} and ${id} > ${cursorId}))`;
+      workConditions.push(after(workItems.createdAt, workItems.id));
+      portfolioConditions.push(after(portfolioItems.createdAt, portfolioItems.id));
+    }
+
+    const [workRows, portfolioRows, workCount, portfolioCount] = await Promise.all([
+      this.db
+        .select({
+          sortKey: microsecondSortKey(workItems.createdAt),
+          id: workItems.id,
+          itemKey: workItems.itemKey,
+          type: sql<string>`${workItems.type}::text`,
+          title: workItems.title,
+          scheduleState: sql<string>`${workItems.scheduleState}::text`,
+          priority: sql<string>`${workItems.priority}::text`,
+          assigneeId: workItems.assigneeId,
+          assigneeName: sql<string | null>`assignee_user.display_name`,
+          iterationId: workItems.iterationId,
+          releaseId: workItems.releaseId,
+          storyPoints: sql<number | null>`${workItems.storyPoints}::float8`,
+          createdAt: workItems.createdAt,
+          updatedAt: workItems.updatedAt,
+        })
+        .from(workItems)
+        .leftJoin(sql`identity.users assignee_user`, sql`assignee_user.id = work_items.assignee_id`)
+        .where(and(...workConditions))
+        .orderBy(desc(workItems.createdAt), asc(workItems.id))
+        .limit(args.limit + 1),
+      this.db
+        .select({
+          sortKey: microsecondSortKey(portfolioItems.createdAt),
+          id: portfolioItems.id,
+          itemKey: portfolioItems.itemKey,
+          type: sql<string>`${portfolioItems.type}::text`,
+          title: portfolioItems.name,
+          scheduleState: sql<string>`''`,
+          priority: sql<string>`''`,
+          assigneeId: portfolioItems.ownerId,
+          assigneeName: sql<string | null>`owner_user.display_name`,
+          iterationId: sql<string | null>`null::uuid`,
+          releaseId: portfolioItems.releaseId,
+          storyPoints: sql<number | null>`null::float8`,
+          createdAt: portfolioItems.createdAt,
+          updatedAt: portfolioItems.updatedAt,
+        })
+        .from(portfolioItems)
+        .leftJoin(sql`identity.users owner_user`, sql`owner_user.id = portfolio_items.owner_id`)
+        .where(and(...portfolioConditions))
+        .orderBy(desc(portfolioItems.createdAt), asc(portfolioItems.id))
+        .limit(args.limit + 1),
+      this.db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(workItems)
+        .where(and(...workCountConditions)),
+      this.db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(portfolioItems)
+        .where(and(...portfolioCountConditions)),
+    ]);
+
+    const merged = [...workRows, ...portfolioRows].sort(bySortKeyDesc).slice(0, args.limit + 1);
+    const total = Number(workCount[0]?.total ?? 0) + Number(portfolioCount[0]?.total ?? 0);
 
     return buildPageResult(
-      rows,
+      merged.map((r) => ({
+        id: r.id,
+        itemKey: r.itemKey,
+        type: r.type,
+        title: r.title,
+        scheduleState: r.scheduleState,
+        priority: r.priority,
+        assigneeId: r.assigneeId,
+        assigneeName: r.assigneeName,
+        iterationId: r.iterationId,
+        releaseId: r.releaseId,
+        storyPoints: r.storyPoints === null ? null : Number(r.storyPoints),
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      })),
       args.limit,
       (w) => [w.createdAt.toISOString()],
       'desc',
-      Number(countRow?.total ?? 0),
+      total,
     );
   }
 

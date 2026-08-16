@@ -451,10 +451,23 @@ iteration_id`). Before this, `createTask` inherited once at birth and nothing lo
 "Archive Team does not delete the linked Work Item/Sprint history" (DB design §488), so Team Capacity
 still reports an archived team's rows — a total that shrinks when a team is disbanded is worse than
 one that explains itself. The row carries `archived: true` and renders `TEAM_STATUS_STYLE.archived`,
-because the global Team picker already hides archived teams (`app-shell.tsx` filters
-`status === 'active'`) and nothing else on screen would say the team no longer exists. The flag is
-ORed across the capacity rows and the task rows: both reach the same bucket, and a task row whose
-`teams` join missed must not clear what a capacity row set correctly.
+because the global Team picker hides archived teams and nothing else on screen would say the team no
+longer exists. The flag is ORed across the capacity rows and the task rows: both reach the same
+bucket, and a task row whose `teams` join missed must not clear what a capacity row set correctly.
+
+**That sentence used to credit the wrong filter, and the difference was a live defect.** It said the
+picker hides them "because `app-shell.tsx` filters `status === 'active'`" — but the status on those
+rows is `project_teams.status`, the LINK's status, projected over the joined `teams` row. So the
+client filter only ever dropped UNLINKED links, and an archived-but-still-linked team was offered
+everywhere that feed reaches: every team picker, and the Capacity plan's Add Team dialog, whose write
+path requires both statuses and answers `CAPACITY_TEAM_NOT_FOUND`. That is the "another eligible Team
+cannot be added" half of P5-CP-006 — a picker offering what the server refuses. The predicate now
+lives in `ProjectTeamDrizzleRepository` (`eq(teams.status, 'active')`, and an inner join, since a NULL
+team can no longer satisfy it), so the claim is true server-side and both callers get the narrower
+set. Narrowing the shared query rather than adding a parameter is deliberate: `projectTeamContext`'s
+own docblock requires the server to count exactly the population the picker offers. **Read a
+`status` column twice before trusting it — a join can project a link's status where a row's status
+is what the sentence means.**
 
 ## A rule stated as an INVARIANT cannot be implemented as one write's hook
 

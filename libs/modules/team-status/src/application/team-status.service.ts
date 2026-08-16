@@ -69,20 +69,34 @@ export class TeamStatusService {
     // Fetch raw task rows (type=task, assigned to this iteration).
     const rows = await this.repo.getTaskRows(iterationId, actor.workspaceId, teamId);
 
-    // Group tasks by assignee ('unassigned' bucket for a null assignee).
-    const tasksByUser = new Map<string, TeamStatusTaskRow[]>();
-    for (const row of rows) {
-      const key = row.assigneeId ?? 'unassigned';
-      const bucket = tasksByUser.get(key) ?? [];
-      bucket.push(this.toTaskRow(row));
-      tasksByUser.set(key, bucket);
-    }
-
-    // Full member roster — Rally lists every team member for the iteration,
-    // including those with zero tasks (rendered with an empty load bar). Source
-    // is the iteration's team; falls back to project members when the iteration
-    // is not team-scoped. Task assignees no longer on the roster (e.g. left the
-    // team but still own tasks) are folded in so their work stays visible.
+    /**
+     * Full member roster — Rally lists every team member for the iteration, including those with
+     * zero tasks (rendered with an empty load bar). Source is the iteration's team; falls back to
+     * project members when the iteration is not team-scoped.
+     *
+     * THE ROSTER IS THE COMPLETE LIST OF NAMED GROUPS (GAP-P3-TS-008, P0)
+     *
+     * Read BEFORE the tasks are grouped, because it decides how they are grouped. Any task assignee
+     * NOT on it used to be folded in here (`if (!memberInfo.has(userId)) memberInfo.set(...)`), which
+     * gave an outside-team owner their own named group carrying 0h capacity — the BA's rule is
+     * "Team Status shows only ACTIVE members of the Team selected in the top filter … no
+     * outside-Team member group appears".
+     *
+     * Their WORK still counts. `getTaskRows` scopes tasks by
+     * `coalesce(task, parent, iteration).team_id`, with no owner predicate, and that scope is
+     * correct: the task IS this team's commitment whoever happens to own it. Dropping the row would
+     * make this surface understate the team's hours and would put it back out of step with Team
+     * Capacity, which the two read as one population
+     * (`test/e2e/team-status-agreement.e2e.spec.ts` pins the totals).
+     *
+     * So an off-roster owner's task lands in the UNASSIGNED bucket — the same 0h-capacity residual
+     * group the AC already gives a null-owner task. Nothing is hidden by that: FR-027's Owner column
+     * on each task row still prints the real owner's name, so "who owns this" stays on screen; what
+     * the row no longer gets is a ROSTER entry with a capacity to plan against, which is exactly the
+     * distinction the AC draws. Deliberately not a synthetic "outside this Team" group either — that
+     * needs response shape and copy the BA has not written, and a bucket keyed on non-membership is
+     * the thing the second half of the rule refuses.
+     */
     const rosterTeamId = teamId ?? iteration.teamId ?? null;
     const roster = await this.repo.getRosterMembers({
       workspaceId: actor.workspaceId,
@@ -98,10 +112,16 @@ export class TeamStatusService {
         avatarUrl: member.avatarUrl,
       });
     }
-    for (const [userId, tasks] of tasksByUser) {
-      if (userId !== 'unassigned' && !memberInfo.has(userId)) {
-        memberInfo.set(userId, tasks[0].owner);
-      }
+
+    // Group tasks by assignee — 'unassigned' for a null assignee AND for an owner who is not an
+    // active member of the roster above. Bucketed in ONE pass over the rank-ordered rows rather than
+    // re-homed afterwards, so the residual group stays in rank order too.
+    const tasksByUser = new Map<string, TeamStatusTaskRow[]>();
+    for (const row of rows) {
+      const key = row.assigneeId && memberInfo.has(row.assigneeId) ? row.assigneeId : 'unassigned';
+      const bucket = tasksByUser.get(key) ?? [];
+      bucket.push(this.toTaskRow(row));
+      tasksByUser.set(key, bucket);
     }
 
     // Capacities for every roster member (not just those who own tasks).

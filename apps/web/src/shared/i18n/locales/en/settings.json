@@ -226,10 +226,17 @@
     "addProjectAccess": "Add project",
     "removeProjectAccess": "Remove project access",
     "roleFieldLabel": "Role",
+    "roleFieldHint": "Workspace Admin is the only workspace-wide role an invitation can grant. Everyone else joins as a member and gets the project access below.",
+    "roleMemberOption": "Member (project access only)",
     "invalidEmail": "Enter a valid email address",
     "selectRoleError": "Select a role",
     "selectRoleOption": "Select role…",
     "sendInvite": "Send invitation",
+    "reviewInviteTitle": "Review invitation",
+    "reviewEmail": "Email address",
+    "reviewRole": "Role",
+    "reviewProjectAccess": "Initial project access",
+    "reviewNoProjectAccess": "None — No Access until a Workspace Admin grants a level.",
     "searchPlaceholder": "Search users…",
     "cancelInvitation": "Cancel invitation",
     "filterByRole": "Filter by role",
@@ -309,7 +316,18 @@
     "unsavedHint_other": "{{count}} pending changes — review before saving.",
     "effectNextRequest": "Changes take effect on your next request.",
     "workspaceAdminReadOnly": "This user is a Workspace Admin and already has full access to every project. Per-project access levels do not apply, so this tab is read-only.",
-    "workspaceAdminReadOnlyShort": "Read-only — a Workspace Admin's access comes from the workspace-wide grant."
+    "workspaceAdminReadOnlyShort": "Read-only — a Workspace Admin's access comes from the workspace-wide grant.",
+    "removeAccessTitle": "Remove project access",
+    "removeAccessConfirm": "Remove {{name}} from this project? They will lose all access (No Access) and their Team memberships will be removed.",
+    "removeAccessConfirmLabel": "Remove Access"
+  },
+  "teams": {
+    "deactivateTitle": "Deactivate team",
+    "deactivateConfirm": "Deactivate {{name}}? It becomes unavailable for new membership. Delivery history is preserved.",
+    "deactivateConfirmLabel": "Deactivate",
+    "restoreTitle": "Restore team",
+    "restoreConfirm": "Restore {{name}}? It becomes available for new membership again.",
+    "restoreConfirmLabel": "Restore"
   },
   "roles": {
     "permissionsUpdated": "Role permissions updated",

@@ -5,7 +5,7 @@ import { Plus, ListChecks } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 
 import { toast } from 'sonner'
-import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useRecordProject } from '@/shared/lib/deep-link-project'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import {
   useTasks,
@@ -16,7 +16,7 @@ import {
   type WorkItem,
 } from '@/features/work-items/api'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
-import { useProjectMemberOptions, useProjectTeams } from '@/features/teams/api'
+import { useProjectMemberOptions, useProjectTeams, useTeamOwnerOptions } from '@/features/teams/api'
 import {
   ScheduleState,
   SCHEDULE_STATE_LABEL,
@@ -99,16 +99,22 @@ export function TasksTab({
   // Tasks inherit their parent's project; team/owner names are resolved for display.
   const { data: teams = [] } = useProjectTeams(projectId)
   // The ASSIGNEE feed, not the administrative roster (Admin-only, §3.1:71): every Task row resolves
-  // its owner NAME from this list and its Owner cell writes back through it, and §3.2:81 gives an
-  // Editor the Task. A 403 defaulted to `[]` made each row read `--` with an empty owner picker.
+  // its owner NAME from this list, and §3.2:81 gives an Editor the Task. A 403 defaulted to `[]` made
+  // each row read `--` with an empty owner picker.
+  //
+  // NAMES only. What each row may OFFER is its own Team's active members — see `TaskRow`.
   const membersQuery = useProjectMemberOptions(projectId)
   const memberFeed = listResource(membersQuery)
   const members = memberFeed.rows
-  const { project } = useAppContext()
+  // The RECORD's project (P6-E2E-003), not the app shell's selection. This tab already receives the
+  // item's `projectId` and every other column reads the task row; the Project column alone read
+  // `useAppContext()`, so a deep-linked or hover-preloaded item printed whichever project the reader
+  // last selected — the BA's "Project read AUDIT26 while the relationships read TEST".
+  const recordProject = useRecordProject(projectId)
   // Kept as a pair, not flattened to one string: `ProjectCell` renders the key as a `KeyChip`
   // beside the name, the way the Portfolio grid's Project column does.
-  const projectKey = project?.projectKey ?? null
-  const projectName = project?.projectName ?? null
+  const projectKey = recordProject?.projectKey ?? null
+  const projectName = recordProject?.projectName ?? null
   const [showAdd, setShowAdd] = useState(false)
   // Search + a State filter in the shared toolbar, as the Portfolio Children tab has them.
   const [search, setSearch] = useState('')
@@ -376,6 +382,7 @@ export function TasksTab({
             selected={selected}
             onToggleSelect={onToggleSelect}
             colStyles={colStyles}
+            projectId={projectId}
             projectKey={projectKey}
             projectName={projectName}
             teamOf={teamOf}
@@ -406,6 +413,7 @@ function TaskRow({
   canEdit,
   dragDisabled,
   colStyles,
+  projectId,
   projectKey,
   projectName,
   teamOf,
@@ -419,6 +427,7 @@ function TaskRow({
   canEdit: boolean
   dragDisabled: boolean
   colStyles: Record<TaskColKey, CSSProperties>
+  projectId: string
   projectKey: string | null
   projectName: string | null
   teamOf: (id?: string | null) => { id: string; name: string; key?: string | null } | undefined
@@ -452,6 +461,23 @@ function TaskRow({
 
   const owner = members.find((m) => m.userId === task.assigneeId)
   const ownerName = owner ? (owner.displayName ?? owner.email ?? null) : null
+
+  /**
+   * Owner OPTIONS come from THIS row's Team, not from the project (GAP-P1-WID-007: "Selected Team
+   * offers Unassigned plus its ACTIVE MEMBERS; No Team offers only Unassigned").
+   *
+   * Per ROW rather than once for the tab, because a Task's team only DEFAULTS to its parent's and is
+   * genuinely settable (SRS P1-04) — narrowing the whole grid by the parent's team would offer the
+   * wrong roster to any task that carries its own, and a wrong narrowing withholds a legitimate owner.
+   * React Query dedupes by key, so N rows sharing one team is still ONE request, and a row with no
+   * team never fetches at all.
+   *
+   * `ownerName` above still comes from the project-wide feed and is handed to `OwnerSelectCell`
+   * separately, so an owner who has since left the team is still NAMED rather than reprinted as
+   * `Unassigned` (`ownerSelectOptions` takes the current label as its third argument for exactly this).
+   */
+  const ownerOptionsQuery = useTeamOwnerOptions(projectId, task.teamId)
+  const ownerOptions = listResource(ownerOptionsQuery).rows
 
   const numInput =
     'w-16 rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-md focus:outline-none'
@@ -517,7 +543,7 @@ function TaskRow({
         <OwnerSelectCell
           ownerName={ownerName}
           assigneeId={task.assigneeId}
-          members={members}
+          members={ownerOptions}
           canEdit={canEdit}
           onChange={(userId) => update.mutateAsync({ assigneeId: userId })}
           ariaLabel={`Task ${task.itemKey} owner`}

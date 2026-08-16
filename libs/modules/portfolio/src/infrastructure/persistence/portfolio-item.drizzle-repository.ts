@@ -368,6 +368,33 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
     );
   }
 
+  /**
+   * The Stories and Defects linked to one Feature — the detail Children tab.
+   *
+   * The predicate set is deliberate, and it does NOT match `listFeatureOptions` above. Three
+   * of the four conditions are the obvious ones; the missing fourth is the interesting one:
+   *
+   *   • `feature_id = ?` — the link itself, and the ONLY thing that defines membership. It is
+   *     the same predicate `rollupSubqueries()` and `childRollupByType()` aggregate on, which
+   *     is what makes this tab list exactly the rows Percent Done counted.
+   *   • `workspace_id = ?` — tenancy.
+   *   • `deleted_at is null` — a soft-deleted child is gone from every other work-item surface
+   *     (Backlog, Iteration Status, the Phase 6 projections), so listing it here would make this
+   *     the one grid that resurrects it.
+   *   • `type in ('story','defect')` — a Task is never linked to a Feature directly
+   *     (`assertFeatureLinkable` refuses one, and `createTask` writes `feature_id: null`), and
+   *     the mapping below ALREADY casts every row to `'story' | 'defect'`. The filter makes the
+   *     cast true instead of assumed; `childRollupByType` filters the same rows out in JS.
+   *
+   * **NO project filter, on purpose.** `listFeatureOptions` is project-scoped because it is a
+   * write-eligibility feed for one project (§5.3:133) and its route's guard checks that one
+   * project. Membership is not scoped that way: `assertFeatureLinkable` deliberately PERMITS a
+   * cross-project link ("Rally lets a team project's Story roll up to a portfolio project's
+   * Feature"), and `rollupSubqueries()` matches `feature_id` alone. Adding `project_id` here
+   * would hide a legitimately linked child from the tab while the Percent Done bar on the same
+   * page still counted it — one row, two answers, in the same viewport. The disagreement the
+   * picker creates is a LABEL problem on the work-item side, not a membership problem here.
+   */
   async listChildren(
     featureId: string,
     workspaceId: string,
@@ -378,6 +405,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
       eq(workItems.featureId, featureId),
       eq(workItems.workspaceId, workspaceId),
       isNull(workItems.deletedAt),
+      inArray(workItems.type, ['story', 'defect']),
     ];
     if (args.search) {
       const like = `%${args.search}%`;
@@ -428,7 +456,7 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
     const items = rows.map((r) => ({
       id: r.id,
       itemKey: r.itemKey,
-      // A Task is never linked to a Feature directly, so only story/defect reach here.
+      // Safe by the `type in ('story','defect')` predicate above, not by assumption.
       type: r.type as 'story' | 'defect',
       title: r.title,
       scheduleState: r.scheduleState,
