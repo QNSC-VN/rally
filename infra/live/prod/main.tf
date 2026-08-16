@@ -367,9 +367,26 @@ module "stack" {
   // RDS run-state is not a Terraform concept, so the instance is stopped out of band —
   // but AWS FORCE-STARTS a stopped instance after 7 days, so `idle_schedule` below
   // re-stops it weekly. Without that the saving silently evaporates.
+  // SIZED FOR THE TRAFFIC, NOT FOR THE IMAGINATION. Was 1024/2048, which at
+  // ap-southeast-1 on-demand rates is $44.92/mo — 38% of everything rally costs across
+  // both environments, for an API the note above records as having served "4, 1, 0, 1
+  // requests on four consecutive days". 512/1024 is $22.46.
+  //
+  // Half the CPU is not half the headroom, because `max_count = 10` and the autoscale
+  // targets below are the real headroom: production absorbs a spike by ADDING tasks, and
+  // it now adds them from a cheaper unit. Two 512-CPU tasks cost the same as one 1024
+  // and survive an AZ event; one 1024 task does not.
+  //
+  // REVISIT WITH DATA, not with a guess: watch AWS/ECS CPUUtilization and
+  // MemoryUtilization for a fortnight after go-live. If either sits above the targets
+  // below with a single task, raise this — that is the number arriving from measurement
+  // rather than from provisioning for traffic nobody has seen yet.
+  //
+  // Still ON-DEMAND. Spot would be $13.49 and is the wrong trade for the API: the note
+  // below explains why the worker can take an interruption and this cannot.
   api = {
-    cpu       = 1024
-    memory    = 2048
+    cpu       = 512
+    memory    = 1024
     max_count = 10
     min_count = 0
     // Restore to true at go-live together with min_count — see the note above.
