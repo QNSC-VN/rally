@@ -281,3 +281,64 @@ resource "cloudflare_record" "ses_dkim" {
 
   comment = "SES DKIM for ${var.mail_domain} (managed by rally-infra _shared)"
 }
+
+
+/**
+ * A custom MAIL FROM domain, so SPF ALIGNS as well as DKIM — on a SUBDOMAIN, deliberately.
+ *
+ * WHY NOT THE APEX. `qnsc.vn` already publishes `v=spf1 include:spf.protection.outlook.com -all` for
+ * Microsoft 365, and a domain may carry only ONE SPF record: "adding SES to SPF" would mean editing
+ * the record every piece of company mail depends on, ending in a hard `-all`. The benefit would be
+ * zero, because DMARC passes when EITHER mechanism aligns and our DKIM already signs with
+ * `d=qnsc.vn`. So the apex is left alone and the envelope sender moves to `mail.qnsc.vn`, which only
+ * SES uses.
+ *
+ * `_dmarc.qnsc.vn` already exists (`v=DMARC1; p=none; rua=mailto:quangld@qnsc.vn`) and is NOT managed
+ * here: it governs M365 mail too, and tightening `p=` is the domain owner's decision, not this
+ * stack's.
+ *
+ * WHAT IT BUYS. Without this, SES sends with an envelope sender under `amazonses.com`, so a receiver
+ * checking SPF sees Amazon's domain rather than ours — SPF then cannot align for DMARC and DKIM is
+ * carrying the result alone. With it, both align, which is what gets a young sending domain out of
+ * spam folders faster.
+ *
+ * `USE_DEFAULT_VALUE` on MX failure is the safe direction: if the MX below is ever missing or
+ * unresolvable, SES silently falls back to `amazonses.com` and mail still goes out. `REJECT_MESSAGE`
+ * would turn a DNS problem into an outage of every invitation.
+ */
+resource "aws_sesv2_email_identity_mail_from_attributes" "mail_domain" {
+  email_identity         = aws_sesv2_email_identity.mail_domain.email_identity
+  mail_from_domain       = "mail.${var.mail_domain}"
+  behavior_on_mx_failure = "USE_DEFAULT_VALUE"
+}
+
+/**
+ * The two records the custom MAIL FROM needs, on the subdomain only.
+ *
+ * The MX host is REGION-SPECIFIC (`feedback-smtp.<region>.amazonses.com`) — it is where SES asks
+ * receivers to send bounces, so a wrong region silently loses them.
+ */
+resource "cloudflare_record" "ses_mail_from_mx" {
+  count = local.cloudflare_zone_id != "" ? 1 : 0
+
+  zone_id  = local.cloudflare_zone_id
+  name     = "mail"
+  type     = "MX"
+  value    = "feedback-smtp.${var.mail_region}.amazonses.com"
+  priority = 10
+  ttl      = 300
+  comment  = "SES custom MAIL FROM (bounce path) — managed by rally-infra _shared"
+}
+
+resource "cloudflare_record" "ses_mail_from_spf" {
+  count = local.cloudflare_zone_id != "" ? 1 : 0
+
+  zone_id = local.cloudflare_zone_id
+  name    = "mail"
+  type    = "TXT"
+  # `~all`, not `-all`: this subdomain is new and only SES sends from it, but a softfail cannot turn a
+  # misconfiguration into silently discarded mail while the setup settles.
+  value   = "v=spf1 include:amazonses.com ~all"
+  ttl     = 300
+  comment = "SES custom MAIL FROM SPF — managed by rally-infra _shared"
+}

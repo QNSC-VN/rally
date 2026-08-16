@@ -20,3 +20,13 @@ variable "cloudflare_api_token" {
   default     = ""
   sensitive   = true
 }
+
+variable "mail_region" {
+  description = <<-EOT
+    The region whose SES sends the mail. Only used to build the custom MAIL FROM MX host
+    (`feedback-smtp.<region>.amazonses.com`), which is region-specific — a wrong value silently loses
+    bounce notifications rather than failing loudly.
+  EOT
+  type        = string
+  default     = "ap-southeast-1"
+}
