@@ -3874,6 +3874,12 @@ export interface components {
       createdAt: string
       /** Format: date-time */
       updatedAt: string
+      taskRollup?: {
+        estimateHours: number
+        toDoHours: number
+        actualHours: number
+        acceptedItems: number
+      }
     }
     CreateReleaseDto: {
       /** Format: uuid */

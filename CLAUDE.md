@@ -312,12 +312,19 @@ difference is the whole design. Read this before changing a report or the snapsh
   `Portfolio > Release Tracking`; Phase 3 Release list/detail must not add a progress column or widget.
   Do not re-add a progress reader here.
 
-  **The Release detail TASK ROLL-UP panel went the same way**, and for the same kind of reason:
-  `P3-REL-FR-023` gives Release detail no Task hours block, so `ReleaseResponseSchema` dropped
-  `taskRollup` (its four hour/count fields) and `accepted`, and `release-detail-panels.tsx` is deleted
-  with its spec. `taskEstimate` is NOT part of that removal — it is on the BA's own list DTO (§7.1) and
-  on PATCH. The releases-detail spec deliberately still SENDS the removed fields in its fixture, so it
-  fails the moment anything starts reading them again.
+  **The Release detail TASK ROLL-UP panel is the OPPOSITE case, and it is back.** It was deleted on
+  `P3-REL-FR-023`'s word ("Release detail must not show Task Roll-up") and restored once Rally's own
+  Release field reference was read: "**Plan Estimate, Task Estimate, Accepted, and To Do**" are "totals
+  rolled up from the estimates given for the associated scheduled items"
+  (`techdocs.broadcom.com/.../working-with-releases/release-fields.html`). This product is a Rally
+  CLONE, so where the SRS and the product disagree the product wins and the BA is asked to amend the
+  document — the standing rule, and the same one that decided Rollup/Complete and the cutline.
+
+  **The line between the two is "totals" versus "progress", and it is exactly where Rally draws it.**
+  Hours and an accepted COUNT are totals, and Rally has them. A percent-done field, a progress BAR and
+  a release BURNDOWN are progress, and Rally's Release has none of them — its release chart is a
+  burn**up** under Reports. So `FR-037` is right about that half, `GET /releases/:id/burndown` stays
+  deleted, and `taskEstimate` was never in question (it is on the BA's own list DTO §7.1 and on PATCH).
 
 - **The Phase 6 snapshot tables now have foreign keys.** `iteration_daily_snapshots` and
   `member_capacity` had NONE (verified against `pg_constraint`). Orphan snapshots happened to be
@@ -653,6 +660,35 @@ reachable in three legal steps: archive the Feature, archive the now-childless E
 Feature. That leaves an active Feature under a hidden parent, which is what `assertReferences` refuses
 on every other write. The message names the Epic's key, because an archived parent is invisible in
 every list.
+
+## The deciding rule: this is a Rally CLONE, so real Rally beats the SRS
+
+Ruled 2026-08-17, and it settles a whole class of arguments that used to be settled one at a time.
+**Where our behaviour matches real Broadcom Rally and the BA's SRS says otherwise, the CODE STAYS and
+the BA is asked to amend the document.** Where our behaviour matches NEITHER, it is ours to fix. Where
+Rally has no equivalent concept at all, only the BA can decide and the SRS wins by default.
+
+Sourced Rally research lives on a BRANCH, not in the working tree — read it with
+`git show origin/docs/phase-5-6-rally-gap-audit:projects/mini-rally/09_Gap_Audit/research/<file>.md`
+(nine files, every Rally claim cited to `techdocs.broadcom.com` or `knowledge.broadcom.com`). Two
+cautions the researchers recorded: the `rally-*.png` files in that repo are screenshots of OUR clone
+and carry zero Rally evidential value, and Rally's public help is a user manual, so it is silent on
+many write-path edge cases — an honest "no authoritative source found" is the correct answer there, not
+a confident guess.
+
+Decided this way so far, all keeping our code: Backlog is unscheduled-only; iteration delete is hard,
+state-ungated and unschedules its work; Portfolio ranks by drag-and-drop (Rally's workspace DEFAULT,
+documented app-wide); Iteration Status has a List/Board toggle with drag-to-change-Schedule-State;
+Capacity Rollup/Complete filter on Project+Release and the overflowing Feature sits below the cutline;
+typed workspace-scoped item keys (`US-1`); the Milestone ID column; no `Type` column (type is read from
+the ID prefix); and the Release Task Roll-up totals.
+
+Decided the other way — ours to fix, because Rally does not do it either: the release transition graph
+(now gone, replaced by Rally's one real rule, "an accepted release takes no new work"), the
+`RELEASE_NOT_DELETABLE` gate, and the timebox-level rollover endpoint.
+
+**When a finding turns out to be Rally-parity, the work is a BA note, not a code change** — and it goes
+in `../BA_RULINGS_2026-08-17.md`, not into a silent divergence comment here.
 
 ## Declared divergences from the BA, in Capacity Planning
 

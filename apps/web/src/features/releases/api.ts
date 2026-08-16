@@ -32,18 +32,21 @@ export function useReleaseActivityLog(releaseId: string | undefined) {
 export type ReleaseStatus = 'planning' | 'active' | 'accepted'
 
 /**
- * A release record.
+ * The Release detail's right-panel roll-up (P3-REL-FR-018): Task Roll-up hours (FR-023) and the
+ * accepted work total (FR-024).
  *
- * There is deliberately NO `taskRollup` and no `accepted` here. `P3-REL-FR-023`: "Release detail
- * must not show Task Roll-up, Burndown or another Release progress widget"; `P3-REL-FR-024` puts
- * accepted/progress totals only in `Portfolio > Release Tracking`; FR-018, DC-009, §5's Detail-right
- * row and AC-10 list the right panel as Start Date, Release Date, Project, State, Planned Velocity,
- * Plan Estimate and Version. The API computes and serves neither field, so this mirror cannot
- * declare them.
- *
- * `taskEstimate` is not part of that: it is on the BA's own list DTO (§7.1) and PATCH payload
- * (§7.3), and feeds the `Task Est.` list column. FR-037 bans a *progress* column, not an estimate.
+ * No percentage and no point totals, deliberately. FR-037: "Phase 3 Release list/detail must not
+ * add a Release Progress column/widget; progress/tracking belongs to
+ * `Portfolio > Release Tracking`", and §7.5 defers the progress percentage out of Phase 3.2. The
+ * API no longer computes or serves those fields, so this mirror does not declare them.
  */
+export interface TaskRollup {
+  estimateHours: number
+  toDoHours: number
+  actualHours: number
+  acceptedItems: number
+}
+
 export interface Release {
   id: string
   tenantId: string
@@ -66,6 +69,7 @@ export interface Release {
   releasedAt: string | null
   createdAt: string
   updatedAt: string
+  taskRollup?: TaskRollup
 }
 
 /**

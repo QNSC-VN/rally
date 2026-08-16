@@ -64,6 +64,13 @@
     "bulkMessage": "Delete {{count}} release(s)? Accepted releases are skipped."
   },
   "detailPage": {
+    "rollup": {
+      "title": "Task Roll-up",
+      "estimate": "Estimate",
+      "toDo": "To Do",
+      "actual": "Actual",
+      "accepted": "Accepted"
+    },
     "typeBadge": "Release",
     "loadError": "Release details could not be loaded.",
     "backToReleases": "← Back to Releases",

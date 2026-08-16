@@ -191,7 +191,25 @@ export const ErrorCodes = {
   RELEASE_NOT_DELETABLE: 'RELEASE_NOT_DELETABLE',
   RELEASE_ALREADY_SHIPPED: 'RELEASE_ALREADY_SHIPPED',
   RELEASE_INVALID_DATE_RANGE: 'RELEASE_INVALID_DATE_RANGE',
+  /**
+   * `RELEASE_INVALID_TRANSITION` is RETIRED — nothing throws it.
+   *
+   * It backed a `planning → active → accepted` graph that Rally does not have: Rally's release `State`
+   * is a plain drop-down with no state machine, and Broadcom's own troubleshooting KB tells users to
+   * move an `Accepted` release BACK to Planning or Committed, so the graph blocked the remedy Rally
+   * prescribes. Both of our pickers offered all three states, making the refusal a guaranteed error on
+   * a value we offered ourselves.
+   *
+   * Kept as a constant rather than deleted because the SPA may still branch on the string and this
+   * file is append-only by its own header rule; the enforcement is what was removed.
+   */
   RELEASE_INVALID_TRANSITION: 'RELEASE_INVALID_TRANSITION',
+  /**
+   * Rally's ONE documented consequence of a release state: "You cannot add work items to an accepted
+   * release." Replaces the transition graph above — scoped to ADDING, so work already in an accepted
+   * release stays editable and can still be moved out.
+   */
+  RELEASE_ACCEPTED_NO_NEW_WORK: 'RELEASE_ACCEPTED_NO_NEW_WORK',
 
   // Access / Permission
   PERMISSION_DENIED: 'PERMISSION_DENIED',

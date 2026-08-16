@@ -37,7 +37,10 @@ export interface IWorkItemRepository {
     workspaceId: string,
   ): Promise<{ type: string; archived: boolean } | null>;
 
-  findReleaseProject(releaseId: string, workspaceId: string): Promise<string | null>;
+  findReleaseAssignability(
+    releaseId: string,
+    workspaceId: string,
+  ): Promise<{ projectId: string; status: string } | null>;
   /** Bulk-assign iteration (null unassigns) to the given ids. All-or-nothing via caller UoW. */
   assignIteration(
     ids: string[],

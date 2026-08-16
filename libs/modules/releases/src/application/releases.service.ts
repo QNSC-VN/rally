@@ -12,7 +12,7 @@ import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
 import { PERMISSION } from '@shared-kernel';
 import { capacityPlans, workItems, tasks, portfolioItems } from '../../../../../db/schema/work';
-import { type ReleaseStatus } from '../../../../../db/schema/enums';
+import { acceptedScheduleStatesSql } from '../../../../../db/schema/enums';
 import { IReleaseRepository, RELEASE_REPOSITORY } from '../domain/ports/release.repository';
 import type { Release, ReleaseOption, UpdateReleaseInput } from '../domain/release.types';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
@@ -33,11 +33,34 @@ function isDuplicateKeyError(err: unknown): boolean {
   }
 }
 
-/** Valid release status transitions (Rally-aligned lifecycle). */
-const RELEASE_TRANSITIONS: Record<ReleaseStatus, ReleaseStatus[]> = {
-  planning: ['active', 'planning'],
-  active: ['accepted', 'planning', 'active'],
-  accepted: ['active', 'accepted'],
+/**
+ * A release's right-panel roll-up, exactly as P3-REL-FR-018 fixes it: `Task Roll-up` and
+ * `Accepted`, nothing else.
+ *
+ * Task Roll-up is Estimate / To Do / Actual **HOURS** from the tasks under the release's
+ * assigned Story/Defect items (P3-REL-FR-023), not an item or point count. `acceptedItems` is
+ * FR-024's "accepted work total for the Release".
+ *
+ * There is deliberately NO percentage, no point total and no done/remaining count here.
+ * P3-REL-FR-037: "Phase 3 Release list/detail must not add a Release Progress column/widget;
+ * progress/tracking belongs to `Portfolio > Release Tracking`", and §7.5 defers the progress
+ * percentage, its zero-state, its formula and its recalculation out of Phase 3.2 entirely.
+ * A field on this object is a field a Phase 3 surface can render, which is why the numbers are
+ * not merely hidden in the SPA — they are not computed or served at all.
+ */
+export interface TaskRollup {
+  estimateHours: number;
+  toDoHours: number;
+  actualHours: number;
+  acceptedItems: number;
+}
+
+/** A release with no linked Story/Defect at all: zeroes, not absent values. */
+const EMPTY_TASK_ROLLUP: TaskRollup = {
+  estimateHours: 0,
+  toDoHours: 0,
+  actualHours: 0,
+  acceptedItems: 0,
 };
 
 /**
@@ -135,12 +158,17 @@ export class ReleasesService {
     await this.projectsService.getProject(actor.workspaceId, projectId);
     const page = await this.releaseRepo.listByProject(projectId, actor.workspaceId, args);
     const ids = page.data.map((r) => r.id);
-    // Batched over the whole page: the `Task Est.` column (FR-004, §7.1's `taskEstimate`) is one
-    // grouped aggregate for every row, not one query per release.
-    const estimates = await this.computeTaskEstimates(ids);
+    // Batched over the whole page. `taskRollup` used to be built only in the detail path, so
+    // every list consumer saw `undefined` and read `?? 0` off it. The list's own `taskEstimate`
+    // column (FR-004) is the roll-up's Estimate hours — one number, computed once, so the
+    // column and the detail panel cannot disagree.
+    const rollups = await this.computeTaskRollups(ids);
     return {
       ...page,
-      data: page.data.map((r) => ({ ...r, taskEstimate: estimates.get(r.id) ?? 0 })),
+      data: page.data.map((r) => {
+        const taskRollup = rollups.get(r.id) ?? EMPTY_TASK_ROLLUP;
+        return { ...r, taskEstimate: taskRollup.estimateHours, taskRollup };
+      }),
     };
   }
 
@@ -154,8 +182,8 @@ export class ReleasesService {
    * 403 there rendered a scheduled row as unscheduled and left the picker empty, which is the
    * `member-options` regression one column across.
    *
-   * No estimate rolled up here: `computeTaskEstimates` is a grouped aggregate over `work.tasks` for
-   * a number a picker does not show, and `taskEstimate` is administration data an Editor must not
+   * No roll-up computed here: `computeTaskRollups` is three grouped aggregates over `work.tasks` for
+   * numbers a picker does not show, and `taskEstimate` is administration data an Editor must not
    * read. So this is also the cheaper call, which is the one every grid makes.
    *
    * No actor gate beyond the route's: `project:view` scoped to the query's `projectId` is the
@@ -168,35 +196,50 @@ export class ReleasesService {
   }
 
   /**
-   * `taskEstimate` per release (§6.1 FR-004, §7.1) — Estimate HOURS summed from the child tasks of
-   * the stories/defects assigned to each release, summed the same way Team Status and the Phase 6
-   * projection sum them so every surface reports the same hours.
+   * The right panel's roll-up per release (FR-018), batched over a page.
    *
-   * ESTIMATE ONLY, and that is the contract, not an optimisation. This used to be one third of a
-   * `taskRollup` object that also carried To Do hours, Actual hours and an accepted-item count for
-   * the Release detail's right panel. `P3-REL-FR-023` now reads "Release detail must not show Task
-   * Roll-up, Burndown or another Release progress widget", `P3-REL-FR-024` puts accepted/progress
-   * totals "only in `Portfolio > Release Tracking`", and FR-018/DC-009/§5/AC-10 list the right panel
-   * as Start Date, Release Date, Project, State, Planned Velocity, Plan Estimate and Version — the
-   * roll-up and Accepted are absent from all of them, and §6's data-model rows for `taskRollup` and
-   * `accepted` were deleted. So the numbers are not merely hidden in the SPA: a field this service
-   * does not compute is a field no Phase 3 surface can render. `taskEstimate` survives because the
-   * BA keeps it on the list DTO (§7.1) and the PATCH payload (§7.3) — FR-037 bans a *progress*
-   * column, not an estimate roll-up.
+   * Two questions with two different populations, so two grouped queries:
+   *  - Task Roll-up hours come from `work.tasks` through the parent Story/Defect (FR-023);
+   *  - `Accepted` counts the release's own Story/Defect items (FR-024).
+   *
+   * A release absent from the map has nothing assigned and resolves to `EMPTY_TASK_ROLLUP`.
+   */
+  private async computeTaskRollups(releaseIds: string[]): Promise<Map<string, TaskRollup>> {
+    if (releaseIds.length === 0) return new Map();
+    const [hours, accepted] = await Promise.all([
+      this.computeTaskHours(releaseIds),
+      this.computeAcceptedCounts(releaseIds),
+    ]);
+    const map = new Map<string, TaskRollup>();
+    for (const id of new Set([...hours.keys(), ...accepted.keys()])) {
+      map.set(id, {
+        ...(hours.get(id) ?? { estimateHours: 0, toDoHours: 0, actualHours: 0 }),
+        acceptedItems: accepted.get(id) ?? 0,
+      });
+    }
+    return map;
+  }
+
+  /**
+   * SRS FR-023 / §6.1 FR-004 — Estimate, To Do and Actual hours summed from the child tasks of
+   * the stories/defects assigned to each release. Three independent fields (they never derive
+   * from each other), summed the same way Team Status and the Phase 6 projection sum them, so
+   * every surface reports the same hours. The Estimate column on the list is this Estimate.
    *
    * `innerJoin` on the parent WITH `parent.deleted_at IS NULL`: a soft-deleted Story does not
    * cascade to `work.tasks` (the FK is `ON DELETE cascade`, which a soft delete never fires),
    * so an orphaned task would otherwise keep charging hours to the release. No team predicate —
-   * a release is not team-scoped, and this is the release's own total.
-   *
-   * A release absent from the map has nothing assigned and reports 0.
+   * a release is not team-scoped, and this panel is the release's own total.
    */
-  private async computeTaskEstimates(releaseIds: string[]): Promise<Map<string, number>> {
-    if (releaseIds.length === 0) return new Map();
+  private async computeTaskHours(
+    releaseIds: string[],
+  ): Promise<Map<string, Omit<TaskRollup, 'acceptedItems'>>> {
     const rows = await this.db
       .select({
         releaseId: workItems.releaseId,
         estimateHours: sql<number>`COALESCE(SUM(${tasks.estimateHours}), 0)`,
+        toDoHours: sql<number>`COALESCE(SUM(${tasks.todoHours}), 0)`,
+        actualHours: sql<number>`COALESCE(SUM(${tasks.actualHours}), 0)`,
       })
       .from(tasks)
       .innerJoin(workItems, eq(tasks.parentId, workItems.id))
@@ -208,11 +251,36 @@ export class ReleasesService {
         ),
       )
       .groupBy(workItems.releaseId);
-    const map = new Map<string, number>();
+    const map = new Map<string, Omit<TaskRollup, 'acceptedItems'>>();
     for (const r of rows) {
       if (!r.releaseId) continue;
-      map.set(r.releaseId, Number(r.estimateHours));
+      map.set(r.releaseId, {
+        estimateHours: Number(r.estimateHours),
+        toDoHours: Number(r.toDoHours),
+        actualHours: Number(r.actualHours),
+      });
     }
+    return map;
+  }
+
+  /** FR-024 — the accepted work total: the release's Story/Defect items in an accepted state. */
+  private async computeAcceptedCounts(releaseIds: string[]): Promise<Map<string, number>> {
+    const rows = await this.db
+      .select({
+        releaseId: workItems.releaseId,
+        acceptedItems: sql<number>`COUNT(*) FILTER (WHERE ${workItems.scheduleState} IN (${acceptedScheduleStatesSql()}))::int`,
+      })
+      .from(workItems)
+      .where(
+        and(
+          inArray(workItems.releaseId, releaseIds),
+          isNull(workItems.deletedAt),
+          sql`${workItems.type} IN ('story', 'defect')`,
+        ),
+      )
+      .groupBy(workItems.releaseId);
+    const map = new Map<string, number>();
+    for (const r of rows) if (r.releaseId) map.set(r.releaseId, Number(r.acceptedItems));
     return map;
   }
 
@@ -309,19 +377,24 @@ export class ReleasesService {
     const release = await this.getRelease(actor.workspaceId, id);
     await this.projectsService.assertProjectWritable(actor.workspaceId, release.projectId);
 
-    // Validate status transition
-    if (input.status && input.status !== release.status) {
-      const allowed = RELEASE_TRANSITIONS[release.status] ?? [];
-      if (!allowed.includes(input.status)) {
-        throw new PreconditionFailedException(
-          'RELEASE_INVALID_TRANSITION',
-          `Invalid release transition: ${release.status} → ${input.status}. Allowed: ${allowed.join(', ') || 'none (terminal)'}`,
-        );
-      }
-      // Auto-set releasedAt when transitioning to accepted
-      if (input.status === 'accepted' && !input.releasedAt) {
-        input.releasedAt = new Date();
-      }
+    /**
+     * NO TRANSITION GRAPH. Any state may move to any other, which is what Rally does.
+     *
+     * Rally's release `State` is a plain user-set drop-down with no state machine — the release
+     * research records "no state machine is documented … so backwards moves are not blocked", and
+     * Broadcom's own troubleshooting KB instructs users to move an `Accepted` release BACK to Planning
+     * or Committed to fix "I cannot schedule work into this release". We used to enforce
+     * `planning → active → accepted` and refuse `planning → accepted`, which made that documented
+     * remedy impossible — while both of our pickers offered all three states, so the refusal was a
+     * guaranteed error on a value the product itself offered.
+     *
+     * Rally's ONE documented consequence of the state is enforced instead, and elsewhere: an accepted
+     * release takes no NEW work (`assertReleaseAssignable`, `RELEASE_ACCEPTED_NO_NEW_WORK`). That is a
+     * rule about assignment, not about the state field, which is why it does not live here.
+     */
+    if (input.status === 'accepted' && input.status !== release.status && !input.releasedAt) {
+      // Still stamp the acceptance date on the way in — a total, not a gate.
+      input.releasedAt = new Date();
     }
 
     // Validate date range: releaseDate >= startDate (using merged values)
@@ -397,7 +470,7 @@ export class ReleasesService {
     this.logger.log({ releaseId: id }, 'Release deleted; its work items are now unscheduled');
   }
 
-  // ── Get Detail ────────────────────────────────────────────────────────────
+  // ── Get Detail (includes task rollup) ─────────────────────────────────────
 
   async shipRelease(actor: JwtPayload, id: string): Promise<Release> {
     const release = await this.getRelease(actor.workspaceId, id);
@@ -420,16 +493,17 @@ export class ReleasesService {
     this.logger.log({ releaseId: id }, 'Release shipped');
     return updated;
   }
-  /**
-   * The detail payload — the release record plus `taskEstimate`, which §7.4 defines by extending the
-   * list DTO. No `taskRollup` and no `accepted`: P3-REL-FR-023/FR-024 keep Task Roll-up and accepted
-   * progress out of Release detail entirely. (§7.4's own `ReleaseDetailDto` block still declares both
-   * — it was simply not updated when the six other statements removed them.)
-   */
   async getReleaseDetail(actor: JwtPayload, id: string) {
     const release = await this.getReleaseForView(actor, id);
-    const estimates = await this.computeTaskEstimates([id]);
-    return { ...release, taskEstimate: estimates.get(id) ?? 0 };
+
+    const rollups = await this.computeTaskRollups([id]);
+    const taskRollup = rollups.get(id) ?? EMPTY_TASK_ROLLUP;
+
+    return {
+      ...release,
+      taskEstimate: taskRollup.estimateHours,
+      taskRollup,
+    };
   }
 
   // ── Release Artifacts (P3) ──────────────────────────────────────────

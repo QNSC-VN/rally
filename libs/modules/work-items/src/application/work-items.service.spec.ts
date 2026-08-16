@@ -105,7 +105,7 @@ const makeWorkItemRepo = () => ({
   findById: vi.fn(),
   findByIds: vi.fn().mockResolvedValue([]),
   findIterationScope: vi.fn().mockResolvedValue(null),
-  findReleaseProject: vi.fn().mockResolvedValue(null),
+  findReleaseAssignability: vi.fn().mockResolvedValue(null),
   findPortfolioItemLinkTarget: vi.fn().mockResolvedValue({ type: 'feature', archived: false }),
   assignIteration: vi.fn().mockResolvedValue(undefined),
   assignRelease: vi.fn().mockResolvedValue(undefined),
@@ -502,7 +502,10 @@ describe('WorkItemsService', () => {
     });
 
     it('rejects a release that belongs to a different project', async () => {
-      workItemRepo.findReleaseProject.mockResolvedValue('other-proj');
+      workItemRepo.findReleaseAssignability.mockResolvedValue({
+        projectId: 'other-proj',
+        status: 'planning',
+      });
       await expect(
         service.createWorkItem(mockActor, 'proj-1', 'story', 'Story', { releaseId: 'rel-x' }),
       ).rejects.toThrow(PreconditionFailedException);
@@ -510,7 +513,10 @@ describe('WorkItemsService', () => {
     });
 
     it('rejects a defect foundInReleaseId from a different project', async () => {
-      workItemRepo.findReleaseProject.mockResolvedValue('other-proj');
+      workItemRepo.findReleaseAssignability.mockResolvedValue({
+        projectId: 'other-proj',
+        status: 'planning',
+      });
       await expect(
         service.createWorkItem(mockActor, 'proj-1', 'defect', 'Bug', {
           foundInReleaseId: 'rel-x',
@@ -1786,17 +1792,51 @@ describe('WorkItemsService', () => {
 
     it('rejects a release from another project', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-1' }));
-      workItemRepo.findReleaseProject.mockResolvedValue('proj-2');
+      workItemRepo.findReleaseAssignability.mockResolvedValue({
+        projectId: 'proj-2',
+        status: 'planning',
+      });
       await expect(
         service.updateWorkItem(mockActor, 'wi-1', { releaseId: 'rel-x' }),
       ).rejects.toThrow(PreconditionFailedException);
+    });
+
+    /**
+     * "You cannot add work items to an accepted release" — the ONE lifecycle consequence Rally
+     * documents for a release state, and the rule that REPLACED our invented
+     * `planning → active → accepted` transition graph (Rally enforces no transitions on any artifact
+     * state; see `releases.service.spec.ts`).
+     */
+    it('refuses to add work to an ACCEPTED release', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-1' }));
+      workItemRepo.findReleaseAssignability.mockResolvedValue({
+        projectId: 'proj-1',
+        status: 'accepted',
+      });
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { releaseId: 'rel-done' }),
+      ).rejects.toMatchObject({ code: 'RELEASE_ACCEPTED_NO_NEW_WORK' });
+    });
+
+    it('does not consult the release when an item LEAVES one', async () => {
+      // Scoped to adding, deliberately: refusing the way out would strand work in a closed release,
+      // which is the mirror of the defect the transition graph caused. Asserted through the lookup
+      // rather than the whole write, so the case cannot pass for an unrelated reason.
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ projectId: 'proj-1', releaseId: 'rel-done' }),
+      );
+      await service.updateWorkItem(mockActor, 'wi-1', { releaseId: null }).catch(() => undefined);
+      expect(workItemRepo.findReleaseAssignability).not.toHaveBeenCalled();
     });
 
     it('rejects a foundInReleaseId from another project', async () => {
       workItemRepo.findById.mockResolvedValue(
         mockWorkItem({ projectId: 'proj-1', type: 'defect' }),
       );
-      workItemRepo.findReleaseProject.mockResolvedValue('proj-2');
+      workItemRepo.findReleaseAssignability.mockResolvedValue({
+        projectId: 'proj-2',
+        status: 'planning',
+      });
       await expect(
         service.updateWorkItem(mockActor, 'wi-1', { foundInReleaseId: 'rel-x' }),
       ).rejects.toThrow(PreconditionFailedException);
@@ -2021,7 +2061,10 @@ describe('WorkItemsService', () => {
   describe('bulkAssignRelease', () => {
     it('rejects a release from another project', async () => {
       workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'a' })]);
-      workItemRepo.findReleaseProject.mockResolvedValue('proj-2');
+      workItemRepo.findReleaseAssignability.mockResolvedValue({
+        projectId: 'proj-2',
+        status: 'planning',
+      });
       await expect(service.bulkAssignRelease(mockActor, 'proj-1', ['a'], 'rel-1')).rejects.toThrow(
         PreconditionFailedException,
       );
@@ -2030,7 +2073,10 @@ describe('WorkItemsService', () => {
 
     it('assigns a valid release', async () => {
       workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'a' })]);
-      workItemRepo.findReleaseProject.mockResolvedValue('proj-1');
+      workItemRepo.findReleaseAssignability.mockResolvedValue({
+        projectId: 'proj-1',
+        status: 'planning',
+      });
       const n = await service.bulkAssignRelease(mockActor, 'proj-1', ['a'], 'rel-1');
       expect(n).toBe(1);
       expect(workItemRepo.assignRelease).toHaveBeenCalled();
@@ -2314,7 +2360,7 @@ describe('WorkItemsService', () => {
         service.bulkAssignRelease(mockActor, 'proj-1', ['wi-1'], 'rel-1'),
       ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
       expect(workItemRepo.assignRelease).not.toHaveBeenCalled();
-      expect(workItemRepo.findReleaseProject).not.toHaveBeenCalled();
+      expect(workItemRepo.findReleaseAssignability).not.toHaveBeenCalled();
     });
 
     it('does NOT consult the rule when the patch leaves the release alone', async () => {

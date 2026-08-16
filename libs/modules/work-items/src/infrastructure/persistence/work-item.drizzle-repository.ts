@@ -259,13 +259,25 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return rows[0] ?? null;
   }
 
-  async findReleaseProject(releaseId: string, workspaceId: string): Promise<string | null> {
+  /**
+   * A release's project AND its state, because both gate an assignment.
+   *
+   * The state is here for Rally's one documented release-lifecycle consequence — "You cannot add work
+   * items to an accepted release" — which is the rule that REPLACED our invented `planning → active →
+   * accepted` transition graph. Rally enforces no transitions on any artifact state; what it does
+   * enforce is this.
+   */
+  async findReleaseAssignability(
+    releaseId: string,
+    workspaceId: string,
+  ): Promise<{ projectId: string; status: string } | null> {
     const rows = await this.db
-      .select({ projectId: releases.projectId })
+      .select({ projectId: releases.projectId, status: releases.status })
       .from(releases)
       .where(and(eq(releases.id, releaseId), eq(releases.workspaceId, workspaceId)))
       .limit(1);
-    return rows[0]?.projectId ?? null;
+    const row = rows[0];
+    return row ? { projectId: row.projectId, status: row.status } : null;
   }
 
   /**

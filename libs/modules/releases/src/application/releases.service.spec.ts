@@ -122,10 +122,14 @@ describe('ReleasesService', () => {
 
     statRows = [
       {
-        // The estimate query reads releaseId plus the hour sum; a null releaseId means the row
-        // is skipped, so taskEstimate resolves to 0 in these unit tests.
+        // The roll-up queries read releaseId plus the hour sums / accepted count; a null
+        // releaseId means the row is skipped, so the roll-up resolves to EMPTY_TASK_ROLLUP
+        // and taskEstimate to 0 in these unit tests.
         releaseId: null,
         estimateHours: '0',
+        toDoHours: '0',
+        actualHours: '0',
+        acceptedItems: 0,
       },
     ];
     // Capacity plans built on the release under test. Empty by default: most specs are not about the
@@ -362,6 +366,37 @@ describe('ReleasesService', () => {
       ).rejects.toThrow(PreconditionFailedException);
     });
 
+    /**
+     * NO transition graph — any state may move to any other, because Rally has none.
+     *
+     * Rally's release `State` is a plain drop-down ("no state machine is documented, so backwards
+     * moves are not blocked"), and Broadcom's own troubleshooting KB tells users to move an `Accepted`
+     * release BACK to Planning or Committed when they cannot schedule work into it. We used to enforce
+     * `planning → active → accepted`, which refused both cases below while the SPA offered all three
+     * states — a guaranteed error on a value we offered ourselves. Nothing pinned the graph, which is
+     * how it survived; these pin its absence.
+     */
+    it('allows planning → accepted directly, skipping active', async () => {
+      repo.findById.mockResolvedValue(mockRelease({ status: 'planning' }));
+      repo.update.mockResolvedValue(mockRelease({ status: 'accepted' }));
+
+      const result = await service.updateRelease(actor, 'rel-1', { status: 'accepted' });
+
+      expect(result.status).toBe('accepted');
+      // The acceptance date is still stamped — a total, not a gate.
+      const [, patch] = repo.update.mock.calls[0] as [string, { releasedAt?: unknown }];
+      expect(patch.releasedAt).toBeInstanceOf(Date);
+    });
+
+    it('allows accepted → planning, the move Broadcom documents as the remedy', async () => {
+      repo.findById.mockResolvedValue(mockRelease({ status: 'accepted' }));
+      repo.update.mockResolvedValue(mockRelease({ status: 'planning' }));
+
+      await expect(
+        service.updateRelease(actor, 'rel-1', { status: 'planning' }),
+      ).resolves.toMatchObject({ status: 'planning' });
+    });
+
     it('throws NotFoundException when release not found', async () => {
       repo.findById.mockResolvedValue(null);
       await expect(service.updateRelease(actor, 'bad', { name: 'X' })).rejects.toThrow(
@@ -426,30 +461,37 @@ describe('ReleasesService', () => {
     // resolved from :id — covered by context-isolation-rbac e2e, not here.
 
     /**
-     * `P3-REL-FR-023` — "Release detail must not show Task Roll-up, Burndown or another Release
-     * progress widget" — and `P3-REL-FR-024`, which puts accepted/progress totals only in
-     * `Portfolio > Release Tracking`. Asserted on the SERVICE payload, not the SPA: a panel cannot
-     * render a field the API never returns, and hiding the number in the component would leave it
-     * computed and served.
-     *
-     * `taskEstimate` STAYS — it is on the BA's own list DTO (§7.1), which §7.4 extends, and the
-     * PATCH payload (§7.3). FR-037 bans a *progress* column, not an estimate roll-up.
+     * P3-REL-FR-023: the Task Roll-up is Estimate / To Do / Actual HOURS from the assigned
+     * tasks. It used to be an item/point roll-up carrying a `progressPercent`, which
+     * P3-REL-FR-037 forbids on a Phase 3 release surface and §7.5 defers to
+     * `Portfolio > Release Tracking`. Asserted on the SERVICE payload, not the SPA: a panel
+     * cannot render a field the API never returns, and hiding the number in the component
+     * would leave it computed and served.
      */
-    it('returns taskEstimate hours only — no Task Roll-up, accepted total or progress', async () => {
+    it('rolls up task HOURS and the accepted total, and computes no progress percentage', async () => {
       repo.findById.mockResolvedValue(mockRelease());
-      // Drizzle hands numeric columns back as strings — the sum must survive that.
-      statRows = [{ releaseId: 'rel-1', estimateHours: '18.5' }];
+      // Drizzle hands numeric columns back as strings — the sums must survive that.
+      statRows = [
+        {
+          releaseId: 'rel-1',
+          estimateHours: '18.5',
+          toDoHours: '6',
+          actualHours: '12.5',
+          acceptedItems: 3,
+        },
+      ];
 
-      const detail = await service.getReleaseDetail(actor, 'rel-1');
+      const { taskRollup, taskEstimate } = await service.getReleaseDetail(actor, 'rel-1');
 
-      // The list's Task Est. column is this number, computed by the one shared aggregate.
-      expect(detail.taskEstimate).toBe(18.5);
+      expect(taskRollup).toEqual({
+        estimateHours: 18.5,
+        toDoHours: 6,
+        actualHours: 12.5,
+        acceptedItems: 3,
+      });
+      // The list's Task Est. column is the roll-up's Estimate, computed once.
+      expect(taskEstimate).toBe(18.5);
       for (const forbidden of [
-        'taskRollup',
-        'accepted',
-        'acceptedItems',
-        'toDoHours',
-        'actualHours',
         'progressPercent',
         'totalPoints',
         'completedPoints',
@@ -458,7 +500,7 @@ describe('ReleasesService', () => {
         'completedItems',
         'toDoItems',
       ]) {
-        expect(detail).not.toHaveProperty(forbidden);
+        expect(taskRollup).not.toHaveProperty(forbidden);
       }
     });
   });

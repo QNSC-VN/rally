@@ -133,7 +133,7 @@ const makeScopedWorkItemRepo = (items: WorkItem[]) => ({
     Promise.resolve(items.filter((i) => ids.includes(i.id) && i.workspaceId === workspaceId)),
   ),
   findIterationScope: vi.fn().mockResolvedValue(null),
-  findReleaseProject: vi.fn().mockResolvedValue(null),
+  findReleaseAssignability: vi.fn().mockResolvedValue(null),
   assignIteration: vi.fn().mockResolvedValue(undefined),
   assignRelease: vi.fn().mockResolvedValue(undefined),
   listByProject: vi.fn(),

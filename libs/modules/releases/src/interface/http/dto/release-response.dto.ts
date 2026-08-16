@@ -3,6 +3,36 @@ import { z } from 'zod';
 
 const RELEASE_STATES = ['planning', 'active', 'accepted'] as const;
 
+/**
+ * The right panel's roll-up: Task Roll-up hours plus the accepted work total.
+ *
+ * KEPT ON PURPOSE, AGAINST THE SRS, BECAUSE REAL RALLY HAS IT. Rally's own Release field reference
+ * documents exactly these as rolled-up totals — "**Plan Estimate, Task Estimate, Accepted, and To
+ * Do**" are "totals rolled up from the estimates given for the associated scheduled items", and
+ * `Accepted` "calculates and displays the total of scheduled item estimates whose state has been set
+ * to accepted"
+ * (`techdocs.broadcom.com/.../working-with-releases/release-fields.html`). This product is a Rally
+ * clone, so where the two disagree the product wins and the BA is asked to amend the SRS.
+ *
+ * These fields were briefly DELETED on the SRS's word (`P3-REL-FR-023`, `FR-024`, `FR-018`, `DC-009`,
+ * AC-10 and `TS-016` all describe a metadata-only panel) and restored once the Rally reference was
+ * read. Recorded so the next reader does not re-delete them: the SRS statements are not wrong about
+ * what the BA wants, they are wrong about Rally, and that is a BA question, not a code one.
+ *
+ * WHAT RALLY REALLY DOES NOT HAVE, and what therefore stays deleted: a Release **percent-done** field,
+ * a progress **bar**, and a Release **burndown**. Rally's Release carries no completion metric at all,
+ * and its release chart is a burn**up** living under Reports — so the old progress panel and
+ * `GET /releases/:id/burndown` were inventions, and `FR-037`'s "progress belongs to
+ * `Portfolio > Release Tracking`" agrees with Rally on that half. Hours and an accepted COUNT are
+ * totals, not progress.
+ */
+const TaskRollupSchema = z.object({
+  estimateHours: z.number(),
+  toDoHours: z.number(),
+  actualHours: z.number(),
+  acceptedItems: z.number(),
+});
+
 const ReleaseListItemSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
@@ -20,21 +50,6 @@ const ReleaseListItemSchema = z.object({
   projectName: z.string().optional(),
 });
 
-/**
- * The Release DETAIL payload — §7.4's "list DTO plus" shape.
- *
- * No `taskRollup` and no `accepted`. `P3-REL-FR-023` reads "Release detail must not show Task
- * Roll-up, Burndown or another Release progress widget"; `P3-REL-FR-024` puts accepted/progress
- * totals "only in `Portfolio > Release Tracking`, not in Timeboxes > Release Detail"; FR-018,
- * DC-009, §5's Detail-right row ("Release metadata only; no progress roll-up") and AC-10 all list
- * the panel as Start Date, Release Date, Project, State, Planned Velocity, Plan Estimate and
- * Version; §6's data-model rows for both fields were deleted; and `P3-REL-TS-016` retests the
- * absence. §7.4's literal `ReleaseDetailDto` block still declares `taskRollup` and `accepted` — it
- * was not updated with the other six statements, and is the dissenting one.
- *
- * `taskEstimate` is NOT part of that removal: it is on the BA's own list DTO (§7.1) and PATCH
- * payload (§7.3), and FR-037 bans a *progress* column, not an estimate roll-up.
- */
 export const ReleaseResponseSchema = ReleaseListItemSchema.extend({
   notes: z.string().nullable(),
   releaseNotes: z.string().nullable(),
@@ -42,6 +57,7 @@ export const ReleaseResponseSchema = ReleaseListItemSchema.extend({
   releasedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  taskRollup: TaskRollupSchema.optional(),
 });
 
 export class ReleaseResponseDto extends createZodDto(ReleaseResponseSchema) {}
@@ -55,7 +71,7 @@ export class ReleaseListItemDto extends createZodDto(ReleaseListItemSchema) {}
  * WHY IT EXISTS
  * `GET /releases` is the `Plan > Releases` administration grid's feed and carries the release
  * RECORD: `theme`, `notes`, `releaseNotes`, `plannedVelocity`, `planEstimate`, `taskEstimate`,
- * `version` and `releasedAt`. §3.2 marks the `Timeboxes` surface (Iterations,
+ * `version`, `releasedAt` and the task roll-up. §3.2 marks the `Timeboxes` surface (Iterations,
  * Releases and Milestones alike) Hidden for an Editor, which is why it takes `release:view` — a code
  * `PROJECT_MEMBER` deliberately does not hold. It was ALSO the only feed for the Release picker and
  * the Release *name* on Backlog, the Work Item detail sidebar, the Backlog summary panel and

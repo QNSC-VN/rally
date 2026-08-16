@@ -50,7 +50,17 @@ function toActivityDto(a: ActivityLog): ActivityResponseDto {
   };
 }
 
-function toReleaseDto(r: Release & { taskEstimate?: number }): ReleaseResponseDto {
+function toReleaseDto(
+  r: Release & {
+    taskEstimate?: number;
+    taskRollup?: {
+      estimateHours: number;
+      toDoHours: number;
+      actualHours: number;
+      acceptedItems: number;
+    };
+  },
+): ReleaseResponseDto {
   return {
     id: r.id,
     workspaceId: r.workspaceId,
@@ -74,6 +84,7 @@ function toReleaseDto(r: Release & { taskEstimate?: number }): ReleaseResponseDt
     releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
+    taskRollup: r.taskRollup,
   };
 }
 

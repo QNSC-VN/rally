@@ -1821,14 +1821,37 @@ export class WorkItemsService {
     projectId: string,
     releaseId: string,
   ): Promise<void> {
-    const releaseProjectId = await this.workItemRepo.findReleaseProject(releaseId, workspaceId);
-    if (!releaseProjectId) {
+    const release = await this.workItemRepo.findReleaseAssignability(releaseId, workspaceId);
+    if (!release) {
       throw new NotFoundException('RELEASE_NOT_FOUND', 'Release not found');
     }
-    if (releaseProjectId !== projectId) {
+    if (release.projectId !== projectId) {
       throw new PreconditionFailedException(
         'RELEASE_PROJECT_MISMATCH',
         'Release must belong to the same project as the work item',
+      );
+    }
+    /**
+     * "You cannot add work items to an accepted release" — the ONE lifecycle consequence Rally
+     * documents for a release state
+     * (`techdocs.broadcom.com/.../working-with-releases/`, and the release research file records it as
+     * the only documented behavioural effect of `State`).
+     *
+     * This rule REPLACES an invented transition graph. `ReleasesService` used to enforce
+     * `planning → active → accepted` and refuse `planning → accepted`, which Rally does not do for any
+     * artifact state — Broadcom's own troubleshooting KB tells users to move an `Accepted` release
+     * BACK to Planning or Committed, so the graph blocked the remedy Rally prescribes. Worse, both
+     * release pickers offer all three states, so the refusal was a guaranteed error on a value the
+     * product itself offered.
+     *
+     * Scoped to ADDING: this is reached only when an assignment is being made, so an item already in
+     * an accepted release stays editable and can still be moved OUT. Refusing that too would strand
+     * work in a closed release, which is the mirror of the defect above.
+     */
+    if (release.status === 'accepted') {
+      throw new PreconditionFailedException(
+        'RELEASE_ACCEPTED_NO_NEW_WORK',
+        'An accepted release does not take new work items',
       );
     }
   }
