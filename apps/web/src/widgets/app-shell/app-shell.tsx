@@ -1,5 +1,6 @@
 import { BRAND } from '@/shared/config/brand'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, Outlet, useMatches, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   Bell,
@@ -157,6 +158,7 @@ function ProjectTreeItem({
 }
 
 export function AppShell() {
+  const { t } = useTranslation('auth')
   const { user, memberships, activeWorkspaceId } = useAuthStore()
   const { workspace, project, team, setWorkspace, setProject, setTeam } = useAppContext()
   const navigate = useNavigate()
@@ -761,7 +763,7 @@ export function AppShell() {
                     className="flex w-full items-center gap-2.5 px-3 py-2 text-ui-sm text-destructive hover:bg-destructive-bg"
                   >
                     <LogOut size={13} />
-                    Sign out
+                    {t('signOut')}
                   </button>
                 </div>
               </div>

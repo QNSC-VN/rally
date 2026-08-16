@@ -513,7 +513,12 @@ export class InvitationController {
   @Post('accept')
   @AuthorizedInService(
     'the invitation token identifies the row and acceptance is bound to the invited email, case-insensitively',
-    'invitation.service.spec.ts',
+    // Re-pointed from `invitation.service.spec.ts`, which pinned an ORPHANED fork of this flow that
+    // no module ever provided — a citation to a spec that proved nothing about this route. The
+    // `describe('acceptInvitation')` block here drives `WorkspaceService.acceptInvitation`, the
+    // method the handler below actually calls, and asserts both directions: the forwarded-link
+    // refusal (`INVITATION_EMAIL_MISMATCH`) and the differently-cased-mailbox accept.
+    'workspace.service.spec.ts',
   )
   @Auth()
   @HttpCode(204)
