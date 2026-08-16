@@ -986,6 +986,12 @@ PROJECT_ADMIN and PROJECT_MEMBER and every pre-Phase-6 workspace kept its old ar
 report routes answered 403 to everyone except Workspace Admin — whose `workspace:*` grant is the
 global anchor and hid the fault everywhere it was tested. Migration 0092 backfills it.
 
+**`report:view` is no longer one of PROJECT_MEMBER's codes**, so read that story as the mechanism and
+not as the current grant: migration `0109_remove_delivery_perms_from_project_member.sql` revoked it,
+which is what every Phase 6 §1 header requires ("`Editor` and unassigned users cannot open Reports")
+and what §3.2:84 says. Verified in `access.system_roles`: `project_member` is `false` on both the
+global template and the workspace copy.
+
 So: **a new permission needs a backfill migration**, not just a catalogue entry. Force it only
 when the permission is genuinely new (nobody can have revoked what never existed); a permission
 that already shipped must be merged, not forced, or the migration undoes someone's decision.
@@ -1179,10 +1185,15 @@ either opens a hole or leaks API surface.
   (`me/*`, `notifications/*`) or runs around a session existing (`auth/*`).
   The old `@platform` `RequirePermission` + the `PermissionGuard` from
   `@qnsc-vn/identity` are gone; so is `@RequireProjectPermission`.
-- **A route with no `@RequirePermission` is OPEN, not denied.** `PolicyGuard`
-  returns `true` when it finds no metadata, and `@AuthPolicy()` sets none. That is
-  why `test/route-policy.ratchet.spec.ts` counts undecorated handlers and only
-  ever lets the number fall.
+- **A route with no authorization declaration is DENIED, and that reverses what this
+  note used to say.** `PolicyGuard` logs the controller and handler at `error` and
+  throws (`policy.guard.ts` ~`:132`); it used to `return true`, so an undecorated
+  handler was allowed to every authenticated caller — `JwtAuthGuard` proved WHO and
+  nothing checked WHETHER. An explicit mode (`@SelfScoped`, `@AuthorizedInService`,
+  `@AuthzGap`, `@Public`) still passes, because the declaration IS the decision and
+  the narrowing lives in the service. So a NEW route now fails closed and loudly
+  rather than leaking, and `route-policy.ratchet.spec.ts` holds
+  `MAX_UNPOLICED_ROUTES = 0` / `MAX_AUTHZ_GAPS = 0` instead of a falling count.
 - **Permissions are NEVER in the token.** The access token carries identity only.
   `PolicyGuard` resolves them from the database on every check, through one cached
   read per (workspace, user) (`authz:assign:<ws>:<user>`, 5-min TTL) that serves

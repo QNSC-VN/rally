@@ -365,7 +365,29 @@ export function DetailSidebar({
             given a Team but never returned to the Project backlog, so the move was one-way. */}
         <TeamSelectField
           value={item.teamId}
-          onChange={(v) => onUpdate({ teamId: v || null })}
+          /**
+           * Moving the Team CLEARS a named Owner, in the same patch.
+           *
+           * `WID-FR-016` requires this selector to be `đồng nhất Quick Create`, and Quick Create
+           * clears the owner on a team change (`create-work-item-modal.tsx`, "a draft must not submit
+           * a value its own picker would not show"). `Phase 1/02:147` AC-10 states the clearing half
+           * outright — "Clearing Team clears an invalid named Owner back to `Unassigned`" — and
+           * `Phase 1/03:125` is what makes a blank Team incompatible with any owner at all.
+           *
+           * Not cosmetic: the server now REFUSES the pair (`ASSIGNEE_REQUIRES_TEAM` /
+           * `ASSIGNEE_NOT_TEAM_MEMBER`, re-judged whenever the team moves), and this page batches
+           * edits through `usePendingPatch` — so without this, changing Team threw away every other
+           * unsaved field on the form along with the rejected patch. Same failure the Release control
+           * below documents.
+           *
+           * Cleared on ANY team change rather than only when the owner is not on the destination
+           * roster: deciding that needs the new team's roster, which is a second query this handler
+           * cannot await, and Quick Create's rule — which FR-016 pins this to — does not make that
+           * distinction either.
+           */
+          onChange={(v) =>
+            onUpdate({ teamId: v || null, ...(item.assigneeId ? { assigneeId: null } : {}) })
+          }
           teams={teams}
           disabled={disabled}
           allowUnassigned

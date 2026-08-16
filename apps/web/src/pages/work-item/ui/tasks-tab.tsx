@@ -9,7 +9,6 @@ import { useRecordProject } from '@/shared/lib/deep-link-project'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import {
   useTasks,
-  useTaskTotals,
   useUpdateWorkItem,
   useCreateTask,
   useRankAnyWorkItem,
@@ -92,7 +91,6 @@ export function TasksTab({
   const tasksQuery = useTasks(workItemId)
   const taskFeed = listResource(tasksQuery)
   const tasks = taskFeed.rows
-  const { data: totals } = useTaskTotals(workItemId)
   // Row selection (shared pattern with Backlog / Iteration Status): the header
   // checkbox selects every task, each row toggles itself.
   const selection = useRowSelection(tasks)
@@ -164,6 +162,30 @@ export function TasksTab({
         (stateFilter === 'all' || task.scheduleState === stateFilter),
     )
   }, [tasks, search, stateFilter])
+
+  /**
+   * `AC-8`: "Totals row equals sum of **visible** tasks" (`Phase 1/04:152`).
+   *
+   * So this is summed from `visibleTasks` and NOT from `useTaskTotals`, which is a server aggregate
+   * over every non-deleted child of the parent. The two agreed only until this tab grew its own
+   * search and State filter: filtering to `Completed` left the footer reporting the whole Story, which
+   * reads as the filter having no effect on the numbers rather than as a different population.
+   *
+   * `useTaskTotals` is still the right source for the sidebar's Task Roll-up, which is the parent's
+   * roll-up over ALL its tasks and has no filter to respect — same hook, two honest answers.
+   */
+  const visibleTotals = useMemo(
+    () =>
+      visibleTasks.reduce(
+        (sum, task) => ({
+          todo: sum.todo + Number(task.todoHours ?? 0),
+          actuals: sum.actuals + Number(task.actualHours ?? 0),
+          estimate: sum.estimate + Number(task.estimateHours ?? 0),
+        }),
+        { todo: 0, actuals: 0, estimate: 0 },
+      ),
+    [visibleTasks],
+  )
 
   /** The states these tasks are actually in, so the filter never offers an empty result. */
   const taskStates = useMemo(
@@ -331,16 +353,16 @@ export function TasksTab({
           )
         }
         totals={
-          totals ? (
+          visibleTasks.length > 0 ? (
             <TableTotalsRow
               columns={TASK_COLUMNS}
               colStyles={colStyles}
               leading={<RowGutter dragDisabled />}
               label={t('tasks.totals')}
               values={{
-                todo: `${totals.todoHours ?? 0}h`,
-                actuals: `${totals.actualHours ?? 0}h`,
-                estimate: `${totals.estimateHours ?? 0}h`,
+                todo: `${visibleTotals.todo}h`,
+                actuals: `${visibleTotals.actuals}h`,
+                estimate: `${visibleTotals.estimate}h`,
               }}
             />
           ) : undefined
