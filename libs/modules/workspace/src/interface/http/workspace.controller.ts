@@ -394,7 +394,9 @@ export class WorkspaceController {
     const invitation = await this.workspaceService.inviteMember(
       id,
       dto.email,
-      dto.roleId,
+      // No workspace role: `InviteMemberSchema` no longer carries one, because both possible values are
+      // forbidden (project-tier by migration 0111's rule, `workspace_admin` by Settings_Audit §6.4:173).
+      undefined,
       user.sub,
       // §6.4 — the projects and levels the invitee lands with, so the common path does not produce
       // a member who can see nothing. Absent means "no initial access", the pre-§6.4 behaviour.

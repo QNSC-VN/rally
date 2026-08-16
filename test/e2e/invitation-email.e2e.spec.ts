@@ -41,7 +41,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { INestApplication } from '@nestjs/common';
 
 import { WorkspaceService } from '@modules/workspace';
@@ -50,6 +50,7 @@ import type { DrizzleDB } from '@platform';
 import { emailOutbox } from '../../db/schema/messaging';
 import { workspaceInvitations } from '../../db/schema/workspace';
 import { ssoIdentities, users } from '../../db/schema/identity';
+import { systemRoles } from '../../db/schema/access';
 import { ADMIN_USER_ID, bootRallyApp, WORKSPACE_ID } from './support/flow-harness';
 
 describe('invitation email (real AppModule + seeded DB)', () => {
@@ -231,5 +232,117 @@ describe('invitation email (real AppModule + seeded DB)', () => {
       .where(eq(workspaceInvitations.id, invitation.id));
     expect(after.status).toBe('accepted');
     expect(after.acceptedBy).toBe(guest.id);
+  });
+  /**
+   * NO PENDING INVITATION MAY NAME A PROJECT-TIER ROLE — the state migration 0121 created and 0125
+   * repairs.
+   *
+   * 0121 deleted the custom roles and repointed pending invitations that named one at the workspace's
+   * `project_member` tier role, calling it "the least grant that keeps the invitation meaningful".
+   * `acceptInvitation` REFUSES exactly that slug with `INVITED_ROLE_IS_PROJECT_TIER`, inside the accept
+   * transaction and after `addMember` — so the whole thing rolled back, the row stayed `pending`, and
+   * every retry failed identically. `Resend Invitation` could not help: it rotates the token on the same
+   * row and never touches `role_id`.
+   *
+   * Asserted as a DATA INVARIANT over the live database rather than as a service call, because that is
+   * what was broken. A service test would have passed throughout: the refusal worked correctly, and the
+   * fault was that a migration put rows on the wrong side of it.
+   */
+  it('leaves no pending invitation naming a project-tier role', async () => {
+    const offenders = await db
+      .select({ id: workspaceInvitations.id, slug: systemRoles.slug })
+      .from(workspaceInvitations)
+      .innerJoin(systemRoles, eq(systemRoles.id, workspaceInvitations.roleId))
+      .where(
+        and(
+          eq(workspaceInvitations.status, 'pending'),
+          isNotNull(workspaceInvitations.roleId),
+          inArray(systemRoles.slug, ['project_admin', 'project_member']),
+        ),
+      );
+
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * And the API can no longer recreate that state: `roleId` is gone from the contract, because BOTH
+   * possible values are forbidden — the project tiers by the refusal above, and `workspace_admin` by
+   * `Phase 4/03_Settings_Audit/SRS.md:173` ("Invitation does not create a Workspace Admin account").
+   * With no third value left, a field that took one could only mint an unredeemable invitation.
+   */
+  it('creates invitations with no workspace role at all', async () => {
+    const email = `no-role-${Date.now()}@qnsc.dev`;
+    const invitation = await workspaces.inviteMember(WORKSPACE_ID, email, undefined, ADMIN_USER_ID);
+
+    const [row] = await db
+      .select({ roleId: workspaceInvitations.roleId })
+      .from(workspaceInvitations)
+      .where(eq(workspaceInvitations.id, invitation.id));
+
+    expect(row.roleId).toBeNull();
+  });
+
+  /**
+   * The positive half, and the one that proves the repair is worth something: a NULL-role invitation
+   * accepts. `acceptInvitation` reads NULL as "workspace baseline only" and skips `grantWorkspaceRole`
+   * entirely, so the invitee becomes a member with no workspace-wide role — the landing state AC-5
+   * describes.
+   */
+  it('accepts a NULL-role invitation, which the bricked ones could never do', async () => {
+    const email = `null-role-accept-${Date.now()}@qnsc.dev`;
+    const invitation = await workspaces.inviteMember(WORKSPACE_ID, email, undefined, ADMIN_USER_ID);
+
+    const [invitee] = await db
+      .insert(users)
+      .values({ email, displayName: 'Null Role Invitee', status: 'active' })
+      .returning({ id: users.id });
+
+    await workspaces.acceptInvitation(await rawTokenFor(invitation.id), invitee.id);
+
+    const [after] = await db
+      .select({ status: workspaceInvitations.status })
+      .from(workspaceInvitations)
+      .where(eq(workspaceInvitations.id, invitation.id));
+    expect(after.status).toBe('accepted');
+  });
+
+  /**
+   * The refusal itself stays, as defence in depth for rows written before 0125 or by raw SQL — the
+   * service still takes a `roleId` parameter even though no route supplies one.
+   */
+  it('still REFUSES a project-tier role reaching the service directly', async () => {
+    const email = `tier-refused-${Date.now()}@qnsc.dev`;
+    const [tier] = await db
+      .select({ id: systemRoles.id })
+      .from(systemRoles)
+      .where(
+        and(eq(systemRoles.slug, 'project_member'), eq(systemRoles.workspaceId, WORKSPACE_ID)),
+      );
+
+    const invitation = await workspaces.inviteMember(WORKSPACE_ID, email, tier.id, ADMIN_USER_ID);
+    const [invitee] = await db
+      .insert(users)
+      .values({ email, displayName: 'Tier Refused', status: 'active' })
+      .returning({ id: users.id });
+
+    await expect(
+      workspaces.acceptInvitation(await rawTokenFor(invitation.id), invitee.id),
+    ).rejects.toMatchObject({ code: 'INVITED_ROLE_IS_PROJECT_TIER' });
+
+    // And the refusal rolls the whole accept back — this is what made the bricked rows permanent.
+    const [after] = await db
+      .select({ status: workspaceInvitations.status })
+      .from(workspaceInvitations)
+      .where(eq(workspaceInvitations.id, invitation.id));
+    expect(after.status).toBe('pending');
+
+    /**
+     * Clean up, and the reason is worth stating: this test deliberately leaves a `pending` invitation
+     * naming a project-tier role, which is EXACTLY what the invariant test above asserts cannot exist.
+     * Left behind it fails that test on the next run — and `db/seeds/reset.ts` truncates nothing in
+     * `workspace.*`, so it would persist for ever. A test that manufactures the forbidden state has to
+     * remove it.
+     */
+    await db.delete(workspaceInvitations).where(eq(workspaceInvitations.id, invitation.id));
   });
 });

@@ -2949,7 +2949,6 @@ export interface components {
     InviteMemberDto: {
       /** Format: email */
       email: string
-      roleId?: string
       projectAccess?: {
         /** Format: uuid */
         projectId: string

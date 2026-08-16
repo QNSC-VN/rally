@@ -214,33 +214,49 @@ describe('InviteUserModal — the workspace role (GAP-P1-USER-006a)', () => {
     mockPOST.mockResolvedValue({ data: {}, error: undefined, response: { status: 201 } })
   })
 
-  it('offers ONLY Workspace Admin beside the plain member choice', async () => {
-    // The per-Project tiers are refused at acceptance, so an invitation that carries one is
-    // permanently unredeemable. The picker is where that has to be prevented.
+  /**
+   * There is no role selector at all now, and both halves of that are asserted.
+   *
+   * The previous two tests here pinned a Workspace-Admin-only picker, which was correct against the
+   * text of the day: the per-project tiers are refused at acceptance, so `workspace_admin` was the
+   * only value left. The BA has since forbidden that one too —
+   * `Phase 4/03_Settings_Audit/SRS.md:173`, "Invitation does not create a Workspace Admin account" —
+   * which leaves no grantable workspace role and makes the control itself wrong. `roleId` is gone from
+   * `InviteMemberSchema`, so the API cannot accept one either.
+   */
+  it('offers NO workspace-role control', async () => {
     renderModal()
-    fireEvent.click(await screen.findByRole('button', { name: 'Role' }))
 
-    expect(await screen.findByRole('button', { name: 'Workspace Admin' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Role' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Workspace Admin' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Project Admin' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Project Member' })).toBeNull()
   })
 
-  it('sends the selected role id, and the role NAME appears in the review step', async () => {
+  it('never sends a roleId — an invitation that carried one could not be redeemed', async () => {
     renderModal()
     typeEmail()
-    await pick('Role', 'Workspace Admin')
     submit()
 
-    // The review step restates what is about to be sent, so the role is part of it.
     expect(await screen.findByText('Review invitation')).toBeTruthy()
     expect(screen.getByText('bob@example.com')).toBeTruthy()
     await send()
 
     await waitFor(() => expect(mockPOST).toHaveBeenCalled())
-    expect(mockPOST.mock.calls[0][1].body).toEqual({
-      email: 'bob@example.com',
-      roleId: 'r-wa',
-    })
+    const body = mockPOST.mock.calls[0][1].body as Record<string, unknown>
+    expect(body).toEqual({ email: 'bob@example.com' })
+    expect('roleId' in body).toBe(false)
+  })
+
+  it('shows no workspace role in the review step', async () => {
+    // §6.4:172 lists "Project, Access Level and Team assignment" — no role.
+    renderModal()
+    typeEmail()
+    submit()
+
+    expect(await screen.findByText('Review invitation')).toBeTruthy()
+    expect(screen.queryByText('Workspace Admin')).toBeNull()
+    expect(screen.queryByText(/^Member$/)).toBeNull()
   })
 })
 

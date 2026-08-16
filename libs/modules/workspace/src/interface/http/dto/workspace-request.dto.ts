@@ -66,7 +66,26 @@ export const InvitationProjectAccessSchema = z.object({
 
 export const InviteMemberSchema = z.object({
   email: z.string().email(),
-  roleId: z.string().min(1).max(100).optional(),
+  /**
+   * NO `roleId`. An invitation cannot grant a workspace-wide role, and the field is absent rather
+   * than validated so the contract does not advertise what the service would refuse — the same
+   * reasoning `CreateTaskSchema` applies to a Task's derived iteration.
+   *
+   * Both possible values are forbidden, from opposite directions. `project_admin` / `project_member`
+   * are refused at acceptance with `INVITED_ROLE_IS_PROJECT_TIER`, because a workspace-scoped grant of
+   * a per-project role is the company-wide over-grant migration 0111 removed. And `workspace_admin` is
+   * forbidden by the BA outright — `Phase 4/03_Settings_Audit/SRS.md:173`, "Invitation does not create
+   * a Workspace Admin account". With those two excluded there is no third value left to accept, so a
+   * field that took one could only ever mint an invitation nobody can redeem.
+   *
+   * That is not hypothetical: migration 0121 repointed pending invitations at `project_member` and
+   * made them permanently unacceptable, which migration 0125 repairs. Keeping the field would leave
+   * the API able to recreate exactly that state.
+   *
+   * `workspace_invitations.role_id` stays in the schema — accepted rows are history — but nothing
+   * writes it now. Access comes from `projectAccess` below (§6.4) and from a per-project grant made
+   * after the member joins.
+   */
   /**
    * Optional, and an empty list is legal — that is the pre-§6.4 behaviour: the invitee lands with
    * no project access and stays No Access until someone grants a level. Making it required would
@@ -81,7 +100,22 @@ export const InviteMemberSchema = z.object({
   projectAccess: z.array(InvitationProjectAccessSchema).optional(),
 });
 
-export class InviteMemberDto extends createZodDto(InviteMemberSchema) {}
+/**
+ * `.strict()`, so a `roleId` is a 400 rather than a silent strip.
+ *
+ * Zod drops unknown keys by default, which for a removed field is the wrong failure: a caller still
+ * sending `roleId` would be told the invitation succeeded while the value was discarded, and would
+ * reasonably believe it had granted a role. That is the class of quiet mismatch this repo already
+ * refuses elsewhere — `TASK_ITERATION_DERIVED` exists because discarding a derived field silently was
+ * judged worse than refusing it.
+ *
+ * `InviteMemberSchema` itself stays non-strict so the shape stays a plain object: wrapping it in a
+ * refinement would make it a `ZodEffects` and change the generated client, which is the reasoning the
+ * `projectAccess` docblock above already records.
+ */
+export const InviteMemberStrictSchema = InviteMemberSchema.strict();
+
+export class InviteMemberDto extends createZodDto(InviteMemberStrictSchema) {}
 
 // ── Accept Invitation ─────────────────────────────────────────────────────────
 

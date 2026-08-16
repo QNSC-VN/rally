@@ -9,26 +9,29 @@
  * while importing from `./members-tab`, so this is the shape the repo had already assumed. The
  * PR checklist in `FRONTEND_CONVENTIONS.md` asks for no file over 500 lines.
  *
- * ── The ROLE selector offers exactly TWO choices, and that is the whole model, not a shortcut.
+ * ── There is NO role selector, and its removal is the rule rather than a simplification.
  *
- * `POST /v1/workspaces/{id}/invitations` accepts an optional `roleId`, and it was never sent — so
- * the workspace role was unselectable at invite time (GAP-P1-USER-006a). But the only role an
- * invitation may legitimately carry is `workspace_admin`:
+ * An invitation grants no workspace-wide role at all, because both possible values are forbidden from
+ * opposite directions:
  *
- *   • `workspace_admin` — a workspace-wide grant, which is exactly what an invitation can express.
- *   • `project_admin` / `project_member` — REFUSED at acceptance with
- *     `INVITED_ROLE_IS_PROJECT_TIER` (`WorkspaceService.acceptInvitation`). Under the 3-level model
- *     those tiers are granted per-Project through `project_members.access_level`; a workspace-scoped
- *     grant of one hands the invitee the full delivery set across EVERY project — the legacy
- *     over-grant migration 0111 deleted. Offering them would mint invitations that are permanently
- *     unredeemable, which is worse than not offering them.
+ *   • `project_admin` / `project_member` — REFUSED at acceptance with `INVITED_ROLE_IS_PROJECT_TIER`.
+ *     Those tiers are granted per-Project through `project_members.access_level`; a workspace-scoped
+ *     grant of one hands the invitee the full delivery set across EVERY project, which is the legacy
+ *     over-grant migration 0111 removed.
+ *   • `workspace_admin` — forbidden by the BA outright: `Phase 4/03_Settings_Audit/SRS.md:173`,
+ *     "Invitation does not create a Workspace Admin account."
  *
- * So "Member" (no `roleId` at all) and "Workspace Admin" are the two states the access model has,
- * and they mirror the only workspace-level distinction the rest of Settings draws — every other
- * surface here branches on `roleSlug === 'workspace_admin'` and nothing else. Custom roles and the
- * editable permission matrix were deleted by the 2026-08-14 ruling, so a general role list would be
- * offering choices the model no longer has. The option is built FROM `GET /v1/roles` rather than
- * from a literal id, because the role row is per-workspace data and its `name` is the admin's.
+ * With both excluded there is no third value, so a selector could only ever mint an invitation nobody
+ * can redeem. This file previously offered `workspace_admin` for exactly the reason above minus the
+ * BA's sentence, which had not been written yet — recorded because the earlier reasoning was sound
+ * against the text of the day.
+ *
+ * `roleId` is therefore absent from `InviteMemberSchema`, not validated inside it: the contract does
+ * not advertise what the service refuses. Access comes from the initial Project Access rows below
+ * (§6.4) and from a per-project grant made after the member joins.
+ *
+ * The review step likewise shows Email and Project Access only — `§6.4:172` lists "Project, Access
+ * Level and Team assignment", and no workspace role.
  *
  * ── The REVIEW step is the §5.1 `Review Changes` -> confirm pattern, reused rather than reinvented.
  *
@@ -61,7 +64,6 @@ import { FormField } from '@/shared/ui/form-field'
 import { IconButton } from '@/shared/ui/icon-button'
 import { Input } from '@/shared/ui/input'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
-import { useSystemRoles } from '../model/use-system-roles'
 
 type InviteForm = { email: string }
 
@@ -77,10 +79,8 @@ interface AccessRow {
  * because `SearchableSelect` reads the empty string as "nothing selected" and would show its
  * placeholder for what is a deliberate, and the DEFAULT, choice.
  */
-const NO_WORKSPACE_ROLE = 'member'
 
 /** The only workspace-wide role an invitation may grant — see the docblock. */
-const INVITABLE_ROLE_SLUG = 'workspace_admin'
 
 const LEVEL_LABEL = new Map(ACCESS_LEVEL_OPTIONS.map((o) => [o.value as string, o.label]))
 
@@ -146,12 +146,10 @@ function InviteAccessRow({
  */
 function InviteReviewSummary({
   email,
-  roleLabel,
   rows,
   projectLabels,
 }: {
   email: string
-  roleLabel: string
   rows: AccessRow[]
   projectLabels: Map<string, string>
 }) {
@@ -163,12 +161,6 @@ function InviteReviewSummary({
           {t('members.reviewEmail')}
         </span>
         <span className="text-ui-sm text-foreground">{email}</span>
-      </span>
-      <span className="flex flex-col gap-1">
-        <span className="text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
-          {t('members.reviewRole')}
-        </span>
-        <span className="text-ui-sm text-foreground">{roleLabel}</span>
       </span>
       <span className="flex flex-col gap-1">
         <span className="text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
@@ -232,21 +224,8 @@ export function InviteUserModal({
    * this screen, so the common path produced a member who signs in and can see nothing.
    */
   const [projectAccess, setProjectAccess] = useState<AccessRow[]>([])
-  const [roleChoice, setRoleChoice] = useState<string>(NO_WORKSPACE_ROLE)
   const [reviewing, setReviewing] = useState(false)
   const { data: projects = [] } = useProjects(workspaceId)
-  const { data: roles = [] } = useSystemRoles()
-
-  const invitableRole = roles.find((r) => r.slug === INVITABLE_ROLE_SLUG)
-  const roleOptions = useMemo<SelectOption[]>(
-    () => [
-      { value: NO_WORKSPACE_ROLE, label: t('members.roleMemberOption') },
-      ...(invitableRole ? [{ value: invitableRole.id, label: invitableRole.name }] : []),
-    ],
-    [t, invitableRole],
-  )
-  const roleLabel =
-    roleOptions.find((o) => o.value === roleChoice)?.label ?? t('members.roleMemberOption')
 
   /** A project already on another row is not offerable again — the API refuses duplicates. */
   const projectOptionsFor = (rowIndex: number): SelectOption[] => {
@@ -279,10 +258,8 @@ export function InviteUserModal({
         params: { path: { id: workspaceId } },
         // Each half OMITTED rather than sent empty when nothing was chosen. Absent `projectAccess`
         // means "no initial access", which is what every invitation created before §6.4 carries;
-        // absent `roleId` means "no workspace-wide role", which is the ordinary member.
         body: {
           email: data.email,
-          ...(roleChoice !== NO_WORKSPACE_ROLE && { roleId: roleChoice }),
           ...(rows.length > 0 && { projectAccess: rows }),
         },
       })
@@ -318,15 +295,6 @@ export function InviteUserModal({
               type="email"
               autoFocus
               placeholder="colleague@company.com"
-            />
-          </FormField>
-          <FormField label={t('members.roleFieldLabel')} hint={t('members.roleFieldHint')}>
-            <SearchableSelect
-              variant="field"
-              value={roleChoice}
-              ariaLabel={t('members.roleFieldLabel')}
-              options={roleOptions}
-              onChange={setRoleChoice}
             />
           </FormField>
           <FormField label={t('members.initialAccessLabel')} hint={t('members.initialAccessHint')}>
@@ -385,7 +353,6 @@ export function InviteUserModal({
         message={
           <InviteReviewSummary
             email={form.getValues('email')}
-            roleLabel={roleLabel}
             rows={rows}
             projectLabels={projectLabels}
           />
