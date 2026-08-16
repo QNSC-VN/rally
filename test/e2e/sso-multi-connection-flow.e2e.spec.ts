@@ -35,8 +35,8 @@ import {
 import { AccessService } from '@modules/access';
 import { DRIZZLE, type DrizzleDB } from '@platform/database/drizzle.provider';
 import { AppModule } from '../../apps/api/src/app.module';
-import { ssoConnections, ssoConnectionDomains } from '../../db/schema/identity';
-import { workspaceInvitations } from '../../db/schema/workspace';
+import { ssoConnections, ssoConnectionDomains, users } from '../../db/schema/identity';
+import { workspaceInvitations, workspaceMembers } from '../../db/schema/workspace';
 import { WORKSPACE_ID, ADMIN_USER_ID } from './support/flow-harness';
 
 const VENDOR_TID = 'e2e-mconn-vendor';
@@ -260,6 +260,85 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
    * this shape between its expiry and the next tick — and this suite's own fixture sat in it for
    * thirteen days.
    */
+  /**
+   * THE RETURNING COLLABORATOR — the journey the whole shared connection exists for.
+   *
+   * Acceptance flips the invitation out of `pending`, and `resolveForEmail` has no third tier, so a
+   * pending-only predicate let an external sign in exactly ONCE and then answered `NO_CONNECTION`
+   * for ever. Against a real database because the fix is a SQL predicate over two tables, and the
+   * bug was invisible to every test that only ever looked at a freshly-invited address.
+   *
+   * The removal half is the security pairing, and it is why routing keys on an ACTIVE membership row
+   * rather than on `status IN ('pending','accepted')`: an accepted invitation never reverses, so
+   * routing on it would readmit someone whose access was revoked — and the connection gate would let
+   * them through (it admits any surviving `users` row), then re-enrol them on an empty membership
+   * list. Both of those live in the vendored package, so this predicate is the only place it can be
+   * refused.
+   */
+  it('keeps routing a collaborator AFTER acceptance, and stops once membership is removed', async () => {
+    const email = `returning-${Date.now()}@shared-e2e.test`;
+
+    // Invited, not yet accepted — routes on the invitation branch.
+    await db.insert(workspaceInvitations).values({
+      workspaceId: WORKSPACE_ID,
+      email,
+      tokenHash: `e2e-mconn-returning-${Date.now()}`,
+      invitedBy: ADMIN_USER_ID,
+      status: 'pending',
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+    expect(await repo.findSharedByInvitedEmail(email)).not.toBeNull();
+
+    // Acceptance: the invitation leaves `pending` and a membership row appears. This is exactly what
+    // `WorkspaceService.acceptInvitation` does, reproduced here so the spec needs no HTTP session.
+    const [user] = await db
+      .insert(users)
+      .values({ email, displayName: 'Returning Collaborator', status: 'active' })
+      .returning({ id: users.id });
+    await db
+      .update(workspaceInvitations)
+      .set({ status: 'accepted', acceptedBy: user.id, acceptedAt: new Date() })
+      .where(
+        and(
+          eq(workspaceInvitations.workspaceId, WORKSPACE_ID),
+          sql`lower(${workspaceInvitations.email}) = ${email}`,
+        ),
+      );
+    await db
+      .insert(workspaceMembers)
+      .values({ workspaceId: WORKSPACE_ID, userId: user.id, status: 'active' });
+
+    // The regression: with a pending-only predicate this returned null and locked them out.
+    const returning = await repo.findSharedByInvitedEmail(email);
+    expect(returning).not.toBeNull();
+    expect(returning?.kind).toBe('shared');
+    // Case-insensitively, since an IdP may return a differently-cased local part.
+    expect(await repo.findSharedByInvitedEmail(email.toUpperCase())).not.toBeNull();
+
+    // SUSPENDED is neither active nor removed, and must not route either — `workspace_member_status`
+    // is `active | suspended | removed`, so a predicate written as `status <> 'removed'` would have
+    // admitted a suspended collaborator. `= 'active'` is the narrower and correct form.
+    await db
+      .update(workspaceMembers)
+      .set({ status: 'suspended' })
+      .where(
+        and(eq(workspaceMembers.workspaceId, WORKSPACE_ID), eq(workspaceMembers.userId, user.id)),
+      );
+    expect(await repo.findSharedByInvitedEmail(email)).toBeNull();
+
+    // Removed: the membership ends, the `users` row survives (a removal does not delete the person,
+    // which is exactly why the gate's `findByEmail != null` branch would still admit them).
+    await db
+      .update(workspaceMembers)
+      .set({ status: 'removed' })
+      .where(
+        and(eq(workspaceMembers.workspaceId, WORKSPACE_ID), eq(workspaceMembers.userId, user.id)),
+      );
+
+    // Nothing routes them now — so they never reach the gate that would have re-enrolled them.
+    expect(await repo.findSharedByInvitedEmail(email)).toBeNull();
+  });
+
   it('does NOT route an expired invitation, even while its status is still pending', async () => {
     const expiredEmail = `expired-${Date.now()}@shared-e2e.test`;
     await db.insert(workspaceInvitations).values({

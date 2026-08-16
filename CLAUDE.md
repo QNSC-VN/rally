@@ -655,9 +655,11 @@ goes out inline. Four consequences worth knowing before touching either half:
 
 - **A permanent Graph refusal schedules NO email** (invalid address, `User.Invite.All` unconsented, B2B
   invitations disabled tenant-wide). The invitee cannot authenticate, so a link is a dead end that also
-  burns the one-shot token; the dead-letter log and `last_error` are the signal and `Resend Invitation`
-  is the human action. A benign `proxyAddresses` collision DOES email — that invitee is already a
-  directory member.
+  burns the one-shot token; the dead-letter log and `last_error` are the signal. **The operator action is
+  CANCEL AND RE-INVITE, not `Resend Invitation`** — resend reuses the same `idempotencyKey`
+  (`invitation.id`) with `onConflictDoNothing`, so a row already at `status = 'failed'` is untouched and
+  the guest is never re-provisioned; only a NEW invitation mints a new key. A benign `proxyAddresses`
+  collision DOES email — that invitee is already a directory member.
 - **The flag gates ENQUEUEING, not draining.** The relay used to skip polling entirely while the flag
   was off; now that a queued row also owes the email, that would strand the invitee in silence, so
   committed intents are always drained.

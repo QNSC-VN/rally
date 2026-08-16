@@ -882,6 +882,13 @@ module "worker" {
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
     { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
+    # The worker WRITES user-facing links now, so it needs the same origin the api has (see :690).
+    # Not cosmetic: with ENTRA_GUEST_INVITE_ENABLED on, the guest-invite relay becomes the writer of
+    # the invitation email's `inviteUrl` and of Graph's `inviteRedirectUrl`, and `APP_BASE_URL`
+    # DEFAULTS to http://localhost:5173 in env.schema.ts. Absent here every external invitee would be
+    # mailed a localhost link and nothing would error — exactly the silent class of failure this file
+    # keeps warning about. The other relays only send notifications, which is why it was never needed.
+    { name = "APP_BASE_URL", value = local.app_base_url },
     # GitHub App (SCM backfill). App ID stays empty until the App is registered,
     # keeping backfill dormant (GithubAppAuthService.isConfigured() = false). The
     # private-key ref is the SM ARN, resolved at runtime via the task role above.

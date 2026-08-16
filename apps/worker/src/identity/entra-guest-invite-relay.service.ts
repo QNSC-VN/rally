@@ -116,7 +116,7 @@ export class EntraGuestInviteRelayService
    * (`GuestInviteSchedulerService` still writes nothing while it is off, which is what keeps a
    * pre-consent deployment from dead-lettering every invitation), and if a drained row now fails
    * because consent was revoked, it dead-letters LOUDLY: `DEAD_LETTER_FIELD` is what the CloudWatch
-   * alarm matches, and `Resend Invitation` is the operator's fix. Silence with an alarm beats silence
+   * alarm matches, and cancel-and-re-invite is the operator's fix. Silence with an alarm beats silence
    * without one. The cost is one indexed partial-index lookup per 10s per worker for a dormant
    * feature, which is what the other four relays already pay.
    */
@@ -313,8 +313,9 @@ export class EntraGuestInviteRelayService
    * configuration, so they cannot authenticate. A link would be a dead end that reads as a broken
    * product, and worse, it would consume the invitation's one-shot token on a login that cannot
    * complete. The dead-letter log (`DEAD_LETTER_FIELD`, which the CloudWatch alarm matches) and
-   * `last_error` are the signal, and `Resend Invitation` is the deliberate human action once the
-   * cause is fixed.
+   * `last_error` are the signal. The operator action is CANCEL AND RE-INVITE: `resendInvitation`
+   * schedules under the same `idempotencyKey` (`invitation.id`) with `onConflictDoNothing`, so it
+   * cannot revive a row already at `failed` — only a new invitation id mints a new key.
    *
    * Retryable (5xx / 429 / 408 / network): the email simply WAITS. Scheduling it on a non-final
    * attempt would race the very ordering this relay exists to guarantee.

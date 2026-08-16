@@ -24,13 +24,30 @@ export const INVITATION_REFUSALS = [
 
 export type InvitationRefusal = (typeof INVITATION_REFUSALS)[number]
 
-/** `code` → refusal. Exhaustive over the codes `acceptInvitation` throws. */
+/**
+ * `code` → refusal. Exhaustive over the codes `acceptInvitation` throws.
+ *
+ * Note the last two do NOT come from the invitation checks — they surface from
+ * `AccessService.grantProjectAccess`, which runs INSIDE the accept transaction when the invitation
+ * carried §6.4 per-project access. They matter because the generic `unknown` state offers Retry, and
+ * retrying either of these can never succeed: the whole transaction rolls back and the same inputs
+ * produce the same refusal every time. Mapping them to `roleIsProjectTier` puts them where they
+ * belong — an invitation that cannot be redeemed as issued, and an admin has to fix it, not the
+ * reader. `PROJECT_MEMBER_IS_WORKSPACE_ADMIN` is deliberately absent: `grantProjectAccess` is called
+ * with `onWorkspaceAdmin: 'skip'`, so it cannot reach here.
+ */
 const BY_CODE: Record<string, InvitationRefusal> = {
   INVITATION_NOT_FOUND: 'notFound',
   INVITATION_ALREADY_USED: 'alreadyUsed',
   INVITATION_EXPIRED: 'expired',
   INVITATION_EMAIL_MISMATCH: 'emailMismatch',
   INVITED_ROLE_IS_PROJECT_TIER: 'roleIsProjectTier',
+  // The invitation named a project that has since been soft-deleted (`deleted_at`, which fires no
+  // FK cascade, so the invitation's project-access row survives the project).
+  PROJECT_NOT_FOUND: 'roleIsProjectTier',
+  // The invitee is an existing but non-active workspace member, so `addMember` is skipped and the
+  // active-membership check then refuses the project grant.
+  ASSIGNEE_NOT_WORKSPACE_MEMBER: 'roleIsProjectTier',
 }
 
 export function refusalFor(code: string | undefined): InvitationRefusal {

@@ -68,6 +68,42 @@ describe('SsoConnectionDrizzleRepository — a live invitation is pending AND un
     expect(captured[0].params).toContain('vendor@gmail.com');
   });
 
+  /**
+   * The router must also admit a RETURNING collaborator, and must not admit a REMOVED one.
+   *
+   * Asserted on the rendered SQL because both halves are conditions whose absence is invisible from
+   * outside: without the membership branch an external can sign in exactly once (acceptance flips
+   * the invitation out of `pending`), and without `status = 'active'` on that branch a removed
+   * collaborator would route, reach a gate that admits any existing `users` row, and be silently
+   * re-enrolled by `provisionIntoConnection`. Lockout in one direction, re-admission in the other.
+   */
+  it('admits a returning ACTIVE member as well as a live invitation', async () => {
+    const { repo, captured } = recordingRepo();
+
+    await repo.findSharedByInvitedEmail('vendor@gmail.com');
+
+    const where = whereClause(captured[0].sql);
+    // Two alternatives, not one.
+    expect(where).toContain(' or ');
+    expect(where).toContain('workspace_members');
+    expect(where).toContain('workspace_invitations');
+    // Both correlate to the connection's own workspace rather than matching any workspace.
+    expect(where.match(/"workspace_id"/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it('requires the membership row to be ACTIVE — a removed collaborator must not route', async () => {
+    const { repo, captured } = recordingRepo();
+
+    await repo.findSharedByInvitedEmail('vendor@gmail.com');
+
+    const where = whereClause(captured[0].sql);
+    const membershipBranch = where.slice(where.indexOf('workspace_members'));
+    // `active` is bound as a parameter, so assert the column is constrained inside that branch and
+    // that the value reaches the driver — a branch without it would readmit a removed person.
+    expect(membershipBranch).toContain('"status"');
+    expect(captured[0].params).toContain('active');
+  });
+
   it('hasPendingInvitation checks expires_at too — the two must not diverge again', async () => {
     const { repo, captured } = recordingRepo();
 
