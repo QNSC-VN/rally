@@ -65,6 +65,9 @@ const mockInvitation = (o: Partial<WorkspaceInvitation> = {}): WorkspaceInvitati
   workspaceId: 'ws-1',
   email: 'bob@example.com',
   roleId: null,
+  // NULL by default: the ordinary invitation has no guest object (staff, or the flag off), so the
+  // address binding applies unless a spec sets this.
+  entraGuestObjectId: null,
   status: 'pending',
   invitedBy: 'user-1',
   expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
@@ -106,6 +109,8 @@ const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> => ({
   // The invited address by default, so an accept in these specs is a matching one; a test that
   // cares about the mismatch overrides it.
   findUserEmail: vi.fn().mockResolvedValue('bob@example.com'),
+  // Empty by default so the address binding is the one under test; the oid-binding specs override it.
+  findSsoSubjects: vi.fn().mockResolvedValue([]),
   grantWorkspaceRole: vi.fn().mockResolvedValue(undefined),
 });
 
@@ -805,6 +810,64 @@ describe('WorkspaceService', () => {
       });
       expect(memberRepo.addMember).not.toHaveBeenCalled();
       expect(invitationRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The oid binding, and the attack it closes.
+     *
+     * `INVITATION_EMAIL_MISMATCH` compares the Entra token's `email` claim, and Microsoft states that
+     * apps should never use that claim for authorization — the strip-unverified-email mitigation
+     * EXEMPTS single-tenant apps, which this is. So a guest homed in a tenant they control can set
+     * their own `mail` to any string. These three pin that a guest-provisioned invitation is bound to
+     * the directory OBJECT instead, which the guest cannot edit.
+     */
+    it('REFUSES a spoofed address when the invitation names a guest object', async () => {
+      // The whole attack in one setup: the email matches (they renamed themselves to the invitee's
+      // address) and the oid does not. The address check would have admitted this.
+      invitationRepo.findByTokenHash.mockResolvedValue(
+        mockInvitation({ status: 'pending', entraGuestObjectId: 'oid-of-the-real-invitee' }),
+      );
+      memberRepo.findUserEmail.mockResolvedValue('bob@example.com');
+      memberRepo.findSsoSubjects.mockResolvedValue(['oid-of-somebody-else']);
+
+      await expect(service.acceptInvitation('raw-token', 'user-9')).rejects.toMatchObject({
+        code: 'INVITATION_EMAIL_MISMATCH',
+      });
+      expect(memberRepo.addMember).not.toHaveBeenCalled();
+      expect(invitationRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('accepts on the oid, and does not consult the email at all', async () => {
+      invitationRepo.findByTokenHash.mockResolvedValue(
+        mockInvitation({ status: 'pending', entraGuestObjectId: 'oid-1' }),
+      );
+      // Deliberately a NON-matching address: the oid is authoritative, so this must not matter.
+      memberRepo.findUserEmail.mockResolvedValue('renamed@elsewhere.test');
+      memberRepo.findSsoSubjects.mockResolvedValue(['oid-other', 'oid-1']);
+      memberRepo.findMember.mockResolvedValue(null);
+      memberRepo.addMember.mockResolvedValue(mockMember());
+
+      await service.acceptInvitation('raw-token', 'user-2');
+
+      expect(invitationRepo.updateStatus).toHaveBeenCalled();
+      // The weaker check is not even reached — otherwise it would have refused this accept.
+      expect(memberRepo.findUserEmail).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the address when no guest object was recorded', async () => {
+      // The ordinary staff case: the relay writes no oid for someone already in the directory, and an
+      // invitation predating the column has none either. Refusing those would break both.
+      invitationRepo.findByTokenHash.mockResolvedValue(
+        mockInvitation({ status: 'pending', entraGuestObjectId: null }),
+      );
+      memberRepo.findUserEmail.mockResolvedValue('bob@example.com');
+      memberRepo.findMember.mockResolvedValue(null);
+      memberRepo.addMember.mockResolvedValue(mockMember());
+
+      await service.acceptInvitation('raw-token', 'user-2');
+
+      expect(invitationRepo.updateStatus).toHaveBeenCalled();
+      expect(memberRepo.findSsoSubjects).not.toHaveBeenCalled();
     });
 
     it('accepts a differently-cased address as the same mailbox', async () => {

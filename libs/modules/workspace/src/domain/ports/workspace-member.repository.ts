@@ -52,6 +52,17 @@ export interface IWorkspaceMemberRepository {
    */
   findUserEmail(userId: string): Promise<string | null>;
   /**
+   * The user's Entra subject ids (`oid`), for binding an invitation to the DIRECTORY OBJECT rather
+   * than to a claim the holder can edit.
+   *
+   * Returned as a list because `sso_identities` is unique on `(provider, provider_sub)`, not on
+   * `(provider, user_id)` — a person legitimately has one row per subject they have linked.
+   *
+   * Same reasoning as `findUserEmail` for living here: this repository already joins `identity.*`,
+   * and a second port for one column would be ceremony.
+   */
+  findSsoSubjects(userId: string, provider: 'entra'): Promise<string[]>;
+  /**
    * Grant the invited workspace-scoped role, in the caller's transaction.
    *
    * `workspace_members.role_id` is denormalised and NOT authoritative — this repository's own

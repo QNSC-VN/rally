@@ -39,6 +39,7 @@
  * separate process — which means "did we schedule it" and "did it go out" are genuinely two questions
  * and this file answers the first one honestly rather than both badly.
  */
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import type { INestApplication } from '@nestjs/common';
@@ -47,6 +48,8 @@ import { WorkspaceService } from '@modules/workspace';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { emailOutbox } from '../../db/schema/messaging';
+import { workspaceInvitations } from '../../db/schema/workspace';
+import { ssoIdentities, users } from '../../db/schema/identity';
 import { ADMIN_USER_ID, bootRallyApp, WORKSPACE_ID } from './support/flow-harness';
 
 describe('invitation email (real AppModule + seeded DB)', () => {
@@ -63,6 +66,24 @@ describe('invitation email (real AppModule + seeded DB)', () => {
   afterAll(async () => {
     await app?.close();
   });
+
+  /**
+   * The raw token, from the only place it exists.
+   *
+   * `mintInviteToken` persists just the sha256, and `inviteMember` returns a `WorkspaceInvitation`
+   * that deliberately omits the token — a response carrying it would defeat the bind-to-recipient
+   * rule. So the scheduled email's `inviteUrl` is the honest source, exactly as a real invitee gets it.
+   */
+  async function rawTokenFor(invitationId: string): Promise<string> {
+    const [row] = await db
+      .select({ vars: emailOutbox.vars })
+      .from(emailOutbox)
+      .where(eq(emailOutbox.idempotencyKey, invitationId));
+    const url = (row?.vars as Record<string, string> | undefined)?.inviteUrl ?? '';
+    const token = new URL(url).searchParams.get('token');
+    if (!token) throw new Error(`No invite token in outbox row for ${invitationId}`);
+    return token;
+  }
 
   it('schedules a workspace-invitation email addressed to the INVITED address', async () => {
     // A per-run address: `cancelExistingForEmail` supersedes an earlier pending invitation for the
@@ -119,5 +140,96 @@ describe('invitation email (real AppModule + seeded DB)', () => {
     expect(second.id).not.toBe(first.id);
     const rows = await db.select().from(emailOutbox).where(eq(emailOutbox.to, email.toLowerCase()));
     expect(rows).toHaveLength(2);
+  });
+  /**
+   * ACCEPTANCE BINDS TO THE GUEST'S DIRECTORY OBJECT, not to a claim they can edit.
+   *
+   * Against a real database because the strong binding spans two tables written by two different
+   * components: the guest-invite relay writes `workspace_invitations.entra_guest_object_id` from
+   * Graph's `invitedUser.id`, and provisioning writes `sso_identities.provider_sub` from the token's
+   * `oid`. A service-level test with both mocked proves the comparison; only this proves the two
+   * values are the same thing in the schema.
+   *
+   * The attack: Microsoft states apps must never authorize on the `email` claim, and the
+   * strip-unverified-email mitigation EXEMPTS single-tenant apps like ours — so a guest homed in a
+   * tenant they control can set their `mail` to the invitee's address. The first case below is exactly
+   * that shape: matching email, wrong object id.
+   */
+  it('refuses a matching EMAIL when the guest object id does not match', async () => {
+    const invitedEmail = `oid-bind-${Date.now()}@gmail.com`;
+    const invitation = await workspaces.inviteMember(
+      WORKSPACE_ID,
+      invitedEmail,
+      undefined,
+      ADMIN_USER_ID,
+    );
+    // Stand in for the relay: record the object id Graph would have returned for the real invitee.
+    const realInviteeOid = randomUUID();
+    await db
+      .update(workspaceInvitations)
+      .set({ entraGuestObjectId: realInviteeOid })
+      .where(eq(workspaceInvitations.id, invitation.id));
+
+    // An impostor who holds the SAME address (the spoof) but a different Entra object.
+    const [impostor] = await db
+      .insert(users)
+      .values({ email: invitedEmail, displayName: 'Impostor', status: 'active' })
+      .returning({ id: users.id });
+    await db.insert(ssoIdentities).values({
+      userId: impostor.id,
+      provider: 'entra',
+      providerSub: randomUUID(),
+      providerEmail: invitedEmail,
+    });
+
+    await expect(
+      workspaces.acceptInvitation(await rawTokenFor(invitation.id), impostor.id),
+    ).rejects.toMatchObject({ code: 'INVITATION_EMAIL_MISMATCH' });
+
+    // And nothing was granted: the refusal happens before any write.
+    const [after] = await db
+      .select({ status: workspaceInvitations.status })
+      .from(workspaceInvitations)
+      .where(eq(workspaceInvitations.id, invitation.id));
+    expect(after.status).toBe('pending');
+  });
+
+  it('accepts on the object id even when the email no longer matches', async () => {
+    const invitedEmail = `oid-ok-${Date.now()}@gmail.com`;
+    const invitation = await workspaces.inviteMember(
+      WORKSPACE_ID,
+      invitedEmail,
+      undefined,
+      ADMIN_USER_ID,
+    );
+    const genuineOid = randomUUID();
+    await db
+      .update(workspaceInvitations)
+      .set({ entraGuestObjectId: genuineOid })
+      .where(eq(workspaceInvitations.id, invitation.id));
+
+    // The genuine invitee, whose directory address differs from the one the admin typed — a real case
+    // (an alias, or a mailbox renamed since). The oid is what makes them the same person.
+    const [guest] = await db
+      .insert(users)
+      .values({ email: `renamed-${Date.now()}@gmail.com`, displayName: 'Guest', status: 'active' })
+      .returning({ id: users.id });
+    await db.insert(ssoIdentities).values({
+      userId: guest.id,
+      provider: 'entra',
+      // Deliberately UPPER-CASE: `uuid` renders lower-case, `provider_sub` is a varchar holding the
+      // claim verbatim, so the comparison must not be case-sensitive.
+      providerSub: genuineOid.toUpperCase(),
+      providerEmail: invitedEmail,
+    });
+
+    await workspaces.acceptInvitation(await rawTokenFor(invitation.id), guest.id);
+
+    const [after] = await db
+      .select({ status: workspaceInvitations.status, acceptedBy: workspaceInvitations.acceptedBy })
+      .from(workspaceInvitations)
+      .where(eq(workspaceInvitations.id, invitation.id));
+    expect(after.status).toBe('accepted');
+    expect(after.acceptedBy).toBe(guest.id);
   });
 });
