@@ -93,8 +93,16 @@ module "stack" {
   // The module default is already `false`; this stays written out so the intent is visible in the env
   // that used to differ. `db/migrate.ts` also refuses the demo seed outright under NODE_ENV=production,
   // so flipping this back would not be enough to reach a deployed database.
-  seed_on_deploy        = false
-  platform_admin_emails = var.platform_admin_emails
+  seed_on_deploy = false
+
+  # Entra B2B guest provisioning, ON for develop only.
+  #
+  # Requires the `User.Invite.All` APPLICATION permission with admin consent on the app registration
+  # in `entra_client_id` — granted 2026-08-16. Without it every queued row dead-letters with a 403
+  # AND the invitee hears nothing, because once this is on the guest-invite relay owns the invitation
+  # email. Prod stays at the variable's `false` default until this has been exercised here.
+  entra_guest_invite_enabled = true
+  platform_admin_emails      = var.platform_admin_emails
 
   entra_tenant_id = var.entra_tenant_id
   entra_client_id = var.entra_client_id

@@ -151,6 +151,24 @@ variable "seed_on_deploy" {
 }
 
 
+variable "entra_guest_invite_enabled" {
+  description = <<-EOT
+    Whether an invitation also provisions the invitee as an Entra B2B GUEST via Microsoft Graph.
+
+    OFF is the safe default and the only correct value until the tenant has granted the
+    `User.Invite.All` APPLICATION permission with admin consent to the app registration in
+    `entra_client_id`. Without that grant every queued row dead-letters with a 403, and — because the
+    guest-invite relay owns the invitation email once this is on — the invitee would hear nothing at
+    all rather than receiving a link they cannot use.
+
+    Turning it ON also moves the invitation email off the API and onto the worker, so the worker
+    becomes a dependency of onboarding. Read the guest-invite section of CLAUDE.md before enabling it
+    in an environment people rely on.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "entra_tenant_id" {
   type = string
 }
