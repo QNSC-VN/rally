@@ -69,6 +69,10 @@ export const FIXTURE_TABLES = [
   'work.activity_logs',
   'messaging.notification_outbox',
   'messaging.email_outbox',
+  // Truncating the CHILD of workspace.workspace_invitations is safe — an FK restricts truncating a
+  // parent, never a child — and `workspace.*` stays deliberately absent from this list, so the
+  // invitations themselves survive a reset exactly as they did before this table existed.
+  'messaging.guest_invite_outbox',
   'messaging.outbox_events',
   'notifications.in_app_notifications',
   'notifications.notification_preferences',

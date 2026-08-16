@@ -273,7 +273,7 @@ export function LoginPage() {
                     htmlFor="login-email"
                     className="text-ui-sm font-medium text-muted-foreground"
                   >
-                    {t('workEmailLabel')}
+                    {t('email')}
                   </label>
                   <input
                     id="login-email"

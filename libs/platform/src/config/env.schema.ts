@@ -256,6 +256,23 @@ export const EnvSchema = z
      */
     ENTRA_REDIRECT_URI: z.string().url(),
     /**
+     * Provision an invited external collaborator as a Microsoft Entra B2B GUEST.
+     *
+     * When true, `WorkspaceService.inviteMember` writes a `messaging.guest_invite_outbox` row in
+     * the invite transaction and the worker relay calls
+     * `POST https://graph.microsoft.com/v1.0/invitations` app-only, reusing the SAME app
+     * registration and secret as the BFF (`ENTRA_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`) —
+     * no new secret and no infra change.
+     *
+     * DEFAULT FALSE, and load-bearing. The registration needs the `User.Invite.All` APPLICATION
+     * permission with admin consent before any of it can work; without it every Graph call is a
+     * 403, and an invitation must not break because a directory grant has not landed yet. Off, no
+     * outbox row is written and `inviteMember` behaves exactly as it did before.
+     *
+     * `booleanish`, not `z.coerce.boolean()` — the latter turns the string "false" into `true`.
+     */
+    ENTRA_GUEST_INVITE_ENABLED: booleanish(false),
+    /**
      * Multi-IdP broker: the single app-level OIDC callback shared by every
      * federated connection (the same `/bff/callback` endpoint). Defaults to
      * ENTRA_REDIRECT_URI when unset (the home connection reuses it).

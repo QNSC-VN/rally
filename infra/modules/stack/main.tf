@@ -882,6 +882,13 @@ module "worker" {
     { name = "ENTRA_TENANT_ID", value = var.entra_tenant_id },
     { name = "ENTRA_CLIENT_ID", value = var.entra_client_id },
     { name = "ENTRA_REDIRECT_URI", value = "${local.app_base_url}/v1/bff/callback" },
+    # The worker WRITES user-facing links now, so it needs the same origin the api has (see :690).
+    # Not cosmetic: with ENTRA_GUEST_INVITE_ENABLED on, the guest-invite relay becomes the writer of
+    # the invitation email's `inviteUrl` and of Graph's `inviteRedirectUrl`, and `APP_BASE_URL`
+    # DEFAULTS to http://localhost:5173 in env.schema.ts. Absent here every external invitee would be
+    # mailed a localhost link and nothing would error — exactly the silent class of failure this file
+    # keeps warning about. The other relays only send notifications, which is why it was never needed.
+    { name = "APP_BASE_URL", value = local.app_base_url },
     # GitHub App (SCM backfill). App ID stays empty until the App is registered,
     # keeping backfill dormant (GithubAppAuthService.isConfigured() = false). The
     # private-key ref is the SM ARN, resolved at runtime via the task role above.
@@ -970,6 +977,24 @@ module "migrator" {
     # connection, so SSO authenticates but only invited / already-provisioned
     # users (+ platform-admins) get in. No silent auto-join for any qnsc.vn user.
     SSO_JIT_ENABLED = "false"
+    # SSO_ALLOWED_EMAIL_DOMAINS is deliberately NOT set here, and an earlier revision of this change
+    # set it to "" — recorded because the reasoning is easy to repeat.
+    #
+    # The thought was that an invited external on a consumer mailbox needs the home connection's
+    # allow-list emptied, or `isEmailDomainAllowed` refuses them before the invitation is consulted.
+    # That is true only of the DIRECTORY connection. `assertConnectionAllows` skips the domain check
+    # outright when `kind === 'shared'`, and an invited external resolves to the seeded `shared`
+    # connection (by invitation, never by domain), so emptying this buys the intended flow nothing.
+    #
+    # What it would cost: the STAFF connection would accept every domain, i.e. any identity Entra can
+    # authenticate in the tenant, leaving `SSO_JIT_ENABLED=false` as the only remaining control; the
+    # bootstrap reconcile runs unconditionally on every deploy, so production's home connection would
+    # be widened too; and because the seed inserts `sso_connection_domains` rows only when the list is
+    # non-empty, a NEW environment would get no domain row at all and staff typing a company address
+    # would fall through to `NO_CONNECTION`.
+    #
+    # So the split the schema already intends stands: directory = staff, by owned domain. Shared =
+    # externals, by invitation.
   }
 
   secrets = merge({

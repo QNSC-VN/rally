@@ -26,8 +26,7 @@ import { useInitialProject } from '@/features/projects/use-initial-project'
 import { useProjectTeams, type Team } from '@/features/teams/api'
 import { useNotificationUnreadCount, useNotificationSse } from '@/features/notifications/api'
 import { useProjectPermissions } from '@/features/access/api'
-import { ENV } from '@/shared/config/env'
-import { withCsrfHeader } from '@/shared/api/csrf'
+import { revokeSession } from '@/shared/api/sign-out'
 import { isFeatureEnabled } from '@/shared/config/feature-flags'
 // The nav table now lives in `shared/config` so the ROUTER reads the same rows this shell does.
 // Before that the pairing existed only here: the nav hid an item the caller lacked the code for and
@@ -158,7 +157,7 @@ function ProjectTreeItem({
 }
 
 export function AppShell() {
-  const { user, clearAuth, memberships, activeWorkspaceId } = useAuthStore()
+  const { user, memberships, activeWorkspaceId } = useAuthStore()
   const { workspace, project, team, setWorkspace, setProject, setTeam } = useAppContext()
   const navigate = useNavigate()
   const routerState = useRouterState()
@@ -264,19 +263,11 @@ export function AppShell() {
   }, [teamId, projectId])
 
   async function handleSignOut() {
-    // Revoke the server-side session (clears the __Host-rally_session cookie)
-    // and return to login. The browser holds no tokens to clear.
-    try {
-      await fetch(`${ENV.API_BASE_URL}/v1/bff/logout`, {
-        method: 'POST',
-        credentials: 'include',
-        referrerPolicy: 'no-referrer',
-        headers: withCsrfHeader('POST'),
-      })
-    } catch {
-      // Ignore network errors on sign-out — always clear local state
-    }
-    clearAuth()
+    // Revoke the server-side session (clears the __Host-rally_session cookie) and return to login.
+    // The browser holds no tokens to clear. The POST + clearAuth pair lives in
+    // `shared/api/sign-out.ts` because `/accept-invitation` needs the same thing for its
+    // wrong-account refusal, and a page cannot import a widget.
+    await revokeSession()
     toast.success('Signed out')
     await navigate({ to: '/login' })
   }

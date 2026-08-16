@@ -21,6 +21,8 @@
  *
  * Channel naming:
  *   `${REDIS_KEY_PREFIX}notifications:relay:wake`
+ *   `${REDIS_KEY_PREFIX}notifications:email:relay:wake`
+ *   `${REDIS_KEY_PREFIX}notifications:guest-invite:relay:wake`
  *   `${REDIS_KEY_PREFIX}notifications:user:{recipientId}`
  *   The prefix isolates staging / production environments sharing the same Valkey node.
  *   NOTE: ioredis does NOT apply keyPrefix to pub/sub channels automatically — we
@@ -97,6 +99,17 @@ export class NotificationPubSubService implements OnModuleInit, OnModuleDestroy 
     return this.ns('email:relay:wake');
   }
 
+  /**
+   * Channel the Worker subscribes to when it should check guest_invite_outbox immediately.
+   *
+   * Third instance of the same pattern rather than a new mechanism, and it earns its place because
+   * the INVITATION EMAIL now waits on that relay: the email is scheduled only once Entra
+   * provisioning has resolved, so the guest relay's cadence is what the invitee experiences.
+   */
+  guestInviteRelayWakeChannel(): string {
+    return this.ns('guest-invite:relay:wake');
+  }
+
   /** Channel the API subscribes to per-user for pushing real-time SSE events. */
   userChannel(recipientId: string): string {
     return this.ns(`user:${recipientId}`);
@@ -123,6 +136,17 @@ export class NotificationPubSubService implements OnModuleInit, OnModuleDestroy 
    */
   async wakeEmailRelay(): Promise<void> {
     await this.cache.instance.publish(this.emailRelayWakeChannel(), '');
+  }
+
+  /**
+   * Published by GuestInviteSchedulerService after writing to guest_invite_outbox.
+   *
+   * Same shape as wakeEmailRelay(), and needed for the same reason: while
+   * `ENTRA_GUEST_INVITE_ENABLED` is on, the invitation email is scheduled by that relay, so its
+   * 10s cron would otherwise be latency the INVITEE feels. Best-effort — the cron is the fallback.
+   */
+  async wakeGuestInviteRelay(): Promise<void> {
+    await this.cache.instance.publish(this.guestInviteRelayWakeChannel(), '');
   }
 
   /**
@@ -176,6 +200,11 @@ export class NotificationPubSubService implements OnModuleInit, OnModuleDestroy 
   /** Subscribe to email relay wake signals.  Returns unsubscribe fn. */
   subscribeEmailRelayWake(handler: () => void): Promise<() => Promise<void>> {
     return this.subscribe(this.emailRelayWakeChannel(), handler);
+  }
+
+  /** Subscribe to guest-invite relay wake signals.  Returns unsubscribe fn. */
+  subscribeGuestInviteRelayWake(handler: () => void): Promise<() => Promise<void>> {
+    return this.subscribe(this.guestInviteRelayWakeChannel(), handler);
   }
 
   /** Subscribe to a specific user's notification events.  Returns unsubscribe fn. */

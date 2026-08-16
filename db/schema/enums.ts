@@ -163,6 +163,18 @@ export const notificationJobStatusEnum = pgEnum('notification_job_status', [
   'failed',
 ]);
 
+/**
+ * Status for rows in messaging.guest_invite_outbox (migration 0123).
+ *
+ * Its own type rather than borrowing `email_job_status`: the values coincide today, and a queue
+ * that has to add a state must be able to without moving another queue's type with it.
+ */
+export const guestInviteJobStatusEnum = pgEnum('guest_invite_job_status', [
+  'pending',
+  'sent',
+  'failed',
+]);
+
 // ── scm (source-control connections) ─────────────────────────────────────────
 
 /** SCM host. Provider-tagged for future SCMs (GitLab/Bitbucket). */
@@ -357,6 +369,7 @@ export type ReleaseStatus = (typeof releaseStatusEnum.enumValues)[number];
 export type OutboxStatus = (typeof outboxStatusEnum.enumValues)[number];
 export type EmailJobStatus = (typeof emailJobStatusEnum.enumValues)[number];
 export type NotificationJobStatus = (typeof notificationJobStatusEnum.enumValues)[number];
+export type GuestInviteJobStatus = (typeof guestInviteJobStatusEnum.enumValues)[number];
 export type ScmProvider = (typeof scmProviderEnum.enumValues)[number];
 export type ScmConnectionType = (typeof scmConnectionTypeEnum.enumValues)[number];
 export type ScmInboxStatus = (typeof scmInboxStatusEnum.enumValues)[number];

@@ -1,5 +1,5 @@
 /**
- * messaging schema — outbox_events, email_outbox, notification_outbox
+ * messaging schema — outbox_events, email_outbox, notification_outbox, guest_invite_outbox
  * Canonical DDL: 05_Architecture/DATABASE_SCHEMA.md §9
  */
 import {
@@ -13,7 +13,12 @@ import {
   index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { outboxStatusEnum, emailJobStatusEnum, notificationJobStatusEnum } from './enums';
+import {
+  outboxStatusEnum,
+  emailJobStatusEnum,
+  notificationJobStatusEnum,
+  guestInviteJobStatusEnum,
+} from './enums';
 
 export const messagingSchema = pgSchema('messaging');
 
@@ -158,5 +163,74 @@ export const notificationOutbox = messagingSchema.table(
     statusIdx: index('ix_notification_outbox_status')
       .on(t.status, t.scheduledAt)
       .where(sql`status = 'pending'`),
+  }),
+);
+
+/**
+ * guest_invite_outbox — transactional outbox for Microsoft Entra B2B GUEST provisioning
+ * (migration 0123).
+ *
+ * `WorkspaceService.inviteMember` INSERTs a row in the SAME transaction that creates the
+ * invitation, so the provisioning intent cannot outlive a rolled-back invite and cannot be lost by
+ * one that committed. The worker's `EntraGuestInviteRelayService` polls it and calls
+ * `POST https://graph.microsoft.com/v1.0/invitations` app-only, writing the returned
+ * `invitedUser.id` onto `workspace.workspace_invitations.entra_guest_object_id`.
+ *
+ * WHY NOT AN INLINE CALL: Graph is a network round-trip, and this repo's rule against holding a
+ * Postgres transaction across one is stated at
+ * `libs/modules/attachments/src/application/entity-attachments.service.ts:106-110`. A
+ * fire-and-forget call after commit is not the alternative either — a failure there leaves a Rally
+ * invitation whose Entra guest was never created, and the invitee's login refusal surfaces only as
+ * `AUTH_TOKEN_INVALID`.
+ *
+ * Gated by `ENTRA_GUEST_INVITE_ENABLED` (default false): until the tenant grants the app
+ * registration `User.Invite.All`, every Graph call would be refused, and an invitation must not
+ * break because of it. Flag off → no row is written at all.
+ *
+ *   email        — the invited address, already normalised (lowercased, trimmed)
+ *   display_name — optional Graph `invitedUserDisplayName`; NULL on every path today
+ *   last_error   — the Graph refusal verbatim on failure, AND a non-fatal note on a `sent` row
+ *                  that created no guest (an address that already resolves to a directory object,
+ *                  which is the ordinary case for a staff mailbox)
+ */
+export const guestInviteOutbox = messagingSchema.table(
+  'guest_invite_outbox',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** FK → workspace.workspace_invitations, ON DELETE cascade (`fk_gio_invitation`). */
+    invitationId: uuid('invitation_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
+    /** Recipient address (RFC 5321 max 320 chars), same width as `email_outbox.to`. */
+    email: varchar('email', { length: 320 }).notNull(),
+    displayName: varchar('display_name', { length: 255 }),
+    status: guestInviteJobStatusEnum('status').notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Caller-supplied deduplication key — `invitation.id`, the same convention `email_outbox`
+     * already uses for `workspace-invitation`. UNIQUE, and inserted with
+     * ON CONFLICT DO NOTHING, so a retried invite request cannot enqueue two Graph invitations.
+     */
+    idempotencyKey: varchar('idempotency_key', { length: 255 }).unique(),
+    /**
+     * The RAW (unhashed) invitation token, so the relay can build `inviteUrl` for the invitation
+     * email it schedules AFTER provisioning resolves (migration 0124). Only the sha256 is kept on
+     * `workspace_invitations.token_hash`, so the relay could not otherwise rebuild the link.
+     *
+     * NULLed by the relay in the same write that schedules the email, and on a terminal failure —
+     * a row holds a live credential only between enqueue and the Graph call. NULL also MEANS "this
+     * row owes no email": `resendInvitation` re-enqueues provisioning under the same key and has
+     * already emailed its own rotated token inline. See migration 0124 for the security assessment.
+     */
+    inviteToken: varchar('invite_token', { length: 255 }),
+  },
+  (t) => ({
+    statusIdx: index('ix_guest_invite_outbox_status')
+      .on(t.status, t.scheduledAt)
+      .where(sql`status = 'pending'`),
+    invitationIdx: index('ix_guest_invite_outbox_invitation').on(t.invitationId),
   }),
 );

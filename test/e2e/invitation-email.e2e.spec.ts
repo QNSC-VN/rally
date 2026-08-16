@@ -22,6 +22,16 @@
  * which this file drives. Writing this test against the orphan is the first thing I did wrong, and it
  * would have passed while proving nothing about the running system.
  *
+ * IT ASSERTS THE FLAG-OFF PATH, which is the default and the one staff onboarding uses. Since
+ * migration 0124, `ENTRA_GUEST_INVITE_ENABLED` moves this row's WRITER: with the flag on, the invite
+ * request no longer schedules the email at all — `EntraGuestInviteRelayService` does, after Entra
+ * provisioning resolves, so a link cannot reach an external collaborator before the directory object
+ * that makes it usable exists. Both writers use `invitation.id` as the idempotency key, so the
+ * assertions below (one row, keyed on the invitation) hold either way; what changes is WHEN it appears.
+ * If this file ever fails with zero rows, check that flag before hunting a regression — the flag-on
+ * ordering is pinned by `entra-guest-invite-relay.service.spec.ts` instead, because a real Graph call
+ * and a worker process are not things this suite can arrange.
+ *
  * The `email_outbox` row is the RIGHT seam to assert. `EmailSchedulerService` writes it inside the
  * caller's transaction, so a rolled-back invitation cannot leave mail behind, and the relay is a
  * separate process — which means "did we schedule it" and "did it go out" are genuinely two questions
