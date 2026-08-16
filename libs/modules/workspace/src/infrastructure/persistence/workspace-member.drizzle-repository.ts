@@ -3,7 +3,7 @@ import { and, asc, count, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 import { workspaces, workspaceMembers } from '../../../../../../db/schema/workspace';
-import { users } from '../../../../../../db/schema/identity';
+import { users, ssoIdentities } from '../../../../../../db/schema/identity';
 import { projectMembers, projects } from '../../../../../../db/schema/work';
 import { systemRoles, userRoleAssignments } from '../../../../../../db/schema/access';
 import { teams, teamMembers } from '../../../../../../db/schema/work';
@@ -248,6 +248,14 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       .where(eq(users.id, userId))
       .limit(1);
     return rows[0]?.email ?? null;
+  }
+
+  async findSsoSubjects(userId: string, provider: 'entra'): Promise<string[]> {
+    const rows = await this.db
+      .select({ sub: ssoIdentities.providerSub })
+      .from(ssoIdentities)
+      .where(and(eq(ssoIdentities.userId, userId), eq(ssoIdentities.provider, provider)));
+    return rows.map((r) => r.sub);
   }
 
   async grantWorkspaceRole(
