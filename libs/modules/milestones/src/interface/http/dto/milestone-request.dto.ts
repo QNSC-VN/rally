@@ -60,7 +60,7 @@ export class UpdateMilestoneDto extends createZodDto(UpdateMilestoneSchema) {}
 
 // ── Set-links (replace-all) request bodies ──────────────────────────────────
 // Field names intentionally mirror the client payload (projectIds / teamIds /
-// workItemIds) so the contract is self-documenting; validation turns a
+// artifactIds) so the contract is self-documenting; validation turns a
 // malformed body into a 400 instead of an unhandled 500.
 export const SetMilestoneProjectsSchema = z.object({
   projectIds: z.array(z.string().uuid()),
@@ -72,8 +72,22 @@ export const SetMilestoneTeamsSchema = z.object({
 });
 export class SetMilestoneTeamsDto extends createZodDto(SetMilestoneTeamsSchema) {}
 
+/**
+ * §5.2's body, verbatim in name: `{ "artifactIds": [...] }`.
+ *
+ * RENAMED from `workItemIds`, which was the whole contract problem rather than a spelling one — the
+ * field name asserted a single table while `milestone_artifacts` has been polymorphic since migration
+ * 0084, and `Phase 3/03_Milestones/SRS.md:116` makes Story, Defect, Feature and Epic all directly
+ * assignable. A Feature id under a `workItemIds` key could only ever be refused.
+ *
+ * Still UUIDs, not display keys. §127's example reads `["US-4821", "DE-1142", "FE-318", "EP-101"]`,
+ * which is illustrative: every id on every other rally endpoint is a uuid, item keys are unique per
+ * WORKSPACE rather than globally, and resolving keys here would put a second identifier space on one
+ * write. The list "replaces the directly assigned Milestone artifact list" (§133), so `[]` clears it;
+ * inherited descendants are derived on read and are never members of this set.
+ */
 export const SetMilestoneArtifactsSchema = z.object({
-  workItemIds: z.array(z.string().uuid()),
+  artifactIds: z.array(z.string().uuid()),
 });
 export class SetMilestoneArtifactsDto extends createZodDto(SetMilestoneArtifactsSchema) {}
 

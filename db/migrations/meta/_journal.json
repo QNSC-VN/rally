@@ -890,6 +890,20 @@
       "when": 1788335103005,
       "tag": "0125_unbrick_project_tier_invitations",
       "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1788335203005,
+      "tag": "0126_revoke_editor_team_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1788335303005,
+      "tag": "0127_repair_capacity_primary_team",
+      "breakpoints": true
     }
   ]
 }

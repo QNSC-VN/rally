@@ -1,5 +1,9 @@
 /**
- * P5-CP-025 — the `Allocation` cell on a team's nested Feature table.
+ * P5-CP-025 — the `Allocation` and `Dependencies` cells on a team's nested Feature table.
+ *
+ * The retest reports them as one defect ("own-Team Allocation and Dependencies show 0 instead of —"),
+ * which they are not: the Allocation half was already closed — the pre-fix code rendered NOTHING there
+ * and the only `0` in that column band belonged to Dependencies. Both are asserted here, separately.
  *
  * The cell reports a RELATIONSHIP: `from {team}` on a contributor row, `to {team}` / `N teams` on the
  * row that holds the assignment, and nothing to report when the Feature sits under its own team and
@@ -61,37 +65,49 @@ function renderRow(
   )
 }
 
+/**
+ * TWO cells in this row can hold `EMPTY_VALUE` — `Allocation` and `Dependencies` (§9 asks for a dash
+ * in both) — so these assert the COUNT rather than presence. A bare `getByText(EMPTY_VALUE)` would
+ * throw on the multiple match, and a bare `queryByText(...)).toBeNull()` would fail on the
+ * Dependencies dash while saying nothing about the cell under test.
+ */
+const dashes = () => screen.queryAllByText(EMPTY_VALUE).length
+
 describe('AllocationRow — the Allocation cell', () => {
   it("renders EMPTY_VALUE under the Feature's OWN team when nothing is allocated away", () => {
     renderRow({ isPrimary: true }, { contributorTeamNames: [] })
-    expect(screen.getByText(EMPTY_VALUE)).toBeTruthy()
+    // Allocation AND Dependencies.
+    expect(dashes()).toBe(2)
     // Not an em-dash — the BA's prose spells it `—`, the app does not.
     expect(screen.queryByText('—')).toBeNull()
   })
 
   it('renders EMPTY_VALUE in the Unallocated bucket, where there is no assignment to be relative to', () => {
     renderRow({ teamId: null }, {})
-    expect(screen.getByText(EMPTY_VALUE)).toBeTruthy()
+    expect(dashes()).toBe(2)
   })
 
   it('still names the owner on a CONTRIBUTOR row rather than the placeholder', () => {
     // The control: the placeholder must not swallow the case the cell exists for.
     renderRow({ isPrimary: false }, { ownerTeamName: 'Team Alpha' })
     expect(screen.getByText('from Team Alpha')).toBeTruthy()
-    expect(screen.queryByText(EMPTY_VALUE)).toBeNull()
+    // Only Dependencies — the Allocation cell has a relationship to report.
+    expect(dashes()).toBe(1)
   })
 
   it('still names what was allocated AWAY on the assignment row', () => {
     renderRow({ isPrimary: true }, { contributorTeamNames: ['Team Beta'] })
     expect(screen.getByText('to Team Beta')).toBeTruthy()
-    expect(screen.queryByText(EMPTY_VALUE)).toBeNull()
+    expect(dashes()).toBe(1)
   })
 
-  it('leaves Dependencies at `0`, the declared divergence', () => {
-    // `0` here is a ruling, not an oversight: Rally's column is a COUNT and dependencies are
-    // unimplemented rather than unknown, so this is the ONE cell the absent-value rule skips. Pinned
-    // so a future sweep for `--` does not "finish the job" and reverse it.
-    renderRow({ isPrimary: true }, { contributorTeamNames: [] })
-    expect(screen.getByText('0')).toBeTruthy()
+  it('renders EMPTY_VALUE in Dependencies, per §9 — and never `0` on THIS grid', () => {
+    // P5-CP-025: SRS §9 says "every row shows `—`" for the expanded Team table (again at §215, §406,
+    // catalog §334, Out of Scope §14). This cell rendered `0` on a COUNT reading of Rally's column and
+    // the BA carried it as a P0 Fail. The Features tab keeps `0` per §157 — pinned separately in
+    // `item-allocation-row.test.tsx`, so the two grids cannot be "unified" by whoever reads one of them.
+    renderRow({ isPrimary: false }, { ownerTeamName: 'Team Alpha' })
+    expect(dashes()).toBe(1)
+    expect(screen.queryByText('0')).toBeNull()
   })
 })

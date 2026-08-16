@@ -330,6 +330,8 @@ export class WorkItemsService {
       releaseId: opts.releaseId ?? null,
       foundInReleaseId: opts.foundInReleaseId ?? null,
       memberIds: [opts.assigneeId, opts.reporterId, opts.devOwnerId],
+      // A create always states both facts, so the owner/team pair is always judged.
+      assigneeId: opts.assigneeId ?? null,
     });
     // An `AccessService.assertTeamScoped` call sat here (and on update and delete). Team scope was
     // deleted as an authorization boundary by ruling — see that method's former home in
@@ -397,11 +399,13 @@ export class WorkItemsService {
               iterationId: opts.iterationId,
               releaseId: opts.releaseId,
               storyPoints: opts.storyPoints,
-              // Real-Rally task time: Estimate is an independent planned value
-              // (client-set, never derived). To Do defaults to the Estimate on
-              // create until edited (Rally: remaining = planned before work
-              // starts). Actuals is a separate manual input. To Do auto-zeroes
-              // on completion (see updateWorkItem).
+              // The ONE automatic time-field move, and it happens HERE only:
+              // "**On create only**, when Estimate is entered and To Do is blank,
+              // the system copies Estimate to To Do once"
+              // (`Phase 1/04_Task_Management/SRS.md:26`). `??` and not `||`, because
+              // "An explicitly entered To Do is not overwritten" and `0` is an
+              // explicit answer. After this row exists, all three fields are
+              // independent — `updateWorkItem` derives nothing.
               estimateHours: opts.estimateHours,
               todoHours: type === 'task' ? (opts.todoHours ?? opts.estimateHours) : opts.todoHours,
               actualHours: opts.actualHours,
@@ -817,6 +821,16 @@ export class WorkItemsService {
         releaseId: input.releaseId ?? null,
         foundInReleaseId: input.foundInReleaseId ?? null,
         memberIds: changedMemberIds,
+        // The pair the item WILL have, and only when one half of it is moving. A team change has to
+        // re-judge an UNCHANGED owner — otherwise the forbidden state is reachable in two steps
+        // (name an owner, then move the item to a team they are not on), exactly the two-step hole
+        // `ITERATION_TEAM_MISMATCH` had.
+        assigneeId:
+          input.assigneeId !== undefined || input.teamId !== undefined
+            ? input.assigneeId !== undefined
+              ? input.assigneeId
+              : item.assigneeId
+            : undefined,
       },
       { validateTeamLink: Boolean(input.teamId) },
     );
@@ -873,38 +887,29 @@ export class WorkItemsService {
       input.scheduleState !== undefined &&
       !isCompletedScheduleState(input.scheduleState);
 
-    // Real-Rally task time: Estimate and Actuals are independent, user-owned
-    // values — never derived/overwritten. A task reaching a done state has no
-    // remaining work, so To Do auto-zeroes (unless the same patch sets it
-    // explicitly). Reopening does NOT restore To Do (Rally parity).
-    if (isTask) {
-      const completing =
-        input.scheduleState !== undefined && isCompletedScheduleState(input.scheduleState);
-      if (completing && input.todoHours === undefined) {
-        input.todoHours = '0';
-      }
-
-      /**
-       * The FIRST Estimate copies itself to To Do — once, and only while To Do is unset.
-       *
-       * "If the Owner enters `Estimate` first, the system copies the same number of hours to `To Do`
-       * once. After that first copy, `Estimate`, `To Do` and `Actual` do not auto-recalculate each
-       * other" (Portfolio SRS:143-144). The create path did this (`todoHours ?? estimateHours`) and
-       * the update path did not, so estimating a task that already existed left To Do empty and the
-       * planner had to type the same number twice.
-       *
-       * `null` is the gate, not falsiness: a To Do of `0` is a real answer — a completed task has
-       * exactly that — and re-copying the estimate over it would undo the auto-zero above, or
-       * silently overwrite a planner who deliberately typed 0.
-       */
-      const firstEstimate =
-        input.estimateHours !== undefined &&
-        input.todoHours === undefined &&
-        item.todoHours === null;
-      if (firstEstimate) {
-        input.todoHours = input.estimateHours;
-      }
-    }
+    /**
+     * NOTHING is derived here. `Estimate`, `To Do` and `Actual` are three independent editable
+     * hour fields and the ONLY automatic move is the create-path copy (see `createWorkItem`).
+     *
+     * Two writes used to live at this spot and the BA has REVERSED both:
+     *
+     *  - a complete → `todoHours = '0'` auto-zero. `Phase 1/04_Task_Management/SRS.md:27` —
+     *    "Completing or reopening a Task does not change any of the three values"; `:127` and
+     *    `Phase 1/05_Time_Tracking/SRS.md:91` ("The only automatic time-field behavior is the
+     *    create-time Estimate-to-To Do copy"); `Phase 6/04_Team_Capacity/SRS.md:52` and its AC-8.
+     *    Note the gate was `isCompletedScheduleState`, which covers `completed | accepted | release`,
+     *    so `accepted` and `release` auto-zeroed too — three transitions, not one.
+     *  - a first-Estimate copy on UPDATE. `:26` scopes that copy to "**On create only**" and `:127`
+     *    says it is "not repeated on later edits".
+     *
+     * EXISTING ROWS ARE LEFT ALONE and there is deliberately no backfill migration: a stored `0`
+     * from the auto-zero is indistinguishable from a `0` a planner typed, so repairing history would
+     * guess. Whether pre-existing auto-zeroed tasks should be restored is a BA question.
+     *
+     * Forward consequence, stated because four surfaces move with it: for tasks completed from now
+     * on, To Do keeps its remaining value, so the Iteration Status To Do total, the Tasks-tab total,
+     * Team Status and the next Burndown snapshot all read higher than they used to.
+     */
 
     const entries = diffWorkItem(item, input, isTask);
 
@@ -1806,6 +1811,7 @@ export class WorkItemsService {
    *   - release      → must share the project
    *   - foundInRelease (defect) → must share the project (same rule as release)
    *   - member ids (assignee/reporter/devOwner) → must be active workspace members
+   *   - owner (`assigneeId`) → must be offered by the OWNER PICKER for the effective team
    * `validateTeamLink` lets the update path pass the effective team for the
    * iteration match without re-checking a team that isn't changing. Callers pass
    * only the member ids that are new/changed so an unchanged assignee isn't
@@ -1821,6 +1827,13 @@ export class WorkItemsService {
       releaseId?: string | null;
       foundInReleaseId?: string | null;
       memberIds?: Array<string | null | undefined>;
+      /**
+       * The OWNER the item will have, when the owner OR the team is moving — separate from
+       * `memberIds` because it is judged against a NARROWER population than "active workspace
+       * member", and because `null` is meaningful here (it is the only value a team-less item may
+       * hold). `undefined` means "neither fact moved, do not re-judge".
+       */
+      assigneeId?: string | null;
     },
     opts: { validateTeamLink?: boolean } = {},
   ): Promise<void> {
@@ -1850,6 +1863,67 @@ export class WorkItemsService {
     ];
     for (const userId of memberIds) {
       await this.projectsService.assertWorkspaceMember(workspaceId, userId);
+    }
+    if (scope.assigneeId !== undefined) {
+      await this.assertOwnerInTeam(
+        workspaceId,
+        scope.projectId,
+        scope.teamId ?? null,
+        scope.assigneeId,
+      );
+    }
+  }
+
+  /**
+   * OWNER ⊆ the selected TEAM's active roster, and NO team means NO owner.
+   *
+   * "A named Owner must be an active member of the selected Team; if `teamId` is null, `assigneeId`
+   * must also be null/Unassigned" (`Phase 1/03_Work_Item_Detail/SRS.md` §7:125). The same sentence
+   * appears in `Phase 1/04:84` (a Task's owner against its inherited parent Team), `Phase 2/01:303`
+   * + AC-16:336 and `Phase 2/03:435`. Before this, the whole rule was enforced by the SPA's picker
+   * FEED alone — `assertAssignmentScope` asked only `assertWorkspaceMember`, so
+   * `POST /v1/work-items` with `{ teamId: null, assigneeId: <anyone in the workspace> }` was
+   * accepted. `Phase 1/01_Project_Management/SRS.md:146` is the BA's own answer to that: "API must
+   * enforce project/team access; UI hide không đủ".
+   *
+   * The population is `ProjectsService.listProjectMemberOptions(ws, project, team)` — deliberately
+   * the SAME query `GET /projects/:id/member-options?teamId=` serves the picker, not a
+   * reimplementation of it. `projectTeamContext`'s docblock states the principle: a server that
+   * counted a different population than the picker offers would refuse a person the user was just
+   * invited to choose. It costs one extra consequence, recorded because it is a real behaviour
+   * change: that feed excludes Workspace Admins, which is AC-16's "Workspace Admin không phải
+   * delivery owner hợp lệ", so a WA can no longer be set as an Owner through the API either. That
+   * exclusion is flagged as a DECLARED CONFLICT in the feed's own docblock; if the BA rules the
+   * other way, the fix is that one filter and this method follows for free.
+   *
+   * Only reached when the owner or the team is actually MOVING (see the two call sites) — the same
+   * restraint `assertIterationAssignable` uses for the team/iteration pair. Re-judging on every
+   * unrelated patch would start refusing a title edit on an item whose owner and team already
+   * disagree, which is real existing data and not that patch's fault.
+   */
+  private async assertOwnerInTeam(
+    workspaceId: string,
+    projectId: string,
+    teamId: string | null,
+    assigneeId: string | null,
+  ): Promise<void> {
+    if (!assigneeId) return;
+    if (!teamId) {
+      throw new PreconditionFailedException(
+        'ASSIGNEE_REQUIRES_TEAM',
+        'An item with no Team must be Unassigned. Set a Team before naming an Owner.',
+      );
+    }
+    const options = await this.projectsService.listProjectMemberOptions(
+      workspaceId,
+      projectId,
+      teamId,
+    );
+    if (!options.some((o) => o.userId === assigneeId)) {
+      throw new PreconditionFailedException(
+        'ASSIGNEE_NOT_TEAM_MEMBER',
+        'The Owner must be an active member of the selected Team',
+      );
     }
   }
 

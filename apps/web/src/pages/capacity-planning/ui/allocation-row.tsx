@@ -256,14 +256,29 @@ export function AllocationRow({
         )}
       </div>
 
-      {/* `Dependencies`. Rally's column "shows the number of dependencies that are assigned to each
-          portfolio item", so it is a COUNT — `0` here as on the Features tab, not the dash the BA's
-          catalog suggests for this table: a dash reads as "unknown" where Rally reads "none". */}
+      {/**
+       * `Dependencies` — `EMPTY_VALUE` HERE, and `0` on the Features tab. The split is the BA's, not
+       * ours, and it is per GRID rather than per column name:
+       *
+       *   - SRS §9 (this table): "Column present but **not implemented in this slice**; every row
+       *     shows `—`", restated at §215 and §406 and in the catalog at §334, and §14 lists it under
+       *     Out of Scope with the same dash.
+       *   - SRS §157 (the Features tab): "It shows `0` until dependency modelling is added."
+       *
+       * This cell used to render `0` on the reading that Rally's column is a COUNT and that a dash
+       * reads as "unknown" where zero reads as "none". P5-CP-025 is a BA-confirmed P0 Fail on exactly
+       * that cell ("Render — for own-Team Allocation and Dependencies"), and the BA's text for THIS
+       * grid is unambiguous and repeated four times, so the dash wins here. The Features-tab `0` is
+       * NOT a divergence and must stay — see `capacity-item-row.tsx`, which keeps Rally's chip.
+       *
+       * The string is `--`, not the `—` the BA writes in prose: fixed by `EMPTY_VALUE`'s own docblock,
+       * "not an em-dash, because that is what real Rally renders".
+       */}
       <div
         style={colStyleFor('dependencies', { flexShrink: 0 })}
-        className="px-2 text-right text-muted-foreground tabular-nums"
+        className="px-2 text-right text-muted-foreground"
       >
-        0
+        <span className="text-ui-sm">{EMPTY_VALUE}</span>
       </div>
 
       <div style={colStyleFor('progress', { flexShrink: 0 })} className="min-w-0 px-2">

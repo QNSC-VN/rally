@@ -21,8 +21,7 @@ import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjects } from '@/features/projects/api'
-import { useProjectPermissionsFor } from '@/features/access/api'
-import { KeyChip } from '@/shared/ui/key-chip'
+import { ProjectCell } from '@/shared/ui/project-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { OwnerSelectField, TeamSelectField } from '@/shared/ui/entity-select-field'
 import { PORTFOLIO_STATES, PRELIMINARY_ESTIMATE_SIZES } from '../model/portfolio-states'
@@ -58,9 +57,12 @@ export function CreatePortfolioItemModal({
   projectId: string
   type: PortfolioItemType
   /**
-   * Pre-selected parent Epic — set by the Epic Children tab, which lists exactly one Epic's
-   * children. Narrows the Epic and Project pickers to a single option rather than disabling
-   * them: a child filed under a different Epic would vanish from the grid that created it.
+   * Pre-selected parent Epic — set by the Epic Children tab, which lists exactly one Epic's children.
+   * Narrows the EPIC picker to a single option rather than disabling it: a child filed under a
+   * different Epic would vanish from the grid that created it.
+   *
+   * It used to narrow the Project picker as well; that picker is gone, and this caller passes the
+   * Epic's own `projectId`, so the read-only display is already correct for it.
    */
   fixedParentId?: string
   onClose: () => void
@@ -84,14 +86,15 @@ export function CreatePortfolioItemModal({
   /**
    * Owner, Team and Target Release — the three fields the create modal never had.
    *
-   * §66 lists them ("Project (select, cascades Team), Team (select, scoped to Project), Name
-   * (required), State, Preliminary Estimate, Owner, Target Release") and §344 makes Owner REQUIRED on
-   * an Epic. The API has accepted all three since the module shipped; the dialog sent none, so every
-   * new item arrived unowned, unteamed and unscheduled and had to be opened and edited to become the
-   * thing the planner was describing.
+   * §66 lists them alongside Name, State and Preliminary Estimate, and §344 makes Owner REQUIRED on an
+   * Epic. The API has accepted all three since the module shipped; the dialog sent none, so every new
+   * item arrived unowned, unteamed and unscheduled and had to be opened and edited to become the thing
+   * the planner was describing.
    *
-   * Project is not a field here: this dialog is opened from a project-scoped list and already receives
-   * its `projectId`, which is what the cascade in §66 resolves to.
+   * Project IS a field here, and it is READ-ONLY — see the display below. This comment used to read
+   * "Project is not a field here", which went stale twice over: a live cascading selector was added
+   * (on §66's older wording, "Project (select, cascades Team)"), and the BA has since fixed the field
+   * read-only at creation.
    */
   const [ownerId, setOwnerId] = useState('')
   const [teamId, setTeamId] = useState('')
@@ -101,16 +104,20 @@ export function CreatePortfolioItemModal({
   const isFeature = type === PortfolioItemType.Feature
 
   /**
-   * The project being created INTO — a live selector that CASCADES.
+   * The project being created INTO — FIXED, from the caller's context, never chosen here.
    *
-   * SRS §66 spells it "Project (select, cascades Team)" and the mockup's `selectProject`
-   * (PortfolioPage.tsx:262) resets Team, Epic and Release on change. Without the field a
-   * planner can only create into whatever the global selector happens to name, which the
-   * list's own `All Projects` filter makes ambiguous. Narrowed to one option — not disabled —
-   * when a parent Epic pins it; the mockup pins the same way, with `epics={[epic]}`.
+   * This was a live cascading selector, built from §66 read as "Project (select, cascades Team)" and
+   * from the mockup's `selectProject`. The BA has since ruled the field read-only at creation as well
+   * as after it: §66 now reads "Project (auto-filled from the current Project context and read-only)",
+   * §339 says the same for `New Epic` ("Auto-filled from current Project context; read-only"), and §45
+   * completes it with "Inherited from the current Project context at creation and read-only afterward".
+   *
+   * So there is nothing left to cascade FROM, and `selectProject` — which reset Team, Epic, Release and
+   * Owner — is gone with the picker. Both callers already supply exactly the right project: the list
+   * page passes the globally selected one, and Epic Detail's `Add Feature` passes the EPIC's own, which
+   * is why this reads the prop rather than the app context.
    */
-  const [projectIdValue, setProjectIdValue] = useState(projectId)
-  const activeProjectId = fixedParentId ? projectId : projectIdValue
+  const activeProjectId = projectId
 
   const { workspace } = useAppContext()
   const { data: members = [] } = useWorkspaceMemberOptions(workspace?.workspaceId)
@@ -119,27 +126,20 @@ export function CreatePortfolioItemModal({
   const optionsFor = usePortfolioCellOptions(workspace?.workspaceId, [activeProjectId])
   const { releases, teams } = optionsFor(activeProjectId)
 
-  // `GET /v1/projects` is scoped by `listReadableProjectIds`, and readable is not creatable —
-  // so the options are narrowed again by the permission that actually governs this dialog.
+  /**
+   * The fixed project's own row, for the read-only display's chip and name.
+   *
+   * A NAME LOOKUP, so deliberately NOT narrowed by `portfolio:create` the way the old option list was:
+   * that narrowing existed to stop the picker offering a project the create would refuse, and applying
+   * it to a lookup would blank the label whenever the per-project permission had not resolved yet. The
+   * create is still gated — by the API, and by the `canCreate` check that decides whether this dialog
+   * opens at all.
+   */
   const { data: allProjects = [] } = useProjects(workspace?.workspaceId)
-  const projectIds = useMemo(() => allProjects.map((p) => p.id), [allProjects])
-  const { can: canInProject } = useProjectPermissionsFor(projectIds)
-  const projectOptions = useMemo(
-    () =>
-      fixedParentId
-        ? allProjects.filter((p) => p.id === activeProjectId)
-        : allProjects.filter((p) => canInProject(p.id, 'portfolio:create')),
-    [allProjects, canInProject, fixedParentId, activeProjectId],
+  const activeProject = useMemo(
+    () => allProjects.find((p) => p.id === activeProjectId),
+    [allProjects, activeProjectId],
   )
-
-  /** Changing Project clears everything scoped to the project being left (§66's cascade). */
-  function selectProject(next: string) {
-    setProjectIdValue(next)
-    setTeamId('')
-    setParentId('')
-    setReleaseId('')
-    setOwnerId('')
-  }
 
   /**
    * Team and Owner OPEN WITH A VALUE rather than blank — the mockup seeds both
@@ -236,26 +236,13 @@ export function CreatePortfolioItemModal({
           />
         </FormField>
 
-        {/* Project carries the `KeyChip` that `ProjectSelectCell` puts on the grid's Project
-            column, so the field and the column are recognisably one thing. */}
-        <FormField label={t('create.projectLabel')} required>
-          <SearchableSelect
-            variant="field"
-            value={activeProjectId}
-            ariaLabel={t('create.projectLabel')}
-            searchPlaceholder="Search"
-            options={projectOptions.map((p) => ({
-              value: p.id,
-              label: p.name,
-              searchText: `${p.key} ${p.name}`,
-              icon: (
-                <KeyChip size="sm" tone="project">
-                  {p.key}
-                </KeyChip>
-              ),
-            }))}
-            onChange={(v) => !fixedParentId && selectProject(v ?? activeProjectId)}
-          />
+        {/* Project — auto-filled and READ-ONLY (§66, §339, §45). Rendered through the same `ProjectCell`
+            the grid's Project column now uses, so the value shown while creating is recognisably the
+            value that column will show afterwards. NOT a disabled `SearchableSelect`: a greyed picker
+            invites a click and implies the choice exists somewhere. The label drops `required` too —
+            the field cannot be empty and cannot be wrong, so an asterisk asks for nothing. */}
+        <FormField label={t('create.projectLabel')}>
+          <ProjectCell projectKey={activeProject?.key ?? null} projectName={activeProject?.name} />
         </FormField>
 
         {/* The same controls the detail rail and the work-item create modal use, so an Owner or a Team

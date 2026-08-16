@@ -10,16 +10,11 @@ import {
 import { AccessService } from '@modules/access';
 import { ActivityLogger, type ActivityLog } from '@modules/activity';
 import { ProjectsService } from '@modules/projects';
+import { MilestonesService } from '@modules/milestones';
 import { PORTFOLIO_ACTIVITY_CONFIG } from './portfolio-activity-diff';
 import { PORTFOLIO_HEALTH_THRESHOLDS, computeHealth, type HealthResult } from '@shared-kernel';
 import type { CursorPayload, JwtPayload, PagedResult } from '@platform';
-import {
-  capacityPlanAllocations,
-  capacityPlans,
-  projectTeams,
-  releases,
-  teams,
-} from '../../../../../db/schema/work';
+import { releases, teams } from '../../../../../db/schema/work';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { and, eq } from 'drizzle-orm';
@@ -142,6 +137,13 @@ export class PortfolioItemsService {
      * and both are checked on the writes that have both subjects.
      */
     private readonly projects: ProjectsService,
+    /**
+     * Owns `assertArtifactsInMilestoneScope` — the ONE home of the milestone-artifact rule, reached
+     * from all three writers of `milestone_artifacts` (`PUT /milestones/:id/artifacts`,
+     * `PUT /work-items/:id/milestones`, and this module's `milestoneIds` patch). Safe to inject:
+     * `MilestonesModule` does not import this one, which is the same note `WorkItemsModule` carries.
+     */
+    private readonly milestones: MilestonesService,
   ) {}
 
   /**
@@ -423,53 +425,55 @@ export class PortfolioItemsService {
     await this.projects.assertProjectWritable(actor.workspaceId, existing.projectId);
     assertNotArchived(existing);
 
-    // A project move is authorised in BOTH directions: taking work out of a project and
-    // putting work into one are each an edit of that project's portfolio, and a Project
-    // Admin may manage only their own (SRS §3.2). Checking only the source would let
-    // someone push items into a project they cannot otherwise touch.
+    /**
+     * NO PROJECT MOVE. `projectId` is no longer on `UpdatePortfolioItemSchema` — the BA made
+     * Project read-only after creation, cited eleven ways in that schema's own docblock — so this
+     * write cannot change the row's project and every reference below is checked against the one
+     * project the row already has.
+     *
+     * The reconciliation a move needed is DELETED with the field, not kept behind it: Team reset to a
+     * destination team, Release cleared, a cross-project parent Epic dropped, surviving Milestones
+     * kept per Rally's conditional-keep rule, and the `PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION`
+     * refusal. Nothing can reach `project_id` through this schema, so a guard on that path defends no
+     * reachable state — and a security-shaped guard with no entry point is the failure this repo has
+     * recorded twice (the team-scoped Editor, `capacity:view_draft`): it reads in review as a boundary
+     * and is not one. `git log` has the whole function if the ruling reverses.
+     */
     const patch = { ...input };
-    if (patch.projectId !== undefined && patch.projectId !== existing.projectId) {
-      await this.access.assertProjectPermission(actor, patch.projectId, 'portfolio:edit');
-      // Both directions again, and for the same reason: the DESTINATION gains an Epic or Feature,
-      // which is content (PRJ-FR-010). Checking only the source would let an archived project be
-      // filled with work through a move — the read-only rule broken from the outside, on the one
-      // write that touches two projects.
-      await this.projects.assertProjectWritable(actor.workspaceId, patch.projectId);
-      await this.applyProjectMove(actor.workspaceId, existing, patch);
-    }
 
     // Validated against the EXISTING type: `type` is immutable, so an Epic can never
     // acquire a parent/team/release by editing.
     this.assertShape(existing.type, patch);
-    // References are checked against the DESTINATION project — that is the scope the row
-    // will live in once this write lands.
-    await this.assertReferences(
-      actor.workspaceId,
-      patch.projectId ?? existing.projectId,
-      patch,
-      id,
-    );
+    await this.assertReferences(actor.workspaceId, existing.projectId, patch, id);
 
     // Milestones live in their own link table, so they are NOT a column patch — pull them
     // out before `repo.update` sees them, and write them separately.
-    //
-    // Scoped to the DESTINATION project, like every other reference on this write: SRS §5.1
-    // limits the selector to "the Feature's Project plus any already-selected Milestones", so
-    // a milestone from another project must be refused rather than silently dropped.
     const { milestoneIds, ...columns } = patch;
-    if (milestoneIds !== undefined) {
-      const projectId = patch.projectId ?? existing.projectId;
-      const inProject = await this.repo.filterMilestonesInProject(
-        milestoneIds,
-        projectId,
-        actor.workspaceId,
-      );
-      if (inProject.length !== milestoneIds.length) {
-        throw new PreconditionFailedException(
-          'MILESTONE_PROJECT_MISMATCH',
-          'Every Milestone must belong to this item\u2019s Project',
-        );
-      }
+    if (milestoneIds !== undefined && milestoneIds.length > 0) {
+      /**
+       * The SAME assertion the other two writers of `milestone_artifacts` call, not a private copy.
+       *
+       * This used to be `repo.filterMilestonesInProject`, an `eq(milestones.project_id, ...)` match,
+       * and it was wrong in both directions at once. Too PERMISSIVE: it checked no team scope at all,
+       * so a Feature on any team could join a Team-scoped Milestone from this end
+       * (`Phase 3/03_Milestones/SRS.md:88`, FR-021/023). Too STRICT: a Milestone that spans several
+       * Projects through `milestone_projects` was refused `MILESTONE_PROJECT_MISMATCH` here while
+       * `PUT /milestones/:id/artifacts` accepted the identical link (SRS:135; Q06 confirms
+       * multi-project Milestones). `#428` unified the work-item and milestone ends for exactly that
+       * reason and this third writer was missed; one call is what stops a pair that agree becoming a
+       * trio that do not.
+       *
+       * The team read is the PATCH's whenever it names one — including an explicit `null`, which is a
+       * clear — so a request that takes the item off a team and onto a team-scoped Milestone in one
+       * PATCH is judged on the state it asks for rather than the one it is leaving.
+       */
+      await this.milestones.assertArtifactsAssignable(actor.workspaceId, milestoneIds, [
+        {
+          projectId: existing.projectId,
+          teamId: patch.teamId !== undefined ? patch.teamId : existing.teamId,
+          type: existing.type,
+        },
+      ]);
     }
 
     await this.repo.update(id, columns, actor.workspaceId);
@@ -485,147 +489,6 @@ export class PortfolioItemsService {
       ),
     );
     return this.getItem(actor, id);
-  }
-
-  /**
-   * Reconcile the references a project move invalidates, mutating `patch` in place.
-   *
-   * `project_id` is the scope for three other columns, none of which carries a foreign
-   * key, so moving the row without touching them would leave links pointing into the OLD
-   * project — a Release column showing another project's release, a Team that is not
-   * linked to the new project. `PHASE5_DEV_HANDOFF.md` is explicit: "Changing Project must
-   * clear an invalid cross-Project Epic/Feature relationship rather than preserve bad
-   * data", and cross-project Epic/Feature/Release assignment is rejected outright.
-   *
-   * The rules come from SRS §3.1 and the Feature Detail spec:
-   *   • **Team** — reset to a team linked to the NEW project, or cleared when it has
-   *     none. Not merely cleared: the spec says a Feature's Project change "resets Team to
-   *     a valid Team in the new Project".
-   *   • **Release** — cleared unless the caller supplied one, because releases are
-   *     per-project (`uq_releases_key` is on project).
-   *   • **Parent Epic** — cleared when the Epic lives in a different project. Note this is
-   *     narrower than it looks: Rally allows a parent and child to sit in different
-   *     projects, but THIS product rejects cross-project Epic/Feature links, so the link
-   *     cannot survive the move.
-   *
-   * An explicit value in the same request always wins — a caller moving a Feature and
-   * naming its new Team in one PATCH gets the Team they asked for, and `assertReferences`
-   * then proves it belongs to the destination.
-   *
-   * Deliberately does NOT touch child Features when an Epic moves: "Epic remains
-   * Project-level and changing its Project does not move child Features" (SRS §3.1).
-   *
-   * And deliberately does NOT touch `work_items.feature_id` when a FEATURE moves, which is the
-   * one write that can manufacture a cross-project link at scale — the Stories stay in the old
-   * project, still linked. Three reasons it stays that way, recorded because the state LOOKS like
-   * a bug on the Children tab (P5-PI-017):
-   *   • the link is LEGAL by the write rule. `WorkItemsService.assertFeatureLinkable` permits a
-   *     cross-project Feature link on purpose, because `rollupSubqueries` matches `feature_id`
-   *     alone — Rally's own model. Manufacturing it here breaks nothing that write allows.
-   *   • CLEARING the children would destroy a planner's linkage silently and zero this Feature's
-   *     rollup for work that really is its own, on a write that named none of those rows.
-   *   • REFUSING the move (the `PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION` shape) would contradict
-   *     `assertFeatureLinkable` and block the ordinary case: nearly every Feature has children,
-   *     so a Feature could effectively never change project.
-   * What follows from a legal-but-unofferable link is a READER problem — the project-scoped
-   * `Feature` picker cannot label it — and it is fixed on the reader, not by re-scoping
-   * membership. See `PortfolioItemDrizzleRepository.listChildren`.
-   */
-  private async applyProjectMove(
-    workspaceId: string,
-    existing: PortfolioItem,
-    patch: UpdatePortfolioItemInput,
-  ): Promise<void> {
-    const destination = patch.projectId as string;
-
-    /**
-     * REFUSED while the Feature is allocated on a capacity plan, naming the plans.
-     *
-     * A plan belongs to one project, so a Feature that leaves takes nothing with it: the allocation
-     * rows stayed behind, `listAllocations` filtered on `plan_id` alone so they kept rendering and
-     * kept feeding the team's Estimated, the plan total and the cutline — for a Feature no longer in
-     * the plan's project. Publishing then wrote the OLD project's Release onto it, producing exactly
-     * the state `assertReferences` rejects (`PORTFOLIO_ITEM_PROJECT_MISMATCH`). Nothing enforced it:
-     * not the service, not the database.
-     *
-     * Refused rather than silently repaired, following `RELEASE_HAS_CAPACITY_PLAN` on release delete.
-     * The alternative — deleting the rows — destroys a planner's committed numbers on a plan the
-     * person moving the Feature may not even be able to see. Removing the Feature from the plan first
-     * is one deliberate action, and the message says which plan to look at.
-     */
-    const planned = await this.db
-      .selectDistinct({ planKey: capacityPlans.planKey, name: capacityPlans.name })
-      .from(capacityPlanAllocations)
-      .innerJoin(capacityPlans, eq(capacityPlans.id, capacityPlanAllocations.planId))
-      .where(
-        and(
-          eq(capacityPlanAllocations.portfolioItemId, existing.id),
-          eq(capacityPlans.workspaceId, workspaceId),
-        ),
-      )
-      // `id` breaks the tie: `plan_key` is unique per project, not per workspace, and the
-      // ordering ratchet requires the last column to be unique so two runs cannot disagree.
-      .orderBy(capacityPlans.planKey, capacityPlans.id)
-      .limit(3);
-    if (planned.length > 0) {
-      const named = planned.map((row) => `${row.planKey} (${row.name})`).join(', ');
-      throw new PreconditionFailedException(
-        'PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION',
-        `This Feature is allocated on ${named} — remove it from the plan before moving it to another project`,
-      );
-    }
-
-    if (patch.teamId === undefined && existing.teamId !== null) {
-      const [firstTeam] = await this.db
-        .select({ id: teams.id })
-        .from(teams)
-        .innerJoin(projectTeams, eq(projectTeams.teamId, teams.id))
-        .where(
-          and(
-            eq(teams.workspaceId, workspaceId),
-            eq(projectTeams.projectId, destination),
-            // Both the TEAM and its LINK must be live: an unlinked team is not a legal
-            // assignment in the destination even if the team itself is active.
-            eq(projectTeams.status, 'active'),
-            eq(teams.status, 'active'),
-          ),
-        )
-        // `id` breaks the tie: two teams may share a name, and without it "the new
-        // project's first Team" would come back in physical-tuple order — a different
-        // answer after the next UPDATE. Pinned by `query-ordering.ratchet.spec.ts`.
-        .orderBy(teams.name, teams.id)
-        .limit(1);
-      patch.teamId = firstTeam?.id ?? null;
-    }
-
-    if (patch.releaseId === undefined && existing.releaseId !== null) {
-      patch.releaseId = null;
-    }
-
-    if (patch.parentId === undefined && existing.parentId !== null) {
-      const [parent] = await this.repo.findByIds([existing.parentId], workspaceId);
-      if (!parent || parent.projectId !== destination) patch.parentId = null;
-    }
-
-    // Milestones follow REAL RALLY's rule, which is a conditional keep rather than a clear:
-    // "If you move a work item to a new project after associating it with a milestone, the work
-    // item will keep existing milestone(s) only if they exist in the new project."
-    // (TechDocs, Managing Milestones.) So survivors stay assigned and the rest are dropped.
-    //
-    // Without this the row lands in a state its OWN write path would reject — the assignment
-    // would still point at the source project's milestone, and the next save of any field would
-    // fail `MILESTONE_PROJECT_MISMATCH`. The BA docs are silent here; Rally is not.
-    if (patch.milestoneIds === undefined) {
-      const current = await this.repo.listMilestones(existing.id, workspaceId);
-      if (current.length > 0) {
-        const surviving = await this.repo.filterMilestonesInProject(
-          current.map((m) => m.id),
-          destination,
-          workspaceId,
-        );
-        if (surviving.length !== current.length) patch.milestoneIds = surviving;
-      }
-    }
   }
 
   /**

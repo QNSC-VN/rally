@@ -167,14 +167,30 @@ describe('polymorphic artifact feeds (e2e)', () => {
     expect(page.pageInfo.total).toBe(page.data.length);
   });
 
-  it('keeps the picker’s baseline to DIRECT work-item links, so no descendant is promoted', async () => {
-    // `GET :id/artifacts` feeds the §5.2 replace-SET picker. If the polymorphic and inherited rows
-    // reached it, the next save would post a Feature's id as a `workItemId` and turn an inherited
-    // descendant into a direct assignment nobody made — which is the reason the inherited set is
-    // computed on read and never materialised into link rows.
+  it('keeps the picker’s baseline to DIRECT links of BOTH kinds, so no descendant is promoted', async () => {
+    // `GET :id/artifacts` feeds the §5.2 replace-SET picker, and the set it replaces is the DIRECT
+    // one. Two halves, and they pull in opposite directions:
+    //
+    //   * A directly linked Epic BELONGS here. `Phase 3/03_Milestones/SRS.md:116` makes Story,
+    //     Defect, Feature and Epic all directly assignable and the payload is `artifactIds`, so
+    //     omitting the Epic would mean the next save posted a set that did not contain it — the
+    //     picker would silently DELETE a link the Feature/Epic rail had just written. This assertion
+    //     is deliberately the inverse of what it was under the work-item-only contract.
+    //   * An INHERITED descendant must NOT. `DE-1` is reached only through EP-1 → Features → leaves,
+    //     and promoting it would turn a computed row into a direct assignment nobody made — which is
+    //     why the inherited set is computed on read and never materialised into link rows.
+    //
+    // The Epic link is (re)written here rather than inherited from the test above: a replace-set is
+    // idempotent, and a baseline assertion that depends on a previous `it` having run reads as an
+    // invariant while actually testing execution order.
+    const write = await patch(`/portfolio-items/${NXP_EPIC_1_ID}`, {
+      milestoneIds: [NXP_MILESTONE_1_ID],
+    });
+    expect(write.statusCode, write.body).toBe(200);
+
     const ids = (await get(`/milestones/${NXP_MILESTONE_1_ID}/artifacts`)).json<string[]>();
     expect(ids).toContain(NXP_STORY_1_ID);
-    expect(ids).not.toContain(NXP_EPIC_1_ID);
+    expect(ids).toContain(NXP_EPIC_1_ID);
     expect(ids).not.toContain(NXP_DEFECT_1_ID);
   });
 

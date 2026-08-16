@@ -213,33 +213,14 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
   }
 
   /**
-   * The SUBSET of `milestoneIds` that belongs to `projectId` — one query serving two callers.
+   * NO `filterMilestonesInProject` here any more.
    *
-   * The write path compares lengths to reject an out-of-project id; the project-move path keeps
-   * what survives and drops the rest. A count could only answer the first question, and adding
-   * a second near-identical query would let the two definitions of "in project" drift.
-   *
-   * Workspace-scoped as well as project-scoped: project ids are not guessable, but matching on
-   * project alone would be one leaked id away from attaching another tenant's milestone.
+   * It matched `milestones.project_id` alone, which is not the Milestone scope rule: SRS
+   * `Phase 3/03_Milestones/SRS.md:88` unions the Milestone's own project with `milestone_projects`
+   * and adds a Team condition. The service now calls `MilestonesService.assertArtifactsAssignable`,
+   * the one home of that rule, shared with `PUT /milestones/:id/artifacts` and
+   * `PUT /work-items/:id/milestones` — so a repository-level near-copy is the drift `#428` removed.
    */
-  async filterMilestonesInProject(
-    milestoneIds: string[],
-    projectId: string,
-    workspaceId: string,
-  ): Promise<string[]> {
-    if (milestoneIds.length === 0) return [];
-    const rows = await this.db
-      .select({ id: milestones.id })
-      .from(milestones)
-      .where(
-        and(
-          inArray(milestones.id, milestoneIds),
-          eq(milestones.projectId, projectId),
-          eq(milestones.workspaceId, workspaceId),
-        ),
-      );
-    return rows.map((r) => r.id);
-  }
 
   /** Active child Features of an Epic. 0 for a Feature — the hierarchy is two levels. */
   private childFeatureCountSql() {
@@ -605,9 +586,10 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
     assign('notes');
     assign('releaseNotes');
     assign('whatSuccessLooksLike');
-    // A project MOVE. Listed here because this `assign` list is explicit: a field absent
-    // from it is silently dropped, so the PATCH would 200 with nothing changed.
-    assign('projectId');
+    // No `projectId`. A Portfolio Item's Project is fixed at creation (BA
+    // `Phase 5/01_Portfolio_Items/SRS.md` §45 and nine more; see `UpdatePortfolioItemSchema`), so it
+    // is off the input type — and because this `assign` list is explicit, the column is unreachable
+    // from here even if a caller smuggled the key past the schema.
     assign('state');
     assign('preliminaryEstimate');
     assign('refinedEstimate');

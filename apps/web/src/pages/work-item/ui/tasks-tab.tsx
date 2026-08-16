@@ -21,11 +21,11 @@ import {
   ScheduleState,
   SCHEDULE_STATE_LABEL,
   getSimplifiedState,
+  SIMPLIFIED_STATE_LABEL,
+  SIMPLIFIED_STATE_ORDER,
   SIMPLIFIED_STATE_TO_SCHEDULE_STATE,
 } from '@/entities/work-item/model/types'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
-import { StateStepper } from '@/entities/work-item/ui/state-stepper'
-import { SIMPLIFIED_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
 import { OwnerSelectCell } from '@/shared/ui/owner-cell'
 import { Button } from '@/shared/ui/button'
 import { EmptyState } from '@/shared/ui/empty-state'
@@ -524,19 +524,36 @@ function TaskRow({
           ariaLabel={`Task ${task.itemKey} name`}
         />
       </div>
-      {/* State — simplified Task State stepper (shared control; BR-TASK-01) */}
+      {/* State — the FULL Task State label, never a single letter.
+
+          `Phase 3/01_Team_Status/SRS.md:87` says a selected value "must not collapse to only `D`, `P`
+          or `C`"; FR-045 (`:179`) names the three labels `Defined` / `In-Progress` / `Completed`,
+          AC-32 (`:493`) repeats it, and `PHASE3_DEVELOPMENT_TRACKING.md:30` calls for a
+          "full-label State". `StateStepper` renders `step.letter` on the active box and nothing on the
+          others, which is exactly the collapse those four lines forbid.
+
+          Deliberately a dropdown here rather than a change to the shared stepper: `StateStepper` and
+          `state-steps.ts` are also used by Iteration Status, Backlog, Portfolio and the detail
+          sidebar, which the BA has not spoken about. `Track > Team Status` already solved this the
+          same way (an `InlineSelect` keyed on the three labels) and is the model. */}
       <div className="flex shrink-0 items-center px-2" style={colStyles.state}>
-        <StateStepper
-          steps={SIMPLIFIED_STATE_STEPS}
+        <InlineSelect
           value={
             SIMPLIFIED_STATE_TO_SCHEDULE_STATE[
               getSimplifiedState(task.scheduleState as ScheduleState)
             ]
           }
-          canEdit={canEdit}
-          onChange={(next) => update.mutateAsync({ scheduleState: next })}
-          ariaLabel={`Task ${task.itemKey} state`}
-        />
+          aria-label={`Task ${task.itemKey} state`}
+          disabled={!canEdit}
+          onChange={(e) => update.mutateAsync({ scheduleState: e.target.value as ScheduleState })}
+          className="w-auto"
+        >
+          {SIMPLIFIED_STATE_ORDER.map((s) => (
+            <option key={s} value={SIMPLIFIED_STATE_TO_SCHEDULE_STATE[s]}>
+              {SIMPLIFIED_STATE_LABEL[s]}
+            </option>
+          ))}
+        </InlineSelect>
       </div>
       {/* Owner */}
       <div className="flex shrink-0 items-center overflow-hidden px-2" style={colStyles.owner}>

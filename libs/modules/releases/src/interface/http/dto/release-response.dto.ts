@@ -3,18 +3,6 @@ import { z } from 'zod';
 
 const RELEASE_STATES = ['planning', 'active', 'accepted'] as const;
 
-/**
- * The right panel's roll-up (P3-REL-FR-018): Task Roll-up hours (FR-023) plus the accepted
- * work total (FR-024). No percentage and no point totals — FR-037 forbids a Release Progress
- * widget on the Phase 3 list/detail and §7.5 defers progress to `Portfolio > Release Tracking`.
- */
-const TaskRollupSchema = z.object({
-  estimateHours: z.number(),
-  toDoHours: z.number(),
-  actualHours: z.number(),
-  acceptedItems: z.number(),
-});
-
 const ReleaseListItemSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
@@ -32,6 +20,21 @@ const ReleaseListItemSchema = z.object({
   projectName: z.string().optional(),
 });
 
+/**
+ * The Release DETAIL payload — §7.4's "list DTO plus" shape.
+ *
+ * No `taskRollup` and no `accepted`. `P3-REL-FR-023` reads "Release detail must not show Task
+ * Roll-up, Burndown or another Release progress widget"; `P3-REL-FR-024` puts accepted/progress
+ * totals "only in `Portfolio > Release Tracking`, not in Timeboxes > Release Detail"; FR-018,
+ * DC-009, §5's Detail-right row ("Release metadata only; no progress roll-up") and AC-10 all list
+ * the panel as Start Date, Release Date, Project, State, Planned Velocity, Plan Estimate and
+ * Version; §6's data-model rows for both fields were deleted; and `P3-REL-TS-016` retests the
+ * absence. §7.4's literal `ReleaseDetailDto` block still declares `taskRollup` and `accepted` — it
+ * was not updated with the other six statements, and is the dissenting one.
+ *
+ * `taskEstimate` is NOT part of that removal: it is on the BA's own list DTO (§7.1) and PATCH
+ * payload (§7.3), and FR-037 bans a *progress* column, not an estimate roll-up.
+ */
 export const ReleaseResponseSchema = ReleaseListItemSchema.extend({
   notes: z.string().nullable(),
   releaseNotes: z.string().nullable(),
@@ -39,7 +42,6 @@ export const ReleaseResponseSchema = ReleaseListItemSchema.extend({
   releasedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-  taskRollup: TaskRollupSchema.optional(),
 });
 
 export class ReleaseResponseDto extends createZodDto(ReleaseResponseSchema) {}
@@ -53,7 +55,7 @@ export class ReleaseListItemDto extends createZodDto(ReleaseListItemSchema) {}
  * WHY IT EXISTS
  * `GET /releases` is the `Plan > Releases` administration grid's feed and carries the release
  * RECORD: `theme`, `notes`, `releaseNotes`, `plannedVelocity`, `planEstimate`, `taskEstimate`,
- * `version`, `releasedAt` and the task roll-up. §3.2 marks the `Timeboxes` surface (Iterations,
+ * `version` and `releasedAt`. §3.2 marks the `Timeboxes` surface (Iterations,
  * Releases and Milestones alike) Hidden for an Editor, which is why it takes `release:view` — a code
  * `PROJECT_MEMBER` deliberately does not hold. It was ALSO the only feed for the Release picker and
  * the Release *name* on Backlog, the Work Item detail sidebar, the Backlog summary panel and

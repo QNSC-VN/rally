@@ -15,7 +15,15 @@ import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 import type { WorkItemFilters } from '@modules/work-items';
 
-import { ALL, ADMIN_USER_ID, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import {
+  ALL,
+  ADMIN_USER_ID,
+  DEVELOPER_ID,
+  adminActor,
+  bootRallyApp,
+  createTeamForProject,
+  uniqueKey,
+} from './support/flow-harness';
 
 const NO_WI_FILTERS = {} as WorkItemFilters;
 const NO_IS_FILTERS = {} as IterationStatusFilters;
@@ -90,15 +98,29 @@ describe('BA flows: project foundation → work items → iteration (real AppMod
         'As a user I can log in',
       );
 
+      /**
+       * The Owner moves WITH a Team, and the Owner is not the actor.
+       *
+       * "A named Owner must be an active member of the selected Team; if `teamId` is null,
+       * `assigneeId` must also be null/Unassigned" (`Phase 1/03_Work_Item_Detail/SRS.md` §7:125,
+       * restated at `Phase 1/02:78` and Backlog AC-16:336), enforced by `assertOwnerInTeam`. A
+       * project from `createProject` has no teams, so patching an owner alone is
+       * `ASSIGNEE_REQUIRES_TEAM`. And the Owner population (`listProjectMemberOptions`) EXCLUDES
+       * Workspace Admins per AC-16 ("Workspace Admin không phải delivery owner hợp lệ"), so `actor`
+       * — the seeded Workspace Admin — cannot be the owner: `DEVELOPER_ID` is, and it is on this
+       * team's active roster. Do not simplify the team back out; the patch is refused without it.
+       */
+      const teamId = await createTeamForProject(app, project.id, [DEVELOPER_ID]);
       const updated = await workItems.updateWorkItem(actor, story.id, {
         description: 'Login with SSO',
-        assigneeId: ADMIN_USER_ID,
+        teamId,
+        assigneeId: DEVELOPER_ID,
         scheduleState: 'in_progress',
         storyPoints: '5',
       });
 
       expect(updated.description).toBe('Login with SSO');
-      expect(updated.assigneeId).toBe(ADMIN_USER_ID);
+      expect(updated.assigneeId).toBe(DEVELOPER_ID);
       expect(updated.scheduleState).toBe('in_progress');
       // WorkItemsService surfaces numeric columns as strings to preserve
       // precision (see WorkItem.storyPoints); the HTTP boundary coerces to a

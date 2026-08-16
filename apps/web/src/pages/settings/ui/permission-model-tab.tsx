@@ -37,7 +37,11 @@ const CAPABILITIES: Capability[] = [
   },
   { feature: 'Release Tracking', wa: true, admin: true, editor: false },
   { feature: 'Reports', wa: true, admin: true, editor: false },
-  { feature: 'Team Status', wa: true, admin: true, editor: ['view'] },
+  // §3.2:81 `| Team Status | View/Update | View/Update | Hidden |`. This row read
+  // `editor: ['view']` until the BA reversed it, so the one screen an admin opens to READ the
+  // access model was stating the superseded rule back to them. `Phase 3/01_Team_Status/SRS.md:43`:
+  // "Project `Editor` does not enter Team Status."
+  { feature: 'Team Status', wa: true, admin: true, editor: false },
   { feature: 'Milestones', wa: true, admin: ['create', 'edit', 'delete'], editor: false },
   { feature: 'Project Settings', wa: true, admin: false, editor: false },
   { feature: 'User / Team / Access Management', wa: true, admin: false, editor: false },

@@ -48,6 +48,7 @@ import type { INestApplication } from '@nestjs/common';
 import type { JwtPayload } from '@platform';
 import type { ProjectAccessLevel } from '@shared-kernel';
 import { AccessService } from '@modules/access';
+import { TeamService } from '@modules/workspace';
 import { PlatformModule } from '@platform';
 import { NotificationsModule } from '@modules/notifications';
 import { AuditModule } from '@modules/audit';
@@ -229,6 +230,49 @@ export async function grantProjectAccess(
     actorId: ADMIN_USER_ID,
     onWorkspaceAdmin: 'refuse',
   });
+}
+
+/**
+ * A team LINKED to `projectId` with `memberUserIds` on its active roster — the setup an Owner now
+ * requires.
+ *
+ * "A named Owner must be an active member of the selected Team; if `teamId` is null, `assigneeId`
+ * must also be null/Unassigned" (`Phase 1/03_Work_Item_Detail/SRS.md` §7:125, restated at
+ * `Phase 1/02:78`, `Phase 1/04:84` and Backlog AC-16:336). `assertOwnerInTeam` enforces it on the
+ * server, so a fixture that names an Owner on a freshly created project is refused with
+ * `ASSIGNEE_REQUIRES_TEAM` — a project created by `createProject` has no teams at all. Every spec
+ * that assigns work therefore needs a team first, and this is the one place that setup lives.
+ *
+ * `DEVELOPER_ID` is the default member because the Owner population deliberately EXCLUDES Workspace
+ * Admins (AC-16:336, "Workspace Admin không phải delivery owner hợp lệ"), and `ADMIN_USER_ID` — the
+ * actor nearly every spec drives — is one. So "assign it to the actor" is no longer expressible, and
+ * a spec that wants an assignee wants a non-admin one.
+ *
+ * `createTeam` does all three writes (team, project link, roster) in one call, which is why this is a
+ * single call and not a sequence: doing it by hand invites a fixture that creates the team but forgets
+ * the link, and `assertTeamLinkedToProject` refuses that later, further from the cause.
+ *
+ * Adding a roster row also grants each member `editor` on the linked project (RBE-06,
+ * `grantTeamRosterProjectAccess`), so a spec needing only that grant does not need
+ * {@link grantProjectAccess} as well.
+ */
+export async function createTeamForProject(
+  app: INestApplication,
+  projectId: string,
+  memberUserIds: string[] = [DEVELOPER_ID],
+): Promise<string> {
+  const teams = app.get(TeamService);
+  const team = await teams.createTeam(
+    WORKSPACE_ID,
+    {
+      name: `Fixture Team ${uniqueKey()}`,
+      key: uniqueKey('T'),
+      projectIds: [projectId],
+      memberUserIds,
+    },
+    ADMIN_USER_ID,
+  );
+  return team.id;
 }
 
 /**

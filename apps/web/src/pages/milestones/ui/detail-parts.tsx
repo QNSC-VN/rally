@@ -44,22 +44,31 @@ function withAbsentPlaceholders(rows: ArtifactTableItem[]): ArtifactTableItem[] 
 }
 
 /**
- * Milestone Artifacts — the dashboard rows PLUS the `Add Artifact` control (P3-MS-FR-028: "`Add
- * Artifact` follows the Backlog Story/Defect create/picker pattern and appends the current Milestone
- * relationship"). It was a read-only viewer, which left milestone membership reachable only by
- * opening each work item in turn — `GAP-P3-MS-001`, still an open P0 on the BA's branch, and the one
- * gap with a documented Rally analogue (Rally's milestone detail has its own Artifacts collection
- * page with `Add New` and a multi-select `Remove`).
+ * Milestone Artifacts — the dashboard rows PLUS the `Add Artifact` control. It was a read-only
+ * viewer, which left milestone membership reachable only by opening each item in turn
+ * (`GAP-P3-MS-001`), and the one gap with a documented Rally analogue: Rally's milestone detail has
+ * its own Artifacts collection page with `Add New` and a multi-select `Remove`.
  *
  * The picker writes the milestone end of the link (`PUT /milestones/:id/artifacts`, SRS §5.2), which
- * shares `assertArtifactsInMilestoneScope` with the work-item end — so an artifact that is legal from
- * the Work Item sidebar is legal here and vice versa. Removal is unticking: the payload REPLACES the
- * assignment list, and §4/AC-13 make removal affect nothing but that one relationship (Release,
- * Iteration, rank and item identity are untouched, which is true by construction because this write
- * only ever touches `milestone_artifacts`).
+ * shares `assertArtifactsInMilestoneScope` with the work-item end AND with the Feature/Epic detail
+ * rail — so an artifact that is legal from any one of the three is legal from all of them.
  *
- * Rally's row-level multi-select `Remove` is not reproduced: the table is the shared read-only
- * `ArtifactTable`, so a selection column would have to be added there for every surface at once.
+ * ALL FOUR TYPES. §116 and FR-014 make Story, Defect, Feature and Epic directly assignable (Task
+ * excluded), and the picker now offers all four: `useMilestoneArtifactCandidates` reads the portfolio
+ * feed alongside the work-item one. That was not cosmetic. The payload REPLACES the direct set, and
+ * `SelectionModal` can only toggle rows it renders — so while Features and Epics were absent from the
+ * candidate list, a Feature assigned from the Portfolio side was permanently unremovable here, and the
+ * *server* would have refused the id anyway under the old `workItemIds` key.
+ *
+ * Removal is unticking, which is why no row-level `Remove` is reproduced: §4/AC-13 make removal affect
+ * nothing but that one relationship (Release, Iteration, rank and item identity are untouched — true
+ * by construction, because this write only ever touches `milestone_artifacts`). A row-level control
+ * would need a selection column on the shared read-only `ArtifactTable`, i.e. on every surface at once.
+ *
+ * INHERITED rows are NOT candidates and are not in the baseline. An Epic's child Features and their
+ * leaf Stories appear as rows (FR-029) but are derived on read; putting them in the picker's set would
+ * post them back as DIRECT assignments nobody made, which is the whole reason the inherited population
+ * is never materialised into link rows.
  */
 export function ArtifactsTab({
   milestoneId,
@@ -148,8 +157,8 @@ export function ArtifactsTab({
           icon: <TypeBadge type={c.type} size={16} />,
         }))}
         selectedIds={linkedIds}
-        onSave={async (workItemIds) => {
-          await setArtifacts.mutateAsync({ milestoneId, workItemIds })
+        onSave={async (artifactIds) => {
+          await setArtifacts.mutateAsync({ milestoneId, artifactIds })
         }}
       />
     </div>

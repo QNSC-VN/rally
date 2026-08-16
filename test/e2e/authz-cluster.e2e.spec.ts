@@ -335,9 +335,15 @@ describe('authorization cluster (e2e)', () => {
       `/work-items/${SEEDED.nxp.storyId}/milestones`,
       `/work-items/${SEEDED.nxp.storyId}/activity`,
       `/work-items/${SEEDED.nxp.storyId}/comments`,
-      // Quality and Team Status — §5 Editor rows.
+      // Quality — an Editor row the BA states twice: `Phase 4 §3.2:78` gives
+      // `Create/View/Edit/Delete in assigned Teams`, and `:43` names "Quality Defects" in the
+      // Editor's own definition. (The bare `§5` this comment used to cite is `Access Management
+      // Journeys` and carries no such row.)
+      // `GET /team-status` used to sit here beside it and DOES NOT ANY MORE: the BA reversed that
+      // grant and Team Status is Hidden for an Editor. It is asserted as a REFUSAL in the test
+      // below — moved rather than deleted, because a revoked read with no test is one that comes
+      // back the next time this list is extended.
       `/quality/defects?projectId=${NXP}`,
-      `/team-status?projectId=${NXP}&iterationId=${SEEDED.nxp.iterationCurrentId}`,
     ]) {
       const response = await get(url, editor);
       expect(
@@ -354,7 +360,7 @@ describe('authorization cluster (e2e)', () => {
    * `test/route-audience.ratchet.spec.ts` — when the Milestone feed is split the way
    * `GET /releases/options` was, this test and that list change together.
    */
-  it('refuses the admin roster and the three §3.2 grids to an Editor, but not their feeds', async () => {
+  it('refuses the admin roster, the three §3.2 grids and Team Status to an Editor, but not their feeds', async () => {
     const editor = await tokenFor('dev@qnsc.dev');
 
     /**
@@ -382,13 +388,46 @@ describe('authorization cluster (e2e)', () => {
     expect(releases.statusCode, 'GET /releases (the admin grid) for an Editor').toBe(403);
 
     /**
+     * TEAM STATUS — a refusal that MOVED HERE out of the allow list above, which is the only reason
+     * it is worth a docblock. The BA reversed the Editor's view grant:
+     * `Phase 4/02_Roles_Permissions/SRS.md:81` now reads `| Team Status | View/Update | View/Update |
+     * Hidden |`, `Phase 3/01_Team_Status/SRS.md:43` says "Project `Editor` does not enter Team
+     * Status", and `P3-TS-FR-039` (`:173`) makes it explicit that this is an API concern and not a
+     * hidden nav item — "Editor and unassigned users do not access Team Status/Task Dashboard;
+     * direct access and mutation are rejected safely". `team_status:view` is gone from
+     * `PROJECT_MEMBER` in `db/permissions.catalog.ts`; migration `0126_revoke_editor_team_status`
+     * carries the removal into workspaces that already exist, because a catalogue edit alone never
+     * reaches one (CLAUDE.md → "Permissions reach a workspace ONCE").
+     *
+     * Unlike the two grids above, this one is a DATA EXPOSURE and not a hidden surface: the response
+     * carries every member's Capacity hours plus each task's Estimate / To Do / Actual for the
+     * selected team. So the code is asserted too — a 403 from the wrong layer (an `assertActive`, a
+     * ValidationPipe reject) would satisfy the status alone and prove nothing about the permission.
+     *
+     * The ALLOW half lives in `server-role-matrix.e2e.spec.ts` (`Phase 4 §3.2:78`), which measures
+     * all four principals; the Workspace Admin read here is only to prove the query is well formed,
+     * so the Editor's 403 cannot be a 403 about the request rather than about the caller.
+     */
+    const teamStatusUrl = `/team-status?projectId=${NXP}&iterationId=${SEEDED.nxp.iterationCurrentId}`;
+    const teamStatus = await get(teamStatusUrl, editor);
+    expect(teamStatus.statusCode, 'GET /team-status for an Editor').toBe(403);
+    expect(
+      (JSON.parse(teamStatus.body) as { error?: { code?: string } }).error?.code,
+      'the refusal must come from the permission check, not from a validation or lookup failure',
+    ).toBe('PROJECT_PERMISSION_DENIED');
+    expect(
+      (await get(teamStatusUrl, await tokenFor('admin@qnsc.dev'))).statusCode,
+      'GET /team-status for a Workspace Admin — the same query, so the 403 above is about the caller',
+    ).toBe(200);
+
+    /**
      * The Portfolio Items GRID: 200 with NO ROWS, not a 403 — and this is the assertion that had to
      * be inverted, so the history matters.
      *
      * It used to assert the list was NON-EMPTY for an Editor, with a docblock explaining that
      * `listReadableProjectIds` unions in every project the caller has a `project_members` row on
      * regardless of the permission asked for, and calling that "the only reason the Feature picker
-     * works". Both halves were true and together they were the defect: §3.2:85 and P5-PI-FR-017 make
+     * works". Both halves were true and together they were the defect: §3.2:82 and P5-PI-FR-017 make
      * Portfolio Items Hidden for an Editor, and the whole record — `notes`, `estimate`, `health`,
      * the owner — was readable by one. The permission-blind union is gone; membership now reaches
      * that method only through the permission-filtered synthesis.
@@ -408,13 +447,13 @@ describe('authorization cluster (e2e)', () => {
     expect(
       (JSON.parse(portfolio.body) as { data: unknown[] }).data.length,
       'the Portfolio grid must be EMPTY for an Editor: NXP seeds an Epic and seven Features, and ' +
-        '§3.2:85 / P5-PI-FR-017 hide Portfolio Items from an Editor',
+        '§3.2:82 / P5-PI-FR-017 hide Portfolio Items from an Editor',
     ).toBe(0);
 
     /**
      * …and the other half of the same split, which is what keeps the grid's emptiness from being a
      * regression. The `Feature` field on a Story is the Editor's own (§5.2:124 makes it the ONLY way
-     * membership is ever set; §3.2:79 gives them the Story), so its picker reads a reference feed
+     * membership is ever set; §3.2:76 gives them the Story), so its picker reads a reference feed
      * gated on `work_item:view`. Without this the Editor would have a writable `featureId` whose
      * linked value renders as "No Feature" — the same shape as the owner-picker regression.
      */

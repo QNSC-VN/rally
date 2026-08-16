@@ -8,6 +8,19 @@ import type {
 
 export const MILESTONE_REPOSITORY = Symbol('MILESTONE_REPOSITORY');
 
+/**
+ * One row of `milestone_artifacts`, which has been POLYMORPHIC since migration 0084.
+ *
+ * The entity type is carried explicitly rather than inferred by the repository, because only the
+ * service knows which table an id resolved from — and `Phase 3/03_Milestones/SRS.md:116` makes all
+ * four of Story, Defect, Feature and Epic directly assignable, so a writer that assumed one table
+ * could not serve the §5.2 replace-set.
+ */
+export interface MilestoneArtifactLink {
+  entityType: 'work_item' | 'portfolio_item';
+  entityId: string;
+}
+
 export interface IMilestoneRepository {
   findById(id: string): Promise<Milestone | null>;
   listByProject(
@@ -41,6 +54,15 @@ export interface IMilestoneRepository {
   setProjectLinks(milestoneId: string, projectIds: string[]): Promise<void>;
   getTeamIds(milestoneId: string): Promise<string[]>;
   setTeamLinks(milestoneId: string, teamIds: string[]): Promise<void>;
+  /**
+   * Every DIRECTLY assigned artifact id, work items and portfolio items alike.
+   *
+   * Both types, because §5.2's payload replaces the whole directly assigned list and the picker that
+   * builds it offers all four types (SRS:116). It used to filter `entity_type = 'work_item'`, which
+   * meant a Feature assigned from the Feature detail rail was invisible to the picker's baseline and
+   * so could be neither seen nor unticked from the Milestone end.
+   */
   getArtifactIds(milestoneId: string): Promise<string[]>;
-  setArtifactLinks(milestoneId: string, workItemIds: string[]): Promise<void>;
+  /** Replaces the DIRECT artifact set wholesale — both entity types, in one transaction. */
+  setArtifactLinks(milestoneId: string, artifacts: MilestoneArtifactLink[]): Promise<void>;
 }

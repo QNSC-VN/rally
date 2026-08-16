@@ -203,13 +203,11 @@ export interface UpdatePortfolioItemInput {
   releaseNotes?: string | null;
   whatSuccessLooksLike?: string | null;
   /**
-   * Move the item to another project. Not nullable — an item always has one.
-   *
-   * Setting it is not a plain column write: `project_id` is the scope for `team_id`,
-   * `release_id` and `parent_id`, so the service reconciles those (see
-   * `applyProjectMove`) before the update lands.
+   * `projectId` is NOT here. A Portfolio Item's Project is inherited from the creation context and
+   * read-only afterwards (BA `Phase 5/01_Portfolio_Items/SRS.md` §45/§56/§66/§98/§209/§271/§339/
+   * §360/§387; the API mirror is `UpdatePortfolioItemSchema`, whose docblock records the reversal).
+   * The `applyProjectMove` reconciliation that used to sit behind it is deleted, not disabled.
    */
-  projectId?: string;
   state?: PortfolioItemState;
   preliminaryEstimate?: PreliminaryEstimateSize;
   refinedEstimate?: string;

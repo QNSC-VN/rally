@@ -43,7 +43,7 @@ import {
 import { useReleases } from '@/features/releases/api'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { PERMISSION } from '@/shared/config/permissions'
-import { useProjectMemberOptions } from '@/features/teams/api'
+import { useProjectMemberOptions, useTeamOwnerOptions } from '@/features/teams/api'
 import { useAssignableIterations, useIterationOptions } from '@/features/iterations/api'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
@@ -418,6 +418,7 @@ export function BacklogPage() {
                 onOpen={() => openItem(item)}
                 colStyles={colStyles}
                 canEdit={canEdit}
+                projectId={projectId ?? ''}
                 members={members}
                 releases={releases}
                 iterations={iterationOptions}
@@ -555,7 +556,12 @@ interface BacklogRowProps {
    * grid they own.
    */
   canAssignRelease: boolean
-  /** The assignee feed (`useProjectMemberOptions`) — the shared picker shape, which permits null. */
+  /** The item's own project — the OWNER OPTIONS feed is keyed on (project, this row's team). */
+  projectId: string
+  /**
+   * The project-wide assignee feed (`useProjectMemberOptions`), used ONLY to resolve the current
+   * owner's NAME. What the picker may OFFER is narrower and is fetched per row — see `ownerOptions`.
+   */
   members: OwnerSelectMember[]
   releases: Array<{ id: string; name: string; releaseKey?: string | null }>
   iterations: Array<{ id: string; name: string; iterationKey?: string | null }>
@@ -588,6 +594,7 @@ function BacklogRow({
   colStyles,
   canEdit,
   canAssignRelease,
+  projectId,
   members,
   releases,
   iterations,
@@ -619,6 +626,27 @@ function BacklogRow({
     const m = members.find((m) => m.userId === item.assigneeId)
     return m?.displayName ?? m?.email
   })()
+
+  /**
+   * Owner OPTIONS come from THIS row's Team, not from the project.
+   *
+   * `P2-BL-AC-16` (`Phase 2/01_Backlog_Enhancement/SRS.md:336`): "Inline Owner offers `Unassigned`
+   * plus active members of the **Work Item Team**; `No team` offers only `Unassigned`", with the
+   * matching validation rule at `:303`. This grid fed the picker `useProjectMemberOptions(projectId)`,
+   * so every row offered the whole project — and the server took it, because that rule had no
+   * server-side half either (now `ASSIGNEE_NOT_TEAM_MEMBER`).
+   *
+   * Per ROW and not once for the grid: `work_items.team_id` is per item, so a grid-wide feed keyed on
+   * one team would withhold a legitimate owner from any row that carries a different one. React Query
+   * dedupes by key, so N rows sharing a team is still ONE request, and a `No team` row never fetches —
+   * `useTeamOwnerOptions` returns `[]` for that case by design, which is the rule's second clause.
+   *
+   * `ownerName` above deliberately still resolves from the project-wide feed: an owner who has left
+   * the team must still RENDER, or the grid would claim the item is unowned. `ownerSelectOptions`
+   * takes that label as its third argument for exactly this. Same split as `tasks-tab.tsx` and
+   * `detail-sidebar.tsx`.
+   */
+  const ownerOptions = useTeamOwnerOptions(projectId, item.teamId).data ?? []
 
   const stop = (e: React.MouseEvent) => e.stopPropagation()
 
@@ -770,7 +798,7 @@ function BacklogRow({
         <OwnerSelectCell
           ownerName={ownerName}
           assigneeId={item.assigneeId}
-          members={members}
+          members={ownerOptions}
           canEdit={canEdit}
           onChange={(id) => patch({ assigneeId: id })}
         />

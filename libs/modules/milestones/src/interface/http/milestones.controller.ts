@@ -215,9 +215,11 @@ export class MilestonesController {
 
   @Get(':id/artifacts')
   @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'List milestone artifact LINKS (work item IDs)' })
+  @ApiOperation({
+    summary: 'List DIRECT milestone artifact LINKS (work item and portfolio item IDs)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Array of work item IDs' })
+  @ApiResponse({ status: 200, description: 'Array of artifact IDs (Story/Defect/Feature/Epic)' })
   @ApiCommonErrors(401, 404)
   async listMilestoneArtifactIds(
     @CurrentUser() user: JwtPayload,
@@ -236,7 +238,10 @@ export class MilestonesController {
    */
   @Get(':id/artifacts/items')
   @RequirePermission('milestone:view', { resource: 'milestone', from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'List milestone artifacts (US/DE work items) as dashboard rows' })
+  @ApiOperation({
+    summary:
+      'List milestone artifacts as dashboard rows (direct US/DE/Feature/Epic plus inherited descendants)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiPagedResponse(MilestoneArtifactDto)
   @ApiCommonErrors(400, 401, 404)
@@ -249,18 +254,27 @@ export class MilestonesController {
     return this.milestonesService.listMilestoneArtifacts(user, id, { ...args, q: query.q });
   }
 
+  /**
+   * §5.2. The payload "replaces the directly assigned Milestone artifact list; inherited descendants
+   * are derived and are not written into this list" — so `[]` clears the direct set, and an Epic's
+   * child Features (FR-029) are never members of it even though they appear as rows above.
+   *
+   * Takes `artifactIds`, not `workItemIds`: Story, Defect, Feature and Epic are all directly
+   * assignable (§116) and `milestone_artifacts` has been polymorphic since 0084. A CONTRACT change —
+   * the generated SPA client needs a `codegen` run.
+   */
   @Put(':id/artifacts')
   @RequirePermission('milestone:edit', { resource: 'milestone', from: 'param', field: 'id' })
-  @ApiOperation({ summary: 'Set milestone artifacts (replace all)' })
+  @ApiOperation({ summary: 'Set the DIRECT milestone artifacts (replace all)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Updated artifact IDs' })
-  @ApiCommonErrors(400, 401, 403, 404)
+  @ApiCommonErrors(400, 401, 403, 404, 422)
   async setMilestoneArtifacts(
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetMilestoneArtifactsDto,
   ): Promise<string[]> {
-    return this.milestonesService.setMilestoneArtifacts(user, id, dto.workItemIds);
+    return this.milestonesService.setMilestoneArtifacts(user, id, dto.artifactIds);
   }
 
   @Get(':id/projects')

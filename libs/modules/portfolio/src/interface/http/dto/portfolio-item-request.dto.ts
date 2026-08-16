@@ -125,15 +125,23 @@ export class CreatePortfolioItemDto extends createZodDto(CreatePortfolioItemSche
  * `type` is absent deliberately: changing it would have to re-key the item, move its
  * child links and re-rank it into the other scope. Rally does not offer that.
  *
- * `projectId` IS writable, and used to be excluded on the incorrect grounds that "Rally
- * offers neither". Rally offers this one — Broadcom's project-hierarchy guide says
- * "Rally recommends you update the project field to reflect which team is handling the
- * work", since a portfolio item starts in a strategy project and moves to an execution
- * project once a team picks it up. The BA spec requires it too (SRS §3.1 `Project | Yes`,
- * FR-004: Project is inline-editable for both Epic and Feature).
+ * `projectId` IS ABSENT TOO, and this is a REVERSAL — recorded rather than deleted, because the
+ * reasoning that put it here is still in Broadcom's docs and the next reader will find it.
  *
- * The move is not a plain field write — see `applyProjectMove` in the service for the
- * three cross-project references it has to reconcile.
+ * It was writable on two grounds. Broadcom's project-hierarchy guide says "Rally recommends you
+ * update the project field to reflect which team is handling the work", and the BA's own §3.1 then
+ * read `Project | Yes` with FR-004 listing it among the inline-editable fields — a contradiction
+ * that commit `1dc027f3` deliberately left open pending a ruling. **The BA has now ruled the other
+ * way, eleven places over** (`Phase 5/01_Portfolio_Items/SRS.md`): §45 "Inherited from the current
+ * Project context at creation and read-only afterward for both Feature and Epic", §56, §66, §98,
+ * §339, §360 and §387 all `Read-only`, FR-004 (§209) and AC-3 (§271) with Project struck from the
+ * inline-editable set, and FR-023 (§229) / AC-24 (§293) extending the same rule to Work Items.
+ *
+ * So a Project is now fixed at creation. `applyProjectMove` — the reconciliation of Team, Release,
+ * parent Epic and Milestones that a move needed, plus its `PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION`
+ * refusal — is GONE with the field, not kept behind it: with nothing able to reach `project_id`
+ * through this schema, a guard on that path protects nothing and reads in review as a boundary that
+ * is not one. `git log` has it if the BA reverses again.
  */
 export const UpdatePortfolioItemSchema = z
   .object({
@@ -142,8 +150,6 @@ export const UpdatePortfolioItemSchema = z
     notes: portfolioWritableFields.notes.optional(),
     releaseNotes: portfolioWritableFields.releaseNotes.optional(),
     whatSuccessLooksLike: portfolioWritableFields.whatSuccessLooksLike.optional(),
-    /** Move the item to another project. Never nullable — an item always has a project. */
-    projectId: z.string().uuid().optional(),
     state: portfolioWritableFields.state.optional(),
     preliminaryEstimate: portfolioWritableFields.preliminaryEstimate.optional(),
     refinedEstimate: portfolioWritableFields.refinedEstimate.optional(),
@@ -157,8 +163,15 @@ export const UpdatePortfolioItemSchema = z
      *
      * A whole-set replace rather than add/remove verbs, because the rail's multi-select
      * always knows the full selection — two verbs would let the client and the row drift
-     * apart when a checkbox click is lost. The service refuses any Milestone outside the
-     * item's Project (`MILESTONE_PROJECT_MISMATCH`), per SRS §5.1.
+     * apart when a checkbox click is lost.
+     *
+     * Scope is checked by `MilestonesService.assertArtifactsAssignable`, the SAME assertion
+     * `PUT /milestones/:id/artifacts` and `PUT /work-items/:id/milestones` call — so this end of
+     * the link can no longer accept or refuse anything the other two would not. It used to run a
+     * private `filterMilestonesInProject`, which matched `milestones.project_id` alone: no
+     * team-scope check at all, and no `milestone_projects` union, so a Feature in a Milestone's
+     * SECOND in-scope project was refused `MILESTONE_PROJECT_MISMATCH` here and accepted there
+     * (`Phase 3/03_Milestones/SRS.md:88`, FR-021/023, Q06).
      */
     milestoneIds: z.array(z.string().uuid()).optional(),
     plannedStartDate: portfolioWritableFields.plannedStartDate.optional(),

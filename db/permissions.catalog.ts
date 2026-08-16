@@ -482,22 +482,47 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.WORK_ITEM_CREATE,
     PERMISSION.WORK_ITEM_EDIT,
     PERMISSION.WORK_ITEM_DELETE,
-    // The timebox READ Iteration Status, the Backlog filter, Team Status and Quality all
-    // depend on — NOT the `Plan > Timeboxes` surface, which §3.2 marks Hidden for an Editor
-    // and which `TIMEBOX_VIEW` (deliberately absent here) gates.
+    // The timebox READ Iteration Status, the Backlog filter and Quality all depend on — NOT
+    // the `Plan > Timeboxes` surface, which §3.2 marks Hidden for an Editor and which
+    // `TIMEBOX_VIEW` (deliberately absent here) gates.
     PERMISSION.ITERATION_VIEW,
-    // §5 Editor rows: Quality Defects View = Assigned Teams and Team Status View =
-    // the Editor's own teams' hours — both are Editor surfaces (the nav shows them,
-    // gated on work_item:view), and without these codes every Editor 403'd the whole
-    // Quality surface and Team Status (P4-RBAC-006). Edit/write still flows through
-    // work_item:* + quality's own write path.
+    // §3.2 `Quality / Defects` is `Create/View/Edit/Delete` for an Editor, so the read code is
+    // here; without it every Editor 403'd the whole Quality surface (P4-RBAC-006). Edit/write
+    // still flows through work_item:* + quality's own write path.
     PERMISSION.QUALITY_VIEW,
-    PERMISSION.TEAM_STATUS_VIEW,
-    // Editor is delivery-only and Team-scoped. Per the 3-level access matrix (§5),
-    // Portfolio Items, Capacity Planning, Reports and — per §3.2 — `Plan > Timeboxes`
-    // (Iterations, Releases and Milestones alike) are admin surfaces the Editor does NOT
-    // see; only Admin and WA do. (assertTeamScoped enforces the Team boundary on the
-    // delivery CRUD below.)
+    /**
+     * `TEAM_STATUS_VIEW` IS DELIBERATELY ABSENT, AND IT USED TO BE HERE.
+     * ----------------------------------------------------------------
+     * The BA REVERSED this. `Phase 4/02_Roles_Permissions/SRS.md:81` now reads
+     * `| Team Status | View/Update | View/Update | Hidden |`, and the sentence that granted the
+     * Editor a Team-Status read ("Team Status View = the Editor's own teams' hours") was DELETED.
+     * `Phase 3/01_Team_Status/SRS.md:43` states it directly — "Project `Editor` does not enter Team
+     * Status" — with two new acceptance rows: `P3-TS-FR-028` ("Editor and unassigned users cannot
+     * open the page or mutate Capacity, Task Name or Task State") and `P3-TS-FR-039` ("Editor and
+     * unassigned users do not access Team Status/Task Dashboard; direct access and mutation are
+     * rejected safely"). `00_Documents/mini_rally_usecase_role_mapping.md:50` agrees:
+     * `| Team Status - View/Edit | All | Project | No | No |`.
+     *
+     * This was a real DATA EXPOSURE, not a cosmetic mismatch: `GET /team-status` returns every
+     * member's Capacity hours and each task's Estimate / To Do / Actual for the selected team, so
+     * an Editor read the whole team's per-person hours. Revoked here, backfilled to existing
+     * workspaces by migration `0126_revoke_editor_team_status`, and the nav entry moved off
+     * `work_item:view` onto this code in the same change — revoking the permission ALONE would
+     * leave a visible nav item leading to a page whose only feed 403s, which is the opposite of
+     * `P3-TS-FR-039`'s "rejected safely".
+     *
+     * `TEAM_STATUS_EDIT` was never here, so the write half needed no change.
+     */
+    // Editor is delivery-only. Per the 3-level access matrix (§5), Team Status, Portfolio Items,
+    // Capacity Planning, Reports and — per §3.2 — `Plan > Timeboxes` (Iterations, Releases and
+    // Milestones alike) are admin surfaces the Editor does NOT see; only Admin and WA do.
+    //
+    // This used to add "(assertTeamScoped enforces the Team boundary on the delivery CRUD
+    // below.)" — STALE. `AccessService.assertTeamScoped` was DELETED by ruling on 2026-08-14:
+    // team scope is not an authorization boundary here, because `team_id` is nullable and mostly
+    // unset on exactly the rows it would have restricted, so the check admitted the ordinary case
+    // by design. The delivery CRUD above is scoped to the PROJECT and nothing narrower. See
+    // CLAUDE.md → "Declared divergences from the BA, in the access model".
   ],
 };
 
@@ -511,8 +536,17 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
  *          Project CONFIGURATION that shapes delivery — labels, workflow statuses and transitions
  *          — stays here, because §3.1's own summary is that "`Admin` is powerful for delivery
  *          management".
- * editor = team-scoped delivery contributor. Writes are additionally narrowed to the Teams the
- *          user is assigned to (`AccessService.assertTeamScoped`).
+ * editor = delivery contributor in one Project: Backlog / work items / tasks, Iteration Status and
+ *          Quality. NOT Team Status (§3.2:81 `Hidden`, and `Phase 3/01_Team_Status/SRS.md:43`
+ *          "Project `Editor` does not enter Team Status"), not Portfolio, not Capacity, not
+ *          Reports, not `Plan > Timeboxes`.
+ *
+ *          This used to read "team-scoped … Writes are additionally narrowed to the Teams the user
+ *          is assigned to (`AccessService.assertTeamScoped`)". That function was DELETED by ruling
+ *          on 2026-08-14 and there is NO team authorization scope: `team_id` is nullable and mostly
+ *          unset on the rows it would have narrowed, so it admitted the ordinary case by design.
+ *          Teams are delivery-model data and a display filter. Do not re-add a team scope without a
+ *          fresh ruling — mandatory `team_id` is its precondition.
  *
  * THERE IS NO `viewer`, AND THAT IS A DECISION, NOT AN OMISSION.
  * ------------------------------------------------------------

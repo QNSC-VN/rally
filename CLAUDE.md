@@ -45,6 +45,7 @@ pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
   applying the stranded file by hand or recreating the database. (Two historical pairs — 0005/0006 and
   0018/0019 — have non-ascending `when` values and ARE applied, so a non-monotonic journal is not by
   itself proof of a skip; count the rows.)
+
 - **`db/permissions.catalog.ts` is the single source of truth** for permission
   codes and role→permission mappings, imported via the `@db/*` path. It lives
   outside `libs/` because the standalone migrator image ships `db/**` only.
@@ -112,7 +113,7 @@ not a function`, so use `AuthService.devLogin` for a bearer token), the **Valida
   model.
 - **`EMPTY_VALUE` (`'--'`) is the only placeholder for an absent value**, per its own docblock ("not an
   em-dash, because that is what real Rally renders"). 15 em-dash literals had drifted back in, two of
-  them colliding *within one screen* — Portfolio detail rendered `'--'` in the sidebar beside `'—'` in
+  them colliding _within one screen_ — Portfolio detail rendered `'--'` in the sidebar beside `'—'` in
   both children tables. When replacing these, note that the string also appears in prose comments; a
   blind find-and-replace edits those too.
 - **The frontend has ratchets too** (`apps/web/src/test/fe-consistency.ratchet.test.ts`):
@@ -127,7 +128,7 @@ not a function`, so use `AuthService.devLogin` for a bearer token), the **Valida
   **`/api/docs-json` can serve a STALE document from a watch-mode restart.** Nest builds the Swagger
   document once at bootstrap, so `pnpm start:dev` recompiling is not the same thing as the served spec
   being current — it reported `Found 0 errors`, answered on the port, and still described the DTO as it
-  was before the last edit. Codegen then wrote a client that was *correct for a spec nobody has*, and
+  was before the last edit. Codegen then wrote a client that was _correct for a spec nobody has_, and
   the only symptom was one absent field: `git diff` on the client was EMPTY, which reads exactly like
   "no DTO change was needed". **Grep the served spec for a marker before trusting a generated client**
   (`curl -s localhost:3000/api/docs-json | grep <newField>`), and restart the API rather than relying
@@ -136,6 +137,7 @@ not a function`, so use `AuthService.devLogin` for a bearer token), the **Valida
   import reordered ~1200 lines with no route added or removed. Compare route INVENTORIES, not the line
   count, to tell that apart from a real loss — and regenerate twice across a restart if you need to
   prove the order is deterministic, because a nondeterministic one would flake `codegen:check`.
+
 - **`waitFor() timed out` in `notification-flow.e2e.spec.ts` is an ENVIRONMENT fault, not a flake.**
   Two independent causes, both seen in one session:
   1. **Email is unconfigured.** `.env` ships `EMAIL_PROVIDER=ses`, but `MAIL_FROM_EMAIL` is
@@ -266,7 +268,7 @@ difference is the whole design. Read this before changing a report or the snapsh
   defect" is stale, and it named two columns that no longer exist. Both quantities are now per-team.
 - **The snapshot job only writes INSIDE the timebox window.** `findActiveIterations` selects on
   `state = 'committed'` and nothing else, and committing early is legal — so an iteration committed
-  before it started had its *immutable* baseline captured at commit time, commonly zero because tasks
+  before it started had its _immutable_ baseline captured at commit time, commonly zero because tasks
   are broken down after commitment. A captured `0` is the trap: it is not null, so it passes every "no
   baseline" check, `idealLine(0, N)` returns zeros, the `noBaseline` note stays hidden, and a flat zero
   line is drawn as a measured plan. The release loop always had this guard; the iteration loop now does
@@ -309,6 +311,14 @@ difference is the whole design. Read this before changing a report or the snapsh
   two surfaces gave one release two numbers. FR-037 puts release progress in
   `Portfolio > Release Tracking`; Phase 3 Release list/detail must not add a progress column or widget.
   Do not re-add a progress reader here.
+
+  **The Release detail TASK ROLL-UP panel went the same way**, and for the same kind of reason:
+  `P3-REL-FR-023` gives Release detail no Task hours block, so `ReleaseResponseSchema` dropped
+  `taskRollup` (its four hour/count fields) and `accepted`, and `release-detail-panels.tsx` is deleted
+  with its spec. `taskEstimate` is NOT part of that removal — it is on the BA's own list DTO (§7.1) and
+  on PATCH. The releases-detail spec deliberately still SENDS the removed fields in its fixture, so it
+  fails the moment anything starts reading them again.
+
 - **The Phase 6 snapshot tables now have foreign keys.** `iteration_daily_snapshots` and
   `member_capacity` had NONE (verified against `pg_constraint`). Orphan snapshots happened to be
   unreachable through the API — deleting an iteration is blocked unless it is still `planning`, and
@@ -377,6 +387,35 @@ difference is the whole design. Read this before changing a report or the snapsh
   weekend audit rows and a sparse burnup — production must never fabricate history, a dev seed
   must, and those shapes are the ones worth being able to see.
 
+## Team Status is HIDDEN from an Editor, and that was a data exposure
+
+The BA reversed this. §3.2:81 is now `| Team Status | View/Update | View/Update | Hidden |` (third
+column = Editor), and `Phase 3/01_Team_Status/SRS.md` says it three more times — `:43` ("Project
+`Editor` does not enter Team Status"), `:162` (`P3-TS-FR-028`) and `:173` (`P3-TS-FR-039`, "direct
+access and mutation are rejected safely"). The sentence that used to justify the grant — Team Status
+View being an Editor's own teams' hours — is DELETED. `GET /team-status` returns every member's
+Capacity hours plus each task's Estimate / To Do / Actual, so this is an exposure and not a cosmetic
+mismatch.
+
+Three moving parts, and all three are needed:
+
+- `team_status:view` is out of `project_member` in `db/permissions.catalog.ts`, **plus migration
+  0126** — a catalogue edit never reaches an existing workspace (see "Permissions reach a workspace
+  ONCE"). It deletes the single array ELEMENT with `jsonb - text` rather than forcing the whole
+  array, because the code has SHIPPED: forcing would discard any other edit an admin made to that
+  role. Both the global template and every workspace copy are cleared, deliberately wider than
+  0092's grant-side scope — a stale grant left anywhere is the defect.
+- **The nav row moved to `PERMISSION.TEAM_STATUS_VIEW`.** It gated on `work_item:view`, which EVERY
+  access level holds, so it rendered for the one level the BA hides it from. Revoking the permission
+  without moving the row would leave a visible nav entry leading to a page whose only feed 403s — the
+  opposite of `P3-TS-FR-039`'s "rejected safely".
+- **`NAV_PATH_ALIASES` for `/item/$itemKey` no longer counts Team Status among its openers.** That
+  entry's own comment required revisiting if the four surfaces ever gated on different codes, and they
+  now do. It stays well defined: the remaining three still agree on `work_item:view`, which is the
+  right code for the RECORD. A Task is a work item and §3.2 gives an Editor the Backlog including
+  Tasks; what is withheld is the Team Status SURFACE — the per-member hours grid — not a task reached
+  by key.
+
 ## Team Status and Team Capacity are ONE population
 
 The Team Capacity SRS says it twice — the scoped Task set comes from "the Task's PARENT Story/Defect
@@ -411,15 +450,68 @@ described the behaviour it did not have.
 
 ## Task hours are THREE independent fields
 
-`Estimate`, `To Do` and `Actual` never derive from each other (Portfolio SRS:141-147), with exactly
-two automatic moves:
+`Estimate`, `To Do` and `Actual` never derive from each other, and there is **exactly ONE automatic
+move in the whole system**: on CREATE, when an Estimate is given and To Do is blank, To Do takes the
+Estimate. `createWorkItem` (`work-items.service.ts` ~`:408`) is the only place it happens, and it is
+`??` and not `||` — "An explicitly entered To Do is not overwritten" and `0` is an explicit entry.
 
-- **The FIRST Estimate copies itself to To Do, once** — and only while To Do is `null`. `0` is not
-  "unset": a completed task has exactly that, so re-copying would undo the auto-zero below or
-  overwrite a planner who typed 0 deliberately. The create path always did this; the update path did
-  not, so estimating an existing task left To Do empty and the number had to be typed twice.
-- **Completing a task sets To Do to 0**, and **reopening does NOT restore it** — the owner enters a new
-  remaining value if there is one. This replaces the older `Estimate = To Do + Actual` display rule.
+**This section used to document two MORE automatic writes. The BA reversed both, and they are gone.**
+`Phase 1/04_Task_Management/SRS.md:26` scopes the copy to "**On create only**"; `:27` says
+"**Completing or reopening a Task does not change any of the three values**"; `:127` says the copy is
+"not repeated on later edits". Corroborated by `Phase 1/05_Time_Tracking/SRS.md:91` ("The only
+automatic time-field behavior is the create-time Estimate-to-To Do copy"),
+`Phase 6/04_Team_Capacity/SRS.md:52` + AC-8 `:134`, `RECONCILED_SOURCE_OF_TRUTH.md`,
+`reconciliation/DEV_HANDOFF.md` and `Phase 5/01_Portfolio_Items/SRS.md:143`/`:146`. What was removed:
+
+- a first-Estimate copy on the UPDATE path. It had been added on the older Portfolio-SRS reading,
+  which the Phase 1 SRS now narrows to create.
+- a complete → `todoHours = '0'` auto-zero. Its gate was `isCompletedScheduleState`, which covers
+  `completed | accepted | release`, so it fired on **three** transitions, not one — worth knowing when
+  reading old data.
+
+**Two consequences, both deliberate.** There is **no backfill migration and there must not be one**: a
+stored `0` written by the auto-zero is indistinguishable from a `0` a planner typed, so repairing
+history would guess. Existing rows keep whatever they have; whether the pre-existing auto-zeroed tasks
+should be restored is a BA question, not a code one. And **the numbers move forward**: for tasks
+completed from now on, To Do keeps its remaining value, so the Iteration Status To Do total, the
+Tasks-tab total, Team Status and the next Burndown snapshot all read higher than they used to. That is
+the intended reading, not a regression.
+
+Pinned by `work-items.service.spec.ts` (the three-state `it.each`, and the "copy is create-only" case,
+both INVERTED from what they asserted before) and by `test/e2e/team-status-agreement.e2e.spec.ts`,
+which also checks Team Status and Team Capacity still agree once To Do survives completion.
+
+## An Owner must be on the item's Team, and NO team means NO owner
+
+The BA states it four times — `Phase 1/03_Work_Item_Detail/SRS.md:125` ("A named Owner must be an
+active member of the selected Team; if `teamId` is null, `assigneeId` must also be null/Unassigned"),
+`Phase 1/02_Work_Item_Create/SRS.md:78` ("no Team means named Owner is not allowed"),
+`Phase 1/04:84` (a Task, against its INHERITED parent Team) and Backlog AC-16:336. **None of it was
+enforced on the server**: `assertAssignmentScope` asked only `assertWorkspaceMember`, so
+`POST /work-items` with `{ teamId: null, assigneeId: <anyone in the workspace> }` was accepted and the
+entire rule lived in the SPA picker's FEED. `Phase 1/01_Project_Management/SRS.md:146` is the BA's own
+ruling on that shape: "API must enforce project/team access; UI hide không đủ."
+
+`assertOwnerInTeam` now refuses both halves — `ASSIGNEE_REQUIRES_TEAM` and
+`ASSIGNEE_NOT_TEAM_MEMBER`, 412 — and three things about it are easy to get wrong later:
+
+- **It reuses `listProjectMemberOptions`, the picker's own query, not a reimplementation.** The
+  principle is `projectTeamContext`'s: a server that counted a different population than the picker
+  offers refuses a person the user was just invited to choose.
+- **A Workspace Admin can therefore no longer be an Owner through the API**, because that feed
+  excludes them (AC-16, "Workspace Admin không phải delivery owner hợp lệ"). This is a **declared
+  reading**, flagged in the feed's own docblock: AC-16 is a sentence about OWNER OPTIONS and WID-007
+  says "active members of that Team", which a WA can be. The two disagree for exactly one person. If
+  the BA rules the other way the change is that one filter and this method follows for free.
+- **It is only reached when the Owner or the Team is MOVING**, the same restraint
+  `assertIterationAssignable` uses for the team/iteration pair. Real data holds pairs this forbids, and
+  refusing a title edit on one would make those rows uneditable — which is not that patch's fault.
+
+**Every e2e fixture that assigns work needs a team now**, because `createProject` makes a project with
+no teams: use `createTeamForProject` from the harness, and note "assign it to the actor" is no longer
+expressible in a suite whose actor is a Workspace Admin. Pinned over real HTTP by
+`test/e2e/owner-team-scope.e2e.spec.ts` — a service-level spec cannot prove the ROUTES reach the rule,
+the blind spot that hid both the `report:view` and the `work_item` scope-resolver bugs.
 
 ## A Task's Iteration is DERIVED, not cascaded
 
@@ -477,7 +569,7 @@ write reaching the same state left the rule unsatisfied. Both are now pinned by
 
 - **Iteration auto-accept is a condition over MEMBERSHIP**: "a non-empty Iteration auto-changes to
   `Accepted` when all ASSIGNED Story/Defect items are `Accepted`" (BUSINESS_BASELINE:12, BR-IT-02) —
-  and *assigned* is what a scope change alters. The check only ran on a `scheduleState` transition, so
+  and _assigned_ is what a scope change alters. The check only ran on a `scheduleState` transition, so
   moving the last open Story OUT, or bulk-assigning an accepted Story IN, left the iteration Committed
   while the Iteration Status tile read ACCEPTED 100%. Every membership write now re-evaluates BOTH
   affected iterations (the one left and the one joined). Safe to run on every move because
@@ -518,6 +610,41 @@ it presented as a flaky test (2 runs in 8): raising the `waitFor` timeout to 5s 
 is what proves frozen state rather than a slow render. Pin such a case with a DEFERRED promise so the
 ordering is deterministic instead of lucky.
 
+## A Milestone's artifacts: polymorphic, and inherited ones computed on READ
+
+`milestone_artifacts` has been `(entity_type, entity_id)` since migration 0084, and until now there
+were two writers and one reader — the Feature/Epic rail wrote `'portfolio_item'` rows while every read
+hardcoded `entity_type = 'work_item'`. So `FE-6` assigned to `MS-1` persisted, displayed on the
+Feature, and was absent from `MS-1`'s own Artifacts tab. `Phase 3/03_Milestones/SRS.md:116` makes
+Story, Defect, Feature and Epic all directly assignable. Three consequences:
+
+- **The `PUT :id/artifacts` body is `artifactIds`, renamed from `workItemIds`** — a contract change,
+  so it needs a codegen commit. The delete half of the replace-set had the `entity_type` predicate on
+  it too, which meant the payload could ADD a Feature but never remove one.
+- **`GET :id/artifacts` (the picker baseline) returns DIRECT links of both kinds; `GET
+:id/artifacts/items` (the dashboard rows) adds INHERITED descendants.** A Feature or Epic assigned to
+  a milestone brings its leaf Stories/Defects into display scope, which is what Rally's own
+  `Leaf Story Plan Estimate Total` means. Inherited rows are never materialised into link rows: if
+  they reached the picker, the next save would post them back as direct assignments nobody made. The
+  work-item branch is ONE scan whose predicate is `direct OR inherited`, so a duplicate row is
+  structurally impossible rather than de-duplicated afterwards.
+- **Project scope is `milestones.project_id` UNION `milestone_projects`.** The work-item side matched
+  the column alone, so a Milestone reachable from this project through the link table was refused on
+  one side and accepted on the other (§88/§135, FR-021/023, and Q06 confirms a Milestone may span
+  several projects). A Task is excluded from the team half of that rule by the BA's own sentence — its
+  context is derived through its parent and it has no Team field.
+
+## A Portfolio item's Project is READ-ONLY after creation
+
+Cited eleven ways in `UpdatePortfolioItemSchema`'s docblock (`Phase 5/01_Portfolio_Items/SRS.md`), so
+`projectId` is off the PATCH schema, the SPA cell is a `ProjectCell` chip, and the whole move
+reconciliation is deleted — see "Capacity: what refuses, and why" for the refusal that went with it.
+Two things worth knowing before touching that cell: the chip's KEY is resolved from the workspace
+`projects` list because the portfolio DTO carries `projectName` and no key (so the page still passes
+`projects` down after losing the move), and the picker that used to live there was ALSO a permission
+bug — built from every READABLE project with no `portfolio:edit` filter, which is why a per-project
+Admin got a 403 from the destination they chose (`P5-PI-003`, invisible to a Workspace Admin).
+
 ## Archive ordering cuts both ways
 
 An Epic with active child Features cannot be archived — and a Feature whose Epic is archived cannot be
@@ -538,10 +665,18 @@ Both were ruled on. Neither is drift, and neither should be "fixed" on sight.
   Release fields in the story must match the plan for that story to be included in the Rollup
   calculation." Without it a long-lived Feature inflates every plan that touches it — the plan charges
   work belonging to another release — so the filter stays and the BA formula is the divergence.
-- **Nested `Dependencies` renders `0`, not `—`.** The BA's catalog suggests a dash (§205); Rally's column
-  is a COUNT, dependencies are genuinely unimplemented rather than unknown, and `0` is true where a dash
-  would read as "not known". Note this is the one place the app's own absent-value rule (`--` everywhere
-  else) is deliberately not applied.
+- **`Dependencies` is split PER GRID: `0` on the Features tab, `EMPTY_VALUE` in the expanded Team
+  table.** Both are the BA's own words, which is why this is not a divergence and not an
+  inconsistency to tidy: §157 for the Features tab is "It shows `0` until dependency modelling is
+  added" (catalog §353), while §9 for the nested table is "Column present but not implemented in this
+  slice; every row shows `—`" — restated at §215, §406, catalog §334, and again under Out of Scope at
+  §14. **This bullet used to claim the nested table renders `0` too**, on the reading that Rally's
+  column is a COUNT and that a dash reads as "unknown" where zero reads as "none". `P5-CP-025` is a
+  BA-confirmed P0 Fail on exactly that cell, so the dash won for that grid and the Features-tab `0`
+  stayed. The Features chip is therefore still the one place the app's absent-value rule is
+  deliberately not applied — `DependencyCount` is its single renderer, shared by the Feature row and
+  its split sub-rows, because the sub-row cell was previously an EMPTY div: the "not loaded" reading,
+  one row under a chip reading `0`, in the same column.
 - **The cutline keeps the overflowing Feature BELOW the line.** Rally's Items-tab doc is the deciding
   sentence: "Items above the cutline fit within the defined plan capacity. Items below the line exceed
   the capacity of the plan." SRS §189 says the line is drawn "after the first Feature where cumulative
@@ -568,7 +703,7 @@ which is migration 0101 reversing 0077 on purpose. Anything that reads or writes
 respect this:
 
 - **Never resolve an allocation's charge on read.** SRS §11 is `fixed allocation.value set during
-  planning/replanning`, and §337 defines Team Estimated as `SUM(allocation.value)`. 0077 had made the
+planning/replanning`, and §337 defines Team Estimated as `SUM(allocation.value)`. 0077 had made the
   column nullable so a blank Estimate could resolve to the Feature's own estimate per request. That
   meant editing a Feature's Refined Estimate silently moved every Draft plan that had assigned it — a
   planner's committed demand changed with no action on the plan — and no surface could compute a total
@@ -576,7 +711,7 @@ respect this:
 - **`source` is why the value can be fixed.** 0077's stated objection was real: "a defaulted 8 and a
   deliberate 8 were indistinguishable." The BA answers it with a label, not a null (§185: blank
   "copies the Feature's top-down estimate into a fixed allocation row and labels its source `Feature
-  Estimate`"; §186: a supplied one "becomes a fixed `Manual` allocation row").
+Estimate`"; §186: a supplied one "becomes a fixed `Manual` allocation row").
 - **The copy happens at WRITE time, in the plan's unit** — `defaultAllocationEstimate`, Refined →
   Preliminary, deliberately skipping Total Allocated so a blank field cannot commit the sum of the
   allocations it is creating (§294). `value: null` on a PATCH means RE-COPY, not clear: the emptied
@@ -587,19 +722,35 @@ respect this:
 - **A merged parked row keeps its source only when exactly ONE row folded in.** A sum of two rows is a
   number no single rule produced, so it is `manual` — calling it a Feature estimate would misreport
   the Feature's size.
+- **`Planned Team Assignment` reads `is_primary`; the chips and rails read `team_id`** — one ledger,
+  different COLUMNS of it, so a row with a team and no primary flag says `Not assigned` beside a team
+  chip and a charged rail (`P5-CP-032`). The WRITERS were fixed first (`updateAllocation` and
+  `allocateToTeam` both promote a row that gains a team when the Feature has no primary yet), and
+  **nothing repaired the rows written before that** — which is why the retest reproduced on rally-dev
+  eight days later. Migration 0127 promotes the OLDEST team-assigned row per (plan, Feature) that has
+  no primary: the same rule `oldestTeamAllocation` applies live, deliberately, because "biggest
+  allocation wins" would move ownership whenever a slice is edited. A Feature with only PARKED rows is
+  left alone — `Not assigned` is the true answer there, and inventing an owner is the mirror defect.
 
 ## Capacity: what refuses, and why
 
-Three references into a capacity plan are now REFUSALS rather than silent repairs, all following
+Two references into a capacity plan are now REFUSALS rather than silent repairs, both following
 `RELEASE_HAS_CAPACITY_PLAN` on release delete — the pattern this repo already chose:
 
-- **Moving a Feature to another project** while it is allocated
-  (`PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION`). A plan belongs to one project, so the Feature took
-  nothing with it: the rows stayed behind, kept feeding that team's Estimated, the plan total and
-  the cutline, and publish wrote the OLD project's Release onto it — the state `assertReferences`
-  itself rejects. Deleting the rows instead would destroy committed numbers on a plan the person
-  moving the Feature may not even be able to see. `applyPlanToFeature` also filters on the plan's
-  project now, so the write is incapable of crossing projects even for rows that predate the guard.
+- **There WAS a third, and it is gone with the write it guarded.** Moving a Feature to another
+  project while it was allocated answered `PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION`, because a plan
+  belongs to one project and the Feature took nothing with it — the rows stayed behind feeding that
+  team's Estimated, the plan total and the cutline. **The BA then made Project read-only after
+  creation**, cited eleven ways in `UpdatePortfolioItemSchema`'s own docblock, so `projectId` left
+  that schema and no request can reach `project_id` any more. The refusal was DELETED rather than
+  kept behind the closed door, deliberately and for this repo's twice-recorded reason (the
+  team-scoped Editor, `capacity:view_draft`): a security-shaped guard with no entry point reads in
+  review as a boundary and is not one. `git log` has the whole reconciliation branch — team reset,
+  release cleared, cross-project parent dropped, milestones conditionally kept — if the ruling
+  reverses. `applyPlanToFeature` keeps its own project filter, which is a narrowing of the write and
+  not a guard on a dead path. The `PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION` code is deleted from
+  `error-codes.ts` as well — no thrower and no SPA branch read it, and this repo has already ruled
+  that way once, on the dead `GET :id/members` route.
 - **Unlinking a team from a project** while it sits on one of that project's plans
   (`PROJECT_TEAM_HAS_CAPACITY_PLAN`). `project_teams` is a soft status flip, so
   `fk_capacity_plan_teams_team ON DELETE RESTRICT` never fires. `Remove Team` on the plan is the
@@ -665,7 +816,7 @@ goes out inline. Four consequences worth knowing before touching either half:
   committed intents are always drained.
 - **`guest_invite_outbox.invite_token` holds the RAW token** (migration 0124), because only its sha256
   is persisted and the relay could not otherwise build `inviteUrl`. Scrubbed in the same write that
-  schedules the email, and on a terminal failure. NULL also *means* "this row owes no email", which is
+  schedules the email, and on a terminal failure. NULL also _means_ "this row owes no email", which is
   what `resendInvitation` passes — it mails its own rotated token inline.
 - **Both writers key the email on `invitation.id`**, so a flag flipped mid-flight cannot produce two
   invitation emails; the relay additionally refuses to mail a token whose hash no longer matches the
@@ -724,13 +875,13 @@ on whether an Editor may set a Story's Feature, so this is a **declared reading*
 them: §5.2:124 makes that field the only way Feature membership is ever set, §3.2:79 gives an Editor the
 Story, and the closest precedent is the BA's own one field over — `Phase 2/02_Iterations/SRS.md:393`,
 "Timeboxes hidden; may update Work Item Iteration through approved Backlog/Iteration Status flows only"
-— hidden surface, permitted field, therefore a feed. Release is decided the *other* way and says so in
+— hidden surface, permitted field, therefore a feed. Release is decided the _other_ way and says so in
 words ("cannot assign Release", BL §8:294), which is why that one is refused in `WorkItemsService`
 instead. **Where the BA wanted a field withheld from an Editor it wrote a sentence; it wrote none for
 Feature.** If they rule it like Release, the reversal is this route plus one SPA field. The feed is
 single-project per §5.3:133, which is what lets the GUARD check it (`{ from: 'query', field:
 'projectId' }`) instead of a service-side narrowing — so the service deliberately makes **no**
-authorization call, pinned by a spec. Note the API still *accepts* a cross-project Feature link
+authorization call, pinned by a spec. Note the API still _accepts_ a cross-project Feature link
 (`assertFeatureLinkable` permits it, because Rally's rollup matches `feature_id` alone) while the picker
 no longer offers one: 0 such rows exist, and the BA's field scope wins over offering it.
 
@@ -778,6 +929,7 @@ sight. The audit and its sourced Rally research are in
   `isProjectAccessLevel`, never an inline comparison.
 
   Sourced evidence: `product-docs/projects/mini-rally/09_Gap_Audit/research/RALLY_PERMISSIONS_MODEL.md`.
+
 - **Team-scoped Editor is DROPPED as an authorization scope** (ruling 2026-08-14, reversing the
   earlier "KEPT" ruling of the same day — recorded rather than deleted, because the next person to read
   the BA's §2.2 will reach for it again). The BA scopes an Editor's writes to their assigned Teams
@@ -789,7 +941,7 @@ sight. The audit and its sourced Rally research are in
   **What reversed it was our own schema, not Rally's docs.** A team scope can only restrict rows that
   CARRY a team, and `portfolio_items.team_id` and `work_items.team_id` are both nullable and mostly
   unset (195 of 206 local iterations name no team). `assertTeamScoped` therefore admitted every
-  `teamId === null` row *by design* — so the boundary admitted the ordinary case, which makes it a
+  `teamId === null` row _by design_ — so the boundary admitted the ordinary case, which makes it a
   filter with a security-sounding name rather than a control. It covered 3 of ~14 Editor-reachable
   writes and **no reads**: the worst available state, because it reads as a boundary in review and is
   not one. Finishing it honestly would have required making `team_id` MANDATORY on every
@@ -801,19 +953,28 @@ sight. The audit and its sourced Rally research are in
   — and note `RBE-06` now grants `editor` from a team roster row, which IS Rally's model arrived at from
   the other direction. **Do not re-add a team authorization scope without a fresh ruling, and if one is
   ever wanted, mandatory `team_id` is its precondition, not an optimisation.**
+
 - **A per-Project `Admin` has NO structural authority**, following the BA over Rally. §3.1 marks
   every structural row Hidden for Admin — create/edit/archive/restore/delete Project, create/edit/
   deactivate/restore Team, assign Project access and Team membership — and gives it Read-only on
-  "View Project Details and Teams". Rally's Project Admin *does* configure its project and edit
+  "View Project Details and Teams". Rally's Project Admin _does_ configure its project and edit
   viewer/editor/team-member permissions, so this is deliberate. In code: `PATCH /projects/:id` and
   the two `:id/teams` link/unlink routes carry **`workspace:edit`** (workspace-tier, WA-only), not
   `project:edit`.
 
   **`project:edit` deliberately STAYS in the Admin set**, because it also gates label and
-  workflow-status configuration — delivery configuration, which §3.1's own summary gives Admin
-  ("`Admin` is powerful for delivery management") — and because `View Permission Model` is a §3.1
-  Admin row gated on that code. So do not read "Admin must not hold `project:edit`" from the rule
-  above; read "the structural routes must not be gated on it".
+  workflow-status configuration and because `Permission Model` is a §3.1:65 Admin row (`View`) gated
+  on that code. So do not read "Admin must not hold `project:edit`" from the rule above; read "the
+  structural routes must not be gated on it".
+
+  **The sentence this used to lean on is GONE.** It quoted §3.1's own summary, "`Admin` is powerful
+  for delivery management", and product-docs `5c1388e` deletes it — grep that file and neither
+  "powerful" nor "delivery management" appears. §3.1 has no row for labels or workflow statuses
+  either way, so the reading now rests on the §3.1:65 row plus that absence: WEAKER than it was, and
+  on the list to put to the BA rather than settled. Measured, not asserted, in
+  `server-role-matrix.e2e.spec.ts`. Note also that every `§3.2` line citation moved up 3 in that
+  release (the delivery table now runs :74–:84), which is worth checking before trusting any
+  `§3.2:NN` reference written earlier than it.
 
 ## Permissions reach a workspace ONCE
 
@@ -848,11 +1009,11 @@ output against a real database — do not collapse the three into one change.
 
 Three tiers, and only the first two ever reach a deployed environment:
 
-| tier | file | contents | where |
-|---|---|---|---|
-| reference | `db/seeds/reference.ts` | `access.system_roles` from `db/permissions.catalog.ts` | every env, every deploy |
-| bootstrap | `db/seeds/bootstrap.ts` | workspace + Entra SSO + `workspace_settings` + workspace-owned tier roles | every env, every deploy |
-| fixtures | `db/seeds/demo.ts` (+ `second-project.ts`, `reference-extras.ts`) | NXP/PAY projects, work items, capacity plan, frozen report history | LOCAL and CI only |
+| tier      | file                                                              | contents                                                                  | where                   |
+| --------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------- |
+| reference | `db/seeds/reference.ts`                                           | `access.system_roles` from `db/permissions.catalog.ts`                    | every env, every deploy |
+| bootstrap | `db/seeds/bootstrap.ts`                                           | workspace + Entra SSO + `workspace_settings` + workspace-owned tier roles | every env, every deploy |
+| fixtures  | `db/seeds/demo.ts` (+ `second-project.ts`, `reference-extras.ts`) | NXP/PAY projects, work items, capacity plan, frozen report history        | LOCAL and CI only       |
 
 `db/migrate.ts` gates the fixtures on `SEED_ON_DEPLOY` **and** refuses them outright under
 `NODE_ENV=production`, which is what deployed migrator tasks run with and nothing else does. Develop
@@ -944,7 +1105,7 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
   in either direction with no app change. **Never call `GetSecretValue` with a raw ref.**
   This broke SSO login on develop for a day: every `POST /v1/bff/login/sso` was a 500 while
   the deploy, the migrator and the seed all reported success, because the seed stores the
-  ref in `sso_connections.client_secret_ref` and only the *login* path dereferences it.
+  ref in `sso_connections.client_secret_ref` and only the _login_ path dereferences it.
   IAM lists have the same trap from the other side and need `secret_iam_arns` instead.
 - **An infra change alone does not take effect — it needs a deploy.** Terraform
   owns the task definition's environment and the Pages project's `API_ORIGIN`, but

@@ -299,11 +299,13 @@ export const CAPACITY_ALLOCATION_COLUMNS: ColumnSpec<CapacityAllocation, unknown
   // string is fixed by `EMPTY_VALUE`'s docblock, "not an em-dash, because that is what real Rally
   // renders".
   { key: 'allocation', label: 'Allocation', defaultWidth: 124, minWidth: 90 },
-  // Placeholder, per the BA — but it shows `0`, not the dash the catalog suggests, because Rally's
-  // column is a COUNT and dependencies are unimplemented rather than unknown. That is a DECLARED
-  // divergence (see the repo's CLAUDE.md, "Nested `Dependencies` renders `0`, not `--`") and the one
-  // place the app's absent-value rule is deliberately not applied; do not "fix" it on sight.
-  // The label is the widest thing in this column, so the width is set by it, not by the `0`.
+  // Placeholder, and it shows `EMPTY_VALUE` (`--`) — NOT the `0` the Features-tab column shows.
+  //
+  // The split is the BA's and it is per GRID: SRS §9 for this table says "every row shows `—`" (again
+  // at §215, §406, catalog §334, Out of Scope §14), while §157 for the Features tab says "It shows `0`
+  // until dependency modelling is added". This cell used to render `0` on a COUNT reading of Rally's
+  // column, which P5-CP-025 records as a BA-confirmed P0 Fail; the dash is the BA's text for this grid.
+  // The label is the widest thing in this column, so the width is set by it either way.
   { key: 'dependencies', label: 'Dependencies', defaultWidth: 124, minWidth: 104, align: 'right' },
   { key: 'progress', label: '', defaultWidth: 130, minWidth: 100 },
   { key: 'complete', label: 'Complete', defaultWidth: 86, minWidth: 72, align: 'right' },

@@ -145,15 +145,17 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
   it('does NOT overwrite To Do when only the Estimate is edited', async () => {
     /**
      * The Team Status edit path used to set `todoHours` to the new estimate whenever the caller had not
-     * sent one. That defined the field before `WorkItemsService` saw it, bypassing the once-only gate
-     * (`item.todoHours === null`) — so the copy happened on EVERY estimate edit, re-inflating a
-     * completed task's auto-zeroed To Do and moving the Iteration Status total with it.
+     * sent one. That defined the field before `WorkItemsService` saw it, so the copy happened on EVERY
+     * estimate edit, moving the Iteration Status total with it.
      *
      * Driven through `WorkItemsService` now, because Team Status no longer edits hours at all: the SRS
      * makes Estimate/ToDo/Actuals reads on that screen (§9.3 patches `title`/`state`; §11's editable
      * columns are Capacity, Task Name, Task State), and the Task Dashboard — Work Item Detail › Tasks
-     * tab, FR-038 — is the surface that writes them, through this path. The RULE is unchanged and this
-     * is where it lives, which is the whole reason removing the Team Status branch is safe.
+     * tab, FR-038 — is the surface that writes them, through this path.
+     *
+     * The assertion is unchanged; its REASON narrowed. It used to hold because of a once-only gate
+     * (`item.todoHours === null`); it now holds because the update path derives nothing at all —
+     * `Phase 1/04_Task_Management/SRS.md:127`, "this copy is **not repeated on later edits**".
      */
     const story = await items.createWorkItem(
       actor,
@@ -177,10 +179,16 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
     expect(Number(rows.rows[0].todo_hours)).toBe(2);
   });
 
-  it('still copies the FIRST estimate to To Do, once', async () => {
-    // Removing the auto-sync must not remove the real rule: the first Estimate copies to To Do while
-    // To Do is still null (RECONCILED_SOURCE_OF_TRUTH), and that rule lives in `WorkItemsService` —
-    // the path the Task Dashboard writes through, and the one every hours edit now takes.
+  /**
+   * INVERTED. This used to assert that a first Estimate typed onto an existing task copied itself
+   * into a blank To Do.
+   *
+   * The BA scoped that copy to create: "**On create only**, when Estimate is entered and To Do is
+   * blank, the system copies Estimate to To Do once" (`Phase 1/04_Task_Management/SRS.md:26`), and
+   * `:127` — "this copy is **not repeated on later edits**". A blank To Do therefore stays blank,
+   * which is the case the old behaviour existed for and is now the one that proves it is gone.
+   */
+  it('does NOT copy an estimate into a blank To Do on a later edit', async () => {
     const story = await items.createWorkItem(
       actor,
       SEEDED.nxp.projectId,
@@ -195,9 +203,52 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
 
     await items.updateWorkItem(actor, task.id, { estimateHours: '7' });
 
-    const rows = await db.execute<{ todo_hours: string }>(
-      sql`select todo_hours from work.tasks where id = ${task.id}::uuid`,
+    const rows = await db.execute<{ estimate_hours: string; todo_hours: string | null }>(
+      sql`select estimate_hours, todo_hours from work.tasks where id = ${task.id}::uuid`,
     );
-    expect(Number(rows.rows[0].todo_hours)).toBe(7);
+    expect(Number(rows.rows[0].estimate_hours)).toBe(7);
+    expect(rows.rows[0].todo_hours).toBeNull();
   });
+
+  /**
+   * INVERTED, and it is the change with the widest reach: completing a task used to write
+   * `todoHours = 0`, so the Team Status / Team Capacity To Do total fell as work finished.
+   *
+   * "**Completing or reopening a Task does not change any of the three values.**"
+   * (`Phase 1/04:27`, restated at `Phase 1/05_Time_Tracking/SRS.md:91` and
+   * `Phase 6/04_Team_Capacity/SRS.md:52` + AC-8:134 — "Completing or reopening a Task does not alter
+   * the report's Estimate, ToDo or Actual values unless a user explicitly edits those fields").
+   *
+   * `accepted` and `release` are in the loop because the removed gate was `isCompletedScheduleState`,
+   * which covers all three — the auto-zero fired on three transitions, not one.
+   */
+  it.each(['completed', 'accepted', 'release'] as const)(
+    'leaves To Do alone when a task moves to %s, and Team Status agrees',
+    async (state) => {
+      const story = await items.createWorkItem(
+        actor,
+        SEEDED.nxp.projectId,
+        'story',
+        `Complete ${uniqueKey()}`,
+        { iterationId, teamId },
+      );
+      const task = await items.createTask(actor, story.id, `Complete task ${uniqueKey()}`, {
+        estimateHours: '6',
+        todoHours: '4',
+        actualHours: '2',
+      });
+
+      const before = await teamStatusHours(teamId);
+      await items.updateWorkItem(actor, task.id, { scheduleState: state });
+
+      const rows = await db.execute<{ todo_hours: string }>(
+        sql`select todo_hours from work.tasks where id = ${task.id}::uuid`,
+      );
+      expect(Number(rows.rows[0].todo_hours)).toBe(4);
+      // The two surfaces are ONE population, so the retained 4 has to be visible on both.
+      const after = await teamStatusHours(teamId);
+      expect(after.todo).toBe(before.todo);
+      expect(after).toEqual(await capacityHours(teamId));
+    },
+  );
 });

@@ -25,7 +25,8 @@ import { type ColKey } from '../model/columns'
 import { PORTFOLIO_STATES } from '../model/portfolio-states'
 import { hasChildren } from '../model/children'
 import { PortfolioChildRows } from './portfolio-child-rows'
-import { ProjectSelectCell, ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
+import { ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
+import { ProjectCell } from '@/shared/ui/project-cell'
 import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-options'
 
 /**
@@ -38,9 +39,13 @@ import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-opt
  * hide actions the user has elsewhere or offer ones they do not.
  *
  * What is NOT editable, and why — both are constraints, not omissions:
- *   • **Project** — `PATCH /v1/portfolio-items/{id}` carries no `projectId`, and moving
- *     an item would also have to clear its Epic, Release and Team, which all belong to
- *     the old project. That is an operation, not a field edit; no endpoint offers it.
+ *   • **Project** — inherited from the creation context and READ-ONLY afterwards. The BA says so
+ *     nine times over for Portfolio Items alone (`Phase 5/01_Portfolio_Items/SRS.md` §45 "read-only
+ *     afterward for both Feature and Epic", §56 which strikes it from the inline-editable list, §98,
+ *     §339, §360, §387, FR-004 at §209 and AC-3 at §271), and `PATCH /v1/portfolio-items/{id}` no
+ *     longer accepts `projectId` at all. This cell WAS an editable move for a while, on the strength
+ *     of the BA's then-current §3.1 `Project | Yes`; that reading has been reversed, and
+ *     `applyProjectMove` went with it.
  *   • **Percent Done ×2** — derived server-side from child rollups. There is nothing to
  *     write; you change them by accepting child work.
  *
@@ -93,7 +98,15 @@ export function PortfolioRow({
   canEditProject: (projectId: string) => boolean
   /** Epic/Release/Team options for THIS row's project. */
   options: PortfolioCellOptions
-  /** Move destinations — workspace-wide, since a move targets a DIFFERENT project. */
+  /**
+   * Workspace projects, for the project KEY.
+   *
+   * A NAME LOOKUP, not a picker feed — Project is read-only now, so nothing here is a destination.
+   * That matters because the list must NOT be narrowed: it used to be filtered to non-archived
+   * projects the caller may edit (the destinations a move could legally take), and reusing that
+   * narrowing for a key lookup would silently blank the chip on exactly the rows whose project is
+   * archived or outside the caller's write scope.
+   */
   projects: ProjectOption[]
   /** The same lookup by project, for the disclosed child rows. */
   optionsFor: (projectId: string) => PortfolioCellOptions
@@ -129,6 +142,10 @@ export function PortfolioRow({
   } = useSortable({ id: item.id })
   const dragStyle = useDragRowStyle({ transform, transition, isDragging })
   const expandable = hasChildren(item)
+  // The project's KEY for the read-only Project chip. Resolved here rather than added to the DTO
+  // because the page has already fetched the workspace's projects; same device the disclosed
+  // Story/Defect preview rows use for their own project and team keys.
+  const projectKey = projects.find((p) => p.id === item.projectId)?.key ?? null
 
   // Shared commit helper: fire the mutation with the standard success/error toasts.
   const { save: commit } = useFieldCommit(update)
@@ -270,21 +287,17 @@ export function PortfolioRow({
           <PercentDoneBar metric="count" health={item.health} progress={progress} rollup={rollup} />
         </div>
 
-        {/* Project — a MOVE, not a field edit: the server resets Team and drops a Release
-          or Epic belonging to the old project. SRS §3.1 requires it editable. */}
+        {/* Project — READ-ONLY, per §45/§56/§209/§271: inherited from the creation context and never
+          editable afterwards. `ProjectCell` rather than a disabled `ProjectSelectCell`, because a
+          greyed picker reads as "you lack permission" when the truth is that the field has no editor
+          for anyone. The KEY is resolved from `projects`, which is why that prop survives the loss of
+          the move: the portfolio DTO carries `projectName` and no key, and without the chip this cell
+          would lose the glyph its own column header shares with every other Project column. */}
         <div
           style={colStyleFor('project', { flexShrink: 0 })}
-          className="flex min-w-0 items-center overflow-hidden px-0"
-          onClick={(e) => e.stopPropagation()}
+          className="flex min-w-0 items-center overflow-hidden px-2"
         >
-          <ProjectSelectCell
-            projectId={item.projectId}
-            projectName={item.projectName}
-            projects={projects}
-            canEdit={canEdit}
-            ariaLabel={t('detail.fields.project')}
-            onChange={(v) => save({ projectId: v }, t('row.projectMoved'))}
-          />
+          <ProjectCell projectKey={projectKey} projectName={item.projectName} />
         </div>
 
         {/* Team — square key-chip + name (circle = person, square = team). Picker over the

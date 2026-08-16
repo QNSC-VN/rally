@@ -70,16 +70,6 @@ export interface IPortfolioItemRepository {
   setMilestones(id: string, milestoneIds: string[]): Promise<void>;
 
   /**
-   * The subset of `milestoneIds` belonging to `projectId`. Serves both the write-time scope
-   * check (compare lengths) and the project-move reconciliation (keep the survivors).
-   */
-  filterMilestonesInProject(
-    milestoneIds: string[],
-    projectId: string,
-    workspaceId: string,
-  ): Promise<string[]>;
-
-  /**
    * The linked-leaf rollup split by child type, for the detail page's accepted-children
    * panel. Detail-only: it is one grouped query, deliberately kept off the list path where
    * the per-row scalar subqueries live.

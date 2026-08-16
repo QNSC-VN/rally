@@ -203,6 +203,16 @@ const makeProjectsService = () => {
     // P1-15: scope validation helpers
     assertWorkspaceMember: vi.fn().mockResolvedValue(undefined),
     assertLabelBelongsToProject: vi.fn().mockResolvedValue(undefined),
+    /**
+     * The OWNER PICKER's feed, and therefore the population `assertOwnerInTeam` judges an Owner
+     * against (Phase 1/03 §7:125). Defaults to `user-1` on every team, so the many tests that name
+     * an owner keep passing; the owner/team tests override it.
+     */
+    listProjectMemberOptions: vi
+      .fn()
+      .mockResolvedValue([
+        { userId: 'user-1', displayName: 'User One', email: 'one@qnsc.dev', avatarUrl: null },
+      ]),
   };
 };
 
@@ -332,6 +342,20 @@ describe('WorkItemsService', () => {
 
     service = module.get(WorkItemsService);
   });
+
+  /**
+   * The minimum a write needs before it may name an OWNER: an item Team, actively linked to the
+   * project, whose roster offers that user (`Phase 1/03_Work_Item_Detail/SRS.md` §7:125 — "if
+   * `teamId` is null, `assigneeId` must also be null"). Returns the opts fragment to spread, so a
+   * test about something else does not have to restate the rule.
+   */
+  const ownableBy = (userId: string) => {
+    projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-a', status: 'active' }]);
+    projectsService.listProjectMemberOptions.mockResolvedValue([
+      { userId, displayName: null, email: null, avatarUrl: null },
+    ]);
+    return { teamId: 'team-a' };
+  };
 
   // ── listWorkItems ──────────────────────────────────────────────────────────
 
@@ -525,6 +549,7 @@ describe('WorkItemsService', () => {
 
       await service.createWorkItem(mockActor, 'proj-1', 'story', 'My story', {
         assigneeId: 'user-2',
+        ...ownableBy('user-2'),
       });
 
       expect(notificationScheduler.schedule).toHaveBeenCalledWith(
@@ -543,6 +568,7 @@ describe('WorkItemsService', () => {
 
       await service.createWorkItem(mockActor, 'proj-1', 'story', 'My story', {
         assigneeId: mockActor.sub,
+        ...ownableBy(mockActor.sub),
       });
 
       expect(notificationScheduler.schedule).not.toHaveBeenCalled();
@@ -555,6 +581,7 @@ describe('WorkItemsService', () => {
 
       await service.createWorkItem(mockActor, 'proj-1', 'story', 'My story', {
         assigneeId: 'user-2',
+        ...ownableBy('user-2'),
       });
 
       expect(notificationScheduler.schedule).not.toHaveBeenCalled();
@@ -609,7 +636,10 @@ describe('WorkItemsService', () => {
       );
       workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task' }));
 
-      await service.createTask(mockActor, 'parent-1', 'My task', { assigneeId: 'someone-else' });
+      await service.createTask(mockActor, 'parent-1', 'My task', {
+        assigneeId: 'someone-else',
+        ...ownableBy('someone-else'),
+      });
 
       expect(workItemRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ assigneeId: 'someone-else' }),
@@ -653,7 +683,8 @@ describe('WorkItemsService', () => {
       );
     });
 
-    // ── Real Rally: To Do defaults to the Estimate on create when not given ──
+    // ── The ONE automatic move: "On create only, when Estimate is entered and To Do is blank, the
+    //    system copies Estimate to To Do once" (`Phase 1/04_Task_Management/SRS.md:26`). ──
     it('defaults To Do to the Estimate when To Do is not provided', async () => {
       workItemRepo.findById.mockResolvedValue(
         mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),
@@ -665,6 +696,26 @@ describe('WorkItemsService', () => {
 
       expect(workItemRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ estimateHours: '8', todoHours: '8' }),
+        expect.anything(),
+      );
+    });
+
+    // "An explicitly entered To Do is not overwritten" (`:26`) — and `0` IS an explicit entry, which
+    // is why the copy is `??` and not `||`.
+    it('does NOT overwrite an explicit To Do of 0 with the Estimate', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),
+      );
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-p', status: 'active' }]);
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task' }));
+
+      await service.createTask(mockActor, 'parent-1', 'My task', {
+        estimateHours: '8',
+        todoHours: '0',
+      });
+
+      expect(workItemRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ estimateHours: '8', todoHours: '0' }),
         expect.anything(),
       );
     });
@@ -986,7 +1037,10 @@ describe('WorkItemsService', () => {
       );
     });
 
-    // ── Real Rally: Estimate is independent — never derived/overwritten on update ──
+    // ── Three independent hour fields; NOTHING is derived on update ──────────
+    // `Phase 1/04_Task_Management/SRS.md:26`/`:27`/`:127` and
+    // `Phase 1/05_Time_Tracking/SRS.md:91`: the create-time copy is the only automatic move, it is
+    // not repeated on later edits, and completing or reopening changes none of the three.
     it('does NOT derive or overwrite the Estimate on update', async () => {
       const task = mockWorkItem({
         id: 'task-1',
@@ -1007,13 +1061,14 @@ describe('WorkItemsService', () => {
     });
 
     /**
-     * The BA's first clause, on the UPDATE path: "If the Owner enters `Estimate` first, the system
-     * copies the same number of hours to `To Do` once" (Portfolio SRS:143).
+     * The copy is "**On create only**" (`Phase 1/04:26`) and "not repeated on later edits" (`:127`).
      *
-     * The create path did this and the update path did not, so estimating a task that already existed
-     * left To Do empty and the planner typed the same number twice.
+     * This assertion is INVERTED from what it used to pin. The update path did copy a first Estimate
+     * into a null To Do, on the older Portfolio-SRS reading; the BA has since scoped the copy to
+     * create, so an estimate typed onto an existing task must leave To Do alone — even the blank one,
+     * which is the case the old behaviour was written for.
      */
-    it('copies a FIRST Estimate into To Do, once', async () => {
+    it('does NOT copy a FIRST Estimate into To Do on update — the copy is create-only', async () => {
       const task = mockWorkItem({ id: 'task-1', type: 'task', todoHours: null });
       workItemRepo.findById.mockResolvedValue(task);
       workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
@@ -1021,13 +1076,13 @@ describe('WorkItemsService', () => {
       await service.updateWorkItem(mockActor, 'task-1', { estimateHours: '6' });
 
       const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
-      expect(call?.[1]).toMatchObject({ estimateHours: '6', todoHours: '6' });
+      expect(call?.[1]).toMatchObject({ estimateHours: '6' });
+      expect(call?.[1]).not.toHaveProperty('todoHours');
     });
 
-    it('does NOT re-copy once To Do has a value — including a deliberate 0', async () => {
-      // "After that first copy, `Estimate`, `To Do` and `Actual` do not auto-recalculate each other"
-      // (SRS:144). `0` is the case worth pinning: a completed task has exactly that, so treating it as
-      // "unset" would undo the auto-zero, or overwrite a planner who typed 0 on purpose.
+    it('leaves an existing To Do alone when Estimate is edited — including a deliberate 0', async () => {
+      // Still true, and now true for one reason instead of two: the update path derives nothing at
+      // all, so neither a real remaining value nor a deliberate `0` can be overwritten.
       for (const existingTodo of ['4', '0']) {
         workItemRepo.update.mockClear();
         workItemRepo.findById.mockResolvedValue(
@@ -1043,7 +1098,7 @@ describe('WorkItemsService', () => {
       }
     });
 
-    it('lets the same patch set BOTH, without the copy interfering', async () => {
+    it('passes an explicit Estimate AND To Do straight through', async () => {
       workItemRepo.findById.mockResolvedValue(
         mockWorkItem({ id: 'task-1', type: 'task', todoHours: null }),
       );
@@ -1052,29 +1107,57 @@ describe('WorkItemsService', () => {
       await service.updateWorkItem(mockActor, 'task-1', { estimateHours: '8', todoHours: '3' });
 
       const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
-      // An explicit To Do wins: the copy is a convenience for the field being LEFT OUT.
       expect(call?.[1]).toMatchObject({ estimateHours: '8', todoHours: '3' });
     });
 
-    // ── Real Rally: completing a task auto-zeroes To Do; Estimate untouched ──
-    it('auto-zeroes To Do when a task is completed, leaving Estimate untouched', async () => {
+    /**
+     * INVERTED: completing a task used to auto-zero To Do.
+     *
+     * "**Completing or reopening a Task does not change any of the three values.**"
+     * (`Phase 1/04:27`, restated at `:127`, `Phase 1/05:91`, `Phase 6/04:52` and its AC-8). The old
+     * gate was `isCompletedScheduleState`, so all three of `completed`, `accepted` and `release`
+     * zeroed it — hence the loop.
+     */
+    it.each(['completed', 'accepted', 'release'] as const)(
+      'does NOT touch To Do, Estimate or Actual when a task moves to %s',
+      async (state) => {
+        const task = mockWorkItem({
+          id: 'task-1',
+          type: 'task',
+          scheduleState: 'in_progress',
+          todoHours: '3',
+          actualHours: '2',
+          estimateHours: '8',
+          parentId: null,
+        });
+        workItemRepo.findById.mockResolvedValue(task);
+        workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
+
+        await service.updateWorkItem(mockActor, 'task-1', { scheduleState: state });
+
+        const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
+        expect(call?.[1]).not.toHaveProperty('todoHours');
+        expect(call?.[1]).not.toHaveProperty('estimateHours');
+        expect(call?.[1]).not.toHaveProperty('actualHours');
+      },
+    );
+
+    it('does NOT restore To Do when a completed task reopens', async () => {
       const task = mockWorkItem({
         id: 'task-1',
         type: 'task',
-        scheduleState: 'in_progress',
-        todoHours: '3',
-        actualHours: '2',
+        scheduleState: 'completed',
+        todoHours: '0',
         estimateHours: '8',
         parentId: null,
       });
       workItemRepo.findById.mockResolvedValue(task);
       workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
 
-      await service.updateWorkItem(mockActor, 'task-1', { scheduleState: 'completed' });
+      await service.updateWorkItem(mockActor, 'task-1', { scheduleState: 'in_progress' });
 
       const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
-      expect(call?.[1]).toMatchObject({ todoHours: '0' });
-      expect(call?.[1]).not.toHaveProperty('estimateHours');
+      expect(call?.[1]).not.toHaveProperty('todoHours');
     });
 
     // ── Parent reassignment must obey the SAME hierarchy rules as create, so
@@ -1593,6 +1676,121 @@ describe('WorkItemsService', () => {
       workItemRepo.update.mockResolvedValue(mockWorkItem({ teamId: 'team-x' }));
       const res = await service.updateWorkItem(mockActor, 'wi-1', { teamId: 'team-x' });
       expect(res.teamId).toBe('team-x');
+    });
+  });
+
+  /**
+   * OWNER ⊆ the selected TEAM (`Phase 1/03_Work_Item_Detail/SRS.md` §7:125, `Phase 2/01:303`,
+   * `Phase 2/03:435`). These pin the RULE; `test/e2e/owner-team-scope.e2e.spec.ts` pins that the
+   * ROUTES reach it, which a spec calling the service directly cannot show.
+   */
+  describe('Owner must belong to the item Team', () => {
+    const linkTeam = (teamId: string) =>
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId, status: 'active' }]);
+
+    it('refuses a named Owner on a create with no Team', async () => {
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'story', 'S', { assigneeId: 'user-1' }),
+      ).rejects.toThrow(/must be Unassigned/i);
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses an Owner the team picker does not offer', async () => {
+      linkTeam('team-a');
+      projectsService.listProjectMemberOptions.mockResolvedValue([]);
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'story', 'S', {
+          assigneeId: 'user-1',
+          teamId: 'team-a',
+        }),
+      ).rejects.toThrow(/active member of the selected Team/i);
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('accepts an Owner on the team roster', async () => {
+      linkTeam('team-a');
+      workItemRepo.create.mockResolvedValue(
+        mockWorkItem({ assigneeId: 'user-1', teamId: 'team-a' }),
+      );
+      const created = await service.createWorkItem(mockActor, 'proj-1', 'story', 'S', {
+        assigneeId: 'user-1',
+        teamId: 'team-a',
+      });
+      expect(created.assigneeId).toBe('user-1');
+      expect(projectsService.listProjectMemberOptions).toHaveBeenCalledWith(
+        'ws-1',
+        'proj-1',
+        'team-a',
+      );
+    });
+
+    it('refuses naming an Owner on an existing team-less item', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ teamId: null, assigneeId: null }));
+      await expect(
+        service.updateWorkItem(mockActor, 'wi-1', { assigneeId: 'user-1' }),
+      ).rejects.toThrow(/must be Unassigned/i);
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('clearing the Owner is always allowed', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ teamId: null, assigneeId: 'user-9' }));
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ assigneeId: null }));
+      const res = await service.updateWorkItem(mockActor, 'wi-1', { assigneeId: null });
+      expect(res.assigneeId).toBeNull();
+    });
+
+    /**
+     * The two-step hole: name a legal Owner, then move the item to a team they are not on. The
+     * team-change branch has to re-judge an UNCHANGED owner or the forbidden state is reachable in
+     * two accepted requests — the same shape `ITERATION_TEAM_MISMATCH` had before the update path
+     * revalidated the iteration on a team change.
+     */
+    it('re-judges an UNCHANGED Owner when the Team moves', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ teamId: 'team-a', assigneeId: 'user-1' }),
+      );
+      linkTeam('team-b');
+      projectsService.listProjectMemberOptions.mockResolvedValue([]);
+      await expect(service.updateWorkItem(mockActor, 'wi-1', { teamId: 'team-b' })).rejects.toThrow(
+        /active member of the selected Team/i,
+      );
+      expect(workItemRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses clearing the Team while an Owner is still named', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ teamId: 'team-a', assigneeId: 'user-1' }),
+      );
+      await expect(service.updateWorkItem(mockActor, 'wi-1', { teamId: null })).rejects.toThrow(
+        /must be Unassigned/i,
+      );
+    });
+
+    /**
+     * An unrelated patch does NOT re-judge the pair. Existing data holds owner/team pairs written
+     * before this rule, and refusing a title edit on one is not that patch's fault — the same
+     * restraint the team/iteration revalidation uses.
+     */
+    it('does not re-judge the pair on an unrelated patch', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ teamId: 'team-a', assigneeId: 'outsider' }),
+      );
+      projectsService.listProjectMemberOptions.mockResolvedValue([]);
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ title: 'Renamed' }));
+      await service.updateWorkItem(mockActor, 'wi-1', { title: 'Renamed' });
+      expect(projectsService.listProjectMemberOptions).not.toHaveBeenCalled();
+    });
+
+    /** A Task's Owner is judged against the team it INHERITS from its parent (`Phase 1/04:84`). */
+    it('judges a Task Owner against the parent Team', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),
+      );
+      linkTeam('team-p');
+      projectsService.listProjectMemberOptions.mockResolvedValue([]);
+      await expect(
+        service.createTask(mockActor, 'parent-1', 'T', { assigneeId: 'user-1' }),
+      ).rejects.toThrow(/active member of the selected Team/i);
     });
   });
 

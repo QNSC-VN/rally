@@ -5,7 +5,7 @@ import { Loader2 } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
 import { useCreateIterationItem, type IterationReference } from '@/features/iterations/api'
-import { useProjectMemberOptions, useProjectTeams } from '@/features/teams/api'
+import { useProjectTeams, useTeamOwnerOptions } from '@/features/teams/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -34,9 +34,24 @@ export function AddItemModal({
   const { t } = useTranslation('iteration-status')
   const navigate = useNavigate()
   const create = useCreateIterationItem(iteration.id)
-  // The assignee feed, NOT the administrative roster: that one is Admin-only (§3.1:71), and
-  // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
-  const { data: members = [] } = useProjectMemberOptions(projectId)
+  /**
+   * The Owner options are the ITERATION TEAM's active roster, not the project's.
+   *
+   * `Phase 2/03_Iteration_Status/SRS.md:435` — "Owner must be `Unassigned` or an active member of the
+   * Work Item Team; a `No team` Work Item allows only `Unassigned`" — and this modal is the one place
+   * where the team is not in doubt: Project / Team / Iteration are INHERITED from the iteration and
+   * shown read-only (P2-IS-FR-044/045), so `iteration.teamId` IS the team the created item will carry.
+   *
+   * `useTeamOwnerOptions` and not `useProjectMemberOptions`: the project-wide feed offered every
+   * member of the project on a form whose team is fixed, and the server now refuses that
+   * (`ASSIGNEE_NOT_TEAM_MEMBER`), so the picker was offering choices that could only fail. With no
+   * iteration team it returns `[]`, which leaves `Unassigned` as the only option — the rule's second
+   * clause, and the same shape the server enforces with `ASSIGNEE_REQUIRES_TEAM`.
+   *
+   * No id→name feed is needed here, unlike the grids: a create has no pre-existing owner whose name
+   * has to survive their leaving the team.
+   */
+  const { data: members = [] } = useTeamOwnerOptions(projectId, iteration.teamId)
   const { data: teams = [] } = useProjectTeams(projectId)
   const { project } = useAppContext()
   // Project / Team / Iteration are inherited from the iteration context and shown

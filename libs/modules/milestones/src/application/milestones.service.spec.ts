@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DRIZZLE, NotFoundException, PreconditionFailedException } from '@platform';
 import { MilestonesService } from './milestones.service';
@@ -119,6 +120,34 @@ const makeChain = (result: unknown) => {
   chain.then = (resolve: (v: unknown) => void) => resolve(result);
   return chain;
 };
+
+/**
+ * The raw SQL TEXT of a drizzle predicate, for assertions about a query's SHAPE.
+ *
+ * A drizzle `SQL` is a chunk list: literal `StringChunk`s (whose `value` is a string array) plus
+ * tables, columns, params and nested `SQL`s. Flattening only the literal chunks is enough to prove a
+ * predicate reaches a given column — and unlike asserting on returned rows, which come from the mock,
+ * it cannot pass when the predicate is wrong.
+ */
+const flattenSql = (node: unknown): string => {
+  if (node == null || typeof node !== 'object') return '';
+  const rec = node as Record<string, unknown>;
+  if (Array.isArray(rec.value) && rec.value.every((v) => typeof v === 'string')) {
+    return rec.value.join(' ');
+  }
+  const chunks = rec.queryChunks ?? rec.chunks ?? rec.conditions ?? rec.value;
+  if (Array.isArray(chunks)) return chunks.map(flattenSql).join(' ');
+  return '';
+};
+
+/**
+ * The flattened SQL of the FIRST `where(...)` a chain received.
+ *
+ * `makeChain` is a `Record<string, unknown>` bag, so its members are `unknown` — the cast lives here,
+ * once, rather than at every assertion site.
+ */
+const whereSql = (chain: Record<string, unknown>): string =>
+  flattenSql((chain.where as Mock).mock.calls[0][0]);
 
 const makeDb = (overrides?: { selectResult?: unknown[]; updateResult?: unknown }) => ({
   select: vi.fn(() => makeChain(overrides?.selectResult ?? [])),
@@ -389,34 +418,115 @@ describe('MilestonesService', () => {
   // ── setMilestoneArtifacts ──────────────────────────────────────────────────
 
   describe('setMilestoneArtifacts', () => {
+    /**
+     * The write resolves each id from BOTH tables (`Promise.all`, work items first, portfolio items
+     * second) and derives `entity_type` from where it was found — so the mock has to answer the two
+     * `select()` calls differently, in that order. `makeDb` serves one result to every call, which is
+     * exactly why a single `mockReturnValue` here would make every test see its rows twice and fail
+     * the `resolved.length !== uniqueIds.length` check for the wrong reason.
+     */
+    const resolveAs = (work: unknown[], portfolio: unknown[]) => {
+      db.select.mockReturnValueOnce(makeChain(work)).mockReturnValueOnce(makeChain(portfolio));
+    };
+    const story = { id: 'wi-1', projectId: 'proj-1', teamId: null, type: 'story' };
+    const feature = { id: 'pi-1', projectId: 'proj-1', teamId: 'team-a', type: 'feature' };
+    const epic = { id: 'pi-2', projectId: 'proj-1', teamId: null, type: 'epic' };
+
     it('assigns story/defect items within the milestone project scope', async () => {
       repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
-      db.select.mockReturnValue(
-        makeChain([{ id: 'wi-1', projectId: 'proj-1', teamId: null, type: 'story' }]),
-      );
+      resolveAs([story], []);
       await service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1']);
-      expect(repo.setArtifactLinks).toHaveBeenCalledWith('ms-1', ['wi-1']);
+      expect(repo.setArtifactLinks).toHaveBeenCalledWith('ms-1', [
+        { entityType: 'work_item', entityId: 'wi-1' },
+      ]);
     });
 
-    it('rejects a non-story/defect item (SRS §5.1 / FR-014)', async () => {
+    /**
+     * FR-014 (SRS:49) and §116: "Valid direct artifact types are Story, Defect, Feature and Epic."
+     *
+     * These two used to be REFUSALS — `assertArtifactsInMilestoneScope` allowed story/defect only and
+     * the payload was named `workItemIds`, so a Feature could be assigned from the Feature detail rail
+     * (which writes the identical `entity_type = 'portfolio_item'` row) and never from the Milestone
+     * end. The `entityType` in each expectation is the point: it is DERIVED from the table the id
+     * resolved from, never sent by the caller.
+     */
+    it('assigns a FEATURE, as a portfolio_item link (FR-014)', async () => {
       repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
-      db.select.mockReturnValue(
-        makeChain([{ id: 'wi-1', projectId: 'proj-1', teamId: null, type: 'task' }]),
-      );
+      resolveAs([], [feature]);
+      await service.setMilestoneArtifacts(actor, 'ms-1', ['pi-1']);
+      expect(repo.setArtifactLinks).toHaveBeenCalledWith('ms-1', [
+        { entityType: 'portfolio_item', entityId: 'pi-1' },
+      ]);
+    });
+
+    it('assigns an EPIC (FR-014)', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      resolveAs([], [epic]);
+      await service.setMilestoneArtifacts(actor, 'ms-1', ['pi-2']);
+      expect(repo.setArtifactLinks).toHaveBeenCalledWith('ms-1', [
+        { entityType: 'portfolio_item', entityId: 'pi-2' },
+      ]);
+    });
+
+    it('assigns a MIXED set in one replace, each id typed by its own table', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      resolveAs([story], [feature, epic]);
+      await service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1', 'pi-1', 'pi-2']);
+      expect(repo.setArtifactLinks).toHaveBeenCalledWith('ms-1', [
+        { entityType: 'work_item', entityId: 'wi-1' },
+        { entityType: 'portfolio_item', entityId: 'pi-1' },
+        { entityType: 'portfolio_item', entityId: 'pi-2' },
+      ]);
+    });
+
+    it('CLEARS the whole direct set on an empty payload, both entity types', async () => {
+      // §133: the payload "replaces the directly assigned Milestone artifact list". The delete used
+      // to be scoped to `entity_type = 'work_item'`, so `[]` could not remove a Feature link at all.
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      await service.setMilestoneArtifacts(actor, 'ms-1', []);
+      expect(repo.setArtifactLinks).toHaveBeenCalledWith('ms-1', []);
+      // Nothing to resolve, so nothing is queried.
+      expect(db.select).not.toHaveBeenCalled();
+    });
+
+    it('rejects a TASK, which §116 excludes', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      resolveAs([{ ...story, type: 'task' }], []);
+      await expect(service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1'])).rejects.toMatchObject({
+        code: 'MILESTONE_INVALID_ARTIFACT_TYPE',
+      });
+      expect(repo.setArtifactLinks).not.toHaveBeenCalled();
+    });
+
+    it('rejects an item outside the milestone project scope (FR-023)', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      resolveAs([{ ...story, projectId: 'proj-9' }], []);
       await expect(service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1'])).rejects.toThrow(
         PreconditionFailedException,
       );
       expect(repo.setArtifactLinks).not.toHaveBeenCalled();
     });
 
-    it('rejects an item outside the milestone project scope (FR-023)', async () => {
+    it('accepts an artifact in an ADDITIONALLY linked project (SRS:88, Q06)', async () => {
+      // The `milestone_projects` union, from the MILESTONE end. It always held here; the point of the
+      // test is that the portfolio-item patch path now shares this exact rule.
+      repo.findById.mockResolvedValue(
+        mockMilestone({ projectId: 'proj-9', projectIds: ['proj-1'] }),
+      );
+      resolveAs([], [feature]);
+      await service.setMilestoneArtifacts(actor, 'ms-1', ['pi-1']);
+      expect(repo.setArtifactLinks).toHaveBeenCalled();
+    });
+
+    it('refuses the whole write when an id resolves in NEITHER table', async () => {
+      // A replace-SET is refused whole: a partially applied one would unlink everything the caller
+      // could not name. Reported as a scope mismatch because an unresolvable id and an out-of-scope
+      // one are indistinguishable from here.
       repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
-      db.select.mockReturnValue(
-        makeChain([{ id: 'wi-1', projectId: 'proj-9', teamId: null, type: 'story' }]),
-      );
-      await expect(service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1'])).rejects.toThrow(
-        PreconditionFailedException,
-      );
+      resolveAs([story], []);
+      await expect(
+        service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1', 'ghost']),
+      ).rejects.toMatchObject({ code: 'MILESTONE_PROJECT_MISMATCH' });
       expect(repo.setArtifactLinks).not.toHaveBeenCalled();
     });
   });
@@ -484,6 +594,43 @@ describe('MilestonesService', () => {
       expect(page.pageInfo.hasNextPage).toBe(false);
     });
 
+    /**
+     * FR-029 (SRS:64): "Directly assigning an Epic includes its child Features and their Story/Defect
+     * descendants." Restated at §117 and AC-8 (§165).
+     *
+     * The Story/Defect half was present — the work-item branch has always matched
+     * `feature_id in (direct portfolio items OR their children)` — and the FEATURE half was not: the
+     * portfolio branch's predicate was `id in <direct links>` alone, so an assigned Epic's child
+     * Features never became artifact rows while their leaf Stories did. On screen that is leaf work
+     * with no parent row to explain where it came from.
+     *
+     * Asserted on the emitted PREDICATE rather than on rows, because the fixture rows come from the
+     * mock and would prove nothing about the SQL. `parent_id` appearing in the portfolio branch is the
+     * change; reverting it makes only the second expectation fail, which is what makes this
+     * non-vacuous.
+     */
+    it('reaches an assigned Epic’s child Features in the PORTFOLIO branch too (FR-029)', async () => {
+      const workPage = makeChain([]);
+      const portfolioPage = makeChain([]);
+      db.select
+        .mockReturnValueOnce(workPage)
+        .mockReturnValueOnce(portfolioPage)
+        .mockReturnValueOnce(makeChain([{ total: 0 }]))
+        .mockReturnValueOnce(makeChain([{ total: 0 }]));
+
+      await service.listMilestoneArtifacts(actor, 'ms-1', { limit: 25, cursor: null });
+
+      const workSql = whereSql(workPage);
+      const portfolioSql = whereSql(portfolioPage);
+      // Both branches read the SAME set: direct Epics/Features plus the children of a direct Epic.
+      expect(workSql).toContain('parent_id');
+      expect(portfolioSql).toContain('parent_id');
+      // And the set is still archive-aware and workspace-scoped, so a child Feature cannot arrive
+      // through a predicate that dropped either.
+      expect(portfolioSql).toContain('archived_at is null');
+      expect(portfolioSql).toContain('workspace_id');
+    });
+
     it('loads the milestone first, so an unknown id is a 404 and not an empty page', async () => {
       // Route-level `milestone:view` resolves the project from `:id`; this read additionally proves
       // the row exists in the actor's workspace, which is what stops a cross-workspace id from
@@ -539,6 +686,51 @@ describe('MilestonesService', () => {
       repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1', teamIds: ['team-a'] }));
       await expect(
         service.assertArtifactsAssignable('ws-1', ['ms-1'], [{ ...story, teamId: null }]),
+      ).rejects.toMatchObject({ code: 'MILESTONE_TEAM_MISMATCH' });
+    });
+
+    it('accepts a FEATURE and an EPIC (FR-014, §116)', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      await expect(
+        service.assertArtifactsAssignable(
+          'ws-1',
+          ['ms-1'],
+          [
+            { ...story, type: 'feature' },
+            { ...story, type: 'epic' },
+          ],
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    /**
+     * The EPIC team-scope exemption — a DECLARED READING, and the pair of tests is the whole of it.
+     *
+     * An Epic has no `team_id` (`ck_portfolio_epic_shape`; §11.1 "Epic is stored at Project level. It
+     * has no Team field"), so the "team-agnostic is OUT of a team scope" rule above cannot apply to
+     * it: `null` there is the absence of the dimension, not an unset value. Filtering anyway would
+     * refuse EVERY Epic on every team-scoped Milestone, making FR-014's Epic support unreachable for
+     * those Milestones. A FEATURE has the column, so it is NOT exempt.
+     */
+    it('exempts an EPIC from a selected Team scope, because it cannot carry a team', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1', teamIds: ['team-a'] }));
+      await expect(
+        service.assertArtifactsAssignable(
+          'ws-1',
+          ['ms-1'],
+          [{ projectId: 'proj-1', teamId: null, type: 'epic' }],
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it('does NOT exempt a Feature with no team from a selected Team scope', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1', teamIds: ['team-a'] }));
+      await expect(
+        service.assertArtifactsAssignable(
+          'ws-1',
+          ['ms-1'],
+          [{ projectId: 'proj-1', teamId: null, type: 'feature' }],
+        ),
       ).rejects.toMatchObject({ code: 'MILESTONE_TEAM_MISMATCH' });
     });
 

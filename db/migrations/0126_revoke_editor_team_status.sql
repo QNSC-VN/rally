@@ -1,0 +1,72 @@
+-- Revoke `team_status:view` from the per-workspace `project_member` (Editor) tier role.
+--
+-- WHY
+-- ---
+-- The BA REVERSED Editor access to Team Status.
+--   • `Phase 4/02_Roles_Permissions/SRS.md:81`
+--       `| Team Status | View/Update | View/Update | Hidden |`
+--   • `Phase 3/01_Team_Status/SRS.md:43`  "Project `Editor` does not enter Team Status. A user
+--     without a Project assignment cannot see or directly access Team Status."
+--   • `Phase 3/01_Team_Status/SRS.md:162`  `P3-TS-FR-028` — "Editor and unassigned users cannot
+--     open the page or mutate Capacity, Task Name or Task State."
+--   • `Phase 3/01_Team_Status/SRS.md:173`  `P3-TS-FR-039` — "Editor and unassigned users do not
+--     access Team Status/Task Dashboard; direct access and mutation are rejected safely."
+--   • `00_Documents/mini_rally_usecase_role_mapping.md:50`
+--       `| Team Status - View/Edit | All | Project | No | No |`
+--
+-- The sentence that used to justify the grant ("Team Status View = the Editor's own teams' hours")
+-- was DELETED. This is a real DATA EXPOSURE and not a cosmetic mismatch: `GET /team-status` returns
+-- every member's Capacity hours plus each task's Estimate / To Do / Actual for the selected team,
+-- so an Editor could read the whole team's per-person hours. `db/permissions.catalog.ts` no longer
+-- grants the code; this backfill is what makes that true of databases that already exist.
+--
+-- WHY A MIGRATION IS NEEDED AT ALL
+-- --------------------------------
+-- `db/seeds/bootstrap.ts` upserts the per-workspace tier roles with `set: { name: excluded.name }`
+-- — DELIBERATELY, so re-seeding cannot clobber an admin's edits to a role's permissions. The
+-- consequence, recorded in CLAUDE.md → "Permissions reach a workspace ONCE", is that a catalogue
+-- edit NEVER reaches an existing workspace. Same reason migrations 0092 (`report:view`) and 0094
+-- (`capacity:view_draft`) existed; this is that mechanism in the revoking direction.
+--
+-- MERGED, NOT FORCED — and for a REMOVAL that means one array ELEMENT, not the array
+-- ---------------------------------------------------------------------------------
+-- CLAUDE.md: "Force it only when the permission is genuinely new (nobody can have revoked what
+-- never existed); a permission that already shipped must be merged, not forced, or the migration
+-- undoes someone's decision." `team_status:view` HAS shipped, so the forcing licence 0092 and 0094
+-- relied on does not apply here.
+--
+-- The forced form of a removal would be `SET permissions = '["project:view", …]'::jsonb` — writing
+-- the catalogue's whole new array over whatever the row holds. That would silently discard every
+-- OTHER change an admin ever made to this role, which is exactly what `set: { name }` was written
+-- to protect. So this deletes the single element instead, with `jsonb - text`, which removes only
+-- matching top-level array elements and leaves the remaining codes and their order untouched. The
+-- one permission the BA revoked is revoked; nothing else in the row is this migration's business.
+--
+-- Idempotent for the migration runner via the `@>` guard, which also keeps the statement from
+-- touching rows that never held the code (`jsonb - text` on an absent element is a no-op that would
+-- still rewrite the row).
+--
+-- SCOPE
+-- -----
+-- `project_member` ONLY. `workspace_admin` and `project_admin` KEEP `team_status:view` — §3.2:81
+-- gives both `View/Update` — and `workspace_admin` additionally holds the `workspace:*` anchor.
+-- `team_status:edit` was never granted to `project_member`, so the write half of the surface needed
+-- no change; the two `PATCH /team-status/*` routes were already Admin-only.
+--
+-- Both the GLOBAL template (`workspace_id IS NULL`) and every workspace COPY are cleared, which is
+-- deliberately WIDER than 0092's `workspace_id IS NOT NULL`. The global template is force-synced
+-- from the catalogue by `db/seeds/reference.ts` (`set: { permissions, name }`), so for a GRANT
+-- restricting the statement to the copies was precise. A revocation fails the other way round: a
+-- stale grant left anywhere is the defect, so this does not depend on a seed having run.
+--
+-- No `updated_at` is set: `access.system_roles` has `created_at` only.
+--
+-- The permission CACHE is not touched here. `AccessService` caches per (workspace, user) with a
+-- 5-minute TTL (`authz:assign:<ws>:<user>`), so an Editor keeps the revoked grant until their
+-- entry expires. That is the documented behaviour for a grant written outside the service (CLAUDE.md
+-- → "a membership row written by raw SQL is invisible to cross-project lists until
+-- `invalidateUser` is called") and is bounded by the TTL; a migrator has no cache client.
+UPDATE access.system_roles
+SET permissions = permissions - 'team_status:view'
+WHERE slug = 'project_member'
+  AND permissions @> '["team_status:view"]'::jsonb;

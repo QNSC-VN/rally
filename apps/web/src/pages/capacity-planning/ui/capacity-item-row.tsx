@@ -14,6 +14,7 @@ import type { CapacityPlanItem, CapacityWarning } from '@/features/capacity-plan
 import { useCapacityWarningText } from '@/features/capacity-planning/warning-labels'
 import { EstimateTierIcon } from './estimate-tier-badge'
 import { CapacityItemActions } from './capacity-item-actions'
+import { DependencyCount } from './dependency-count'
 import { type ItemColKey } from '../model/columns'
 
 /**
@@ -236,16 +237,10 @@ export function CapacityItemRow({
         <TeamCell teamKey={teamKeyOf(item.teamId)} name={item.teamName} />
       </div>
 
-      {/* Rally's `Dependencies` count, drawn as Rally draws it: a small bordered CHIP holding the
-          number, at the left of its column — not a bare right-aligned digit. The chip is what makes it
-          read as a count of linked things rather than as another of the three metric columns beside it.
-
-          `0`, not a dash: the BA's catalog says "it shows `0` until dependency modelling is added", and
-          zero is the truthful count for a domain that models none — a dash would read as "unknown". */}
+      {/* Rally's `Dependencies` count. `DependencyCount` owns the chip, the `0` and the reason for
+          both, and the split sub-rows below render the SAME cell — see its docblock. */}
       <div style={colStyleFor('dependencies', { flexShrink: 0 })} className="px-2">
-        <span className="inline-flex min-w-6 justify-center rounded border border-border-strong px-1 text-ui-xs text-muted-foreground tabular-nums">
-          0
-        </span>
+        <DependencyCount />
       </div>
 
       {/* Three numeric columns, no bar: Rally draws none on this tab, and it is right not to —

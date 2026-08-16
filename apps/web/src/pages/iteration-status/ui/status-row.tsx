@@ -34,6 +34,7 @@ import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
+import { useTeamOwnerOptions } from '@/features/teams/api'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { MilestoneSelectCell, TasksProgress } from './status-cells'
 import { useWorkItemFieldCommit } from '../model/use-work-item-field-commit'
@@ -56,6 +57,7 @@ const MONO_FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
 export function StatusRow({
   item,
   rank,
+  projectId,
   memberMap,
   milestoneOptions,
   iterationOptions,
@@ -70,7 +72,13 @@ export function StatusRow({
 }: {
   item: IterationStatusItem
   rank: number
-  /** Keyed assignee feed — the shared picker shape (`OwnerSelectMember`), which permits null. */
+  /** The iteration's project — the per-Team Owner OPTIONS feed is keyed on (project, row team). */
+  projectId: string
+  /**
+   * Keyed PROJECT-WIDE assignee feed — the shared picker shape (`OwnerSelectMember`), which permits
+   * null. It resolves an owner's NAME. What a picker may OFFER is the row's own Team's roster; see
+   * `ChildTaskRow` and the note on the two parent-row Owner cells below.
+   */
   memberMap: Map<string, OwnerSelectMember>
   milestoneOptions: readonly { id: string; name: string; milestoneKey?: string | null }[]
   iterationOptions: readonly { id: string; name: string; iterationKey?: string | null }[]
@@ -452,7 +460,26 @@ export function StatusRow({
           {item.actual ?? '--'}
         </div>
 
-        {/* Owner */}
+        {/* Owner — STILL project-wide, and that is a known gap, not a choice.
+
+            `Phase 2/03_Iteration_Status/SRS.md:435` wants the WORK ITEM TEAM's active members here,
+            the way `ChildTaskRow` below and the Backlog grid now do. It cannot be done from this
+            component yet: `IterationStatusItemSchema`
+            (`libs/modules/iterations/src/interface/http/dto/iteration-status-response.dto.ts`) does not
+            project `teamId`, so the row does not know its own team.
+
+            The two wrong ways to close it, recorded so neither gets tried:
+              • narrowing by the SELECTED ITERATION's team — `iterations.team_id` is the FALLBACK tier
+                of `coalesce(item.team_id, iteration.team_id)`, and it is NULL on 195 of 206 local
+                iterations, so a shared sprint would collapse every Owner picker on this screen to
+                `Unassigned` only;
+              • falling through to the project-wide feed when a team cannot be resolved — the exact
+                defect `useTeamOwnerOptions`' docblock exists to make unreachable.
+
+            What it needs is `teamId` on that DTO plus its projection
+            (`iteration-status.drizzle-repository.ts` ~:257/:301) — a module outside this change's
+            ownership. The SERVER already refuses a bad pair (`ASSIGNEE_NOT_TEAM_MEMBER`), so the cost
+            today is an option that fails on selection rather than a silently accepted write. */}
         <div
           style={colStyles.owner}
           className="overflow-hidden px-0"
@@ -487,7 +514,11 @@ export function StatusRow({
           />
         </div>
 
-        {/* Dev Owner — editable assignee (distinct from Owner) */}
+        {/* Dev Owner — editable assignee (distinct from Owner). Project-wide for the same reason as
+            the Owner cell above, and it closes with the same one-line DTO addition. Note the BA's
+            sentence names "Owner"; Dev Owner is treated the same way here because it is the same
+            person field on the same row, and the server's rule is deliberately scoped to `assigneeId`
+            alone until the BA rules on `devOwnerId`. */}
         <div
           style={colStyles.devOwner}
           className="overflow-hidden px-0"
@@ -555,6 +586,7 @@ export function StatusRow({
                   key={task.id}
                   task={task}
                   taskOwner={taskOwner}
+                  projectId={projectId}
                   membersList={membersList}
                   canEdit={canEdit}
                   colStyles={colStyles}
@@ -575,6 +607,7 @@ export function StatusRow({
 function ChildTaskRow({
   task,
   taskOwner,
+  projectId,
   membersList,
   canEdit,
   colStyles,
@@ -582,7 +615,11 @@ function ChildTaskRow({
 }: {
   task: WorkItem
   taskOwner: string
-  /** The assignee feed as a list — the shared picker shape, which permits null. */
+  projectId: string
+  /**
+   * The PROJECT-WIDE assignee feed, for NAMES only — an owner who has left the team must still
+   * render, or the row would claim the task is unowned. The OPTIONS are narrowed below.
+   */
   membersList: OwnerSelectMember[]
   canEdit: boolean
   colStyles: Record<string, CSSProperties>
@@ -616,6 +653,15 @@ function ChildTaskRow({
     ? membersList.find((m) => m.userId === task.devOwnerId)
     : undefined
   const taskDevOwnerName = devOwnerMember?.displayName ?? devOwnerMember?.email ?? null
+
+  /**
+   * Owner OPTIONS come from THIS task's Team (`Phase 2/03_Iteration_Status/SRS.md:435`; the same rule
+   * as Backlog AC-16:336). A task carries its own `team_id` — it only DEFAULTS to its parent's (SRS
+   * P1-04) — so this is narrowed per row, not once for the grid. React Query dedupes by key, so tasks
+   * sharing a team make ONE request, and a team-less task never fetches: `[]` is the rule's second
+   * clause ("`No team` offers only `Unassigned`"), which `ownerSelectOptions` renders as exactly that.
+   */
+  const ownerOptions = useTeamOwnerOptions(projectId, task.teamId).data ?? []
 
   return (
     <div
@@ -757,7 +803,7 @@ function ChildTaskRow({
         <OwnerSelectCell
           ownerName={task.assigneeId ? taskOwner : null}
           assigneeId={task.assigneeId}
-          members={membersList}
+          members={ownerOptions}
           canEdit={canEdit}
           onChange={handleOwnerChange}
         />
@@ -771,7 +817,7 @@ function ChildTaskRow({
         <OwnerSelectCell
           ownerName={taskDevOwnerName}
           assigneeId={task.devOwnerId}
-          members={membersList}
+          members={ownerOptions}
           canEdit={canEdit}
           onChange={handleDevOwnerChange}
           ariaLabel="Dev owner"

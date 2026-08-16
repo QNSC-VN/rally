@@ -1334,9 +1334,9 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** List milestone artifact LINKS (work item IDs) */
+    /** List DIRECT milestone artifact LINKS (work item and portfolio item IDs) */
     get: operations['MilestonesController_listMilestoneArtifactIds']
-    /** Set milestone artifacts (replace all) */
+    /** Set the DIRECT milestone artifacts (replace all) */
     put: operations['MilestonesController_setMilestoneArtifacts']
     post?: never
     delete?: never
@@ -1352,7 +1352,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** List milestone artifacts (US/DE work items) as dashboard rows */
+    /** List milestone artifacts as dashboard rows (direct US/DE/Feature/Epic plus inherited descendants) */
     get: operations['MilestonesController_listMilestoneArtifacts']
     put?: never
     post?: never
@@ -3660,7 +3660,7 @@ export interface components {
       updatedAt: string
     }
     SetMilestoneArtifactsDto: {
-      workItemIds: string[]
+      artifactIds: string[]
     }
     SetMilestoneProjectsDto: {
       projectIds: string[]
@@ -3873,12 +3873,6 @@ export interface components {
       createdAt: string
       /** Format: date-time */
       updatedAt: string
-      taskRollup?: {
-        estimateHours: number
-        toDoHours: number
-        actualHours: number
-        acceptedItems: number
-      }
     }
     CreateReleaseDto: {
       /** Format: uuid */
@@ -4293,8 +4287,6 @@ export interface components {
       notes?: string | null
       releaseNotes?: string | null
       whatSuccessLooksLike?: string | null
-      /** Format: uuid */
-      projectId?: string
       /** @enum {string} */
       state?:
         | 'no_entry'
@@ -10201,7 +10193,7 @@ export interface operations {
     }
     requestBody?: never
     responses: {
-      /** @description Array of work item IDs */
+      /** @description Array of artifact IDs (Story/Defect/Feature/Epic) */
       200: {
         headers: {
           [name: string]: unknown
@@ -10269,6 +10261,13 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
         headers: {
           [name: string]: unknown
         }

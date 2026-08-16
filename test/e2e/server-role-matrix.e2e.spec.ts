@@ -347,7 +347,7 @@ describe('server role matrix (e2e)', () => {
     );
   });
 
-  it('§3.1:64,71 — the project roster is Workspace Admin Edit, Admin READ-ONLY, Editor Hidden', async () => {
+  it('§3.1:64,70 — the project roster is Workspace Admin Edit, Admin READ-ONLY, Editor Hidden', async () => {
     /**
      * The route carries `project:view`, which EVERY level holds, so the level check lives in
      * `ProjectsService.listProjectMembers`. That divergence between the decorator and the effective
@@ -356,7 +356,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.1:64,71',
+          srs: '§3.1:64,70',
           surface: 'Project Users & Permissions',
           action: 'view',
           route: 'GET /projects/:id/members',
@@ -670,11 +670,11 @@ describe('server role matrix (e2e)', () => {
   // §3.2 — Delivery features (SRS lines 77-87)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  it('§3.2:79 — Backlog and US/DE/Task: Create, View, Edit, Delete for all three levels', async () => {
+  it('§3.2:76 — Backlog and US/DE/Task: Create, View, Edit, Delete for all three levels', async () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:79',
+          srs: '§3.2:76',
           surface: 'Backlog / US-DE-Task',
           action: 'view',
           route: 'GET /work-items/backlog',
@@ -690,7 +690,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:79',
+          srs: '§3.2:76',
           surface: 'Backlog / US-DE-Task',
           action: 'create+delete',
           route: 'POST /work-items → DELETE /work-items/:id',
@@ -731,7 +731,7 @@ describe('server role matrix (e2e)', () => {
       expect(removed.statusCode, `cleanup of the edit probe row for ${role}`).toBeLessThan(300);
     }
     const editRow: Row = {
-      srs: '§3.2:79',
+      srs: '§3.2:76',
       surface: 'Backlog / US-DE-Task',
       action: 'edit',
       route: 'PATCH /work-items/:id',
@@ -755,7 +755,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:79',
+          srs: '§3.2:76',
           surface: 'Backlog / US-DE-Task',
           action: 'create task',
           route: 'POST /work-items/:id/tasks → DELETE /work-items/:id',
@@ -773,11 +773,11 @@ describe('server role matrix (e2e)', () => {
     );
   });
 
-  it('§3.2:80 — Iteration Status: View and update for all three levels', async () => {
+  it('§3.2:77 — Iteration Status: View and update for all three levels', async () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:80',
+          srs: '§3.2:77',
           surface: 'Iteration Status',
           action: 'view',
           route: 'GET /iterations/:id/status',
@@ -797,7 +797,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:80',
+          srs: '§3.2:77',
           surface: 'Iteration Status',
           action: 'add item',
           route: 'POST /iterations/:id/work-items → DELETE /work-items/:id',
@@ -816,11 +816,11 @@ describe('server role matrix (e2e)', () => {
     );
   });
 
-  it('§3.2:81 — Quality / Defects: Create, View, Edit, Delete for all three levels', async () => {
+  it('§3.2:78 — Quality / Defects: Create, View, Edit, Delete for all three levels', async () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:81',
+          srs: '§3.2:78',
           surface: 'Quality / Defects',
           action: 'view',
           route: 'GET /quality/defects',
@@ -841,7 +841,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:81',
+          srs: '§3.2:78',
           surface: 'Quality / Defects',
           action: 'edit',
           route: 'PATCH /work-items/:id',
@@ -859,14 +859,14 @@ describe('server role matrix (e2e)', () => {
      * DELETE — and this is a MISMATCH INSIDE THE BA, not an authorization defect, so it is asserted
      * exactly as measured rather than weakened or skipped.
      *
-     * §3.2:81 gives `Quality / Defects` the verb `Delete` in all three granted columns. Phase 3.4
+     * §3.2:78 gives `Quality / Defects` the verb `Delete` in all three granted columns. Phase 3.4
      * says the opposite, and the server implements Phase 3.4: `WorkItemsService.deleteWorkItem`
      * throws `DEFECT_DELETE_FORBIDDEN` ("Defects cannot be deleted. Resolve the defect by setting its
      * state to Closed or Closed Declined") for EVERY principal, Workspace Admin included.
      *
      * So the AUTHORIZATION boundary is right — 412 for the three granted levels means the guard let
      * them through and the lifecycle rule refused, 403 for No Access means the guard refused — while
-     * the §3.2:81 cell advertises a capability no role has. A tester following the matrix will look
+     * the §3.2:78 cell advertises a capability no role has. A tester following the matrix will look
      * for a Delete on a Defect and find none. Recorded for the BA; do not "fix" either side here.
      */
     const deleteStatuses: Partial<Record<Role, number>> = {};
@@ -876,7 +876,7 @@ describe('server role matrix (e2e)', () => {
       ).statusCode;
     }
     MATRIX.push({
-      srs: '§3.2:81',
+      srs: '§3.2:78',
       surface: 'Quality / Defects',
       action: 'delete',
       route: 'DELETE /work-items/:id (defect)',
@@ -884,7 +884,7 @@ describe('server role matrix (e2e)', () => {
       expected: EDITOR_UP,
       measured: deleteStatuses,
       mismatches: [
-        '§3.2:81 grants Delete; Phase 3.4 DEFECT_DELETE_FORBIDDEN refuses it to everyone',
+        '§3.2:78 grants Delete; Phase 3.4 DEFECT_DELETE_FORBIDDEN refuses it to everyone',
       ],
     });
     for (const role of ['wa', 'admin', 'editor'] as const) {
@@ -898,12 +898,12 @@ describe('server role matrix (e2e)', () => {
     expect((await request('wa', 'GET', `/work-items/${SEEDED.nxp.defectId}`)).statusCode).toBe(200);
   });
 
-  it('§3.2:82 — Timeboxes / Iterations: Admin and WA only; HIDDEN from an Editor', async () => {
+  it('§3.2:79 — Timeboxes / Iterations: Admin and WA only; HIDDEN from an Editor', async () => {
     /**
      * The RECORD list — `goal`, `theme`, `notes`, `plannedVelocity` — is the `Plan > Timeboxes` grid
      * and carries `timebox:view`. `iteration:view` gated it until migration 0120, so an Editor read
      * the whole timebox inventory on a screen the BA hides. `authz-cluster.e2e.spec.ts` owns the
-     * matching "Iteration Status stays open" half; this row is the §3.2:82 cell.
+     * matching "Iteration Status stays open" half; this row is the §3.2:79 cell.
      */
     for (const [action, route, url] of [
       ['view list', 'GET /iterations', `/iterations?projectId=${NXP}`],
@@ -913,7 +913,7 @@ describe('server role matrix (e2e)', () => {
       assertMatches(
         await probe(
           {
-            srs: '§3.2:82',
+            srs: '§3.2:79',
             surface: 'Timeboxes / Iterations',
             action,
             route,
@@ -928,7 +928,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:82',
+          srs: '§3.2:79',
           surface: 'Timeboxes / Iterations',
           action: 'create+delete',
           route: 'POST /iterations → DELETE /iterations/:id',
@@ -946,13 +946,13 @@ describe('server role matrix (e2e)', () => {
     );
   });
 
-  it('§3.2:83 — Releases and Milestones: Admin and WA only; HIDDEN from an Editor', async () => {
+  it('§3.2:80 — Releases and Milestones: Admin and WA only; HIDDEN from an Editor', async () => {
     for (const [surface, action, route, url, code] of [
       ['Releases', 'view', 'GET /releases', `/releases?projectId=${NXP}`, 'release:view'],
       ['Milestones', 'view', 'GET /milestones', `/milestones?projectId=${NXP}`, 'milestone:view'],
     ] as const) {
       assertMatches(
-        await probe({ srs: '§3.2:83', surface, action, route, code, expected: ADMIN_UP }, (role) =>
+        await probe({ srs: '§3.2:80', surface, action, route, code, expected: ADMIN_UP }, (role) =>
           get(role, url),
         ),
       );
@@ -961,7 +961,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:83',
+          srs: '§3.2:80',
           surface: 'Releases',
           action: 'create+delete',
           route: 'POST /releases → DELETE /releases/:id',
@@ -981,7 +981,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:83',
+          srs: '§3.2:80',
           surface: 'Milestones',
           action: 'create+delete',
           route: 'POST /milestones → DELETE /milestones/:id',
@@ -1003,16 +1003,40 @@ describe('server role matrix (e2e)', () => {
     );
   });
 
-  it('§3.2:84 — Team Status: WA/Admin view AND update; Editor VIEW ONLY (no capacity/task edits)', async () => {
+  /**
+   * Team Status is HIDDEN from an Editor — VIEW included. This case asserted `EDITOR_UP` on the read
+   * until the BA REVERSED that grant; the sentence that justified it ("Team Status View = the
+   * Editor's own teams' hours") was DELETED, and four places now say the opposite:
+   *   • `Phase 4/02_Roles_Permissions/SRS.md:81` — `| Team Status | View/Update | View/Update |
+   *     Hidden |` (third column is Editor). NOTE the line MOVED: this case cited `§3.2:84`, which is
+   *     now `Release Tracking and Reports`. Every other `§3.2` citation in this file had drifted the
+   *     same way — the delivery table moved up 3 lines in `5c1388e` — and all of them were corrected
+   *     in one pass, so the plain numbers below are current and no longer need qualifying.
+   *   • `Phase 3/01_Team_Status/SRS.md:43` — "Project `Editor` does not enter Team Status."
+   *   • `P3-TS-FR-028` (`:162`) — "Editor and unassigned users cannot open the page or mutate
+   *     Capacity, Task Name or Task State."
+   *   • `P3-TS-FR-039` (`:173`) — "Editor and unassigned users do not access Team Status/Task
+   *     Dashboard; direct access and mutation are rejected safely."
+   *
+   * So all three rows are `ADMIN_UP` and the read is pinned in the DENY direction. It is a real data
+   * exposure and not a cosmetic cell: `GET /team-status` returns every member's Capacity hours plus
+   * each task's Estimate / To Do / Actual for the selected team. `team_status:view` is gone from
+   * `PROJECT_MEMBER` in `db/permissions.catalog.ts`, backfilled into existing workspaces by migration
+   * `0126_revoke_editor_team_status` — a catalogue edit alone never reaches one (CLAUDE.md →
+   * "Permissions reach a workspace ONCE"). `team_status:edit` was Admin-only all along, so the two
+   * PATCH rows below did not move; they stay because the SRS rejects "mutation" and "direct access"
+   * as two separate claims, and only the second one changed.
+   */
+  it('Phase 4 §3.2:78 / P3-TS-FR-039 — Team Status is HIDDEN from an Editor: no view, no capacity or task edit', async () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:84',
+          srs: '§3.2:81',
           surface: 'Team Status',
           action: 'view',
           route: 'GET /team-status',
           code: 'team_status:view',
-          expected: EDITOR_UP,
+          expected: ADMIN_UP,
         },
         (role) => get(role, `/team-status?projectId=${NXP}&iterationId=${ITER}`),
       ),
@@ -1027,7 +1051,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:84',
+          srs: '§3.2:81',
           surface: 'Team Status',
           action: 'edit capacity',
           route: 'PATCH /team-status/capacity',
@@ -1053,7 +1077,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:84',
+          srs: '§3.2:81',
           surface: 'Team Status',
           action: 'edit task',
           route: 'PATCH /team-status/tasks/:taskId',
@@ -1068,7 +1092,7 @@ describe('server role matrix (e2e)', () => {
     );
   });
 
-  it('§3.2:85 — Portfolio Items: Admin and WA only; HIDDEN from an Editor', async () => {
+  it('§3.2:82 — Portfolio Items: Admin and WA only; HIDDEN from an Editor', async () => {
     /**
      * The GRID answers `200` with NO ROWS for an Editor rather than 403: `projectId` is optional on
      * that route (a WA lists across projects), so the scope is a service-side filter over
@@ -1083,7 +1107,7 @@ describe('server role matrix (e2e)', () => {
         res.statusCode === 200 ? (JSON.parse(res.body) as { data: unknown[] }).data.length : -1;
     }
     MATRIX.push({
-      srs: '§3.2:85',
+      srs: '§3.2:82',
       surface: 'Portfolio Items',
       action: `grid (rows: ${ROLES.map((r) => `${r}=${gridCounts[r]}`).join(' ')})`,
       route: 'GET /portfolio-items',
@@ -1094,13 +1118,13 @@ describe('server role matrix (e2e)', () => {
     });
     expect(gridCounts.wa, 'NXP seeds an Epic and seven Features').toBeGreaterThan(0);
     expect(gridCounts.admin, 'a project Admin sees them').toBeGreaterThan(0);
-    expect(gridCounts.editor, '§3.2:85 hides Portfolio Items from an Editor').toBe(0);
+    expect(gridCounts.editor, '§3.2:82 hides Portfolio Items from an Editor').toBe(0);
     expect(gridCounts.none, 'No Access sees nothing').toBe(0);
 
     assertMatches(
       await probe(
         {
-          srs: '§3.2:85',
+          srs: '§3.2:82',
           surface: 'Portfolio Items',
           action: 'view record',
           route: 'GET /portfolio-items/:id',
@@ -1121,7 +1145,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:85',
+          srs: '§3.2:82',
           surface: 'Portfolio Items',
           action: 'create',
           route: 'POST /portfolio-items',
@@ -1138,12 +1162,12 @@ describe('server role matrix (e2e)', () => {
       ),
     );
 
-    // ARCHIVE — the fourth verb in the §3.2:85 cell. Round-tripped through `unarchive` so the
+    // ARCHIVE — the fourth verb in the §3.2:82 cell. Round-tripped through `unarchive` so the
     // seeded Feature ends where it started; a denied principal's 403 changes nothing either way.
     assertMatches(
       await probe(
         {
-          srs: '§3.2:85',
+          srs: '§3.2:82',
           surface: 'Portfolio Items',
           action: 'archive',
           route: 'POST /portfolio-items/:id/archive',
@@ -1175,7 +1199,7 @@ describe('server role matrix (e2e)', () => {
     );
   });
 
-  it('§3.2:86 — Capacity Planning: Admin and WA only; HIDDEN from an Editor', async () => {
+  it('§3.2:83 — Capacity Planning: Admin and WA only; HIDDEN from an Editor', async () => {
     for (const [action, route, url] of [
       ['list', 'GET /capacity-plans', `/capacity-plans?projectId=${NXP}`],
       ['view draft', 'GET /capacity-plans/:id', `/capacity-plans/${SEEDED.nxp.capacityPlanId}`],
@@ -1183,7 +1207,7 @@ describe('server role matrix (e2e)', () => {
       assertMatches(
         await probe(
           {
-            srs: '§3.2:86',
+            srs: '§3.2:83',
             surface: 'Capacity Planning',
             action,
             route,
@@ -1202,7 +1226,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:86',
+          srs: '§3.2:83',
           surface: 'Capacity Planning',
           action: 'create',
           route: 'POST /capacity-plans',
@@ -1227,7 +1251,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:86',
+          srs: '§3.2:83',
           surface: 'Capacity Planning',
           action: 'publish',
           route: 'POST /capacity-plans/:id/publish',
@@ -1245,7 +1269,7 @@ describe('server role matrix (e2e)', () => {
     );
   });
 
-  it('§3.2:87 — Release Tracking and Reports: View for Admin and WA; HIDDEN from an Editor', async () => {
+  it('§3.2:84 — Release Tracking and Reports: View for Admin and WA; HIDDEN from an Editor', async () => {
     for (const [action, route, url] of [
       [
         'burndown',
@@ -1272,7 +1296,7 @@ describe('server role matrix (e2e)', () => {
       assertMatches(
         await probe(
           {
-            srs: '§3.2:87',
+            srs: '§3.2:84',
             surface: 'Release Tracking / Reports',
             action,
             route,
@@ -1292,12 +1316,18 @@ describe('server role matrix (e2e)', () => {
   /**
    * PROJECT DELIVERY CONFIGURATION — labels and workflow statuses/transitions.
    *
-   * §3.1 has NO row for either. The two nearest cells point opposite ways: line 68 hides
-   * `Create, edit … Project` from an Admin, and line 70 gives them `View Project Details and Teams |
-   * Read-only` — yet §3.1:73's own summary says "`Admin` is powerful for delivery management", which
-   * is the sentence `project:edit` staying in the Admin set rests on (CLAUDE.md, "A per-Project
-   * `Admin` has NO structural authority"). So this is a DECLARED READING, not a BA rule, and it is
-   * measured here rather than asserted against a matrix cell that does not exist.
+   * §3.1 has NO row for either, and the two nearest cells point opposite ways: :68 hides
+   * `Create/edit/archive/restore/delete Project` from an Admin, while :65 gives them `Permission
+   * Model | View` — a row the SPA gates on `project:edit` — and :67 gives them `Assigned Projects,
+   * All Teams, read-only`.
+   *
+   * THE SENTENCE THIS READING USED TO REST ON IS GONE. It cited `§3.1:73`, "`Admin` is powerful for
+   * delivery management", and product-docs `5c1388e` deletes it (grep the file: no "delivery
+   * management" and no "powerful" anywhere). So `project:edit` staying in the Admin set — CLAUDE.md,
+   * "A per-Project `Admin` has NO structural authority" — now rests only on the §3.1:65 row and on
+   * the ABSENCE of any row for labels and workflow statuses. That makes it a weaker declared reading
+   * than it was, not a stronger one, and it is on the list to put to the BA. It is measured here
+   * rather than asserted, because there is no matrix cell to assert against.
    *
    * Worth knowing that the app's own read-only Permission Model tab lists
    * `Project Settings … admin: false`, which is the opposite of what the server does. That
@@ -1378,17 +1408,26 @@ describe('server role matrix (e2e)', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // §3.2:91-92 — the two "Additional rules" under the delivery table
+  // The two rules that used to sit as "Additional rules" under the delivery table
+  //
+  // Both PROSE sentences were DELETED in product-docs `5c1388e`, and neither requirement was: the
+  // per-project one is still §2.2:48, and the team one is still in the delivery table's own Editor
+  // cells plus §4's evaluation formula. Re-anchored rather than deleted with the sentences — a test
+  // whose only citation has evaporated is the one a reader decides is obsolete.
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
-   * §3.2:91 — "Admin actions are limited to the assigned Project even when the same account has a
-   * different level elsewhere", and §2.2 — "Access in one Project never grants access to another".
+   * §2.2:48 — "Access in one Project never grants access to another Project", and §4:91-92, whose
+   * evaluation formula starts `Workspace authority + Project assignment (Admin or Editor)`.
+   *
+   * This used to cite the deleted sentence "Admin actions are limited to the assigned Project even
+   * when the same account has a different level elsewhere". §2.2:48 says the same thing about every
+   * level, so nothing about the case changes.
    *
    * The Admin principal holds `admin` on NXP and nothing on PAY; the Editor holds `editor` on NXP and
    * nothing on PAY. `SEEDED.pay` exists precisely so this has something to be false on.
    */
-  it('§3.2:91 — a level on one project grants nothing on another', async () => {
+  it('§2.2:48 — a level on one project grants nothing on another', async () => {
     const PAY = SEEDED.pay.projectId;
     for (const [surface, route, url, code] of [
       ['Project Details', 'GET /projects/:id', `/projects/${PAY}`, 'project:view'],
@@ -1409,7 +1448,7 @@ describe('server role matrix (e2e)', () => {
       assertMatches(
         await probe(
           {
-            srs: '§3.2:91',
+            srs: '§2.2:48',
             surface: `${surface} on the OTHER project`,
             action: 'view',
             route,
@@ -1423,7 +1462,13 @@ describe('server role matrix (e2e)', () => {
   });
 
   /**
-   * §3.2:92 — "Editor results, selectors, search and mutations are limited to assigned Teams."
+   * The delivery table's Editor cells — §3.2:76 "Create/View/Edit/Delete **in assigned Teams**",
+   * :77 and :78 saying the same for Iteration Status and Quality — plus §4:93, whose evaluation
+   * formula includes `+ Team scope when Editor`.
+   *
+   * This used to cite the deleted sentence "Editor results, selectors, search and mutations are
+   * limited to assigned Teams." The prose is gone; the requirement is not, so neither is the
+   * divergence.
    *
    * NOT IMPLEMENTED, BY RULING, AND THAT IS THE DECLARED DIVERGENCE (CLAUDE.md, "Team-scoped Editor
    * is DROPPED as an authorization scope", 2026-08-14). A team scope can only restrict rows that
@@ -1436,7 +1481,7 @@ describe('server role matrix (e2e)', () => {
    * passing assertion in either direction would misrepresent that. The probe writes a team the Editor
    * is not a member of onto their OWN new story and reports the status; a 2xx is the divergence.
    */
-  it('§3.2:92 — Editor writes are NOT team-scoped (declared divergence, measured not asserted)', async () => {
+  it('§3.2:76-78 / §4:93 — Editor writes are NOT team-scoped (declared divergence, measured not asserted)', async () => {
     const teamsRes = await request('wa', 'GET', `/projects/${NXP}/teams`);
     const teams = JSON.parse(teamsRes.body) as Array<{ id: string }>;
     // A team of this project that the Editor is NOT on. `dev@qnsc.dev` is DEVELOPER_ID.
@@ -1462,7 +1507,7 @@ describe('server role matrix (e2e)', () => {
       await request('editor', 'DELETE', `/work-items/${id}`);
     }
     MATRIX.push({
-      srs: '§3.2:92',
+      srs: '§3.2:76-78, §4:93',
       surface: 'Editor team scope',
       action: foreignTeam
         ? 'create in a team the Editor is not on'
@@ -1472,7 +1517,7 @@ describe('server role matrix (e2e)', () => {
       expected: { wa: 'allow', admin: 'allow', editor: 'deny', none: 'deny' },
       measured: { editor: created.statusCode },
       mismatches: [
-        'DECLARED DIVERGENCE: §3.2:92 scopes Editor mutations to assigned Teams; there is no team ' +
+        'DECLARED DIVERGENCE: §3.2:76-78 scope Editor mutations to assigned Teams; there is no team ' +
           'authorization scope by ruling of 2026-08-14',
       ],
     });
@@ -1489,7 +1534,7 @@ describe('server role matrix (e2e)', () => {
    * a DELIBERATE decision recorded elsewhere — not drift. They are measured here so the audit table
    * shows the whole Editor surface rather than only the refusals:
    *
-   *   • `/iterations/options` + `/assignable` — §3.2:80 gives the Editor `Iteration Status | View and
+   *   • `/iterations/options` + `/assignable` — §3.2:77 gives the Editor `Iteration Status | View and
    *     update`, and that screen's picker, the Backlog's iteration filter, Team Status's picker and
    *     Quality's all read them. `timebox:view` is what hides the RECORD list above.
    *   • `/releases/options` — an Editor may already write `PUT :id/milestones` and read the Backlog's
@@ -1498,7 +1543,7 @@ describe('server role matrix (e2e)', () => {
    *   • `/milestones/options` — same shape; `PUT /work-items/:id/milestones` is `work_item:edit`.
    *   • `/portfolio-items/options` — the `Feature` field on a Story. THE BA IS SILENT on whether an
    *     Editor may set it; §5.2:124 makes that field the only way Feature membership is ever set and
-   *     §3.2:79 gives them the Story, so this is a declared reading put to the BA. Release is decided
+   *     §3.2:76 gives them the Story, so this is a declared reading put to the BA. Release is decided
    *     the OTHER way and says so in words (BL §8:294), which is why that one is refused.
    */
   it('reference feeds stay open to an Editor beneath the grids §3.2 hides (declared splits)', async () => {
@@ -1558,7 +1603,7 @@ describe('server role matrix (e2e)', () => {
     assertMatches(
       await probe(
         {
-          srs: '§3.2:79',
+          srs: '§3.2:76',
           surface: 'Item key resolver',
           action: 'view',
           route: 'GET /work-items/by-key',

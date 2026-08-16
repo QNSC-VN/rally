@@ -122,14 +122,10 @@ describe('ReleasesService', () => {
 
     statRows = [
       {
-        // The roll-up queries read releaseId plus the hour sums / accepted count; a null
-        // releaseId means the row is skipped, so the roll-up resolves to EMPTY_TASK_ROLLUP
-        // and taskEstimate to 0 in these unit tests.
+        // The estimate query reads releaseId plus the hour sum; a null releaseId means the row
+        // is skipped, so taskEstimate resolves to 0 in these unit tests.
         releaseId: null,
         estimateHours: '0',
-        toDoHours: '0',
-        actualHours: '0',
-        acceptedItems: 0,
       },
     ];
     // Capacity plans built on the release under test. Empty by default: most specs are not about the
@@ -430,37 +426,30 @@ describe('ReleasesService', () => {
     // resolved from :id — covered by context-isolation-rbac e2e, not here.
 
     /**
-     * P3-REL-FR-023: the Task Roll-up is Estimate / To Do / Actual HOURS from the assigned
-     * tasks. It used to be an item/point roll-up carrying a `progressPercent`, which
-     * P3-REL-FR-037 forbids on a Phase 3 release surface and §7.5 defers to
-     * `Portfolio > Release Tracking`. Asserted on the SERVICE payload, not the SPA: a panel
-     * cannot render a field the API never returns, and hiding the number in the component
-     * would leave it computed and served.
+     * `P3-REL-FR-023` — "Release detail must not show Task Roll-up, Burndown or another Release
+     * progress widget" — and `P3-REL-FR-024`, which puts accepted/progress totals only in
+     * `Portfolio > Release Tracking`. Asserted on the SERVICE payload, not the SPA: a panel cannot
+     * render a field the API never returns, and hiding the number in the component would leave it
+     * computed and served.
+     *
+     * `taskEstimate` STAYS — it is on the BA's own list DTO (§7.1), which §7.4 extends, and the
+     * PATCH payload (§7.3). FR-037 bans a *progress* column, not an estimate roll-up.
      */
-    it('rolls up task HOURS and the accepted total, and computes no progress percentage', async () => {
+    it('returns taskEstimate hours only — no Task Roll-up, accepted total or progress', async () => {
       repo.findById.mockResolvedValue(mockRelease());
-      // Drizzle hands numeric columns back as strings — the sums must survive that.
-      statRows = [
-        {
-          releaseId: 'rel-1',
-          estimateHours: '18.5',
-          toDoHours: '6',
-          actualHours: '12.5',
-          acceptedItems: 3,
-        },
-      ];
+      // Drizzle hands numeric columns back as strings — the sum must survive that.
+      statRows = [{ releaseId: 'rel-1', estimateHours: '18.5' }];
 
-      const { taskRollup, taskEstimate } = await service.getReleaseDetail(actor, 'rel-1');
+      const detail = await service.getReleaseDetail(actor, 'rel-1');
 
-      expect(taskRollup).toEqual({
-        estimateHours: 18.5,
-        toDoHours: 6,
-        actualHours: 12.5,
-        acceptedItems: 3,
-      });
-      // The list's Task Est. column is the roll-up's Estimate, computed once.
-      expect(taskEstimate).toBe(18.5);
+      // The list's Task Est. column is this number, computed by the one shared aggregate.
+      expect(detail.taskEstimate).toBe(18.5);
       for (const forbidden of [
+        'taskRollup',
+        'accepted',
+        'acceptedItems',
+        'toDoHours',
+        'actualHours',
         'progressPercent',
         'totalPoints',
         'completedPoints',
@@ -469,7 +458,7 @@ describe('ReleasesService', () => {
         'completedItems',
         'toDoItems',
       ]) {
-        expect(taskRollup).not.toHaveProperty(forbidden);
+        expect(detail).not.toHaveProperty(forbidden);
       }
     });
   });

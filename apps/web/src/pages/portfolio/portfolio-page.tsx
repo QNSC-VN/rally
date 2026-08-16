@@ -171,34 +171,26 @@ export function PortfolioPage() {
   const optionsFor = usePortfolioCellOptions(workspace?.workspaceId, projectIds)
 
   /**
-   * Move destinations for the Project cell — workspace-wide, not the loaded rows' projects.
+   * Workspace projects, for the Project column's KEY — a NAME LOOKUP, not a picker feed.
    *
-   * A move targets a project the grid may not be showing (that is the point of a move), so
-   * this deliberately does not reuse `projectIds`. Two narrowings, and the API applies both:
+   * The Project column is read-only now (§45/§56/§209/§271: "Inherited from the current Project
+   * context at creation and read-only afterward for both Feature and Epic"), so there are no move
+   * destinations to offer. The rows still need each project's `key` for the chip, because the portfolio
+   * DTO carries `projectName` and no key; the disclosed Story/Defect preview rows have always resolved
+   * theirs the same way.
    *
-   *   • **Archived projects are dropped** — they cannot take new work (`PROJECT_ARCHIVED`,
-   *     PRJ-FR-010, checked on the DESTINATION by `assertProjectWritable`).
-   *   • **`portfolio:edit` on the DESTINATION**, which `updateItem` requires in BOTH directions
-   *     ("putting work into a project is an edit of that project's portfolio"). The list was built
-   *     from every READABLE project with no permission filter at all, so a Project Admin was
-   *     offered every project in the workspace and got a 403 from the one they picked — almost
-   *     certainly the BA's "selecting AUDIT26 returns an unexpected error" (P5-PI-003). It is
-   *     invisible to a Workspace Admin, whose `workspace:*` grant covers every project.
-   *
-   * `useProjectPermissionsFor` over the whole workspace, exactly as `CreatePortfolioItemModal`
-   * narrows its own Project field by `portfolio:create` — readable is not writable. It shares the
-   * per-project cache with `rowPerms` above, so a project already resolved for a row costs no
-   * second request.
+   * DELIBERATELY UNNARROWED, and that is the whole reason this comment is longer than the code. It used
+   * to be filtered to non-archived projects the caller holds `portfolio:edit` on — correct for a move,
+   * because `updateItem` authorised the DESTINATION too and an archived project takes no new work — and
+   * carrying those filters over to a lookup would be a silent regression: every row whose project is
+   * archived, or outside the caller's write scope, would lose its chip and render as a bare name. The
+   * filters guarded a WRITE that no longer exists; reusing them for a READ would guard nothing and hide
+   * data. `useProjectPermissionsFor` over the whole workspace goes with them.
    */
   const { data: allProjectRows = [] } = useProjects(workspace?.workspaceId)
-  const allProjectIds = useMemo(() => allProjectRows.map((p) => p.id), [allProjectRows])
-  const { can: canEditIn } = useProjectPermissionsFor(allProjectIds)
   const projectOptions = useMemo(
-    () =>
-      allProjectRows
-        .filter((p) => p.status !== 'archived' && canEditIn(p.id, 'portfolio:edit'))
-        .map((p) => ({ id: p.id, key: p.key, name: p.name })),
-    [allProjectRows, canEditIn],
+    () => allProjectRows.map((p) => ({ id: p.id, key: p.key, name: p.name })),
+    [allProjectRows],
   )
 
   const openDetail = useCallback(

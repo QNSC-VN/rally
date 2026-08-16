@@ -1849,6 +1849,62 @@ describe('CapacityPlansService', () => {
       expect(repo.findTeam).not.toHaveBeenCalled();
     });
 
+    /**
+     * P5-CP-032 / P5-CAP-AC-020: the quick `Planned Team Assignment` selector edits a PARKED row, and
+     * the assignment it displays is `is_primary` while the Team rail beside it reads `team_id`.
+     *
+     * Untested until now, which is how the fault reached rally-dev: a parked row moved onto a team kept
+     * `is_primary = false`, so the selector said `Not assigned` next to that team's own chip and a
+     * charged rail. The generalisable half is that the promotion is scoped to the park→team transition,
+     * asserted by the control below — a team-to-team MOVE must not change who owns the Feature.
+     */
+    it('PROMOTES a parked row that gains a team when the Feature has no owner (P5-CP-032)', async () => {
+      repo.findAllocation.mockResolvedValue({
+        id: 'al-1',
+        planId: 'plan-1',
+        portfolioItemId: 'fe-1',
+        teamId: null,
+        isPrimary: false,
+        value: '10',
+        source: 'manual',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      repo.hasPrimaryAllocation.mockResolvedValue(false);
+
+      await service.updateAllocation(actor, 'plan-1', 'al-1', { teamId: 'team-2' });
+
+      expect(repo.updateAllocation).toHaveBeenCalledWith(
+        'al-1',
+        { teamId: 'team-2', isPrimary: true },
+        expect.anything(),
+      );
+    });
+
+    it('leaves a parked row a CONTRIBUTOR when the Feature already has an owner', async () => {
+      // Only one team owns a Feature, and `uq_capacity_allocation_primary` would reject the second.
+      repo.findAllocation.mockResolvedValue({
+        id: 'al-1',
+        planId: 'plan-1',
+        portfolioItemId: 'fe-1',
+        teamId: null,
+        isPrimary: false,
+        value: '10',
+        source: 'manual',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      repo.hasPrimaryAllocation.mockResolvedValue(true);
+
+      await service.updateAllocation(actor, 'plan-1', 'al-1', { teamId: 'team-2' });
+
+      expect(repo.updateAllocation).toHaveBeenCalledWith(
+        'al-1',
+        { teamId: 'team-2' },
+        expect.anything(),
+      );
+    });
+
     it('removes an allocation', async () => {
       await service.removeAllocation(actor, 'plan-1', 'al-1');
       expect(repo.deleteAllocation).toHaveBeenCalledWith('al-1', expect.anything());

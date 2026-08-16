@@ -191,7 +191,7 @@ describe('Milestone ArtifactsTab', () => {
     await waitFor(() =>
       expect(mockPUT).toHaveBeenCalledWith('/v1/milestones/{id}/artifacts', {
         params: { path: { id: 'ms-1' } },
-        body: { workItemIds: ['wi-1', 'wi-2'] },
+        body: { artifactIds: ['wi-1', 'wi-2'] },
       }),
     )
   })
@@ -206,7 +206,7 @@ describe('Milestone ArtifactsTab', () => {
     await waitFor(() =>
       expect(mockPUT).toHaveBeenCalledWith('/v1/milestones/{id}/artifacts', {
         params: { path: { id: 'ms-1' } },
-        body: { workItemIds: [] },
+        body: { artifactIds: [] },
       }),
     )
   })

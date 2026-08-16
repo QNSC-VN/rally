@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { MetricValue } from '@/shared/ui/metric-value'
 import { TeamCell } from '@/shared/ui/team-cell'
 import type { CapacityAllocation } from '@/features/capacity-planning/api'
+import { DependencyCount } from './dependency-count'
 import type { ItemColKey } from '../model/columns'
 
 /**
@@ -62,7 +63,16 @@ export function ItemAllocationRow({
       </div>
 
       <div style={colStyleFor('team', { flexShrink: 0 })} />
-      <div style={colStyleFor('dependencies', { flexShrink: 0 })} />
+
+      {/* The same `DependencyCount` chip the parent row renders. This cell was EMPTY — an unspecified
+          third rendering of one column: `0` on the Feature row directly above it, `--` on the expanded
+          Team table, and nothing here. An empty cell one row under a chip that says `0` reads as "not
+          loaded", which is the reading P5-CP-025 rules against; and the column belongs to the FEATURES
+          tab, whose rule is SRS §157's `0`. Rendering the parent's own cell is what keeps the grid to
+          one answer. */}
+      <div style={colStyleFor('dependencies', { flexShrink: 0 })} className="px-2">
+        <DependencyCount />
+      </div>
 
       <div style={colStyleFor('rollup', { flexShrink: 0 })} className="px-2 text-right">
         <MetricValue value={metrics.rollup} pct={null} />

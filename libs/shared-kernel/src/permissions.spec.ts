@@ -146,6 +146,55 @@ describe('per-Project access levels', () => {
     expect(permissionGrants([PERMISSION.ITERATION_VIEW], PERMISSION.TIMEBOX_VIEW)).toBe(false);
   });
 
+  it('hides Team Status from an Editor without taking away the Editor surfaces next to it', () => {
+    /**
+     * §3.2:81 is `| Team Status | View/Update | View/Update | Hidden |`, and
+     * `Phase 3/01_Team_Status/SRS.md:43` states it in words — "Project `Editor` does not enter Team
+     * Status" — with `P3-TS-FR-028` ("Editor and unassigned users cannot open the page or mutate
+     * Capacity, Task Name or Task State") and `P3-TS-FR-039` ("direct access and mutation are
+     * rejected safely"). `00_Documents/mini_rally_usecase_role_mapping.md:50` agrees:
+     * `| Team Status - View/Edit | All | Project | No | No |`.
+     *
+     * This REVERSES an earlier grant, so the assertion is on the decision. `GET /team-status`
+     * returns every member's Capacity hours and each task's Estimate / To Do / Actual, so an Editor
+     * holding `team_status:view` read the whole team's per-person hours. Backfilled to existing
+     * workspaces by migration `0126_revoke_editor_team_status`, because `db/seeds/bootstrap.ts`
+     * upserts the tier roles with `set: { name }` and a catalogue edit alone reaches no existing
+     * workspace.
+     *
+     * BOTH DIRECTIONS, for the same reason the Timeboxes test above needs them: asserting only the
+     * refusal would also pass if the Editor had lost `work_item:view` or `iteration:view`
+     * wholesale, which would 403 Backlog, Iteration Status and Quality — the three §3.2 surfaces
+     * the Editor KEEPS, all of which sit beside this one and share its data. The failure this pins
+     * is a revocation that takes the neighbours with it.
+     */
+    expect(ACCESS_LEVEL_PERMISSIONS.editor).not.toContain(PERMISSION.TEAM_STATUS_VIEW);
+    expect(ACCESS_LEVEL_PERMISSIONS.editor).not.toContain(PERMISSION.TEAM_STATUS_EDIT);
+    expect(ACCESS_LEVEL_PERMISSIONS.editor).toContain(PERMISSION.WORK_ITEM_VIEW);
+    expect(ACCESS_LEVEL_PERMISSIONS.editor).toContain(PERMISSION.ITERATION_VIEW);
+    expect(ACCESS_LEVEL_PERMISSIONS.editor).toContain(PERMISSION.QUALITY_VIEW);
+    // §3.2:81 gives a per-Project Admin `View/Update`, so the surface is not hidden from everyone —
+    // which is what makes this a scoping rule rather than a dead permission.
+    expect(ACCESS_LEVEL_PERMISSIONS.admin).toContain(PERMISSION.TEAM_STATUS_VIEW);
+    expect(ACCESS_LEVEL_PERMISSIONS.admin).toContain(PERMISSION.TEAM_STATUS_EDIT);
+
+    /**
+     * The wildcard route in, which is the half a `not.toContain` cannot see: the Editor's own codes
+     * must not GRANT `team_status:view` through a namespace wildcard either. `permissionGrants` is
+     * what `PolicyGuard` actually calls, so this is the check the route performs.
+     */
+    expect(
+      permissionGrants([...ACCESS_LEVEL_PERMISSIONS.editor], PERMISSION.TEAM_STATUS_VIEW),
+    ).toBe(false);
+    expect(
+      permissionGrants([...ACCESS_LEVEL_PERMISSIONS.editor], PERMISSION.TEAM_STATUS_EDIT),
+    ).toBe(false);
+    // …and `work_item:*` — the namespace the Editor's job lives in, and the code the nav entry used
+    // to be gated on — does not reach the team-status namespace.
+    expect(permissionGrants(['work_item:*'], PERMISSION.TEAM_STATUS_VIEW)).toBe(false);
+    expect(permissionGrants(['team_status:*'], PERMISSION.TEAM_STATUS_VIEW)).toBe(true);
+  });
+
   it('gives Admin no permission an Editor lacks unless it is deliberate', () => {
     // Admin ⊇ Editor. The tiers derive from ROLE_PERMISSIONS, so this catches a hand-edit that
     // removes a code from Admin while leaving it with Editor — which would make "promote to Admin"

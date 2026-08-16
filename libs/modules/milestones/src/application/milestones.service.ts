@@ -21,7 +21,11 @@ import {
   teams,
 } from '../../../../../db/schema/work';
 import { completedScheduleStatesSql } from '../../../../../db/schema/enums';
-import { IMilestoneRepository, MILESTONE_REPOSITORY } from '../domain/ports/milestone.repository';
+import {
+  IMilestoneRepository,
+  MILESTONE_REPOSITORY,
+  type MilestoneArtifactLink,
+} from '../domain/ports/milestone.repository';
 import type {
   Milestone,
   MilestoneOption,
@@ -656,10 +660,10 @@ export class MilestonesService {
    * different TABLES, so their counts sum.
    *
    * No `type` predicate on the work-item branch, deliberately, because the previous query had none:
-   * `assertArtifactsInMilestoneScope` refuses anything but a Story or Defect today, but the work-item
-   * write path enforced less than that before it was unified, so a Task-typed row may exist in an
-   * older database and hiding a link that really is there is not this read's job. The inherited half
-   * needs no predicate either — `feature_id` is a leaf-item column.
+   * `assertArtifactsInMilestoneScope` refuses a Task today (SRS:116), but the work-item write path
+   * enforced less than that before it was unified, so a Task-typed row may exist in an older database
+   * and hiding a link that really is there is not this read's job. The inherited half needs no
+   * predicate either — `feature_id` is a leaf-item column.
    */
   async listMilestoneArtifacts(
     actor: JwtPayload,
@@ -688,16 +692,30 @@ export class MilestonesService {
         and pi.archived_at is null
     )`;
     /**
-     * The Features whose leaves are inherited: a directly linked Feature, plus the child Features of
-     * a directly linked Epic. TWO LEVELS and no more, and the same shape as
+     * The milestone's whole PORTFOLIO population: every directly linked Epic or Feature, PLUS the
+     * child Features of a directly linked Epic.
+     *
+     * TWO LEVELS and no more, and the same shape as
      * `PortfolioItemDrizzleRepository.rollupSubqueries()`'s `linked` predicate — a work item attaches
      * to the LOWEST portfolio level only, so a Story never names an Epic and an Epic is reached
      * through its Features. Reusing that shape is what keeps a milestone's inherited set and a
      * Feature's own rollup describing the same children.
+     *
+     * It serves BOTH branches below, and that is FR-029: "Directly assigning an Epic includes its
+     * child Features and their Story/Defect descendants" (SRS:64, restated at §117 and AC-8 §165).
+     * The work-item branch always used this set; the portfolio branch matched `directPortfolioIds`
+     * alone, so an Epic's child Features never appeared as artifact ROWS while their Stories did —
+     * the Story/Defect half of FR-029 was present and the Feature half was missing, which reads on
+     * screen as leaf work with no parent to explain it.
+     *
+     * De-duplication is structural, not a pass: this is ONE scan of `portfolio_items` whose predicate
+     * is `direct OR child-of-direct`, so a Feature that is both (assigned in its own right AND under
+     * an assigned Epic) cannot produce two rows — FR-030's "de-duplicated by stable item ID".
      */
-    const inheritedFeatureIds = sql`(
+    const artifactPortfolioIds = sql`(
       select pf.id from ${portfolioItems} pf
       where pf.archived_at is null
+        and pf.workspace_id = ${actor.workspaceId}
         and (pf.id in ${directPortfolioIds} or pf.parent_id in ${directPortfolioIds})
     )`;
 
@@ -707,7 +725,9 @@ export class MilestonesService {
     const workConditions = [
       eq(workItems.workspaceId, actor.workspaceId),
       isNull(workItems.deletedAt),
-      sql`(${workItems.id} in ${directWorkItemIds} or ${workItems.featureId} in ${inheritedFeatureIds})`,
+      // `feature_id` is a LEAF column, so only the Feature members of the set above can ever match —
+      // an Epic id cannot appear here, which is why one set serves both branches.
+      sql`(${workItems.id} in ${directWorkItemIds} or ${workItems.featureId} in ${artifactPortfolioIds})`,
     ];
     if (like) {
       workConditions.push(
@@ -715,7 +735,9 @@ export class MilestonesService {
       );
     }
 
-    const portfolioConditions = [sql`${portfolioItems.id} in ${directPortfolioIds}`];
+    // The direct Epics/Features AND an assigned Epic's child Features (FR-029). Previously
+    // `directPortfolioIds` alone, which emitted the Epic and its Stories but not the Features between.
+    const portfolioConditions = [sql`${portfolioItems.id} in ${artifactPortfolioIds}`];
     if (like) {
       portfolioConditions.push(
         sql`(${portfolioItems.itemKey} ilike ${like} or ${portfolioItems.name} ilike ${like})`,
@@ -817,10 +839,31 @@ export class MilestonesService {
     );
   }
 
+  /**
+   * §5.2's replace-SET: `{ "artifactIds": [...] }` "replaces the directly assigned Milestone
+   * artifact list; inherited descendants are derived and are not written into this list".
+   *
+   * POLYMORPHIC, because the link table is (migration 0084) and §116 admits four types. It used to
+   * take `workItemIds` and resolve them against `work_items` alone, which had two consequences: a
+   * Feature or Epic could not be assigned from this end at all (`MILESTONE_INVALID_ARTIFACT_TYPE`,
+   * while the Feature detail rail wrote the identical row from the other end), and the replace was
+   * scoped to `entity_type = 'work_item'` so it could not REMOVE one either.
+   *
+   * Each id resolves from EXACTLY ONE table and its entity type is derived from where it was found,
+   * so a caller never states it — the ids are uuids and the two key spaces do not overlap.
+   * `resolved.length !== uniqueIds.length` therefore catches an id matching neither table and (for
+   * free) one somehow matching both.
+   *
+   * NO archived-item predicate on the portfolio resolve, deliberately, and `getArtifactIds` below
+   * has none either — so the pair round-trips exactly. A milestone holding an archived Feature can
+   * be saved without silently dropping that link, which is what an archived filter on one half of a
+   * replace-set would do. The DASHBOARD read excludes archived rows, so such a Feature contributes
+   * nothing on screen; the link is history, and SRS:85 makes removing it the deliberate action.
+   */
   async setMilestoneArtifacts(
     actor: JwtPayload,
     milestoneId: string,
-    workItemIds: string[],
+    artifactIds: string[],
   ): Promise<string[]> {
     const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
     // PRJ-FR-010. `createMilestone`, `updateMilestone` and `deleteMilestone` carried this rule and
@@ -828,37 +871,59 @@ export class MilestonesService {
     // artifacts, projects, teams and releases fully editable — and the release set additionally
     // rewrites the milestone's own target window (FR-011/012).
     await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
-    const uniqueIds = [...new Set(workItemIds)];
+    const uniqueIds = [...new Set(artifactIds)];
+    let links: MilestoneArtifactLink[] = [];
     if (uniqueIds.length > 0) {
-      const rows = await this.db
-        .select({
-          id: workItems.id,
-          projectId: workItems.projectId,
-          teamId: workItems.teamId,
-          type: workItems.type,
-        })
-        .from(workItems)
-        .where(
-          and(
-            inArray(workItems.id, uniqueIds),
-            eq(workItems.workspaceId, actor.workspaceId),
-            isNull(workItems.deletedAt),
+      const [workRows, portfolioRows] = await Promise.all([
+        this.db
+          .select({
+            id: workItems.id,
+            projectId: workItems.projectId,
+            teamId: workItems.teamId,
+            type: sql<string>`${workItems.type}::text`,
+          })
+          .from(workItems)
+          .where(
+            and(
+              inArray(workItems.id, uniqueIds),
+              eq(workItems.workspaceId, actor.workspaceId),
+              isNull(workItems.deletedAt),
+            ),
           ),
-        );
-      // A missing row is an id naming no live work item in this workspace. Reported as a scope
+        this.db
+          .select({
+            id: portfolioItems.id,
+            projectId: portfolioItems.projectId,
+            teamId: portfolioItems.teamId,
+            type: sql<string>`${portfolioItems.type}::text`,
+          })
+          .from(portfolioItems)
+          .where(
+            and(
+              inArray(portfolioItems.id, uniqueIds),
+              eq(portfolioItems.workspaceId, actor.workspaceId),
+            ),
+          ),
+      ]);
+      const resolved = [...workRows, ...portfolioRows];
+      // A missing row is an id naming no live artifact in this workspace. Reported as a scope
       // mismatch rather than a 404 because this is a replace-SET: the write is refused whole and
       // an unresolvable id is, from here, indistinguishable from one outside the scope.
-      if (rows.length !== uniqueIds.length) {
+      if (resolved.length !== uniqueIds.length) {
         throw new PreconditionFailedException(
           'MILESTONE_PROJECT_MISMATCH',
-          'One or more work items do not belong to this milestone\u2019s project scope',
+          'One or more artifacts do not belong to this milestone’s project scope',
         );
       }
-      // Project, artifact TYPE and Team scope are all decided in ONE place, because the
-      // work-item side writes the same rows — see assertArtifactsInMilestoneScope.
-      assertArtifactsInMilestoneScope(milestone, rows);
+      // Project, artifact TYPE and Team scope are all decided in ONE place, because the work-item
+      // and portfolio-item sides write the same rows — see assertArtifactsInMilestoneScope.
+      assertArtifactsInMilestoneScope(milestone, resolved);
+      links = [
+        ...workRows.map((r) => ({ entityType: 'work_item' as const, entityId: r.id })),
+        ...portfolioRows.map((r) => ({ entityType: 'portfolio_item' as const, entityId: r.id })),
+      ];
     }
-    await this.milestoneRepo.setArtifactLinks(milestoneId, uniqueIds);
+    await this.milestoneRepo.setArtifactLinks(milestoneId, links);
     return this.milestoneRepo.getArtifactIds(milestoneId);
   }
 
@@ -967,12 +1032,29 @@ export class MilestonesService {
   }
 }
 
-/** The work-item half of one artifact link — everything the scope rule below reads. */
+/**
+ * One candidate artifact — everything the scope rule below reads, and nothing about which TABLE it
+ * came from.
+ *
+ * Deliberately table-agnostic: `work_items` and `portfolio_items` both supply `project_id`,
+ * `team_id` and `type`, and `milestone_artifacts` has been polymorphic since migration 0084. A rule
+ * that took a work item could not be the single rule for a link table with two row shapes.
+ */
 export interface MilestoneArtifactCandidate {
   projectId: string;
   teamId: string | null;
   type: string;
 }
+
+/**
+ * The DIRECT artifact types (`Phase 3/03_Milestones/SRS.md:116`: "Valid direct artifact types are
+ * Story, Defect, Feature and Epic. Task is excluded."; FR-014 at §49 says the same).
+ *
+ * Task's exclusion is the whole reason this is a list and not "anything that resolves": a Task's
+ * Project, Team, Iteration and Release context is DERIVED through its parent Story/Defect, so a Task
+ * on a milestone would be a second, independent assignment of a record that owns no scope of its own.
+ */
+const DIRECT_ARTIFACT_TYPES: ReadonlySet<string> = new Set(['story', 'defect', 'feature', 'epic']);
 
 /** The milestone half: its owning project plus the Projects/Teams it additionally selects. */
 export interface MilestoneArtifactScope {
@@ -982,10 +1064,10 @@ export interface MilestoneArtifactScope {
 }
 
 /**
- * The ONE home of the artifact-link rule — `milestone_artifacts` has two write paths and they
+ * The ONE home of the artifact-link rule — `milestone_artifacts` has THREE write paths and they
  * must agree, because they write the same rows.
  *
- * `PUT /milestones/:id/artifacts` (one milestone, N work items) enforced all three conditions;
+ * `PUT /milestones/:id/artifacts` (one milestone, N artifacts) enforced all three conditions;
  * `PUT /work-items/:id/milestones` (one work item, N milestones) enforced only the first, and
  * not even in the same form. So a Task could be made a Milestone artifact, and an item on any
  * team could join a Team-scoped Milestone, as long as the request came in from the work-item
@@ -993,20 +1075,39 @@ export interface MilestoneArtifactScope {
  * had refused to create them. Same class of defect as the two `@RequirePermission` gates chosen
  * for where the id lived: the rule was attached to a call site instead of to the link.
  *
+ * The THIRD writer is `PATCH /portfolio-items/:id` with `milestoneIds` — the Feature/Epic detail
+ * rail's multi-select. It was missed by that unification and ran its own
+ * `eq(milestones.project_id, …)` match instead, which was too permissive (no team condition at all)
+ * AND too strict (no `milestone_projects` union) at the same time. It calls this now.
+ *
  *   • project — an artifact must belong to one of the Milestone's Projects, which is its OWNING
- *     project plus any additionally linked ones (SRS §5.2 / FR-021/023). The work-item side used
- *     `milestones.project_id` alone, so a Milestone reachable from this project through
- *     `milestone_projects` was refused here and accepted there.
- *   • type — a Milestone Artifact is a Story or Defect (SRS §5.1 / FR-014). Initiatives,
- *     Features and Tasks are refused so the Artifacts dashboard stays the Backlog-shaped list
- *     the BA specified.
+ *     project plus any additionally linked ones (SRS §88/§135, FR-021/023, and Q06 confirms a
+ *     Milestone may span several). The work-item side used `milestones.project_id` alone, so a
+ *     Milestone reachable from this project through `milestone_projects` was refused here and
+ *     accepted there.
+ *   • type — Story, Defect, Feature or Epic; Task is excluded (SRS:116, FR-014). This used to be
+ *     Story/Defect only, so the BA's own Feature/Epic assignment was refused from the Milestone end
+ *     with `MILESTONE_INVALID_ARTIFACT_TYPE` while the Feature detail rail wrote the identical
+ *     `entity_type = 'portfolio_item'` row from the other — the asymmetry this function exists to
+ *     prevent, reintroduced by the type list rather than by a call site. See
+ *     {@link DIRECT_ARTIFACT_TYPES}.
  *   • team — when the Milestone selects Team scope, an artifact must be on one of those Teams.
  *     A team-agnostic item (`teamId === null`) is OUT of a team scope, not exempt from it:
  *     unlike an actor-side authorization check, which asks whether the CALLER may write, this
  *     asks whether the WORK is inside a declared scope, and "no team" is not one of them.
  *
+ *     **An EPIC is the one exemption, and it is a DECLARED READING rather than a derived rule.**
+ *     An Epic has no `team_id` at all — `ck_portfolio_epic_shape` forbids one, and §11.1 says "Epic
+ *     is stored at Project level. It has no Team field." So the paragraph above cannot apply to it:
+ *     `teamId === null` on an Epic is not an unset value a planner might fill in, it is the absence
+ *     of the dimension. Applying the filter anyway would refuse EVERY Epic on every team-scoped
+ *     Milestone, which makes FR-014's Epic support unreachable for those Milestones — a blanket
+ *     refusal of a type §116 names, dressed as a scope check. A FEATURE is NOT exempt: it has the
+ *     column, so `null` there means "not set" and the ordinary rule stands. Put to the BA; if they
+ *     rule the other way, this predicate is the whole reversal.
+ *
  * The prose is deliberately direction-neutral: one message has to read correctly whether the
- * caller named the milestone or the work item.
+ * caller named the milestone, the work item or the portfolio item.
  */
 export function assertArtifactsInMilestoneScope(
   milestone: MilestoneArtifactScope,
@@ -1022,17 +1123,21 @@ export function assertArtifactsInMilestoneScope(
     );
   }
 
-  if (candidates.some((c) => c.type !== 'story' && c.type !== 'defect')) {
+  if (candidates.some((c) => !DIRECT_ARTIFACT_TYPES.has(c.type))) {
     throw new PreconditionFailedException(
       'MILESTONE_INVALID_ARTIFACT_TYPE',
-      'Only stories and defects can be assigned as milestone artifacts',
+      'Only stories, defects, features and epics can be assigned as milestone artifacts',
     );
   }
 
   const teamScope = milestone.teamIds ?? [];
   if (teamScope.length > 0) {
     const teamSet = new Set(teamScope);
-    if (candidates.some((c) => c.teamId === null || !teamSet.has(c.teamId))) {
+    const outOfScope = (c: MilestoneArtifactCandidate): boolean =>
+      // See the Epic exemption above: an Epic carries no team column, so a team predicate over it
+      // is a refusal rather than a filter.
+      c.type !== 'epic' && (c.teamId === null || !teamSet.has(c.teamId));
+    if (candidates.some(outOfScope)) {
       throw new PreconditionFailedException(
         'MILESTONE_TEAM_MISMATCH',
         'A milestone artifact must belong to one of the milestone’s selected teams',

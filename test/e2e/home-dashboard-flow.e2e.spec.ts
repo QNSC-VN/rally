@@ -12,7 +12,14 @@ import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
 import { IterationsService } from '@modules/iterations';
 
-import { adminActor, bootRallyApp, uniqueKey, ADMIN_USER_ID } from './support/flow-harness';
+import {
+  adminActor,
+  bootRallyApp,
+  createTeamForProject,
+  makeActor,
+  uniqueKey,
+  DEVELOPER_ID,
+} from './support/flow-harness';
 
 describe('BA flow: Home dashboard aggregates (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
@@ -20,6 +27,24 @@ describe('BA flow: Home dashboard aggregates (real AppModule + seeded DB)', () =
   let workItems: WorkItemsService;
   let iterations: IterationsService;
   const actor = adminActor();
+  /**
+   * The principal whose dashboard is read, and the Owner of every item assigned below.
+   *
+   * "A named Owner must be an active member of the selected Team" and a team-less item must be
+   * Unassigned (`Phase 1/03_Work_Item_Detail/SRS.md:125`, AC-16 at
+   * `Phase 2/01_Backlog_Enhancement/SRS.md:336`), enforced by `assertOwnerInTeam`. The Owner
+   * population is `ProjectsService.listProjectMemberOptions`, which deliberately EXCLUDES Workspace
+   * Admins — AC-16, "Workspace Admin không phải delivery owner hợp lệ" — and `actor` IS the seeded
+   * Workspace Admin, so "assign it to the actor" is no longer expressible. `assignedToMe` and
+   * `listMyWork` are therefore read as this non-admin principal: the same "items assigned to me"
+   * assertion, with a principal that can legally hold them.
+   *
+   * Reading the WHOLE summary as this actor is safe and deliberate: only `assignedToMe` is
+   * user-scoped in `getWorkspaceSummary`, every other figure is a workspace-wide count, and neither
+   * aggregate makes an authorization call. The writes stay on `actor` because project / iteration
+   * creation is the Workspace Admin's job.
+   */
+  const owner = makeActor(DEVELOPER_ID);
 
   beforeAll(async () => {
     app = await bootRallyApp();
@@ -33,21 +58,31 @@ describe('BA flow: Home dashboard aggregates (real AppModule + seeded DB)', () =
   });
 
   it('summary counts reflect a freshly created project + assigned/blocked/defect items', async () => {
-    const before = await workItems.getWorkspaceSummary(actor);
+    const before = await workItems.getWorkspaceSummary(owner);
 
     const project = await projects.createProject(actor, { key: uniqueKey(), name: 'Home Summary' });
     const iteration = await iterations.createIteration(actor, project.id, 'Home Sprint');
-    // Story assigned to the actor.
+    /**
+     * A team is a PRECONDITION for naming an Owner, not decoration: a project from `createProject`
+     * has no teams at all, so `assertOwnerInTeam` refuses every `assigneeId` below with
+     * `ASSIGNEE_REQUIRES_TEAM` until one exists and is passed alongside
+     * (`Phase 1/02_Work_Item_Create/SRS.md:78`, "no Team means named Owner is not allowed"). The
+     * iteration above is deliberately team-less, so nothing here can trip `ITERATION_TEAM_MISMATCH`.
+     */
+    const teamId = await createTeamForProject(app, project.id, [DEVELOPER_ID]);
+    // Story assigned to `owner`.
     const story = await workItems.createWorkItem(actor, project.id, 'story', 'Assigned story', {
-      assigneeId: ADMIN_USER_ID,
+      assigneeId: DEVELOPER_ID,
+      teamId,
     });
-    // Defect assigned to the actor, then blocked.
+    // Defect assigned to `owner`, then blocked.
     const defect = await workItems.createWorkItem(actor, project.id, 'defect', 'Assigned defect', {
-      assigneeId: ADMIN_USER_ID,
+      assigneeId: DEVELOPER_ID,
+      teamId,
     });
     await workItems.updateWorkItem(actor, defect.id, { isBlocked: true });
 
-    const after = await workItems.getWorkspaceSummary(actor);
+    const after = await workItems.getWorkspaceSummary(owner);
     expect(after.activeProjects).toBe(before.activeProjects + 1);
     expect(after.assignedToMe).toBeGreaterThanOrEqual(before.assignedToMe + 2);
     expect(after.openDefects).toBeGreaterThanOrEqual(before.openDefects + 1);
@@ -55,43 +90,49 @@ describe('BA flow: Home dashboard aggregates (real AppModule + seeded DB)', () =
 
     // Committing the iteration bumps the active-sprint count.
     await iterations.commitIteration(actor, iteration.id);
-    const afterCommit = await workItems.getWorkspaceSummary(actor);
+    const afterCommit = await workItems.getWorkspaceSummary(owner);
     expect(afterCommit.activeSprints).toBe(after.activeSprints + 1);
 
     void story;
   });
 
-  it('my-work returns items assigned to the actor, bounded and priority-ordered', async () => {
+  it('my-work returns items assigned to the owner, bounded and priority-ordered', async () => {
     const project = await projects.createProject(actor, { key: uniqueKey(), name: 'Home MyWork' });
+    // Owner ⊆ the item's Team roster, and a team-less item must be Unassigned
+    // (`Phase 1/03_Work_Item_Detail/SRS.md:125`) — so the team is created first and passed with
+    // every `assigneeId`, or `assertOwnerInTeam` answers `ASSIGNEE_REQUIRES_TEAM`.
+    const teamId = await createTeamForProject(app, project.id, [DEVELOPER_ID]);
     const normal = await workItems.createWorkItem(actor, project.id, 'story', 'Normal', {
-      assigneeId: ADMIN_USER_ID,
+      assigneeId: DEVELOPER_ID,
+      teamId,
     });
     const urgent = await workItems.createWorkItem(actor, project.id, 'defect', 'Urgent bug', {
-      assigneeId: ADMIN_USER_ID,
+      assigneeId: DEVELOPER_ID,
+      teamId,
       priority: 'urgent',
     });
 
     // Generous limit so BOTH fresh items are in the window regardless of seed
-    // size. `actor` is the shared seeded admin, and the e2e DB is never cleaned
-    // between runs, so admin accumulates many assigned items across runs (96+
+    // size. `owner` is a shared seeded user, and the e2e DB is never cleaned
+    // between runs, so it accumulates many assigned items across runs (96+
     // and growing). my-work orders by `priority DESC, rank ASC` and new rows get
     // the highest rank — so a default-priority ("normal") item sorts LAST within
     // its priority band and falls outside a small window once accumulation
     // exceeds it (the real cause of this test's flake: "expected [50 items] to
     // include <normal.id>"). The bounded/limit behaviour is asserted separately
     // below. (Long-term fix is per-test data isolation for the whole e2e suite.)
-    const rows = await workItems.listMyWork(actor, 100_000);
+    const rows = await workItems.listMyWork(owner, 100_000);
     const ids = rows.map((r) => r.id);
     expect(ids).toContain(normal.id);
     expect(ids).toContain(urgent.id);
-    // Every row is assigned to the actor and carries its project key.
+    // Every row is assigned to the owner and carries its project key.
     const mine = rows.find((r) => r.id === urgent.id);
     expect(mine?.projectKey).toBe(project.key);
     // Urgent sorts ahead of normal within this project's items.
     expect(ids.indexOf(urgent.id)).toBeLessThan(ids.indexOf(normal.id));
 
     // Bounded: never returns more than the requested limit.
-    expect((await workItems.listMyWork(actor, 1)).length).toBeLessThanOrEqual(1);
+    expect((await workItems.listMyWork(owner, 1)).length).toBeLessThanOrEqual(1);
   });
 
   it('project-health returns a bounded rollup with sprint / defect / blocked figures', async () => {

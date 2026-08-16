@@ -16,7 +16,10 @@ import type {
   CreateMilestoneInput,
   UpdateMilestoneInput,
 } from '../../domain/milestone.types';
-import { IMilestoneRepository } from '../../domain/ports/milestone.repository';
+import {
+  IMilestoneRepository,
+  type MilestoneArtifactLink,
+} from '../../domain/ports/milestone.repository';
 
 @Injectable()
 export class MilestoneDrizzleRepository implements IMilestoneRepository {
@@ -253,47 +256,42 @@ export class MilestoneDrizzleRepository implements IMilestoneRepository {
   // P3.3 — Artifact support
 
   /**
-   * The milestone's WORK-ITEM artifacts, for the milestone page's artifact picker.
+   * The milestone's DIRECTLY assigned artifact ids — BOTH entity types.
    *
-   * Filters `entity_type` explicitly since 0084 made the table polymorphic: without it this
-   * would also return portfolio items, which that picker cannot render or save back.
+   * It used to filter `entity_type = 'work_item'`, on the grounds that the picker "cannot render or
+   * save back" a portfolio item. That is no longer true and was the reason a Feature assigned to a
+   * Milestone was invisible from the Milestone end: `Phase 3/03_Milestones/SRS.md:116` makes Story,
+   * Defect, Feature and Epic all directly assignable, and §133's payload replaces the whole directly
+   * assigned list — so a baseline missing half the link rows would have unticked them on the next
+   * save if it had not been filtered on the write side too.
+   *
+   * No archived predicate: see `MilestonesService.setMilestoneArtifacts` for why this and the write
+   * have to agree exactly, or a replace-set silently drops links it never showed the user.
    */
   async getArtifactIds(milestoneId: string): Promise<string[]> {
     const rows = await this.db
       .select({ entityId: milestoneArtifacts.entityId })
       .from(milestoneArtifacts)
-      .where(
-        and(
-          eq(milestoneArtifacts.milestoneId, milestoneId),
-          eq(milestoneArtifacts.entityType, 'work_item'),
-        ),
-      );
+      .where(eq(milestoneArtifacts.milestoneId, milestoneId));
     return rows.map((r) => r.entityId);
   }
 
   /**
-   * Replaces the milestone's WORK-ITEM links only. The `entity_type` predicate on the delete
-   * is what stops this picker from silently dropping the portfolio items assigned to the same
-   * milestone from the Feature/Epic detail rail.
+   * Replaces the milestone's DIRECT artifact set wholesale, both entity types, in ONE transaction.
+   *
+   * Transactional because the previous shape was a delete and an insert with nothing around them:
+   * a failed insert left the milestone with NO artifacts, which for a replace-set is the worst
+   * possible partial state. The `entity_type` predicate that used to sit on the delete is gone on
+   * purpose — it scoped the replace to work items, so the §5.2 payload could add a Feature but never
+   * remove one.
    */
-  async setArtifactLinks(milestoneId: string, workItemIds: string[]): Promise<void> {
-    await this.db
-      .delete(milestoneArtifacts)
-      .where(
-        and(
-          eq(milestoneArtifacts.milestoneId, milestoneId),
-          eq(milestoneArtifacts.entityType, 'work_item'),
-        ),
-      );
-    if (workItemIds.length > 0) {
-      await this.db.insert(milestoneArtifacts).values(
-        workItemIds.map((entityId) => ({
-          milestoneId,
-          entityType: 'work_item' as const,
-          entityId,
-        })),
-      );
-    }
+  async setArtifactLinks(milestoneId: string, artifacts: MilestoneArtifactLink[]): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx.delete(milestoneArtifacts).where(eq(milestoneArtifacts.milestoneId, milestoneId));
+      if (artifacts.length > 0) {
+        await tx.insert(milestoneArtifacts).values(artifacts.map((a) => ({ milestoneId, ...a })));
+      }
+    });
   }
 
   async deriveTargetDates(

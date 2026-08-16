@@ -228,9 +228,11 @@ const AUDIENCE: Record<string, Audience> = {
    */
   'IterationsController.listIterations': 'admin',
   /**
-   * The REFERENCE feed split out of it, and the one that made moving the record possible: the four
-   * §3.2 Editor surfaces (Iteration Status, the Backlog filter, Team Status, Quality) plus both
-   * report scope pickers read this instead. Same split as `GET /releases/options`,
+   * The REFERENCE feed split out of it, and the one that made moving the record possible: the
+   * §3.2 Editor surfaces (Iteration Status, the Backlog filter, Quality) plus both report scope
+   * pickers read this instead. It said FOUR and counted Team Status, which §3.2:81 now marks
+   * Hidden for an Editor — the feed's audience is unchanged, since the three that remain are still
+   * Editor surfaces. Same split as `GET /releases/options`,
    * `GET /milestones/options` and the two `member-options` feeds — the sixth time that shape has
    * been the answer.
    */
@@ -365,9 +367,24 @@ const AUDIENCE: Record<string, Audience> = {
   'TeamController.removeTeamMember': 'workspace-admin',
   'TeamController.updateTeam': 'workspace-admin',
 
-  // ── TeamStatusController ── §5 gives the Editor `Team Status | View` (their own teams' hours)
-  // and not the edit. `team_status:edit` is the Admin code.
-  'TeamStatusController.getTeamStatus': 'editor',
+  /**
+   * ── TeamStatusController ── ALL THREE ARE `admin`, AND `getTeamStatus` USED TO BE `editor`.
+   *
+   * This entry read `'editor'` and encoded a superseded SRS, which is the one failure mode a table
+   * of intended audiences has that the code does not: it would have gone on passing for as long as
+   * the catalogue kept matching it. §3.2:81 is now
+   * `| Team Status | View/Update | View/Update | Hidden |`, and `Phase 3/01_Team_Status/SRS.md:43`
+   * says "Project `Editor` does not enter Team Status" — with `P3-TS-FR-039` requiring that "direct
+   * access and mutation are rejected safely", which is precisely a 403 from this route plus a nav
+   * entry that does not offer it.
+   *
+   * So the gate did not change here; the catalogue did. `team_status:view` was removed from
+   * PROJECT_MEMBER (migration `0126_revoke_editor_team_status` backfills existing workspaces), and
+   * `team_status:edit` was Admin-only all along. All three routes stay project-TIER, so
+   * `MIN_PROJECT_TIER_ROUTES_COVERED` is unmoved — the audience shifted between two project levels
+   * rather than out of them, which is the distinction that ratchet is designed to make.
+   */
+  'TeamStatusController.getTeamStatus': 'admin',
   'TeamStatusController.updateCapacity': 'admin',
   'TeamStatusController.updateTask': 'admin',
 

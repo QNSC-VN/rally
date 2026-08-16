@@ -123,10 +123,24 @@ describe('Phase 6 reports (e2e)', () => {
       storyPoints: '5',
     });
     storyId = story.id;
-    // No `iterationId`: the task takes its parent's (P1-TASK-011), which is this iteration. Passing
-    // one is now a compile error, and it was always redundant here.
+    /**
+     * No `iterationId`: the task takes its parent's (P1-TASK-011), which is this iteration. Passing
+     * one is now a compile error, and it was always redundant here.
+     *
+     * And NO OWNER, deliberately — an Owner would force a Team onto this fixture, and the fixture's
+     * team-LESSNESS is what the next test measures. "A named Owner must be an active member of the
+     * selected Team; if `teamId` is null, `assigneeId` must also be null/Unassigned"
+     * (`Phase 1/03_Work_Item_Detail/SRS.md` §7:125, `Phase 1/04:84` for a Task against its inherited
+     * parent Team), so `assigneeId` here needs a Team on the Story — and the snapshot job writes ONE
+     * ROW PER SCOPE (`[null, ...teamsInIterationScope]`), so any resolvable team turns the single
+     * All-Teams row this iteration is asserted to have into two. `ADMIN_USER_ID` could not be that
+     * owner anyway: the Owner population excludes Workspace Admins (Backlog AC-16:336).
+     *
+     * Nothing is lost by dropping it. The hours are what every assertion in this file reads, and an
+     * unowned task still reaches both totals — Team Status buckets it under `Unassigned` and Team
+     * Capacity's `getScopedTaskHours` LEFT-joins `users`, which is precisely why the two agree.
+     */
     await items.createTask(admin, storyId, 'P6 task', {
-      assigneeId: ADMIN_USER_ID,
       estimateHours: '8',
       todoHours: '6',
       actualHours: '2',

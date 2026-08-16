@@ -95,7 +95,20 @@ export const NAV_ITEMS: NavItem[] = [
         path: '/team-status',
         label: 'Team Status',
         featureFlag: 'feature.team-status',
-        permission: PERMISSION.WORK_ITEM_VIEW,
+        // `team_status:view`, NOT `work_item:view`. §3.2:81 is now
+        // `| Team Status | View/Update | View/Update | Hidden |` and
+        // `Phase 3/01_Team_Status/SRS.md:43` says "Project `Editor` does not enter Team Status",
+        // while EVERY access level holds `work_item:view` (it is the Editor's whole job) — so
+        // gating on it rendered this entry for the one level the BA hides it from.
+        //
+        // The pair with the sibling row above is the same shape as `/timeboxes` vs
+        // `/iteration-status`: `Track` keeps `work_item:view` on Iteration Status, which §3.2
+        // DOES give an Editor, and only this leaf moves. Revoking `team_status:view` from the
+        // Editor without moving this entry would have left a visible nav item leading to a page
+        // whose only feed (`GET /team-status`) 403s — the opposite of `P3-TS-FR-039`'s "direct
+        // access and mutation are rejected safely". `NAV_PERMISSIONS` is what `router.tsx`
+        // gates on, so the route follows this row and Access Denied is what a pasted URL gets.
+        permission: PERMISSION.TEAM_STATUS_VIEW,
       },
     ],
   },
@@ -228,10 +241,17 @@ const NAV_PATH_ALIASES: Record<string, string> = {
   '/portfolio/$itemId': '/portfolio',
   '/capacity-planning/$planId': '/capacity-planning',
   // The one record whose surface is not a single row: a Story opens from Backlog and Iteration
-  // Status, a Defect from Quality, a Task from Team Status. All FOUR carry `work_item:view`, so the
-  // choice of target cannot change the code — `/backlog` is named because it is the primary one. If
-  // those four ever gate on different codes this entry stops being well defined and must be revisited
-  // rather than re-pointed.
+  // Status, a Defect from Quality. Those THREE carry `work_item:view`, so the choice of target
+  // cannot change the code — `/backlog` is named because it is the primary one.
+  //
+  // REVISITED, exactly as the note here required. It used to say FOUR and counted Team Status,
+  // warning that "if those four ever gate on different codes this entry stops being well defined
+  // and must be revisited rather than re-pointed". Team Status now gates on `team_status:view`
+  // (§3.2:81 Hidden for an Editor), so it is no longer one of the openers — and the entry stays
+  // WELL DEFINED rather than needing a new target: the remaining three still agree on
+  // `work_item:view`, which is the right code for the RECORD regardless. A Task is a work item and
+  // §3.2 gives an Editor the whole Backlog including Tasks; what the BA withholds is the Team
+  // Status SURFACE (the per-member Capacity and hours grid), not the task record reached by key.
   '/item/$itemKey': '/backlog',
   // `Manage Projects` and its record. The list is a surface of its own (see NON_NAV_SURFACES), so
   // this entry is the ordinary record-onto-list fold, not a claim about the nav.

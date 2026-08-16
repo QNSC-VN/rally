@@ -32,6 +32,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { NotificationsService, NotificationPreferencesService } from '@modules/notifications';
 import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
+import { TeamService } from '@modules/workspace';
 import { DRIZZLE, type DrizzleDB } from '@platform';
 
 import { notificationOutbox, emailOutbox } from '../../db/schema/messaging';
@@ -39,13 +40,16 @@ import { inAppNotifications } from '../../db/schema/notifications';
 import type { NotificationRelayService } from '../../apps/worker/src/notifications/notification-relay.service';
 import type { EmailRelayService } from '../../apps/worker/src/email/email-relay.service';
 import {
+  ADMIN_USER_ID,
   DEVELOPER_ID,
   SEEDED,
   WORKSPACE_ID,
   adminActor,
   bootRallyApp,
   bootRallyWorkerRelays,
+  createTeamForProject,
   grantProjectAccess,
+  makeActor,
   uniqueKey,
 } from './support/flow-harness';
 
@@ -91,13 +95,29 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
         key: uniqueKey(),
         name: 'Notify Project',
       });
-      const story = await workItems.createWorkItem(admin, project.id, 'story', 'Assign me');
-      // The grant is part of the FIXTURE now, not decoration. `createProject` makes a project nobody
-      // but its creator can read, and the producer drops a recipient without `work_item:view` on it
-      // (FR-019). Without this the assertion below passed only while the notification path ignored
-      // access entirely — it would be measuring the leak, not the contract.
-      await grantProjectAccess(app, DEVELOPER_ID, project.id, 'editor');
+      /**
+       * The TEAM is part of the FIXTURE, not decoration, and it now carries TWO load-bearing facts.
+       *
+       * The Owner rule: "a named Owner must be an active member of the selected Team; if `teamId` is
+       * null, `assigneeId` must also be null/Unassigned" (`Phase 1/03_Work_Item_Detail/SRS.md`
+       * §7:125, restated at `Phase 1/02:78`, `Phase 1/04:84` and Backlog AC-16:336).
+       * `assertOwnerInTeam` refuses the PATCH below with `ASSIGNEE_REQUIRES_TEAM` otherwise, and a
+       * `createProject` project has no teams at all.
+       *
+       * And FR-019: `createProject` makes a project nobody but its creator can read, and the
+       * producer drops a recipient without `work_item:view` on it. Without that grant the assertion
+       * below passed only while the notification path ignored access entirely — it would be
+       * measuring the leak, not the contract. The roster row IS the grant (RBE-06 →
+       * `editor`, `TeamService.grantTeamRosterProjectAccess`), so `createTeamForProject` satisfies
+       * both and a separate `grantProjectAccess` would be redundant.
+       */
+      const teamId = await createTeamForProject(app, project.id);
+      const story = await workItems.createWorkItem(admin, project.id, 'story', 'Assign me', {
+        teamId,
+      });
 
+      // The team is set at CREATE so the patch under test still carries the assignee ALONE — what is
+      // measured is an assignment event, not a team move that happens to bring an owner with it.
       await workItems.updateWorkItem(admin, story.id, { assigneeId: DEVELOPER_ID });
 
       const rows = await outboxFor(story.id);
@@ -124,7 +144,37 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
         key: uniqueKey(),
         name: 'No Access Assign Project',
       });
-      const story = await workItems.createWorkItem(admin, project.id, 'story', 'Assign outward');
+
+      /**
+       * The Owner rule and the access boundary pull in opposite directions here, and the fixture has
+       * to satisfy BOTH — which is why this is not `createTeamForProject`.
+       *
+       * `assertOwnerInTeam` requires the Owner on the item's Team
+       * (`Phase 1/03_Work_Item_Detail/SRS.md` §7:125), and adding a roster row to a team that is
+       * already linked to a project GRANTS that member `editor` on it (RBE-06,
+       * `TeamService.grantTeamRosterProjectAccess`). So the obvious helper would hand the assignee
+       * the very `work_item:view` this test needs them to LACK, and the expectation of zero rows
+       * would then be asserting the absence of a notification that should have been sent.
+       *
+       * The roster is therefore written FIRST, with no project on the team, and the project link
+       * comes after: `ProjectsService.linkTeam` grants nothing. DEVELOPER_ID ends up an active member
+       * of the item's Team — a legal Owner — with no `project_members` row on the project, which is
+       * exactly the boundary FR-019 describes. Do not "simplify" this back to one call.
+       */
+      const team = await app.get(TeamService).createTeam(
+        WORKSPACE_ID,
+        {
+          name: `No Access Team ${uniqueKey()}`,
+          key: uniqueKey('T'),
+          memberUserIds: [DEVELOPER_ID],
+        },
+        ADMIN_USER_ID,
+      );
+      await projects.linkTeam(WORKSPACE_ID, project.id, team.id);
+
+      const story = await workItems.createWorkItem(admin, project.id, 'story', 'Assign outward', {
+        teamId: team.id,
+      });
 
       const updated = await workItems.updateWorkItem(admin, story.id, { assigneeId: DEVELOPER_ID });
 
@@ -137,9 +187,20 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
         key: uniqueKey(),
         name: 'Self Assign Project',
       });
-      const story = await workItems.createWorkItem(admin, project.id, 'story', 'Mine');
+      /**
+       * A NON-ADMIN actor, because "assign it to the actor" is no longer expressible for the seeded
+       * Workspace Admin. The Owner population is `ProjectsService.listProjectMemberOptions`, which
+       * EXCLUDES Workspace Admins (Backlog AC-16:336 — "Workspace Admin không phải delivery owner
+       * hợp lệ"), so `assigneeId: admin.sub` is `ASSIGNEE_NOT_TEAM_MEMBER` whatever Team the item
+       * holds. The rule under test is about the ACTOR being the assignee, not about who the admin is,
+       * so the fixture drives a DEVELOPER actor instead — on the item's team roster, which is both
+       * what makes them a legal Owner (§7:125) and what grants them `editor` here (RBE-06).
+       */
+      const teamId = await createTeamForProject(app, project.id);
+      const developer = makeActor(DEVELOPER_ID);
+      const story = await workItems.createWorkItem(admin, project.id, 'story', 'Mine', { teamId });
 
-      await workItems.updateWorkItem(admin, story.id, { assigneeId: admin.sub });
+      await workItems.updateWorkItem(developer, story.id, { assigneeId: developer.sub });
 
       const rows = await outboxFor(story.id);
       expect(rows).toHaveLength(0);

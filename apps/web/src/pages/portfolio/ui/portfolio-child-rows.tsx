@@ -54,7 +54,7 @@ import { OwnerCell, OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/
 import { ProjectCell } from '@/shared/ui/project-cell'
 import { TeamCell } from '@/shared/ui/team-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
-import { ProjectSelectCell, ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
+import { ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
 import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-options'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { Spinner } from '@/shared/ui/spinner'
@@ -118,12 +118,13 @@ function ChildFeatureRow({
   canEdit: boolean
   /** Release/Team options for THIS child's project, which may differ from its Epic's. */
   options: PortfolioCellOptions
-  /** Move destinations, workspace-wide. */
+  /** Workspace projects, for the project KEY — a name lookup, not a picker feed. */
   projects: ProjectOption[]
   onOpen: (id: string) => void
 }) {
   const { t } = useTranslation('portfolio')
   const update = useUpdatePortfolioItem()
+  const projectKey = projects.find((p) => p.id === feature.projectId)?.key ?? null
 
   const { save: commit } = useFieldCommit(update)
 
@@ -219,19 +220,15 @@ function ChildFeatureRow({
         />
       </div>
 
+      {/* Project — READ-ONLY, exactly as on a top-level row (§45: "read-only afterward for both
+          Feature and Epic"). Rendered through the same `ProjectCell`, so the column looks identical at
+          both nesting levels — a cell that edited here and not one row up would be the drift this
+          module exists to prevent. */}
       <div
-        className="flex min-w-0 items-center overflow-hidden px-0"
+        className="flex min-w-0 items-center overflow-hidden px-2"
         style={colStyleFor('project')}
-        onClick={(e) => e.stopPropagation()}
       >
-        <ProjectSelectCell
-          projectId={feature.projectId}
-          projectName={feature.projectName}
-          projects={projects}
-          canEdit={canEdit}
-          ariaLabel={t('detail.fields.project')}
-          onChange={(v) => save({ projectId: v }, t('row.projectMoved'))}
-        />
+        <ProjectCell projectKey={projectKey} projectName={feature.projectName} />
       </div>
       <div
         className="flex min-w-0 items-center overflow-hidden px-0"
@@ -399,7 +396,7 @@ export function PortfolioChildRows({
   canEditProject: (projectId: string) => boolean
   /** Release/Team options by project, resolved per child for the same reason. */
   optionsFor: (projectId: string) => PortfolioCellOptions
-  /** Move destinations, workspace-wide. */
+  /** Workspace projects, for the project KEY on both child shapes. Never a picker feed. */
   projects: ProjectOption[]
 }) {
   const { t } = useTranslation('portfolio')

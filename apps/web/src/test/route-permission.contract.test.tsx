@@ -187,16 +187,30 @@ describe('route ↔ nav permission contract', () => {
     expect(NAV_PERMISSIONS.get('/capacity-planning/$planId')).toBe('capacity:view')
     expect(NAV_PERMISSIONS.get('/releases/$releaseId')).toBe('timebox:view')
     expect(NAV_PERMISSIONS.get('/milestones/$milestoneId')).toBe('timebox:view')
-    // A work item's list surface is not one row — Backlog, Iteration Status, Team Status and Quality
-    // all lead here — but all four carry `work_item:view`, so the record's code is unambiguous even
-    // though its alias target had to be chosen. Asserted against the four so that a future divergence
+    // A work item's list surface is not one row — Backlog, Iteration Status and Quality all lead
+    // here — but all three carry `work_item:view`, so the record's code is unambiguous even though
+    // its alias target had to be chosen. Asserted against the three so that a future divergence
     // between them fails HERE, where the alias stops being well defined.
+    //
+    // THIS LOOP NAMED FOUR AND THE FOURTH WAS `/team-status`. That divergence has now happened, and
+    // it is the case this assertion was written to catch: §3.2:81 is
+    // `| Team Status | View/Update | View/Update | Hidden |` and
+    // `Phase 3/01_Team_Status/SRS.md:43` says "Project `Editor` does not enter Team Status", so that
+    // surface moved to `team_status:view` while these three keep `work_item:view`.
+    //
+    // The alias is still WELL DEFINED, so it is narrowed rather than re-pointed: Team Status stops
+    // being one of the openers, and the record's own code is unchanged because a Task IS a work item
+    // — §3.2 gives an Editor the whole Backlog including Tasks. What the BA withholds is the Team
+    // Status SURFACE (the per-member Capacity and hours grid), not a task record reached by key.
+    // Asserted below, so "Team Status left this set" cannot be confused with "Team Status lost its
+    // gate".
     expect(NAV_PERMISSIONS.get('/item/$itemKey')).toBe('work_item:view')
-    for (const surface of ['/backlog', '/iteration-status', '/team-status', '/quality/defects']) {
+    for (const surface of ['/backlog', '/iteration-status', '/quality/defects']) {
       expect(NAV_PERMISSIONS.get(surface), `${surface} no longer matches /item/$itemKey`).toBe(
         'work_item:view',
       )
     }
+    expect(NAV_PERMISSIONS.get('/team-status')).toBe('team_status:view')
     // `/projects/$projectKey` was ALSO excluded once, and this assertion recorded the exclusion — but
     // its reason was never about the record: the list surface `/projects` carried no code, so there
     // was nothing to fold, and the router may not invent one (the assertion above forbids a literal).

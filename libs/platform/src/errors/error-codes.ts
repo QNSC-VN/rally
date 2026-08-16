@@ -94,8 +94,12 @@ export const ErrorCodes = {
   PORTFOLIO_ITEM_NOT_FOUND: 'PORTFOLIO_ITEM_NOT_FOUND',
   PORTFOLIO_ITEM_INVALID_TYPE: 'PORTFOLIO_ITEM_INVALID_TYPE',
   PORTFOLIO_ITEM_PROJECT_MISMATCH: 'PORTFOLIO_ITEM_PROJECT_MISMATCH',
-  /** A project move is refused while the Feature is allocated on a capacity plan. */
-  PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION: 'PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION',
+  // `PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION` used to live here — a project move refused while the
+  // Feature was allocated on a capacity plan. The BA made Project read-only after creation, so
+  // `projectId` left `UpdatePortfolioItemSchema` and nothing can reach `project_id`; the refusal went
+  // with the write it guarded, and this constant went with it rather than staying as a code no thrower
+  // and no SPA branch mention. Same reasoning as the deleted `GET :id/members` route: a dead contract
+  // entry reads as a considered decision about an audience it no longer has.
   /** Restoring a Feature is refused while its Epic is still archived. */
   PORTFOLIO_PARENT_ARCHIVED: 'PORTFOLIO_PARENT_ARCHIVED',
   /** Every write except Restore is refused on an archived item — it is not actionable work. */
@@ -245,6 +249,15 @@ export const ErrorCodes = {
    */
   PROJECT_EDITOR_REQUIRES_TEAM: 'PROJECT_EDITOR_REQUIRES_TEAM',
   ASSIGNEE_NOT_WORKSPACE_MEMBER: 'ASSIGNEE_NOT_WORKSPACE_MEMBER',
+  /**
+   * "A named Owner must be an active member of the selected Team" — `Phase 1/03_Work_Item_Detail`
+   * §7:125, restated by `Phase 1/04:84`, `Phase 2/01:303` and `Phase 2/03:435`. Named alongside
+   * `ASSIGNEE_NOT_WORKSPACE_MEMBER` because it is the same field failing the NARROWER of two
+   * nested populations; `WorkItemsService.assertAssignmentScope` checks both.
+   */
+  ASSIGNEE_NOT_TEAM_MEMBER: 'ASSIGNEE_NOT_TEAM_MEMBER',
+  /** The other half of the same sentence: "if `teamId` is null, `assigneeId` must also be null". */
+  ASSIGNEE_REQUIRES_TEAM: 'ASSIGNEE_REQUIRES_TEAM',
 
   // Team Status
   TEAM_STATUS_INVALID_CAPACITY: 'TEAM_STATUS_INVALID_CAPACITY',

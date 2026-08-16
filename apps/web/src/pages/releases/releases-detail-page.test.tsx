@@ -54,6 +54,7 @@ vi.mock('@/features/access/api', () => ({
 
 import { apiClient } from '@/shared/api/http-client'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import releasesCopy from '@/shared/i18n/locales/en/releases.json'
 import { ReleaseDetailPage } from './releases-detail-page'
 
 const mockGET = apiClient.GET as ReturnType<typeof vi.fn>
@@ -79,7 +80,15 @@ const RELEASE = {
   releasedAt: null,
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-01T00:00:00.000Z',
-  taskRollup: { estimateHours: 0, toDoHours: 0, actualHours: 0, acceptedItems: 0 },
+  /**
+   * The API no longer serves these — `ReleaseResponseSchema` dropped `taskRollup` when
+   * `P3-REL-FR-023`/`FR-024` removed the Task Roll-up from Release detail. They are still SENT here
+   * on purpose: the absence case below then proves the page renders nothing from them, which is
+   * stronger than proving it renders nothing when nothing is supplied, and it is also the state a
+   * client running against an older API would see.
+   */
+  taskRollup: { estimateHours: 18.5, toDoHours: 6, actualHours: 12.5, acceptedItems: 3 },
+  accepted: 3,
 }
 
 const PAY = { id: 'p-pay', key: 'PAY', name: 'Payments Platform' }
@@ -127,6 +136,51 @@ describe('a release deep-linked from another project', () => {
     // `p-nxp` who cannot — every Save then 403ing to `/403`.
     expect(askedAbout).not.toContain('p-nxp')
     expect(askedAbout).toContain('p-pay')
+  })
+
+  /**
+   * `P3-REL-TS-016`: "No Task Roll-up, Accepted progress or Burndown widget is rendered."
+   *
+   * This is the assertion `release-detail-panels.test.tsx` used to carry one component down — it
+   * pinned the absence of the Completion percentage, its progress bar and any Burndown export while
+   * still rendering the roll-up itself. `P3-REL-FR-023` and `FR-024` now remove the roll-up and the
+   * Accepted total as well, so the whole panel is gone and the assertion moves up to the PAGE: an
+   * export-inventory check on a deleted module proves nothing, and the page is where TS-016 looks.
+   *
+   * The fixture above still sends `taskRollup` and `accepted`, so this fails the moment anything
+   * reads them again.
+   */
+  it('renders no Task Roll-up, Accepted total, progress bar or Burndown (FR-023, FR-024, TS-016)', async () => {
+    const { container } = render(<ReleaseDetailPage />, { wrapper: wrapper() })
+
+    await waitFor(() => expect(screen.getByText('PAY')).toBeInTheDocument())
+
+    for (const key of [
+      'detailPage.rollup.title',
+      'detailPage.rollup.estimate',
+      'detailPage.rollup.toDo',
+      'detailPage.rollup.actual',
+      'detailPage.rollup.accepted',
+      'detailPage.rollup.completion',
+    ]) {
+      expect(screen.queryByText(key)).not.toBeInTheDocument()
+    }
+    // The served numbers themselves, in the hour form the panel used to print.
+    for (const value of ['18.5h', '6h', '12.5h']) {
+      expect(screen.queryByText(value)).not.toBeInTheDocument()
+    }
+    // No percentage, and neither shape a progress widget takes here. The bar was a div with a
+    // computed PERCENTAGE width — matched on that rather than on `[style*="width"]`, which the
+    // page's icons also satisfy with their pixel sizing.
+    expect(container.textContent).not.toMatch(/\d\s*%/)
+    expect(container.querySelector('[role="progressbar"]')).toBeNull()
+    expect(container.innerHTML).not.toMatch(/width:\s*[\d.]+%/)
+  })
+
+  it('keeps no roll-up copy in the releases namespace', () => {
+    // The five `detailPage.rollup.*` strings were the panel's only consumer. An orphaned key is how
+    // the widget comes back looking like a translation fix rather than a scope change.
+    expect(releasesCopy.detailPage).not.toHaveProperty('rollup')
   })
 
   it('renders the editable title, because the caller CAN manage this release', async () => {

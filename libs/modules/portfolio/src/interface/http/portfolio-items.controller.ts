@@ -307,8 +307,11 @@ export class PortfolioItemsController {
   }
 
   @Patch(':id')
-  // Resolved by LOADING the row — the project is only reachable through `:id`, and the
-  // body deliberately cannot carry a projectId (moving projects is not supported).
+  // Resolved by LOADING the row: the project is only reachable through `:id`, and there is exactly
+  // ONE project to check because the body cannot carry a `projectId`. That last clause is true again
+  // — it was written when the field was absent, went stale when a project MOVE was added (the
+  // handler then authorised the destination as well), and is true once more now the BA has made
+  // Project read-only after creation (`UpdatePortfolioItemSchema`'s docblock has the citations).
   @RequirePermission('portfolio:edit', { resource: 'portfolio_item', from: 'param', field: 'id' })
   @ApiOperation({ summary: 'Update an Epic or Feature' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })

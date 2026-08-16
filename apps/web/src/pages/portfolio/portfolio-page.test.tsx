@@ -1,21 +1,24 @@
 /**
- * The Project cell's MOVE destinations — offered only where the caller may actually write.
+ * The Project cell is READ-ONLY, and it still renders the project's KEY.
  *
- * `PortfolioItemsService.updateItem` authorises a project move in BOTH directions: the source AND
- * the destination need `portfolio:edit`, because "putting work into a project is an edit of that
- * project's portfolio". The picker was built from every READABLE project (`GET /v1/projects`, scoped
- * by `listReadableProjectIds`) with no permission filter at all — so a per-project Admin was offered
- * every project in the workspace and got a 403 from the one they chose. That is almost certainly the
- * BA's "selecting AUDIT26 returns an unexpected error" (P5-PI-003), and it is invisible to a
- * Workspace Admin, whose `workspace:*` grant covers every project.
+ * This started as a permission test over the cell's move destinations: `updateItem` authorises a
+ * project move in BOTH directions, the picker offered every READABLE project, and a per-project
+ * Admin got a 403 from the one they chose (the BA's "selecting AUDIT26 returns an unexpected
+ * error", P5-PI-003). The BA resolved it the other way — the move is GONE, `updateItem` no longer
+ * accepts `projectId`, and Project is a chip. So the assertion below is the inverse of the one this
+ * file opened with: no destination is offered, not even the one the caller may legally write.
  *
- * The principal below is deliberately an Admin of ONE project: an always-true permission mock would
- * pass against the defect.
+ * The principal is deliberately an Admin of ONE project, and two of the three projects are ones a
+ * move could never have accepted anyway (unwritable, archived) — kept because they are what proves
+ * the cell is inert rather than merely narrowed to a single option.
+ *
+ * The KEY assertion is the load-bearing half: the chip resolves it from `useProjects`, which is why
+ * the page still passes `projects` down after losing the move. The portfolio DTO carries
+ * `projectName` and no key, so a "tidy-up" dropping that prop would blank the chip silently.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 
 vi.mock('@tanstack/react-router', () => ({
@@ -126,19 +129,20 @@ function wrapper() {
 
 beforeEach(() => vi.clearAllMocks())
 
-describe('Portfolio grid — Project move destinations', () => {
-  it('offers only projects the caller may edit, and never an archived one', async () => {
-    const user = userEvent.setup()
+describe('Portfolio grid — the Project cell', () => {
+  it('renders the project KEY and offers no move destination at all', async () => {
     render(<PortfolioPage />, { wrapper: wrapper() })
 
     await waitFor(() => expect(screen.getByText('FE-1')).toBeInTheDocument())
-    await user.click(screen.getByRole('button', { name: 'detail.fields.project' }))
 
-    // The destination the caller can actually write to.
-    expect(await screen.findByRole('button', { name: /NextGen Platform/ })).toBeInTheDocument()
-    // The BA's AUDIT26: readable, NOT writable — offering it produced the "unexpected error".
+    // Resolved from `useProjects`, not from the DTO, which carries only the name.
+    expect(screen.getByText('NXP')).toBeInTheDocument()
+
+    // No editor to open: the cell is not a control, so there is no trigger for one.
+    expect(screen.queryByRole('button', { name: 'detail.fields.project' })).not.toBeInTheDocument()
+    // And no destination, including the one project this caller COULD have written to.
+    expect(screen.queryByRole('button', { name: /NextGen Platform/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Audit 2026/ })).not.toBeInTheDocument()
-    // Archived projects take no new work (`PROJECT_ARCHIVED`).
     expect(screen.queryByRole('button', { name: /Retired Programme/ })).not.toBeInTheDocument()
   })
 })

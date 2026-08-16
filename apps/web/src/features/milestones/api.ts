@@ -394,10 +394,12 @@ export function useMilestoneArtifacts(
 }
 
 /**
- * The milestone's artifact LINK ids — the full set, not one page.
+ * The milestone's DIRECT artifact LINK ids — the full set, not one page, and both entity types.
  *
  * The picker needs all of them: `PUT :id/artifacts` REPLACES the list, so saving a set built from a
- * single page of rows would silently unlink everything past the page boundary.
+ * single page of rows would silently unlink everything past the page boundary. The server used to
+ * filter this to `entity_type = 'work_item'`, so a Feature or Epic assigned to the milestone was
+ * absent from the baseline and could be neither seen ticked nor removed from this end.
  */
 export function useMilestoneArtifactIds(milestoneId: string | undefined) {
   return useQuery({
@@ -416,16 +418,33 @@ export function useMilestoneArtifactIds(milestoneId: string | undefined) {
 }
 
 /**
- * Candidates for the `Add Artifact` picker (P3-MS-FR-028), filtered to what the milestone's own
- * scope rule will actually accept, so the picker cannot offer a row the write refuses:
+ * The four PORTFOLIO list calls a milestone's project scope needs, one per (project, type).
  *
- *   • Story/Defect only — P3-MS-FR-014, refused as `MILESTONE_INVALID_ARTIFACT_TYPE`.
+ * `GET /v1/portfolio-items` takes a REQUIRED `type` and no combined `All` — the BA's Type selector
+ * has exactly two choices — so an Epic page and a Feature page are two requests, per project, the
+ * same way the work-item feed is one per project. A milestone spanning several projects is the
+ * exception (§4, Q06), and this mirrors `useReleasesForProjects`.
+ */
+const PORTFOLIO_ARTIFACT_TYPES = ['epic', 'feature'] as const
+
+/**
+ * Candidates for the `Add Artifact` picker, filtered to what the milestone's own scope rule will
+ * actually accept, so the picker cannot offer a row the write refuses:
+ *
+ *   • Story, Defect, Feature and Epic — SRS:116 and FR-014. Anything else (a Task) is refused
+ *     server-side as `MILESTONE_INVALID_ARTIFACT_TYPE`.
  *   • inside the milestone's Projects — its owning project plus any linked ones (§4, FR-021/023).
  *   • inside its selected Teams when it has any — and a team-agnostic item is OUT of a team scope,
  *     not exempt from it, which is what the server's `assertArtifactsInMilestoneScope` says too.
+ *     **An EPIC is the one exemption**, because it has no team column at all
+ *     (`ck_portfolio_epic_shape`; §11.1) — the server makes exactly the same exemption, and the two
+ *     have to agree or the picker offers a row the write refuses (or hides one it would accept).
  *
- * One request per project because `GET /work-items` takes a single `projectId`; a milestone spanning
- * several is the exception, and this mirrors `useReleasesForProjects`.
+ * TWO FEEDS, not one. It used to read `GET /work-items` alone and filter to `story|defect`, which is
+ * why the Milestone end could not assign a Feature or Epic and — worse — could not REMOVE one: the
+ * §5.2 payload replaces the whole direct list, and an artifact absent from `items` can never be
+ * unticked, since `SelectionModal` only ever toggles rows it renders. So the missing half of this
+ * feed was a data-visibility bug as much as a capability gap.
  */
 export function useMilestoneArtifactCandidates(
   projectIds: readonly string[],
@@ -433,21 +452,53 @@ export function useMilestoneArtifactCandidates(
 ) {
   const ids = useMemo(() => [...new Set(projectIds.filter(Boolean))], [projectIds])
   const results = useQueries({
-    queries: ids.map((projectId) => ({
-      queryKey: ['work-items', 'list', projectId, { artifactCandidates: true }] as const,
-      queryFn: async (): Promise<ArtifactCandidate[]> => {
-        const { data, error, response } = (await client.GET('/v1/work-items', {
-          params: { query: { projectId, limit: ARTIFACT_CANDIDATE_LIMIT } },
-        })) as {
-          data?: { data?: ArtifactCandidate[] }
-          error?: unknown
-          response: { status: number }
-        }
-        if (error) throw new Error(apiErrorMessage(error, response.status))
-        return (data?.data ?? []).filter((w) => w.type === 'story' || w.type === 'defect')
-      },
-      staleTime: 30_000,
-    })),
+    queries: [
+      ...ids.map((projectId) => ({
+        queryKey: ['work-items', 'list', projectId, { artifactCandidates: true }] as const,
+        queryFn: async (): Promise<ArtifactCandidate[]> => {
+          const { data, error, response } = (await client.GET('/v1/work-items', {
+            params: { query: { projectId, limit: ARTIFACT_CANDIDATE_LIMIT } },
+          })) as {
+            data?: { data?: ArtifactCandidate[] }
+            error?: unknown
+            response: { status: number }
+          }
+          if (error) throw new Error(apiErrorMessage(error, response.status))
+          // A Task is excluded by §116, and this endpoint serves all three work-item types.
+          return (data?.data ?? []).filter((w) => w.type === 'story' || w.type === 'defect')
+        },
+        staleTime: 30_000,
+      })),
+      ...ids.flatMap((projectId) =>
+        PORTFOLIO_ARTIFACT_TYPES.map((type) => ({
+          queryKey: ['portfolio', 'list', projectId, { artifactCandidates: type }] as const,
+          queryFn: async (): Promise<ArtifactCandidate[]> => {
+            const { data, error, response } = (await client.GET('/v1/portfolio-items', {
+              params: { query: { projectId, type, limit: ARTIFACT_CANDIDATE_LIMIT } },
+            })) as {
+              data?: {
+                data?: { id: string; itemKey: string; name: string; teamId: string | null }[]
+              }
+              error?: unknown
+              response: { status: number }
+            }
+            if (error) throw new Error(apiErrorMessage(error, response.status))
+            // Projected onto the SHARED candidate shape: a portfolio item's label field is `name`
+            // where a work item's is `title`, and it carries no Release. The list endpoint already
+            // hides archived items, which §156 makes ineligible for new assignment anyway.
+            return (data?.data ?? []).map((p) => ({
+              id: p.id,
+              itemKey: p.itemKey,
+              title: p.name,
+              type,
+              teamId: p.teamId,
+              releaseId: null,
+            }))
+          },
+          staleTime: 30_000,
+        })),
+      ),
+    ],
   })
 
   const isLoading = results.some((r) => r.isLoading)
@@ -461,7 +512,12 @@ export function useMilestoneArtifactCandidates(
     for (const r of results) for (const w of r.data ?? []) byId.set(w.id, w)
     const teamScope = teamKey ? new Set(teamKey.split(',')) : null
     const all = [...byId.values()]
-    return teamScope ? all.filter((w) => w.teamId != null && teamScope.has(w.teamId)) : all
+    return teamScope
+      ? // The Epic exemption, mirroring `assertArtifactsInMilestoneScope`. Everything else must name
+        // a team inside the scope; `teamId == null` on a Feature or a Story means "not set", which is
+        // outside a declared scope rather than exempt from it.
+        all.filter((w) => w.type === 'epic' || (w.teamId != null && teamScope.has(w.teamId)))
+      : all
     // `signature`/`teamKey` stand in for the fetched pages: `results` is a new array every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature, teamKey])
@@ -469,24 +525,32 @@ export function useMilestoneArtifactCandidates(
   return { items, isLoading }
 }
 
+/**
+ * §5.2's replace-set write. The payload is `artifactIds`, RENAMED from `workItemIds` — the old name
+ * asserted one table while `milestone_artifacts` is polymorphic and §116 admits four types, so a
+ * Feature id under that key could only ever be refused.
+ *
+ * A REPLACE, so the caller must pass the whole direct set: see `useMilestoneArtifactIds` for why the
+ * baseline is the full link list rather than the visible page.
+ */
 export function useSetMilestoneArtifacts() {
   return useMutation({
     mutationFn: async ({
       milestoneId,
-      workItemIds,
+      artifactIds,
     }: {
       milestoneId: string
-      workItemIds: string[]
+      artifactIds: string[]
     }) => {
       const { data, error, response } = await client.PUT('/v1/milestones/{id}/artifacts', {
         params: { path: { id: milestoneId } },
-        body: { workItemIds } as never,
+        body: { artifactIds } as never,
       })
       if (error) throw new Error(apiErrorMessage(error, response.status))
       return data
     },
-    // Linking work items to a milestone also affects work-item milestone lists,
-    // which the `milestone` tag's work-item fan-out covers.
-    meta: { invalidates: ['milestone'] },
+    // Linking an artifact to a milestone also affects the work-item and portfolio-item milestone
+    // lists, which the `milestone` tag's fan-out covers.
+    meta: { invalidates: ['milestone', 'portfolio'] },
   })
 }

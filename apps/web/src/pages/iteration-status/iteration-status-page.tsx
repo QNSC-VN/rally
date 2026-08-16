@@ -589,6 +589,7 @@ export function IterationStatusPage() {
               key={item.id}
               item={item}
               rank={(currentPage - 1) * pageSize + localItems.indexOf(item) + 1}
+              projectId={projectId ?? ''}
               memberMap={memberMap}
               milestoneOptions={milestoneOptions}
               iterationOptions={iterationOptions}

@@ -144,8 +144,27 @@ describe('Manage Filters: every specified column filters SERVER-side (e2e)', () 
       created.push(lead.id);
     }
 
+    /**
+     * ── Every fixture that names an OWNER also carries the seeded Team ALPHA, and must.
+     *
+     * "A named Owner must be an active member of the selected Team; if `teamId` is null,
+     * `assigneeId` must also be null/Unassigned" (`Phase 1/03_Work_Item_Detail/SRS.md` §7:125,
+     * restated at `Phase 1/02:78` and Backlog AC-16:336). `assertOwnerInTeam` refuses an owned,
+     * team-less item with `ASSIGNEE_REQUIRES_TEAM`, so `assigneeId` and `teamId` travel together
+     * from here on.
+     *
+     * Alpha rather than a fixture team: it is the seed's NXP team and DEVELOPER_ID is on its ACTIVE
+     * roster (`db/seeds/demo.ts`), which is the population `listProjectMemberOptions` offers — and
+     * the SEEDED FUTURE iteration this spec assigns into is deliberately team-LESS
+     * (`db/seeds/reference-extras.ts`), so pairing it with Alpha cannot raise
+     * `ITERATION_TEAM_MISMATCH`. The team is invisible to every assertion below; it is the Owner's
+     * precondition, not a column under test.
+     */
+    const OWNER_TEAM = SEEDED.nxp.teamAlphaId;
+
     const both = await items.createWorkItem(actor, project, 'story', `${NEEDLE} both`, {
       assigneeId: DEVELOPER_ID,
+      teamId: OWNER_TEAM,
       storyPoints: '13.00',
     });
     bothId = both.id;
@@ -159,9 +178,11 @@ describe('Manage Filters: every specified column filters SERVER-side (e2e)', () 
     ).id;
     created.push(nameOnlyId);
 
+    // Owner ⇒ Team, per the note above.
     ownerOnlyId = (
       await items.createWorkItem(actor, project, 'story', `${HAYSTACK} owner only`, {
         assigneeId: DEVELOPER_ID,
+        teamId: OWNER_TEAM,
       })
     ).id;
     created.push(ownerOnlyId);
@@ -191,7 +212,13 @@ describe('Manage Filters: every specified column filters SERVER-side (e2e)', () 
       project,
       'story',
       `${NEEDLE} sprint row`,
-      { iterationId: SEEDED.nxp.iterationFutureId, assigneeId: DEVELOPER_ID, storyPoints: '13.00' },
+      {
+        iterationId: SEEDED.nxp.iterationFutureId,
+        assigneeId: DEVELOPER_ID,
+        // Owner ⇒ Team, per the note above — and safe against a team-LESS seeded iteration.
+        teamId: OWNER_TEAM,
+        storyPoints: '13.00',
+      },
     );
     blockedId = sprintNeedle.id;
     created.push(blockedId);
