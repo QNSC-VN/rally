@@ -13,10 +13,7 @@ import type { JwtPayload } from './jwt.strategy';
  * `req.user`.
  */
 export function toRallyPrincipal(payload: CoreJwtPayload): JwtPayload {
-  const claims = payload.claims as { permissions?: unknown; authzEpoch?: unknown };
+  const claims = payload.claims as { permissions?: unknown };
   const permissions = Array.isArray(claims.permissions) ? (claims.permissions as string[]) : [];
-  // Absent on tokens minted before the epoch was introduced — treat as 0 so the
-  // first permission change after deploy invalidates them like any other token.
-  const authzEpoch = typeof claims.authzEpoch === 'number' ? claims.authzEpoch : 0;
-  return { ...payload, workspaceId: payload.contextId ?? '', permissions, authzEpoch };
+  return { ...payload, workspaceId: payload.contextId ?? '', permissions };
 }

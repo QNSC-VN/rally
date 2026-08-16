@@ -1,4 +1,4 @@
-import type { CursorPayload, PagedResult, DbExecutor } from '@platform';
+import type { DbExecutor } from '@platform';
 import type {
   WorkspaceMember,
   WorkspaceMemberOption,
@@ -15,10 +15,6 @@ export interface IWorkspaceMemberRepository {
   findMemberById(id: string): Promise<WorkspaceMember | null>;
   /** Active workspace memberships for a user, most-recently-active first (login switcher). */
   findMembershipsForUser(userId: string): Promise<WorkspaceMembership[]>;
-  listMembers(
-    workspaceId: string,
-    args: { limit: number; cursor: CursorPayload | null },
-  ): Promise<PagedResult<WorkspaceMember>>;
   /**
    * The ADMINISTRATIVE roster — profile, contact details, last login and role ids. Reached only
    * through `GET :id/members-with-profile`, which is `workspace:view` (Workspace Admin) gated.

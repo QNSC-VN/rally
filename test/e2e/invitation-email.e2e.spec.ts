@@ -2,7 +2,7 @@
  * An invitation must actually SCHEDULE MAIL — the one flow that onboards every user.
  *
  * Nothing covered this. `notification-flow.e2e.spec.ts` proves a notification's `email_outbox` insert,
- * and the invitation path — `InvitationService.inviteMember` → `EmailSchedulerService.schedule` — had
+ * and the invitation path — `WorkspaceService.inviteMember` → `EmailSchedulerService.schedule` — had
  * no test at all, which is how it came to be true that outbound email was IMPOSSIBLE in both deployed
  * environments without a single suite noticing: no verified SES identity anywhere in `infra/`, and no
  * `ses:SendEmail` on any task role. Every invitation failed with AccessDenied, three failures opened
@@ -16,11 +16,23 @@
  * `docker exec rally-localstack awslocal ses verify-email-identity` plus the worker's relay is what
  * makes the send observable.
  *
- * NOTE FOR THE NEXT READER: there is an ORPHANED `InvitationService` in this module with its own
- * `inviteMember` and its own email scheduling. No module provides it, the barrel does not export it,
- * and nothing injects it — the live path is `WorkspaceService.inviteMember`, which the route calls and
- * which this file drives. Writing this test against the orphan is the first thing I did wrong, and it
- * would have passed while proving nothing about the running system.
+ * NOTE FOR THE NEXT READER: there USED to be an ORPHANED `InvitationService` in this module with its
+ * own `inviteMember` and its own email scheduling — no module provided it, the barrel did not export
+ * it, nothing injected it. Writing this test against that orphan is the first thing I did wrong, and
+ * it would have passed while proving nothing about the running system. It is DELETED now, along with
+ * its spec and the `@AuthorizedInService` citation that pointed the accept route at it. The live path
+ * is `WorkspaceService.inviteMember`, which the route calls and which this file drives; if a fork of
+ * it ever reappears, delete the fork rather than testing it.
+ *
+ * IT ASSERTS THE FLAG-OFF PATH, which is the default and the one staff onboarding uses. Since
+ * migration 0124, `ENTRA_GUEST_INVITE_ENABLED` moves this row's WRITER: with the flag on, the invite
+ * request no longer schedules the email at all — `EntraGuestInviteRelayService` does, after Entra
+ * provisioning resolves, so a link cannot reach an external collaborator before the directory object
+ * that makes it usable exists. Both writers use `invitation.id` as the idempotency key, so the
+ * assertions below (one row, keyed on the invitation) hold either way; what changes is WHEN it appears.
+ * If this file ever fails with zero rows, check that flag before hunting a regression — the flag-on
+ * ordering is pinned by `entra-guest-invite-relay.service.spec.ts` instead, because a real Graph call
+ * and a worker process are not things this suite can arrange.
  *
  * The `email_outbox` row is the RIGHT seam to assert. `EmailSchedulerService` writes it inside the
  * caller's transaction, so a rolled-back invitation cannot leave mail behind, and the relay is a

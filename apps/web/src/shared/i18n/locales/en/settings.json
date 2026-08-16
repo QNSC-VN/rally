@@ -43,7 +43,6 @@
     "profileUpdated": "Profile updated",
     "networkError": "Network error — please try again.",
     "signedOutAll": "Signed out from all devices",
-    "passwordSecurity": "Password & Security",
     "passwordSecurityNote": "Your password and multi-factor authentication are managed by your organisation through Microsoft. Sign in with your organisational account to update security settings.",
     "account": "Account",
     "emailLabel": "Email:",

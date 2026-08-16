@@ -235,11 +235,77 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
       .onConflictDoNothing({ target: ssoConnectionDomains.domain });
   }
 
+  /**
+   * The SAME Entra tenant, reached by INVITATION instead of by domain.
+   *
+   * This row is what lets an invited external type their own address in the `Email address` box.
+   * `ConnectionRegistry.resolveForEmail` asks two questions in order — does a `directory`
+   * connection OWN this domain (true for staff, never true for `gmail.com`, which no organisation
+   * owns), and failing that, is there a `shared` connection this address holds a LIVE pending
+   * invitation to. Without a `shared` row the second question could never match, so an invited
+   * vendor got `NO_CONNECTION` from the box whose label invited them to type, and the only path
+   * that worked was a button saying "Sign in with Microsoft" — which the people it serves are the
+   * least likely to press, since they have no Microsoft account and cannot know Entra will simply
+   * email them a code.
+   *
+   * WHY A SENTINEL `externalTenantId`. `uq_sso_connections_provider_external` is UNIQUE on
+   * (provider, external_tenant_id), so a second `provider: 'entra'` row cannot repeat the real
+   * tenant id — and because the home upsert above targets that exact pair, doing so would not add a
+   * sibling, it would OVERWRITE the staff connection: `kind` flipped to `shared`, the domain
+   * allow-list emptied, the display name and client replaced. Staff email-first routing would die
+   * silently. `WORKSPACE_ID` is used as the sentinel because nothing on the broker path reads this
+   * column — it is absent from `ResolvedConnection`, and the `tid` claim is documented as
+   * descriptive metadata only, with routing driven by the connection.
+   *
+   * WHY IT IS SAFE that this row shares a tenant, a client and a secret with the home connection:
+   * the guest is a member of OUR tenant, so their token's `iss`/`tid`/audience are identical to a
+   * staff member's and the same `acceptedIssuers` verify both. `sso_identities` is keyed on
+   * (provider, provider_sub), so both rows being `entra` means a person arriving through either
+   * resolves to ONE identity rather than two — which a different `provider` value would have broken.
+   *
+   * WHAT GATES IT: `jitEnabled: false`, so `assertConnectionAllows` admits only a platform admin, an
+   * already-provisioned user, or the holder of a live pending invitation. `allowedEmailDomains` is
+   * empty and deliberately never consulted anyway — `assertConnectionAllows` skips the domain check
+   * for a `shared` connection, because we cannot claim to own a consumer IdP's domains. So the
+   * invitation is the entire authorization boundary for an external, which is the intent.
+   *
+   * NO `sso_connection_domains` ROWS. A row here would assert that we own that domain and would
+   * make the connection domain-routed for everyone on it, invited or not.
+   */
+  const sharedFields = {
+    kind: 'shared' as const,
+    authorityUrl,
+    acceptedIssuers,
+    clientId: homeClientId,
+    clientSecretRef: homeSecretRef,
+    displayName: 'QNSC (guest)',
+    defaultRoleSlug: 'project_member' as const,
+    allowedEmailDomains: [] as string[],
+    // Invitation-gated by construction. A `true` here would let any address Entra can verify in
+    // this tenant provision itself, which is the opposite of the rule this row exists to enforce.
+    jitEnabled: false,
+    status: 'active' as const,
+  };
+
+  await database
+    .insert(ssoConnections)
+    .values({
+      workspaceId: WORKSPACE_ID,
+      provider: 'entra',
+      externalTenantId: WORKSPACE_ID,
+      ...sharedFields,
+    })
+    .onConflictDoUpdate({
+      target: [ssoConnections.provider, ssoConnections.externalTenantId],
+      set: { workspaceId: WORKSPACE_ID, updatedAt: new Date(), ...sharedFields },
+    });
+
   console.log(
     `\u2705  Tenant bootstrap: workspace "${workspaceName}" + ${PRESET_WORKSPACE_ROLES.length} preset roles ` +
-      `+ ${CANONICAL_TIER_SLUGS.length} editable tier roles + Entra SSO connection ` +
+      `+ ${CANONICAL_TIER_SLUGS.length} editable tier roles + 2 Entra SSO connections ` +
       `reconciled (tid ${entraTid}, domains: ${ssoAllowedDomains.join(', ') || 'any'}, ` +
-      `jit: ${jitEnabled ? 'open' : 'invite-only'})`,
+      `jit: ${jitEnabled ? 'open' : 'invite-only'}; ` +
+      `guest connection invite-only, no owned domains)`,
   );
 }
 

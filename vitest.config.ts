@@ -101,10 +101,16 @@ export default defineConfig({
         'libs/modules/scm/src/infrastructure/github/github-rest.mapper.ts',
         'libs/modules/team-status/src/application/team-status.service.ts',
         'libs/modules/work-items/src/application/work-items.service.ts',
-        'libs/modules/workspace/src/application/invitation.service.ts',
         'libs/modules/workspace/src/application/team.service.ts',
-        'libs/modules/workspace/src/application/workspace-member.service.ts',
         'libs/modules/workspace/src/application/workspace.service.ts',
+        'libs/modules/workspace/src/application/guest-invite-scheduler.service.ts',
+        'libs/modules/workspace/src/infrastructure/entra/entra-guest-invite.client.ts',
+        // First apps/worker entry. The relay has an ordinary unit spec, and
+        // test/coverage-include.spec.ts excludes only test/ and apps/web — so it must be measured.
+        // NOTE for whoever comments in this array next: it is parsed by regex, so an apostrophe
+        // re-pairs every quote after it and a closing square bracket truncates the whole list.
+        // Both fail the ratchet with a diff full of fragments rather than a filename.
+        'apps/worker/src/identity/entra-guest-invite-relay.service.ts',
         'libs/platform/src/auth/jwt.guard.ts',
         'libs/platform/src/context/request-context.ts',
         'libs/platform/src/http/csrf.ts',
@@ -129,11 +135,22 @@ export default defineConfig({
       //
       // The stated target (stmts/funcs/lines 80, branches 70) is now MET, so the next move is to
       // hold this line rather than to keep climbing.
+      //
+      // RE-MEASURED 2026-08-16: stmts 86.11, branch 79.78, funcs 85.12, lines 86.85. The guest-invite
+      // work added four well-covered files and the floors again trailed by 4-5 points, which is the
+      // same drift the 2026-08-02 note describes — so they move with the measurement rather than
+      // being left as a number nobody re-derives. Branches keep a wider margin (79.78 -> 78) because
+      // that metric swings most on a single added conditional; the other three sit ~1 point under.
+      //
+      // RE-MEASURED again the same day, after the invitation email moved behind guest provisioning:
+      // stmts 86.06, branch 79.79, funcs 84.84, lines 86.84. All four still clear the floors, so they
+      // stay where they are — funcs is the tightest at 0.84 over, which is the margin the note above
+      // deliberately leaves for a single added branch.
       thresholds: {
-        lines: 82,
-        functions: 80,
-        branches: 76,
-        statements: 81,
+        lines: 85,
+        functions: 84,
+        branches: 78,
+        statements: 85,
       },
     },
   },

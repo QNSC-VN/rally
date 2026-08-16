@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, count, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
-import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
-import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
+import { InjectDrizzle } from '@platform';
+import type { DrizzleDB, DbExecutor } from '@platform';
 import { workspaces, workspaceMembers } from '../../../../../../db/schema/workspace';
 import { users } from '../../../../../../db/schema/identity';
 import { projectMembers, projects } from '../../../../../../db/schema/work';
@@ -75,26 +75,6 @@ export class WorkspaceMemberDrizzleRepository implements IWorkspaceMemberReposit
       roleSlug: r.roleSlug ?? null,
       roleName: r.roleName ?? null,
     }));
-  }
-
-  async listMembers(
-    workspaceId: string,
-    { limit, cursor }: { limit: number; cursor: CursorPayload | null },
-  ): Promise<PagedResult<WorkspaceMember>> {
-    const conditions = [eq(workspaceMembers.workspaceId, workspaceId)];
-
-    if (cursor) {
-      conditions.push(keysetCondition(workspaceMembers.joinedAt, workspaceMembers.id, cursor));
-    }
-
-    const rows = await this.db
-      .select()
-      .from(workspaceMembers)
-      .where(and(...conditions))
-      .orderBy(asc(workspaceMembers.joinedAt), asc(workspaceMembers.id))
-      .limit(limit + 1);
-
-    return buildPageResult(rows as WorkspaceMember[], limit, (m) => [m.joinedAt.toISOString()]);
   }
 
   /**

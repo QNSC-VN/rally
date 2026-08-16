@@ -2,6 +2,7 @@ import { Module, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { AccessModule } from '@modules/access';
 import { WorkspaceService } from './application/workspace.service';
 import { TeamService } from './application/team.service';
+import { GuestInviteSchedulerService } from './application/guest-invite-scheduler.service';
 import { WorkspaceController, InvitationController } from './interface/http/workspace.controller';
 import { TeamController } from './interface/http/team.controller';
 import { WorkspaceDrizzleRepository } from './infrastructure/persistence/workspace.drizzle-repository';
@@ -26,6 +27,10 @@ import { TEAM_MEMBER_REPOSITORY } from './domain/ports/team-member.repository';
   providers: [
     WorkspaceService,
     TeamService,
+    // Writes the Entra B2B guest-provisioning intent in the invite transaction. The Graph call
+    // itself belongs to the worker (EntraGuestInviteRelayService), so nothing HTTP is registered
+    // here — see the scheduler's docblock for why the two halves are split.
+    GuestInviteSchedulerService,
     { provide: WORKSPACE_REPOSITORY, useClass: WorkspaceDrizzleRepository },
     { provide: WORKSPACE_MEMBER_REPOSITORY, useClass: WorkspaceMemberDrizzleRepository },
     { provide: WORKSPACE_INVITATION_REPOSITORY, useClass: WorkspaceInvitationDrizzleRepository },

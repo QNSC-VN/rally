@@ -8,6 +8,8 @@ import { AuditModule } from '@modules/audit';
 import { NotificationsModule } from '@modules/notifications';
 import { ReportingModule } from '@modules/reporting';
 import { ScmModule } from '@modules/scm';
+import { EntraGuestInviteClient } from '@modules/workspace';
+import { EntraGuestInviteRelayService } from './identity/entra-guest-invite-relay.service';
 import { AuditProjectionRelay } from './audit/audit-projection.relay';
 import { SnapshotCronService } from './cron/snapshot.cron';
 import { CleanupCronService } from './cron/cleanup.cron';
@@ -57,6 +59,14 @@ import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
     ScmWebhookRelayService,
     // SCM backfill jobs relay → GitHub App REST → connections/changesets
     ScmBackfillRelayService,
+    // Entra B2B guest provisioning relay → Microsoft Graph → workspace_invitations
+    //
+    // The client is registered as a PLAIN PROVIDER rather than by importing WorkspaceModule: its
+    // only dependencies (AppConfigService, ResilienceService) are global from PlatformModule, and
+    // importing the module would instantiate three HTTP controllers in a process with no HTTP
+    // adapter.
+    EntraGuestInviteClient,
+    EntraGuestInviteRelayService,
     // Scheduled cron jobs
     SnapshotCronService,
     CleanupCronService,

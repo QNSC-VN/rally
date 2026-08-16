@@ -38,7 +38,13 @@ import { describe, expect, it } from 'vitest';
  */
 
 // ── Baseline — LOWER as methods take their own workspaceId, NEVER raise ──────
-const MAX_UNSCOPED_METHODS = 68;
+// Lowered 68→65, measured by forcing this to -1 and reading the count the failure reports. The three
+// were pre-existing SLACK, not a win: the same measurement on the pristine tree also reports 65, so
+// the dead-auth-code deletions did not move this number. `WorkspaceMemberDrizzleRepository.listMembers`
+// went with the orphaned `WorkspaceMemberService` that was its only caller, but it filtered on
+// `workspaceMembers.workspaceId` and so was never an offender — it only lowers METHODS_CONSIDERED
+// (257→256), which is a floor with 56 points of headroom.
+const MAX_UNSCOPED_METHODS = 65;
 
 /** Sanity floors: if the parsers silently stop matching, this test must fail loudly. */
 const MIN_SCOPED_TABLES = 40;

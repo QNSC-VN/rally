@@ -35,7 +35,10 @@ describe('forbiddenAction', () => {
   })
 
   it('leaves /auth/* alone — that caller renders its error inline', () => {
-    expect(forbiddenAction(403, 'POST', '/v1/auth/dev-login')).toBe('silent')
+    // A WRITE, so it would toast but for the exemption. Named against a route that really exists:
+    // this used to assert `/v1/auth/dev-login`, which nothing has served since the BFF split moved
+    // the passwordless login to `POST /v1/bff/dev-login`.
+    expect(forbiddenAction(403, 'POST', '/v1/auth/logout-all')).toBe('silent')
   })
 
   it('does NOT exempt the BFF login paths, and that is unchanged behaviour', () => {

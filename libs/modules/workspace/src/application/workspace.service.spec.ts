@@ -3,6 +3,7 @@ import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AccessService } from '@modules/access';
 import { WorkspaceService } from './workspace.service';
+import { GuestInviteSchedulerService } from './guest-invite-scheduler.service';
 import { WORKSPACE_REPOSITORY, IWorkspaceRepository } from '../domain/ports/workspace.repository';
 import {
   WORKSPACE_MEMBER_REPOSITORY,
@@ -93,7 +94,6 @@ const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> => ({
   findMember: vi.fn(),
   findMemberById: vi.fn(),
   findMembershipsForUser: vi.fn().mockResolvedValue([]),
-  listMembers: vi.fn(),
   listMembersWithProfile: vi.fn().mockResolvedValue([]),
   listMemberOptions: vi.fn().mockResolvedValue([]),
   addMember: vi.fn(),
@@ -143,6 +143,14 @@ const makeEmailScheduler = () => ({
   schedule: vi.fn().mockResolvedValue(undefined),
 });
 
+/**
+ * Entra B2B guest provisioning. `false` = the flag is off, which is the default and must leave
+ * `inviteMember` behaving exactly as it did before the feature existed.
+ */
+const makeGuestInviteScheduler = () => ({
+  schedule: vi.fn().mockResolvedValue(false),
+});
+
 // Run the wrapped work immediately with a stub transaction so repository mocks
 // receive a tx argument exactly as they would in production.
 /** Exposes the tx so a test can prove a write enlisted on the SAME transaction as the membership. */
@@ -175,6 +183,7 @@ describe('WorkspaceService', () => {
   let invitationRepo: ReturnType<typeof makeInvitationRepo>;
   let settingsRepo: ReturnType<typeof makeSettingsRepo>;
   let emailScheduler: ReturnType<typeof makeEmailScheduler>;
+  let guestInviteScheduler: ReturnType<typeof makeGuestInviteScheduler>;
   let access: ReturnType<typeof makeAccessService>;
   let uow: ReturnType<typeof makeUow>;
 
@@ -184,6 +193,7 @@ describe('WorkspaceService', () => {
     invitationRepo = makeInvitationRepo();
     settingsRepo = makeSettingsRepo();
     emailScheduler = makeEmailScheduler();
+    guestInviteScheduler = makeGuestInviteScheduler();
     access = makeAccessService();
     uow = makeUow();
 
@@ -200,6 +210,7 @@ describe('WorkspaceService', () => {
         { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         { provide: AccessService, useValue: access },
+        { provide: GuestInviteSchedulerService, useValue: guestInviteScheduler },
       ],
     }).compile();
 
@@ -501,7 +512,7 @@ describe('WorkspaceService', () => {
   // ── inviteMember ─────────────────────────────────────────────────────────────
 
   describe('inviteMember', () => {
-    it('creates invitation and sends email', async () => {
+    it('creates invitation and sends email INLINE while guest provisioning is off', async () => {
       workspaceRepo.findById.mockResolvedValue(mockWorkspace());
       invitationRepo.create.mockResolvedValue(mockInvitation());
 
@@ -522,6 +533,8 @@ describe('WorkspaceService', () => {
             workspaceName: 'Main',
             inviteUrl: expect.stringContaining('/accept-invitation?token='),
           }),
+          // The key the relay uses too, so the two possible writers cannot both produce an email.
+          idempotencyKey: 'inv-1',
         }),
         expect.anything(),
       );
@@ -538,6 +551,132 @@ describe('WorkspaceService', () => {
         'bob@example.com',
         expect.anything(),
       );
+    });
+  });
+
+  // ── inviteMember — Entra B2B guest provisioning (migration 0123) ──────────────
+
+  describe('inviteMember — Entra guest provisioning', () => {
+    beforeEach(() => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      invitationRepo.create.mockResolvedValue(mockInvitation());
+    });
+
+    it('enqueues the provisioning intent on the SAME transaction as the invitation', async () => {
+      // The intent cannot exist without the invitation, and cannot be lost by one that committed —
+      // which is only true while both writes share one transaction. `uow.tx` is the same handle
+      // `invitationRepo.create` received.
+      await service.inviteMember('ws-1', 'bob@example.com', undefined, 'actor-1');
+
+      expect(guestInviteScheduler.schedule).toHaveBeenCalledWith(uow.tx, {
+        invitationId: 'inv-1',
+        workspaceId: 'ws-1',
+        email: 'bob@example.com',
+        // The raw token rides along, because the relay schedules the email and only the sha256 is
+        // persisted — see the flag-on tests below.
+        inviteToken: expect.any(String),
+      });
+    });
+
+    it('keys the intent on the invitation id, so the address is the NORMALISED one', async () => {
+      // Graph is invited with the address the invitation was bound to, not the one that was typed:
+      // acceptance compares case-insensitively against the normalised value.
+      invitationRepo.create.mockResolvedValue(mockInvitation({ email: 'bob@example.com' }));
+
+      await service.inviteMember('ws-1', 'BOB@Example.com', undefined, 'actor-1');
+
+      expect(guestInviteScheduler.schedule).toHaveBeenCalledWith(
+        uow.tx,
+        expect.objectContaining({ email: 'bob@example.com', invitationId: 'inv-1' }),
+      );
+    });
+
+    it('does not enqueue when the invitation itself is refused', async () => {
+      // The refusal happens before the transaction opens, so nothing may be queued for an
+      // invitation that was never created.
+      invitationRepo.countProjectsInWorkspace.mockResolvedValue(0);
+
+      await expect(
+        service.inviteMember('ws-1', 'bob@example.com', undefined, 'actor-1', [
+          { projectId: 'proj-elsewhere', accessLevel: 'editor' },
+        ]),
+      ).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
+
+      expect(guestInviteScheduler.schedule).not.toHaveBeenCalled();
+    });
+
+    it('resend re-enqueues under the SAME key, never a per-send one, and owes no email', async () => {
+      // The email deliberately uses a fresh `${id}:r${n}` key per send; a directory guest must be
+      // created at most once ever, so this one keys on the invitation id and the second call is a
+      // no-op inside the scheduler. It is what recovers an invitation sent while the flag was off.
+      //
+      // NO `inviteToken`, which is the whole reason resend keeps mailing inline: a duplicate enqueue
+      // is swallowed, so an email hung off this row would never be scheduled at all, and the token
+      // the queued row already holds has just been superseded by this rotation.
+      invitationRepo.findById.mockResolvedValue(
+        mockInvitation({ lastSentAt: new Date(Date.now() - 120_000) }),
+      );
+      invitationRepo.rotateForResend.mockResolvedValue(
+        mockInvitation({ resendCount: 1, lastSentAt: new Date() }),
+      );
+
+      await service.resendInvitation('ws-1', 'inv-1', 'actor-1');
+
+      expect(guestInviteScheduler.schedule).toHaveBeenCalledWith(uow.tx, {
+        invitationId: 'inv-1',
+        workspaceId: 'ws-1',
+        email: 'bob@example.com',
+      });
+    });
+
+    it('resend still emails INLINE even with the flag on', async () => {
+      // Provisioning has long since resolved by then — the 60s cooldown starts at invite time and the
+      // relay is woken immediately — and resend is the operator's escape hatch for an invitee whose
+      // provisioning failed, so it must not be gated behind the queue.
+      guestInviteScheduler.schedule.mockResolvedValue(true);
+      invitationRepo.findById.mockResolvedValue(
+        mockInvitation({ lastSentAt: new Date(Date.now() - 120_000) }),
+      );
+      invitationRepo.rotateForResend.mockResolvedValue(
+        mockInvitation({ resendCount: 1, lastSentAt: new Date() }),
+      );
+
+      await service.resendInvitation('ws-1', 'inv-1', 'actor-1');
+
+      expect(emailScheduler.schedule).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: 'inv-1:r1' }),
+        expect.anything(),
+      );
+    });
+
+    it('with the flag ON, does NOT schedule the invitation email itself', async () => {
+      /**
+       * The defect this closes. Both rows used to be written here and drained by two independent
+       * relays — the email relay every 5s AND woken instantly, the guest relay on a 30s cron with no
+       * wake signal — so the link arrived in under a second and the Entra guest object up to 30s
+       * later, plus Microsoft's directory replication. An invitee who clicks immediately then has
+       * nothing to authenticate against. The email is now scheduled by the relay, which is the only
+       * component that knows the guest is ready.
+       */
+      guestInviteScheduler.schedule.mockResolvedValue(true);
+
+      await service.inviteMember('ws-1', 'bob@example.com', undefined, 'actor-1');
+
+      expect(guestInviteScheduler.schedule).toHaveBeenCalledOnce();
+      expect(emailScheduler.schedule).not.toHaveBeenCalled();
+    });
+
+    it('with the flag ON, hands the relay the RAW token the email needs', async () => {
+      // Only the sha256 is persisted, so without this the relay could not rebuild `inviteUrl` at all.
+      guestInviteScheduler.schedule.mockResolvedValue(true);
+
+      await service.inviteMember('ws-1', 'bob@example.com', undefined, 'actor-1');
+
+      const [, opts] = guestInviteScheduler.schedule.mock.calls[0] as [
+        unknown,
+        { inviteToken?: string },
+      ];
+      expect(opts.inviteToken).toMatch(/^[\w-]{20,}$/);
     });
   });
 

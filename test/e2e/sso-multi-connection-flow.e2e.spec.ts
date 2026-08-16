@@ -35,8 +35,8 @@ import {
 import { AccessService } from '@modules/access';
 import { DRIZZLE, type DrizzleDB } from '@platform/database/drizzle.provider';
 import { AppModule } from '../../apps/api/src/app.module';
-import { ssoConnections, ssoConnectionDomains } from '../../db/schema/identity';
-import { workspaceInvitations } from '../../db/schema/workspace';
+import { ssoConnections, ssoConnectionDomains, users } from '../../db/schema/identity';
+import { workspaceInvitations, workspaceMembers } from '../../db/schema/workspace';
 import { WORKSPACE_ID, ADMIN_USER_ID } from './support/flow-harness';
 
 const VENDOR_TID = 'e2e-mconn-vendor';
@@ -86,6 +86,12 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
           authorityUrl: row.authorityUrl,
           clientId: row.clientId,
           clientSecretRef: row.clientSecretRef,
+          // Reconciled on conflict, not left at whatever the first run wrote: `created_at` is the
+          // tiebreak `findSharedByInvitedEmail` orders on, so a row surviving from an earlier run
+          // must adopt the caller's value or the shared-routing assertion depends on run history.
+          // Only ever set from an explicit value — `$inferInsert` leaves it undefined otherwise, and
+          // drizzle omits an undefined column rather than nulling it.
+          ...(row.createdAt !== undefined && { createdAt: row.createdAt }),
           updatedAt: new Date(),
         },
       });
@@ -122,6 +128,21 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
       status: 'active',
       ...BROKER,
     });
+    /**
+     * `createdAt` is PINNED, and that is load-bearing rather than tidiness.
+     *
+     * The bootstrap seed now provisions its own `shared` connection in this same workspace (the
+     * Entra "QNSC (guest)" row that lets an invited external type their address in the login box),
+     * so two shared rows can match one invitation. `findSharedByInvitedEmail` breaks that tie with
+     * `ORDER BY created_at, id` — oldest wins — which means the winner otherwise depends on whether
+     * the seed or this fixture was written first.
+     *
+     * That is exactly the shape that passes locally and fails in CI: `db/seeds/reset.ts` truncates
+     * nothing in `identity.*`, so a long-lived database keeps this fixture from an earlier run and it
+     * is older than the seed's row; on a fresh database the seed runs first in global setup and wins
+     * instead. Fixing the timestamp makes the tiebreak deterministic in both, and keeps this spec
+     * asserting the routing rule rather than the order two writers happened to run in.
+     */
     await upsertConnection({
       workspaceId: WORKSPACE_ID,
       provider: 'google',
@@ -131,6 +152,7 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
       allowedEmailDomains: [],
       jitEnabled: true,
       status: 'active',
+      createdAt: new Date('2020-01-01T00:00:00Z'),
       ...BROKER,
     });
 
@@ -154,7 +176,24 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
         status: 'pending',
         expiresAt: new Date(Date.now() + 86_400_000),
       })
-      .onConflictDoNothing({ target: workspaceInvitations.tokenHash });
+      /**
+       * REFRESH the window, do not skip on conflict.
+       *
+       * `db/seeds/reset.ts` deliberately truncates nothing in `workspace.*`, so this row survives
+       * every run — and with `onConflictDoNothing` it kept the FIRST run's `expires_at` for ever.
+       * The local row was thirteen days past expiry and still `pending`, so once
+       * `findSharedByInvitedEmail` started checking the expiry (as `hasPendingInvitation` always
+       * had), this fixture asserted routing for an invitation that must not route. The test was
+       * passing on a row that contradicted its own intent.
+       *
+       * Note what that also demonstrates: `status` is a LAGGING projection of `expires_at` — the
+       * cleanup cron flips rows to `expired` and does not run here at all. Only the timestamp can
+       * gate access, which is exactly why the predicate checks it.
+       */
+      .onConflictDoUpdate({
+        target: workspaceInvitations.tokenHash,
+        set: { status: 'pending', expiresAt: new Date(Date.now() + 86_400_000) },
+      });
   });
 
   afterAll(async () => {
@@ -182,10 +221,138 @@ describe('Multi-IdP broker: resolution, provisioning, cutoff (real AppModule + s
     expect(await repo.connectionOwnsEmailDomain(hit!.id, 'x@other-e2e.test')).toBe(false);
   });
 
+  /**
+   * The rule is "an INVITED address reaches a shared connection, an uninvited one reaches nothing".
+   * It is deliberately NOT asserted as "reaches THIS shared connection".
+   *
+   * The bootstrap seed provisions its own `shared` row in this workspace — the Entra guest
+   * connection that lets an invited external type their address in the login box — so two shared
+   * rows legitimately match one invitation, and `findSharedByInvitedEmail` picks between them with
+   * `ORDER BY created_at, id`. Which one wins is a property of that tiebreak, not of routing, and it
+   * varies with whether the seed or this fixture was written first: `db/seeds/reset.ts` truncates
+   * nothing in `identity.*`, so a long-lived database keeps this fixture from an earlier run while a
+   * fresh one seeds first. Pinning the fixture's `created_at` makes the tiebreak deterministic (and
+   * it is pinned, above), but asserting the winner here would still be asserting the wrong thing —
+   * a second legitimate shared connection must not be able to fail this spec.
+   */
   it('routes a shared connection only for an invited email', async () => {
     const invited = await repo.findSharedByInvitedEmail(INVITED_EMAIL);
-    expect(invited?.externalTenantId).toBe(GOOGLE_TID);
+    expect(invited).not.toBeNull();
+    expect(invited?.kind).toBe('shared');
+    expect(invited?.status).toBe('active');
+    // Never domain-routed: a shared connection owns no `sso_connection_domains` rows, which is what
+    // stops it admitting every address on a domain rather than only invited ones.
+    expect(await repo.findDirectoryByEmailDomain(INVITED_EMAIL)).toBeNull();
+    // The gate, and the whole point: without an invitation, nothing routes at all.
     expect(await repo.findSharedByInvitedEmail('uninvited@shared-e2e.test')).toBeNull();
+  });
+
+  /**
+   * An EXPIRED invitation must not route, even while its row still says `pending`.
+   *
+   * Against a real database, because the predicate is the point: `findSharedByInvitedEmail` used to
+   * check the status alone, so an expired invitation still selected its connection and was then
+   * refused a moment later at the invite-only gate — `SSO_JIT_DISABLED`, surfacing from the BFF
+   * callback as an opaque `AUTH_TOKEN_INVALID`, where `NO_CONNECTION` is the honest answer.
+   *
+   * The row is written `pending` with a PAST `expires_at` on purpose. That is not a contrived state:
+   * the cleanup cron is what flips rows to `expired`, so every invitation passes through exactly
+   * this shape between its expiry and the next tick — and this suite's own fixture sat in it for
+   * thirteen days.
+   */
+  /**
+   * THE RETURNING COLLABORATOR — the journey the whole shared connection exists for.
+   *
+   * Acceptance flips the invitation out of `pending`, and `resolveForEmail` has no third tier, so a
+   * pending-only predicate let an external sign in exactly ONCE and then answered `NO_CONNECTION`
+   * for ever. Against a real database because the fix is a SQL predicate over two tables, and the
+   * bug was invisible to every test that only ever looked at a freshly-invited address.
+   *
+   * The removal half is the security pairing, and it is why routing keys on an ACTIVE membership row
+   * rather than on `status IN ('pending','accepted')`: an accepted invitation never reverses, so
+   * routing on it would readmit someone whose access was revoked — and the connection gate would let
+   * them through (it admits any surviving `users` row), then re-enrol them on an empty membership
+   * list. Both of those live in the vendored package, so this predicate is the only place it can be
+   * refused.
+   */
+  it('keeps routing a collaborator AFTER acceptance, and stops once membership is removed', async () => {
+    const email = `returning-${Date.now()}@shared-e2e.test`;
+
+    // Invited, not yet accepted — routes on the invitation branch.
+    await db.insert(workspaceInvitations).values({
+      workspaceId: WORKSPACE_ID,
+      email,
+      tokenHash: `e2e-mconn-returning-${Date.now()}`,
+      invitedBy: ADMIN_USER_ID,
+      status: 'pending',
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+    expect(await repo.findSharedByInvitedEmail(email)).not.toBeNull();
+
+    // Acceptance: the invitation leaves `pending` and a membership row appears. This is exactly what
+    // `WorkspaceService.acceptInvitation` does, reproduced here so the spec needs no HTTP session.
+    const [user] = await db
+      .insert(users)
+      .values({ email, displayName: 'Returning Collaborator', status: 'active' })
+      .returning({ id: users.id });
+    await db
+      .update(workspaceInvitations)
+      .set({ status: 'accepted', acceptedBy: user.id, acceptedAt: new Date() })
+      .where(
+        and(
+          eq(workspaceInvitations.workspaceId, WORKSPACE_ID),
+          sql`lower(${workspaceInvitations.email}) = ${email}`,
+        ),
+      );
+    await db
+      .insert(workspaceMembers)
+      .values({ workspaceId: WORKSPACE_ID, userId: user.id, status: 'active' });
+
+    // The regression: with a pending-only predicate this returned null and locked them out.
+    const returning = await repo.findSharedByInvitedEmail(email);
+    expect(returning).not.toBeNull();
+    expect(returning?.kind).toBe('shared');
+    // Case-insensitively, since an IdP may return a differently-cased local part.
+    expect(await repo.findSharedByInvitedEmail(email.toUpperCase())).not.toBeNull();
+
+    // SUSPENDED is neither active nor removed, and must not route either — `workspace_member_status`
+    // is `active | suspended | removed`, so a predicate written as `status <> 'removed'` would have
+    // admitted a suspended collaborator. `= 'active'` is the narrower and correct form.
+    await db
+      .update(workspaceMembers)
+      .set({ status: 'suspended' })
+      .where(
+        and(eq(workspaceMembers.workspaceId, WORKSPACE_ID), eq(workspaceMembers.userId, user.id)),
+      );
+    expect(await repo.findSharedByInvitedEmail(email)).toBeNull();
+
+    // Removed: the membership ends, the `users` row survives (a removal does not delete the person,
+    // which is exactly why the gate's `findByEmail != null` branch would still admit them).
+    await db
+      .update(workspaceMembers)
+      .set({ status: 'removed' })
+      .where(
+        and(eq(workspaceMembers.workspaceId, WORKSPACE_ID), eq(workspaceMembers.userId, user.id)),
+      );
+
+    // Nothing routes them now — so they never reach the gate that would have re-enrolled them.
+    expect(await repo.findSharedByInvitedEmail(email)).toBeNull();
+  });
+
+  it('does NOT route an expired invitation, even while its status is still pending', async () => {
+    const expiredEmail = `expired-${Date.now()}@shared-e2e.test`;
+    await db.insert(workspaceInvitations).values({
+      workspaceId: WORKSPACE_ID,
+      email: expiredEmail,
+      tokenHash: `e2e-mconn-expired-${Date.now()}`,
+      invitedBy: ADMIN_USER_ID,
+      status: 'pending',
+      expiresAt: new Date(Date.now() - 1_000),
+    });
+
+    expect(await repo.findSharedByInvitedEmail(expiredEmail)).toBeNull();
+    // And the gate agrees, so the two predicates cannot drift apart again.
+    expect(await repo.hasPendingInvitation(WORKSPACE_ID, expiredEmail)).toBe(false);
   });
 
   it('provisions a federated user into the resolved connection workspace + role', async () => {

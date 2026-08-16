@@ -32,13 +32,6 @@ const CLAIMS = {
   permissions: [],
 } as unknown as JwtPayload;
 
-const FRESH_CLAIMS = {
-  ...CLAIMS,
-  jti: 'jti-2',
-  sessionId: 'sess-2',
-  authzEpoch: 4,
-} as unknown as JwtPayload;
-
 describe('JwtAuthGuard — BFF session-cookie path', () => {
   let ctxService: { setAuthContext: ReturnType<typeof vi.fn> };
   let authCache: {
@@ -48,11 +41,9 @@ describe('JwtAuthGuard — BFF session-cookie path', () => {
   let resolver: {
     enabled: boolean;
     resolve: ReturnType<typeof vi.fn>;
-    remint: ReturnType<typeof vi.fn>;
   };
   let securityMetrics: {
     recordFailOpen: ReturnType<typeof vi.fn>;
-    recordStaleToken: ReturnType<typeof vi.fn>;
   };
   let guard: JwtAuthGuard;
   let superCanActivate: ReturnType<typeof vi.spyOn>;
@@ -66,9 +57,8 @@ describe('JwtAuthGuard — BFF session-cookie path', () => {
     resolver = {
       enabled: true,
       resolve: vi.fn().mockResolvedValue(CLAIMS),
-      remint: vi.fn().mockResolvedValue(FRESH_CLAIMS),
     };
-    securityMetrics = { recordFailOpen: vi.fn(), recordStaleToken: vi.fn() };
+    securityMetrics = { recordFailOpen: vi.fn() };
     guard = new JwtAuthGuard(
       ctxService as unknown as RequestContextService,
       authCache as unknown as AuthTokenCache,
