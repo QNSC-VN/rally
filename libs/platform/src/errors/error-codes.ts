@@ -262,6 +262,13 @@ export const ErrorCodes = {
   // Team Status
   TEAM_STATUS_INVALID_CAPACITY: 'TEAM_STATUS_INVALID_CAPACITY',
   TEAM_STATUS_TEAM_REQUIRED: 'TEAM_STATUS_TEAM_REQUIRED',
+  /**
+   * "Return validation error if user is not a member of the selected Team" —
+   * `Phase 3/01_Team_Status/SRS.md:374` (§9.2). Distinct from `ASSIGNEE_NOT_TEAM_MEMBER`, which is the
+   * same population failing on a work item's Owner FIELD; this one refuses a `member_capacity` write,
+   * whose row is the Capacity denominator on Team Status and on the Phase 6 Team Capacity report.
+   */
+  TEAM_STATUS_USER_NOT_TEAM_MEMBER: 'TEAM_STATUS_USER_NOT_TEAM_MEMBER',
   TEAM_STATUS_INVALID_TITLE: 'TEAM_STATUS_INVALID_TITLE',
 
   // Collaboration

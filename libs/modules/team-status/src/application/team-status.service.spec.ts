@@ -156,6 +156,58 @@ describe('TeamStatusService', () => {
       );
     });
 
+    /**
+     * §9.1:338 — "Validate that the Iteration belongs to the requested Project/**Team**". Only the
+     * project half was checked, so team A + team B's iteration answered 200 and the screen drew team
+     * A's roster and Capacity under team B's timebox header.
+     *
+     * The shared-timebox case is the regression a careless fix causes, and it is the COMMON case here:
+     * `iterations.team_id` is optional (195 of 206 local iterations name no team), so a strict
+     * `iteration.teamId !== teamId` would refuse every shared sprint. The predicate is
+     * `teamOrSharedTimebox` — the iteration's own team OR a team-less one — so the refusal covers
+     * exactly what the team-scoped picker would never have offered.
+     */
+    describe('the iteration must belong to the requested TEAM too (§9.1)', () => {
+      it('refuses an iteration that names a DIFFERENT team', async () => {
+        iterations.getIteration.mockResolvedValue({ ...mockIteration, teamId: 'team-b' });
+
+        await expect(
+          service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1'),
+        ).rejects.toMatchObject({
+          code: 'ITERATION_TEAM_MISMATCH',
+        });
+      });
+
+      it('ACCEPTS a shared, team-less iteration under a selected team', async () => {
+        // The ordinary shape, not an edge case — the timebox says WHICH window, the work says whose.
+        iterations.getIteration.mockResolvedValue({ ...mockIteration, teamId: null });
+
+        const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
+        expect(result.teamId).toBe('team-a');
+        // And the roster still resolves from the SELECTED team, not from the iteration's absent one.
+        expect(repo.getRosterMembers).toHaveBeenCalledWith({
+          workspaceId: 'ws-1',
+          projectId: 'proj-1',
+          teamId: 'team-a',
+        });
+      });
+
+      it('accepts the team the iteration itself names', async () => {
+        const result = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
+        expect(result.iteration.id).toBe('it-1');
+      });
+
+      it.each([undefined, null])(
+        'checks nothing under All Teams (teamId=%s) — every project iteration is in scope',
+        async (scope) => {
+          iterations.getIteration.mockResolvedValue({ ...mockIteration, teamId: 'team-b' });
+
+          const result = await service.getTeamStatus(actor, 'proj-1', scope, 'it-1');
+          expect(result.teamId).toBe(scope);
+        },
+      );
+    });
+
     it('groups tasks by assigneeId and computes per-member aggregates', async () => {
       repo.getTaskRows.mockResolvedValue([
         makeRawRow({
@@ -472,6 +524,12 @@ describe('TeamStatusService', () => {
   // ── updateCapacity ───────────────────────────────────────────────────────
 
   describe('updateCapacity', () => {
+    // §9.2:374 — the write is now refused for a non-member, so every test that expects it to SUCCEED
+    // has to put its subject on the roster. See the block at the bottom for the rule itself.
+    beforeEach(() => {
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
+    });
+
     it('delegates to repo (authorization is enforced by the PolicyGuard)', async () => {
       await service.updateCapacity(actor, {
         projectId: 'proj-1',
@@ -510,6 +568,120 @@ describe('TeamStatusService', () => {
         capacityHours: 0,
       });
       expect(repo.upsertCapacity).toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * "Return validation error if user is not a member of the selected Team" (§9.2:374).
+   *
+   * Nothing checked it. The service validated `capacityHours < 0` and the repository inserted
+   * unconditionally, so any uuid could be given planned hours against any team's iteration — and the
+   * row feeds the Team Status Capacity total AND the Phase 6 Team Capacity report, which are one
+   * population. Worse, GAP-P3-TS-008 keeps an off-roster user out of the roster, so the fabricated
+   * hours landed in a total with no member group to explain them.
+   */
+  describe('capacity may only be written for a member of the resolved team (§9.2)', () => {
+    it('refuses a non-member, before touching the repository', async () => {
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
+
+      await expect(
+        service.updateCapacity(actor, {
+          projectId: 'proj-1',
+          teamId: 'team-a',
+          iterationId: 'it-1',
+          userId: 'stranger',
+          capacityHours: 40,
+        }),
+      ).rejects.toMatchObject({ code: 'TEAM_STATUS_USER_NOT_TEAM_MEMBER' });
+      expect(repo.upsertCapacity).not.toHaveBeenCalled();
+    });
+
+    it('checks the roster the READ path renders — same query, same resolved team', async () => {
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
+
+      await service.updateCapacity(actor, {
+        projectId: 'proj-1',
+        teamId: 'team-a',
+        iterationId: 'it-1',
+        userId: 'alice',
+        capacityHours: 12,
+      });
+
+      // Not a second membership predicate: `projectTeamContext`'s rule is that the server counts
+      // exactly the population the picker offers, and the picker here IS this roster.
+      expect(repo.getRosterMembers).toHaveBeenCalledWith({
+        workspaceId: 'ws-1',
+        projectId: 'proj-1',
+        teamId: 'team-a',
+      });
+    });
+
+    it('resolves the team from the iteration under All Teams, then checks that roster', async () => {
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
+
+      await service.updateCapacity(actor, {
+        projectId: 'proj-1',
+        iterationId: 'it-1',
+        userId: 'alice',
+        capacityHours: 8,
+      });
+
+      // mockIteration is team-scoped to `team-a`; the roster read and the write agree on it.
+      expect(repo.getRosterMembers).toHaveBeenCalledWith(
+        expect.objectContaining({ teamId: 'team-a' }),
+      );
+      expect(repo.upsertCapacity).toHaveBeenCalledWith(
+        expect.objectContaining({ teamId: 'team-a', userId: 'alice' }),
+      );
+    });
+
+    it('still refuses when no team can be resolved at all, so membership is never unknown-and-allowed', async () => {
+      // A shared iteration under All Teams. Pre-existing behaviour, restated here because it is what
+      // makes the rule above total: there is no path to a capacity row whose team is unknown.
+      iterations.getIteration.mockResolvedValue({ ...mockIteration, teamId: null });
+
+      await expect(
+        service.updateCapacity(actor, {
+          projectId: 'proj-1',
+          iterationId: 'it-1',
+          userId: 'alice',
+          capacityHours: 8,
+        }),
+      ).rejects.toMatchObject({ code: 'TEAM_STATUS_TEAM_REQUIRED' });
+      expect(repo.getRosterMembers).not.toHaveBeenCalled();
+      expect(repo.upsertCapacity).not.toHaveBeenCalled();
+    });
+
+    it('does NOT narrow the (project, team, iteration, user) grain — a member of two teams passes on both', async () => {
+      // `uq_member_capacity` gives a member on two teams two legitimate rows in one iteration. The
+      // check is per resolved team, so each write is judged against that team's own roster.
+      //
+      // On a SHARED iteration, because the (team, iteration) pairing rule applies to the write as well
+      // as the read: a timebox that names a team accepts capacity for that team only, so two teams'
+      // rows can coexist only under a team-less one — which is the common shape (most iterations name
+      // no team) and the case this grain exists for.
+      iterations.getIteration.mockResolvedValue({ ...mockIteration, teamId: null });
+      repo.getRosterMembers.mockResolvedValue(roster(['alice', 'Alice Smith']));
+
+      for (const team of ['team-a', 'team-b']) {
+        await service.updateCapacity(actor, {
+          projectId: 'proj-1',
+          teamId: team,
+          iterationId: 'it-1',
+          userId: 'alice',
+          capacityHours: 20,
+        });
+      }
+
+      expect(repo.upsertCapacity).toHaveBeenCalledTimes(2);
+      expect(repo.upsertCapacity).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ teamId: 'team-a' }),
+      );
+      expect(repo.upsertCapacity).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ teamId: 'team-b' }),
+      );
     });
   });
 

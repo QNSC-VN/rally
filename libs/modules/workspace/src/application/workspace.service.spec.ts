@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AccessService } from '@modules/access';
 import { WorkspaceService } from './workspace.service';
 import { GuestInviteSchedulerService } from './guest-invite-scheduler.service';
+import { USER_ACCESS_REVOKER } from '../domain/ports/user-access.revoker';
 import { WORKSPACE_REPOSITORY, IWorkspaceRepository } from '../domain/ports/workspace.repository';
 import {
   WORKSPACE_MEMBER_REPOSITORY,
@@ -84,13 +85,11 @@ const mockInvitation = (o: Partial<WorkspaceInvitation> = {}): WorkspaceInvitati
 
 const makeWorkspaceRepo = (): Mocked<IWorkspaceRepository> => ({
   findById: vi.fn(),
-  findBySlug: vi.fn(),
   listForUser: vi.fn(),
   listAll: vi.fn().mockResolvedValue([]),
   count: vi.fn().mockResolvedValue(0),
   create: vi.fn(),
   update: vi.fn(),
-  softDelete: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeMemberRepo = (): Mocked<IWorkspaceMemberRepository> => ({
@@ -189,6 +188,17 @@ describe('WorkspaceService', () => {
   let settingsRepo: ReturnType<typeof makeSettingsRepo>;
   let emailScheduler: ReturnType<typeof makeEmailScheduler>;
   let guestInviteScheduler: ReturnType<typeof makeGuestInviteScheduler>;
+  /**
+   * The identity-side session revoker, bound through a PORT so `WorkspaceModule` needs no import of
+   * `IdentityModule` (which imports it, so the reverse would be a cycle). Suspending or removing a
+   * member has to END their access, not merely drop the cached permission resolution — AUTH-SSO-006
+   * and `Phase 0/03_Workspace/SRS.md:307` AC-5.
+   */
+  let revoker: {
+    revokeAllSessions: ReturnType<typeof vi.fn>;
+    restoreSessions: ReturnType<typeof vi.fn>;
+    setAccountStatus: ReturnType<typeof vi.fn>;
+  };
   let access: ReturnType<typeof makeAccessService>;
   let uow: ReturnType<typeof makeUow>;
 
@@ -199,6 +209,11 @@ describe('WorkspaceService', () => {
     settingsRepo = makeSettingsRepo();
     emailScheduler = makeEmailScheduler();
     guestInviteScheduler = makeGuestInviteScheduler();
+    revoker = {
+      revokeAllSessions: vi.fn().mockResolvedValue(undefined),
+      restoreSessions: vi.fn().mockResolvedValue(undefined),
+      setAccountStatus: vi.fn().mockResolvedValue(undefined),
+    };
     access = makeAccessService();
     uow = makeUow();
 
@@ -216,6 +231,7 @@ describe('WorkspaceService', () => {
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         { provide: AccessService, useValue: access },
         { provide: GuestInviteSchedulerService, useValue: guestInviteScheduler },
+        { provide: USER_ACCESS_REVOKER, useValue: revoker },
       ],
     }).compile();
 
@@ -302,42 +318,14 @@ describe('WorkspaceService', () => {
     });
   });
 
-  // ── createWorkspace ──────────────────────────────────────────────────────────
-
-  describe('createWorkspace', () => {
-    const actor = {
-      sub: 'user-1',
-      workspaceId: 'ws-1',
-      contextId: 'ws-1',
-      sessionId: 's1',
-      jti: 'j1',
-      iat: 0,
-      exp: 0,
-      iss: '',
-      aud: '',
-      permissions: [] as string[],
-      claims: { permissions: [] as string[] },
-      authMethod: 'password' as const,
-    };
-
-    it('creates workspace when slug is available', async () => {
-      workspaceRepo.findBySlug.mockResolvedValue(null);
-      workspaceRepo.create.mockResolvedValue(mockWorkspace());
-      memberRepo.addMember.mockResolvedValue(mockMember());
-
-      const result = await service.createWorkspace(actor, 'main', 'Main');
-      expect(result.name).toBe('Main');
-      expect(workspaceRepo.create).toHaveBeenCalledOnce();
-      expect(memberRepo.addMember).toHaveBeenCalledOnce();
-    });
-
-    it('throws ConflictException when slug is taken', async () => {
-      workspaceRepo.findBySlug.mockResolvedValue(mockWorkspace());
-      await expect(service.createWorkspace(actor, 'main', 'Main')).rejects.toThrow(
-        ConflictException,
-      );
-    });
-  });
+  // `createWorkspace` and `deleteWorkspace` are GONE, and their specs with them.
+  //
+  // `Phase 0/03_Workspace/SRS.md:98` (`COMPANY-FR-010`), `:281` and `:310` (AC-8) all say the MVP
+  // exposes no workspace CRUD — "Không có Workspace CRUD endpoint hoặc UI trong MVP build" — while
+  // `POST /workspaces` and `DELETE /workspaces/:id` were live and a Workspace Admin held both codes.
+  // The routes, the service methods and the repository's `findBySlug`/`softDelete` were removed
+  // together, so there is nothing left here to assert. The absence is pinned over HTTP instead, for a
+  // Workspace ADMIN (a 403 for a lesser role would prove nothing) — see the authz e2e suite.
 
   // ── updateWorkspace ──────────────────────────────────────────────────────────
 
@@ -355,16 +343,6 @@ describe('WorkspaceService', () => {
       await expect(service.updateWorkspace('missing', {}, 'actor-1')).rejects.toThrow(
         NotFoundException,
       );
-    });
-  });
-
-  // ── deleteWorkspace ──────────────────────────────────────────────────────────
-
-  describe('deleteWorkspace', () => {
-    it('soft-deletes workspace', async () => {
-      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
-      await service.deleteWorkspace('ws-1');
-      expect(workspaceRepo.softDelete).toHaveBeenCalledWith('ws-1');
     });
   });
 

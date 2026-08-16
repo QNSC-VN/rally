@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock, Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DRIZZLE, NotFoundException, PreconditionFailedException, UnitOfWork } from '@platform';
+import {
+  DRIZZLE,
+  NotFoundException,
+  PermissionDeniedException,
+  PreconditionFailedException,
+  UnitOfWork,
+} from '@platform';
 import type { JwtPayload } from '@platform';
 import { AccessService } from '@modules/access';
 import { ActivityLogger } from '@modules/activity';
@@ -90,11 +96,14 @@ describe('PortfolioItemsService', () => {
    * The one home of the milestone-artifact scope rule, injected here since the `milestoneIds` patch
    * is its THIRD writer. Resolves by default; the tests about scope make it reject.
    */
-  let milestones: { assertArtifactsAssignable: Mock };
+  let milestones: { assertArtifactsAssignable: Mock; assertMayAssignMilestones: Mock };
 
   beforeEach(async () => {
     referenceRows = [{ id: 'ref-1' }];
-    milestones = { assertArtifactsAssignable: vi.fn().mockResolvedValue(undefined) };
+    milestones = {
+      assertArtifactsAssignable: vi.fn().mockResolvedValue(undefined),
+      assertMayAssignMilestones: vi.fn().mockResolvedValue(undefined),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PortfolioItemsService,
@@ -660,6 +669,49 @@ describe('PortfolioItemsService', () => {
       await service.updateItem(actor, 'pi-1', { milestoneIds: [] });
       expect(milestones.assertArtifactsAssignable).not.toHaveBeenCalled();
       expect(repo.setMilestones).toHaveBeenCalledWith('pi-1', []);
+    });
+
+    /**
+     * The AUTHORITY check — `Phase 4/02_Roles_Permissions/SRS.md:80` marks `Releases and Milestones`
+     * Hidden for an Editor, and this is the third writer of `milestone_artifacts`. Defence in depth
+     * on this route (an Editor holds no `portfolio:*` at all, per §3.2:82), so what these two pin is
+     * that the rule is ATTACHED TO THE LINK rather than to whichever call site was audited last —
+     * the failure mode the shared scope assertion above exists to prevent.
+     */
+    it('asks whether the caller may decide milestone membership — on a clear as well as an assign', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        type: 'feature',
+        projectId: 'proj-a',
+      } as never);
+
+      await service.updateItem(actor, 'pi-1', { milestoneIds: ['ms-1'] });
+      expect(milestones.assertMayAssignMilestones).toHaveBeenCalledWith(actor, 'proj-a');
+
+      milestones.assertMayAssignMilestones.mockClear();
+      await service.updateItem(actor, 'pi-1', { milestoneIds: [] });
+      expect(milestones.assertMayAssignMilestones).toHaveBeenCalledWith(actor, 'proj-a');
+
+      // An unrelated PATCH must not be refused for lacking milestone authority.
+      milestones.assertMayAssignMilestones.mockClear();
+      await service.updateItem(actor, 'pi-1', { name: 'Renamed' });
+      expect(milestones.assertMayAssignMilestones).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing when milestone authority is refused', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'pi-1',
+        type: 'feature',
+        projectId: 'proj-a',
+      } as never);
+      milestones.assertMayAssignMilestones.mockRejectedValueOnce(
+        new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'no milestone:view'),
+      );
+      await expect(
+        service.updateItem(actor, 'pi-1', { milestoneIds: ['ms-1'], name: 'Renamed' }),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+      expect(repo.setMilestones).not.toHaveBeenCalled();
+      expect(repo.update).not.toHaveBeenCalled();
     });
 
     it('writes Milestones through setMilestones, not as a column patch', async () => {

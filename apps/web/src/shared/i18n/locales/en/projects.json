@@ -79,8 +79,7 @@
   "create": {
     "title": "New Project",
     "submit": "Create Project",
-    "created": "Project \"{{name}}\" created",
-    "keyTooShort": "Project key must be at least 2 characters"
+    "created": "Project \"{{name}}\" created"
   },
   "edit": {
     "title": "Edit Project",

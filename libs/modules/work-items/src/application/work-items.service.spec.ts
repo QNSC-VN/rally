@@ -236,6 +236,7 @@ const makeAccessService = () => ({
  */
 const makeMilestonesService = () => ({
   assertArtifactsAssignable: vi.fn().mockResolvedValue(undefined),
+  assertMayAssignMilestones: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeTimeLogRepo = () => ({
@@ -585,6 +586,128 @@ describe('WorkItemsService', () => {
       });
 
       expect(notificationScheduler.schedule).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * ── FR-021 idempotency is per EVENT-recipient pair, not per ITEM-recipient pair ──
+   *
+   * `P4-NOTIF-FR-021` (`Phase 4/01_Notifications/SRS.md:103`) — "Notification creation should be
+   * idempotent for the same event-recipient pair to avoid duplicates." Both producers used to pass a
+   * discriminator that added nothing per event: assignments passed `item.assigneeId`, which IS the
+   * recipient, and mentions passed the work item id, which is already `item.id` in the key. Both
+   * collapsed to (template, item, user), and `notification_outbox.idempotency_key` is UNIQUE under
+   * `onConflictDoNothing` — with the relay copying it into `in_app_notifications.source_event_id`,
+   * UNIQUE as `uq_ian_source_event_id` — so the suppression was PERMANENT, not a dedupe.
+   *
+   * These assert on the KEY rather than on a row count, deliberately: the uniqueness that turns two
+   * keys into two rows and one key into one row lives in the DATABASE, so the only thing this layer
+   * decides is whether two events are told apart. A distinct key here IS a second row, an identical
+   * key here IS one row, and that is the whole of what shipped wrong. The end-to-end half is
+   * `test/e2e/notification-flow.e2e.spec.ts`.
+   */
+  describe('notification idempotency is scoped to the EVENT (P4-NOTIF-FR-021)', () => {
+    const keysFor = (template: string): string[] =>
+      notificationScheduler.schedule.mock.calls
+        .map(([input]) => input as { template: string; idempotencyKey: string })
+        .filter((input) => input.template === template)
+        .map((input) => input.idempotencyKey);
+
+    /** An item whose Owner may legally be `userId` — the Phase 1/03 §7:125 pair, in one line. */
+    const ownableItem = (userId: string, o: Partial<WorkItem> = {}) => {
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-a', status: 'active' }]);
+      projectsService.listProjectMemberOptions.mockResolvedValue([
+        { userId, displayName: null, email: null, avatarUrl: null },
+      ]);
+      return mockWorkItem({ teamId: 'team-a', ...o });
+    };
+
+    /**
+     * The defect in the direction users actually hit it: A → B → A. Under the old key A's second
+     * assignment reused A's first key, the outbox insert hit the unique index, `onConflictDoNothing`
+     * swallowed it, and A was never told again — for the life of the item.
+     *
+     * The stamp is the row's POST-write `updatedAt`, so the two events for A are told apart by the
+     * value the repository wrote, not by anything this test invents.
+     */
+    it('re-assigning to the same user after an intervening assignee notifies AGAIN', async () => {
+      const at = (iso: string) => new Date(iso);
+      workItemRepo.findById.mockResolvedValue(ownableItem('user-2', { assigneeId: null }));
+      workItemRepo.update.mockResolvedValue(
+        ownableItem('user-2', { assigneeId: 'user-2', updatedAt: at('2024-06-01T10:00:00.000Z') }),
+      );
+      await service.updateWorkItem(mockActor, 'wi-1', { assigneeId: 'user-2' });
+
+      // …reassigned away to user-3, then back to user-2 on a later write.
+      workItemRepo.findById.mockResolvedValue(ownableItem('user-3', { assigneeId: 'user-2' }));
+      workItemRepo.update.mockResolvedValue(
+        ownableItem('user-3', { assigneeId: 'user-3', updatedAt: at('2024-06-01T10:05:00.000Z') }),
+      );
+      await service.updateWorkItem(mockActor, 'wi-1', { assigneeId: 'user-3' });
+
+      workItemRepo.findById.mockResolvedValue(ownableItem('user-2', { assigneeId: 'user-3' }));
+      workItemRepo.update.mockResolvedValue(
+        ownableItem('user-2', { assigneeId: 'user-2', updatedAt: at('2024-06-01T10:10:00.000Z') }),
+      );
+      await service.updateWorkItem(mockActor, 'wi-1', { assigneeId: 'user-2' });
+
+      const keys = keysFor('WORK_ITEM_ASSIGNED');
+      expect(keys).toHaveLength(3);
+      // user-2's two assignments are two events, so two rows. This is the assertion the
+      // pre-fix code failed: keys[0] === keys[2].
+      expect(keys[2]).not.toBe(keys[0]);
+      expect(new Set(keys).size).toBe(3);
+    });
+
+    /**
+     * The mention half of the same defect: @-mention someone in Note #1 and again in Note #5 and
+     * only Note #1 ever produced anything. The Note's own id is what tells the two apart.
+     */
+    it('a second mention of the same user in a DIFFERENT comment notifies again', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+
+      await service.notifyCommentAdded(mockActor, 'wi-1', 'comment-1', ['user-2']);
+      await service.notifyCommentAdded(mockActor, 'wi-1', 'comment-5', ['user-2']);
+
+      const keys = keysFor('WORK_ITEM_MENTIONED');
+      expect(keys).toHaveLength(2);
+      expect(keys[1]).not.toBe(keys[0]);
+    });
+
+    /**
+     * The property the key exists for, and the one a "simplification" would quietly take away: the
+     * SAME event twice is still ONE notification. Both producers are exercised, because both are
+     * genuinely retried — the relay redelivers an outbox row, and `createWorkItem` re-runs its whole
+     * transaction body on a duplicate-key retry.
+     *
+     * This is why neither stamp may become `Date.now()` or `randomUUID()`: either would pass the two
+     * cases above and fail this one, which is the failure nobody notices until users are being
+     * paged twice.
+     */
+    it('the SAME event processed twice yields ONE key, for both templates', async () => {
+      const sameRow = ownableItem('user-2', {
+        assigneeId: 'user-2',
+        updatedAt: new Date('2024-06-01T10:00:00.000Z'),
+      });
+      workItemRepo.findById.mockResolvedValue(ownableItem('user-2', { assigneeId: null }));
+      workItemRepo.update.mockResolvedValue(sameRow);
+
+      // The same assignment write, replayed: same post-write `updatedAt`, therefore same key.
+      await service.updateWorkItem(mockActor, 'wi-1', { assigneeId: 'user-2' });
+      await service.updateWorkItem(mockActor, 'wi-1', { assigneeId: 'user-2' });
+
+      const assignKeys = keysFor('WORK_ITEM_ASSIGNED');
+      expect(assignKeys).toHaveLength(2);
+      expect(assignKeys[1]).toBe(assignKeys[0]);
+
+      // The same Note's fan-out, replayed.
+      workItemRepo.findById.mockResolvedValue(mockWorkItem());
+      await service.notifyCommentAdded(mockActor, 'wi-1', 'comment-1', ['user-2']);
+      await service.notifyCommentAdded(mockActor, 'wi-1', 'comment-1', ['user-2']);
+
+      const mentionKeys = keysFor('WORK_ITEM_MENTIONED');
+      expect(mentionKeys).toHaveLength(2);
+      expect(mentionKeys[1]).toBe(mentionKeys[0]);
     });
   });
 
@@ -1483,6 +1606,46 @@ describe('WorkItemsService', () => {
       await service.setWorkItemMilestones(mockActor, 'wi-1', []);
       expect(milestonesService.assertArtifactsAssignable).not.toHaveBeenCalled();
       expect(workItemRepo.setMilestones).toHaveBeenCalledWith('wi-1', []);
+    });
+
+    /**
+     * The Milestone half of `Phase 4/02_Roles_Permissions/SRS.md:80` — one matrix row for `Releases
+     * and Milestones`, `Hidden` for an Editor — mirroring the three release cases further down this
+     * file. Unit-level this only pins the DELEGATION and the ORDER; the role that gets refused is
+     * pinned over real HTTP in `test/e2e/milestone-authz.e2e.spec.ts`, because a spec that calls the
+     * service directly cannot see a guard defect.
+     */
+    it('refuses an ASSIGN when the caller may not decide milestone membership', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1', projectId: 'proj-1' }));
+      milestonesService.assertMayAssignMilestones.mockRejectedValueOnce(
+        new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'no milestone:view'),
+      );
+
+      await expect(
+        service.setWorkItemMilestones(mockActor, 'wi-1', ['ms-1']),
+      ).rejects.toMatchObject({ code: 'PROJECT_PERMISSION_DENIED' });
+      expect(milestonesService.assertMayAssignMilestones).toHaveBeenCalledWith(mockActor, 'proj-1');
+      expect(workItemRepo.setMilestones).not.toHaveBeenCalled();
+    });
+
+    it('refuses a CLEAR too — removing an item decides membership as much as adding it', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1', projectId: 'proj-1' }));
+      milestonesService.assertMayAssignMilestones.mockRejectedValueOnce(
+        new PermissionDeniedException('PROJECT_PERMISSION_DENIED', 'no milestone:view'),
+      );
+
+      // The empty set short-circuits `assertArtifactsAssignable`, so a guard placed there would
+      // never see this call — which is why it is a separate, unconditional check.
+      await expect(service.setWorkItemMilestones(mockActor, 'wi-1', [])).rejects.toMatchObject({
+        code: 'PROJECT_PERMISSION_DENIED',
+      });
+      expect(workItemRepo.setMilestones).not.toHaveBeenCalled();
+    });
+
+    it('allows the write when the caller holds milestone:view', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1', projectId: 'proj-1' }));
+      await service.setWorkItemMilestones(mockActor, 'wi-1', ['ms-1']);
+      expect(workItemRepo.setMilestones).toHaveBeenCalledWith('wi-1', ['ms-1']);
     });
   });
 

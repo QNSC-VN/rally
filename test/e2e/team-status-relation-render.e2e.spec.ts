@@ -164,8 +164,17 @@ describe('BA flows: E2E-011 Team Status renders a fully-related task', () => {
       assigneeId: DEVELOPER_ID,
     });
 
-    const statusB = await teamStatus.getTeamStatus(admin, project.id, teamB.id, iteration.id);
-    const leaked = statusB.groups.flatMap((m) => m.tasks).some((r) => r.id === task.id);
-    expect(leaked).toBe(false);
+    // The task cannot leak, and the reason is now stronger than an empty result: §9.1:338 makes the
+    // (Team, Iteration) PAIRING itself invalid — this iteration is Team A's — so the read is REFUSED
+    // rather than answered with nobody's rows. Asking Team B about Team A's sprint used to return 200
+    // with Team B's roster under Team A's timebox header, which is the leak this guards.
+    await expect(
+      teamStatus.getTeamStatus(admin, project.id, teamB.id, iteration.id),
+    ).rejects.toThrow(/another team/i);
+
+    // …and the task IS there for the team whose sprint it is, so the refusal above is about the
+    // pairing and not about the task having vanished.
+    const statusA = await teamStatus.getTeamStatus(admin, project.id, teamA.id, iteration.id);
+    expect(statusA.groups.flatMap((m) => m.tasks).some((r) => r.id === task.id)).toBe(true);
   });
 });

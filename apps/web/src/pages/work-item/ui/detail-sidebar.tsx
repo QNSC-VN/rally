@@ -182,6 +182,11 @@ export function DetailSidebar({
   // server agree on one code rather than the client guessing a weaker one.
   const { can } = useProjectPermissions(item.projectId)
   const canAssignRelease = can(PERMISSION.RELEASE_VIEW)
+  // The same rule for the other half of the SAME matrix row (`Phase 4/02_Roles_Permissions/SRS.md:80`
+  // is one row for `Releases and Milestones`), and `milestone:view` is what
+  // `MilestonesService.assertMayAssignMilestones` checks — so, as above, the control and the server
+  // agree on one code.
+  const canAssignMilestones = can(PERMISSION.MILESTONE_VIEW)
   const { data: releases = [] } = useReleases(item.projectId)
   // The reference feed, NOT the Portfolio grid's: that one takes `portfolio:view`, which
   // P5-PI-FR-017 withholds from an Editor. Scoped to the ITEM's project per §5.3:133.
@@ -639,26 +644,38 @@ export function DetailSidebar({
             </FormField>
             {/* Milestones — many-to-many, persisted independently of Release
                 (SRS FR-022). Same SearchableSelect style as Iteration/Release,
-                in multi-select mode (no separate modal). */}
-            <FormField label={t('sidebar.milestones')}>
-              <SearchableSelect
-                variant="field"
-                multiple
-                value={itemMilestones.map((m) => m.id)}
-                readOnly={disabled}
-                ariaLabel={t('sidebar.milestones')}
-                placeholder={t('sidebar.noMilestones')}
-                options={selectableMilestoneOptions.map((m) => ({
-                  value: m.id,
-                  label: m.milestoneKey ? `${m.milestoneKey}: ${m.name}` : m.name,
-                  searchText: `${m.milestoneKey ?? ''} ${m.name}`,
-                  icon: <TypeBadge type="milestone" size={16} />,
-                }))}
-                onChange={(ids) => {
-                  void setMilestones.mutateAsync(ids)
-                }}
-              />
-            </FormField>
+                in multi-select mode (no separate modal).
+
+                HIDDEN, not disabled, for a caller who may not assign one — the Release field's rule
+                above, for the other half of the same §3.2:80 row, and the BA says it about this field
+                too: `08_Convert to figma/P4_Screens_Phase_0_1/P4_SCREEN_ANNOTATIONS.md:50` records
+                that the mockup gates milestone toggling behind the same condition as Release and
+                concludes "Milestones toggle is `H` for Project Member, same as Release".
+
+                It matters more here than for Release, because this control SAVES ON EVERY TOGGLE
+                (`setMilestones.mutateAsync`) rather than at the end of a patch: for an Editor it was a
+                live multi-select whose every click 403'd. */}
+            {canAssignMilestones && (
+              <FormField label={t('sidebar.milestones')}>
+                <SearchableSelect
+                  variant="field"
+                  multiple
+                  value={itemMilestones.map((m) => m.id)}
+                  readOnly={disabled}
+                  ariaLabel={t('sidebar.milestones')}
+                  placeholder={t('sidebar.noMilestones')}
+                  options={selectableMilestoneOptions.map((m) => ({
+                    value: m.id,
+                    label: m.milestoneKey ? `${m.milestoneKey}: ${m.name}` : m.name,
+                    searchText: `${m.milestoneKey ?? ''} ${m.name}`,
+                    icon: <TypeBadge type="milestone" size={16} />,
+                  }))}
+                  onChange={(ids) => {
+                    void setMilestones.mutateAsync(ids)
+                  }}
+                />
+              </FormField>
+            )}
           </>
         )}
 

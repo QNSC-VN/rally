@@ -346,11 +346,11 @@ export function NewProjectModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmedKey = values.key.trim().toUpperCase()
+    // A one-character key is LEGAL: the BA gives `1–10` of `A–Z`/`0–9` in three places
+    // (`Phase 0/04_Project/SRS.md:105`, `:318`, `Phase 1/08:110`), and this guard refused it — the
+    // server's own `.min(2)` did too, so the two agreed with each other and not with the BA. The
+    // empty check below stays, because a key is still required.
     if (values.name.trim().length < 2 || !trimmedKey) return
-    if (trimmedKey.length < 2) {
-      notify.error(t('create.keyTooShort'))
-      return
-    }
     try {
       /**
        * ONE request. §4.2 lists the estimate scale among the required Create Project fields, and

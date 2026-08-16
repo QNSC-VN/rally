@@ -10,19 +10,34 @@
  * Latent rather than visible on the seeded fixture — every seeded task is uniformly team-tagged and no
  * parent is deleted — so the divergences are built here on purpose. That is the point: a test that
  * only reads the happy fixture is what let three of these ship.
+ *
+ * The file is also the home for Team Status's own INPUT rules, in the two blocks at the bottom
+ * (§9.1:338 and §9.2:374). They belong with the agreement rather than in a file of their own for one
+ * reason: both rules decide which `member_capacity` rows and which (team, iteration) pairings may
+ * exist, and those rows are the Capacity denominator BOTH surfaces render — so a change that loosens
+ * either rule has to be read next to the tests proving the two screens still report one population.
  */
 import 'reflect-metadata';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
+import { AuthService } from '@qnsc-vn/identity';
 import { WorkItemsService } from '@modules/work-items';
 import { TeamStatusService } from '@modules/team-status';
 import { ReportingService } from '@modules/reporting';
 
-import { SEEDED, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import {
+  DEVELOPER_ID,
+  SEEDED,
+  adminActor,
+  bootRallyApp,
+  createTeamForProject,
+  uniqueKey,
+} from './support/flow-harness';
 
 describe('Team Status agrees with Team Capacity (e2e)', () => {
   let app: NestFastifyApplication;
@@ -65,12 +80,28 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
     };
   }
 
+  /**
+   * The READ rule below is route-visible, so it is asserted over HTTP as well as through the service.
+   * No `/v1` prefix on the test app and no cookie plugin, so `AuthService.devLogin` for a bearer token
+   * (Bearer callers are CSRF-exempt by design).
+   */
+  let token: string;
+  function getTeamStatusHttp(query: Record<string, string>) {
+    const qs = new URLSearchParams(query).toString();
+    return app.inject({
+      method: 'GET',
+      url: `/team-status?${qs}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+  }
+
   beforeAll(async () => {
     app = await bootRallyApp();
     db = app.get<DrizzleDB>(DRIZZLE);
     items = app.get(WorkItemsService);
     teamStatus = app.get(TeamStatusService);
     reporting = app.get(ReportingService);
+    token = (await app.get(AuthService).devLogin('admin@qnsc.dev', '127.0.0.1')).accessToken;
   });
 
   afterAll(async () => {
@@ -251,4 +282,142 @@ describe('Team Status agrees with Team Capacity (e2e)', () => {
       expect(after).toEqual(await capacityHours(teamId));
     },
   );
+  // ── §9.1:338 — the READ validates the iteration against the requested TEAM, not just the project ──
+
+  describe('the iteration must belong to the requested Team (§9.1:338, §9.4:426, TS-022)', () => {
+    it('REFUSES a team paired with another team’s iteration', async () => {
+      // Seeded `Sprint 26.1` is Team ALPHA's. Asking for it as Team BETA used to answer 200, and the
+      // screen then rendered Beta's roster and Capacity under Alpha's timebox header.
+      await expect(
+        teamStatus.getTeamStatus(
+          actor,
+          SEEDED.nxp.projectId,
+          SEEDED.nxp.teamBetaId,
+          SEEDED.nxp.iterationCurrentId,
+        ),
+      ).rejects.toThrow(/another team/i);
+    });
+
+    it('is refused over HTTP too, and the same pairing is fine for the team that owns it', async () => {
+      const refused = await getTeamStatusHttp({
+        projectId: SEEDED.nxp.projectId,
+        iterationId: SEEDED.nxp.iterationCurrentId,
+        teamId: SEEDED.nxp.teamBetaId,
+      });
+      expect(refused.statusCode, refused.body).toBe(412);
+      expect(JSON.parse(refused.body).error.code).toBe('ITERATION_TEAM_MISMATCH');
+
+      // Same URL, the OWNING team: proves the 412 is about the pairing and not about the route.
+      const allowed = await getTeamStatusHttp({
+        projectId: SEEDED.nxp.projectId,
+        iterationId: SEEDED.nxp.iterationCurrentId,
+        teamId: SEEDED.nxp.teamAlphaId,
+      });
+      expect(allowed.statusCode, allowed.body).toBe(200);
+    });
+
+    it('still serves a SHARED (team-less) iteration under a selected Team', async () => {
+      // The regression a strict `iteration.teamId === teamId` would cause. A project may run one
+      // sprint every team works inside, and most iterations name no team at all — so this is the
+      // ordinary case, not an edge one. Same predicate as `teamOrSharedTimebox`.
+      // `Sprint 26.2` (`iterationFutureId`) names no team in the seed — verified against
+      // `work.iterations`, and `db/seeds/reference-extras.ts` makes it so deliberately.
+      const view = await teamStatus.getTeamStatus(
+        actor,
+        SEEDED.nxp.projectId,
+        SEEDED.nxp.teamAlphaId,
+        SEEDED.nxp.iterationFutureId,
+      );
+      expect(view.iteration.id).toBe(SEEDED.nxp.iterationFutureId);
+    });
+
+    it('checks nothing under All Teams — every iteration of the project is in scope', async () => {
+      const view = await teamStatus.getTeamStatus(
+        actor,
+        SEEDED.nxp.projectId,
+        null,
+        SEEDED.nxp.iterationCurrentId,
+      );
+      expect(view.iteration.id).toBe(SEEDED.nxp.iterationCurrentId);
+    });
+  });
+
+  // ── §9.2:374 — a Capacity row may only name a member of the resolved Team ──
+
+  describe('capacity may only be written for a member of the Team (§9.2:374)', () => {
+    it('REFUSES a user who is not on the roster', async () => {
+      await expect(
+        teamStatus.updateCapacity(actor, {
+          projectId: SEEDED.nxp.projectId,
+          iterationId: SEEDED.nxp.iterationCurrentId,
+          teamId: SEEDED.nxp.teamAlphaId,
+          userId: randomUUID(),
+          capacityHours: 40,
+        }),
+      ).rejects.toThrow(/member/i);
+    });
+
+    it('ACCEPTS a real member, and the hours reach both surfaces', async () => {
+      // DEVELOPER_ID is on Team Alpha's seeded roster. The assertion is deliberately not "the write
+      // returned" but "both screens moved by it" — this file's whole subject is that the two report
+      // one population.
+      const before = await teamStatusHours(SEEDED.nxp.teamAlphaId);
+      await teamStatus.updateCapacity(actor, {
+        projectId: SEEDED.nxp.projectId,
+        iterationId: SEEDED.nxp.iterationCurrentId,
+        teamId: SEEDED.nxp.teamAlphaId,
+        userId: DEVELOPER_ID,
+        capacityHours: 40,
+      });
+      expect(await teamStatusHours(SEEDED.nxp.teamAlphaId)).toEqual(before);
+      expect(await capacityHours(SEEDED.nxp.teamAlphaId)).toEqual(
+        await teamStatusHours(SEEDED.nxp.teamAlphaId),
+      );
+    });
+
+    it('accepts a member of a DIFFERENT team on a SHARED iteration, keeping the two rows separate', async () => {
+      // `member_capacity` is unique on (project, team, iteration, user), so one person legitimately
+      // holds a row per team they are on. The guard must judge membership per RESOLVED team rather
+      // than collapsing a person to one team.
+      //
+      // A SHARED iteration is what makes this expressible: `Sprint 26.1` belongs to Team Alpha, and
+      // both the read and the write now refuse a pairing with any other team, so a second team's row
+      // can only exist against a timebox that names no team — which is the common shape here.
+      // DEVELOPER_ID deliberately, and the reason is cross-file: `createTeamForProject` rosters its
+      // members on a team LINKED to the project, and a roster row grants `editor` on that project
+      // (RBE-06). The suite shares one database within a run, so the user here must be one whose
+      // access this cannot CHANGE — `dev@qnsc.dev` already holds `editor` on NXP, which is the single
+      // project `server-role-matrix.e2e.spec.ts` expects the Editor to see (§3.1:67). VIEWER_ID would
+      // break `authz-cluster`, which pins `viewer@qnsc.dev` as the No Access principal.
+      const otherTeamId = await createTeamForProject(app, SEEDED.nxp.projectId, [DEVELOPER_ID]);
+      await teamStatus.updateCapacity(actor, {
+        projectId: SEEDED.nxp.projectId,
+        iterationId: SEEDED.nxp.iterationFutureId,
+        teamId: otherTeamId,
+        userId: DEVELOPER_ID,
+        capacityHours: 12,
+      });
+      const view = await teamStatus.getTeamStatus(
+        actor,
+        SEEDED.nxp.projectId,
+        otherTeamId,
+        SEEDED.nxp.iterationFutureId,
+      );
+      expect(view.totals.capacityHours).toBe(12);
+    });
+
+    it('REFUSES a write whose team does not own the iteration, as the read does', async () => {
+      // The asymmetry this closes: the write used to accept the pairing the read refuses, so the row
+      // landed in `member_capacity` where no screen could ever surface it.
+      await expect(
+        teamStatus.updateCapacity(actor, {
+          projectId: SEEDED.nxp.projectId,
+          iterationId: SEEDED.nxp.iterationCurrentId,
+          teamId: SEEDED.nxp.teamBetaId,
+          userId: DEVELOPER_ID,
+          capacityHours: 8,
+        }),
+      ).rejects.toThrow(/another team/i);
+    });
+  });
 });

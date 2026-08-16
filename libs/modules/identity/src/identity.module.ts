@@ -32,7 +32,7 @@ import type {
 } from '@qnsc-vn/identity';
 import { AppConfigService, BFF_SESSION_RESOLVER } from '@platform';
 import { AccessModule, AccessService } from '@modules/access';
-import { WorkspaceModule, WorkspaceService } from '@modules/workspace';
+import { WorkspaceModule, WorkspaceService, USER_ACCESS_REVOKER } from '@modules/workspace';
 import { AuditService } from '@modules/audit';
 import { AttachmentsModule } from '@modules/attachments';
 import { IdentityController } from './interface/http/identity.controller';
@@ -45,6 +45,7 @@ import { SsoConnectionDrizzleRepository } from './infrastructure/persistence/sso
 import { SecretsManagerSecretResolver } from './infrastructure/secrets-manager-secret-resolver';
 import { RallyClaimsProvider } from './application/claims.provider';
 import { DrizzleTransactionRunner } from './application/transaction-runner';
+import { UserAccessRevokerService } from './application/user-access-revoker.service';
 
 /**
  * Rally's identity module. The refresh-rotation auth engine, Entra token
@@ -123,6 +124,18 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
     { provide: CLAIMS_PROVIDER, useClass: RallyClaimsProvider },
     { provide: TRANSACTION_RUNNER, useClass: DrizzleTransactionRunner },
 
+    /**
+     * The one PORT THIS MODULE IMPLEMENTS FOR ANOTHER, rather than consuming — declared in
+     * `@modules/workspace` and bound here (see `IUserAccessRevoker`). Suspending or removing a
+     * member is a workspace decision; ending their session is an identity mechanism, and it must not
+     * be a second implementation of one.
+     *
+     * `WorkspaceService` resolves it through this module's `@Global()` export, which is what keeps
+     * the module graph acyclic — `IdentityModule` already imports `WorkspaceModule` above.
+     */
+    UserAccessRevokerService,
+    { provide: USER_ACCESS_REVOKER, useExisting: UserAccessRevokerService },
+
     {
       provide: AUTH_SERVICE_OPTIONS,
       inject: [AppConfigService],
@@ -160,6 +173,6 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
       }),
     },
   ],
-  exports: [AuthService, BFF_SESSION_RESOLVER, SECRET_RESOLVER],
+  exports: [AuthService, BFF_SESSION_RESOLVER, SECRET_RESOLVER, USER_ACCESS_REVOKER],
 })
 export class IdentityModule {}

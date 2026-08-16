@@ -20,6 +20,8 @@
     "typeLabel": "Type",
     "nameLabel": "Release name",
     "themeLabel": "Theme",
+    "startDateRequired": "Start Date is required",
+    "releaseDateRequired": "Release Date is required",
     "startDateLabel": "Start Date",
     "releaseDateLabel": "Release Date",
     "statusLabel": "Status",

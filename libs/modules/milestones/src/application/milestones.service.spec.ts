@@ -929,4 +929,88 @@ describe('MilestonesService', () => {
       await expect(service.getMilestoneReleases(actor, 'ms-1')).resolves.toEqual([]);
     });
   });
+  /**
+   * §5.2:134 — "Each artifact must be accessible to the current user", and the same question for a
+   * project being pulled into a milestone's scope.
+   *
+   * None of this was checked: the writes validated WORKSPACE residency and the milestone's project
+   * scope, never the caller's own access. So `milestone:edit` on one project was enough to link
+   * another project, attach its rows, and read their key/title/state/owner/points back through
+   * `GET /milestones/:id/artifacts/items` — a route gated on the FIRST project.
+   *
+   * Asserted at the service, deliberately: the checks live here, not in a decorator, so this is the
+   * layer that can see them. The route-level half (`PUT /work-items/:id/milestones`, previously
+   * writable by an Editor) is `assertMayAssignMilestones`, also a service call — see below.
+   */
+  describe('the caller must be able to see what they link (§5.2:134)', () => {
+    const resolveAs = (work: unknown[], portfolio: unknown[]) => {
+      db.select.mockReturnValueOnce(makeChain(work)).mockReturnValueOnce(makeChain(portfolio));
+    };
+
+    it('REFUSES an artifact whose own project the caller cannot read', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      resolveAs([{ id: 'wi-9', projectId: 'proj-2', teamId: null, type: 'story' }], []);
+      access.assertProjectPermission.mockRejectedValueOnce(new Error('denied'));
+
+      await expect(service.setMilestoneArtifacts(actor, 'ms-1', ['wi-9'])).rejects.toThrow(
+        'denied',
+      );
+      expect(repo.setArtifactLinks).not.toHaveBeenCalled();
+    });
+
+    it('asks per TABLE — work_item:view for a Story, portfolio:view for a Feature', async () => {
+      // Not one question for both: `work_item:view` is an Editor code and `portfolio:view` is not
+      // (§3.2:82 hides Portfolio from an Editor), so a single code would over-refuse the Story or
+      // under-refuse the Feature. The codes match those surfaces' own read gates.
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      resolveAs(
+        [{ id: 'wi-1', projectId: 'proj-1', teamId: null, type: 'story' }],
+        [{ id: 'pi-1', projectId: 'proj-1', teamId: null, type: 'feature' }],
+      );
+
+      await service.setMilestoneArtifacts(actor, 'ms-1', ['wi-1', 'pi-1']);
+
+      const codes = access.assertProjectPermission.mock.calls.map((c) => String(c[2]));
+      expect(codes).toContain('work_item:view');
+      expect(codes).toContain('portfolio:view');
+    });
+
+    it('REFUSES widening a milestone into a project the caller cannot read', async () => {
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      // Workspace residency passes — the point is that residency alone was the ONLY check.
+      db.select.mockReturnValue(makeChain([{ id: 'proj-2' }]));
+      access.assertProjectPermission.mockRejectedValueOnce(new Error('denied'));
+
+      await expect(service.setMilestoneProjects(actor, 'ms-1', ['proj-2'])).rejects.toThrow(
+        'denied',
+      );
+      expect(repo.setProjectLinks).not.toHaveBeenCalled();
+    });
+
+    it('does not re-ask for projects the milestone ALREADY reaches', async () => {
+      // A milestone may legitimately span projects (FR-008 §43, §70/§74, Q06 §149). The rule is "you
+      // may only WIDEN it into projects you can reach", so an existing link is not re-judged — that
+      // would make a milestone uneditable by anyone who has since lost access to one of its projects.
+      repo.findById.mockResolvedValue(mockMilestone({ projectId: 'proj-1' }));
+      repo.getProjectIds.mockResolvedValue(['proj-2']);
+      db.select.mockReturnValue(makeChain([{ id: 'proj-2' }]));
+
+      await service.setMilestoneProjects(actor, 'ms-1', ['proj-2']);
+
+      const asked = access.assertProjectPermission.mock.calls.map((c) => String(c[1]));
+      expect(asked).not.toContain('proj-2');
+    });
+
+    it('assertMayAssignMilestones asks for milestone:view — the code §3.2:80 withholds from an Editor', async () => {
+      // The other half of the row: `PUT /work-items/:id/milestones` carried only `work_item:edit`,
+      // which an Editor holds, while §3.2:80 puts "Releases AND Milestones" Hidden for them. The
+      // Release half was already refused this way (`assertMayAssignRelease`); this is its mirror.
+      await service.assertMayAssignMilestones(actor, 'proj-1');
+      expect(access.assertProjectPermission).toHaveBeenCalledWith(
+        actor,
+        'proj-1',
+        'milestone:view',
+      );
+    });
+  });
 });

@@ -107,9 +107,15 @@ export class CollaborationService {
     // Work items only: the notification fans out to watchers and the assignee, and a
     // portfolio item has neither yet. Silently skipping is right — the alternative is a
     // notification path that resolves nobody and logs a warning on every comment.
+    //
+    // `comment.id` is threaded through because it is the mention notification's EVENT identity
+    // (`P4-NOTIF-FR-021` — idempotent per event-recipient pair). Without it the fan-out keyed on the
+    // work item, so a second @-mention of the same person in a LATER Note produced nothing, ever.
+    // The persisted id is used rather than a fresh value so re-running one Note's fan-out still
+    // de-dupes; see `emitWorkItemNotification`'s docblock for the retry-safety property.
     if (ref.entityType === 'work_item') {
       await this.workItemsService
-        .notifyCommentAdded(actor, ref.entityId, mentionedUserIds)
+        .notifyCommentAdded(actor, ref.entityId, comment.id, mentionedUserIds)
         .catch((err: unknown) =>
           this.logger.warn(
             { err, commentId: comment.id, workItemId: ref.entityId },

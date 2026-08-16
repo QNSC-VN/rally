@@ -19,15 +19,6 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
     return (rows[0] as Workspace | undefined) ?? null;
   }
 
-  async findBySlug(slug: string): Promise<Workspace | null> {
-    const rows = await this.db
-      .select()
-      .from(workspaces)
-      .where(and(eq(workspaces.slug, slug), isNull(workspaces.deletedAt)))
-      .limit(1);
-    return (rows[0] as Workspace | undefined) ?? null;
-  }
-
   async listForUser(
     userId: string,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
@@ -103,12 +94,5 @@ export class WorkspaceDrizzleRepository implements IWorkspaceRepository {
       .where(eq(workspaces.id, id))
       .returning();
     return rows[0] as Workspace;
-  }
-
-  async softDelete(id: string, tx?: DbExecutor): Promise<void> {
-    await (tx ?? this.db)
-      .update(workspaces)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(workspaces.id, id));
   }
 }

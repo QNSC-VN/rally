@@ -33,12 +33,22 @@ export function CreateReleaseModal({
   const [status, setState] = useState<ReleaseStatus>('planning')
   // Per-field validation errors render under their own field; `form` is a
   // modal-level error (server/submit failures not tied to one input).
-  const [errors, setErrors] = useState<{ name?: string; releaseDate?: string; form?: string }>({})
+  const [errors, setErrors] = useState<{
+    name?: string
+    startDate?: string
+    releaseDate?: string
+    form?: string
+  }>({})
   const create = useCreateRelease()
 
   async function submit(goToDetails?: boolean) {
     const next: typeof errors = {}
     if (!name.trim()) next.name = t('create.nameRequired')
+    // Both dates are REQUIRED — `P3-REL-FR-021`, and §6.1 `:144`/`:145` mark each `Required`. The
+    // server enforces it now (`CreateReleaseSchema`), so without these two checks a blank submit
+    // would be a 400 the form could not explain.
+    if (!startDate) next.startDate = t('create.startDateRequired')
+    if (!releaseDate) next.releaseDate = t('create.releaseDateRequired')
     if (startDate && releaseDate && releaseDate < startDate)
       next.releaseDate = t('create.dateOrder')
     if (Object.keys(next).length > 0) {
@@ -52,8 +62,8 @@ export function CreateReleaseModal({
         name: name.trim(),
         description: description.trim() || undefined,
         theme: theme.trim() || undefined,
-        startDate: startDate || undefined,
-        releaseDate: releaseDate || undefined,
+        startDate,
+        releaseDate,
         state: status,
       })
       notify.success(t('create.created', { name: name.trim() }))
@@ -96,7 +106,12 @@ export function CreateReleaseModal({
         </div>
 
         <div className="flex gap-3">
-          <FormField label={t('create.startDateLabel')} className="flex-1">
+          <FormField
+            label={t('create.startDateLabel')}
+            className="flex-1"
+            required
+            error={errors.startDate}
+          >
             <DateField
               variant="field"
               value={startDate || null}
@@ -107,6 +122,7 @@ export function CreateReleaseModal({
           <FormField
             label={t('create.releaseDateLabel')}
             className="flex-1"
+            required
             error={errors.releaseDate}
           >
             <DateField
@@ -148,7 +164,7 @@ export function CreateReleaseModal({
         <Button
           variant="secondary"
           type="button"
-          disabled={create.isPending || !name.trim()}
+          disabled={create.isPending || !name.trim() || !startDate || !releaseDate}
           onClick={() => {
             void submit(true)
           }}
@@ -157,7 +173,7 @@ export function CreateReleaseModal({
         </Button>
         <Button
           type="button"
-          disabled={create.isPending || !name.trim()}
+          disabled={create.isPending || !name.trim() || !startDate || !releaseDate}
           onClick={() => {
             void submit(false)
           }}

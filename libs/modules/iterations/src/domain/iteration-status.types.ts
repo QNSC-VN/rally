@@ -55,6 +55,13 @@ export interface IterationStatusItem {
   assigneeId: string | null;
   /** work_items.dev_owner_id — Rally "Dev Owner" (distinct from Owner/assignee). */
   devOwnerId: string | null;
+  /**
+   * `work_items.team_id` — the item's OWN team, not `iterations.team_id` and not a coalesce of the
+   * two. The Owner rule (`Phase 2/03_Iteration_Status/SRS.md:435`, = Backlog AC-16) is judged against
+   * the Work Item Team, so the Owner/Dev Owner pickers narrow their roster on this value. Null is the
+   * `No team` case and means `Unassigned` is the only legal owner.
+   */
+  teamId: string | null;
   rank: string;
   /** The linked Feature's id — the Feature column links to portfolio detail, not
    * to `/item/:key`: a Feature is a portfolio item, so no work-item key resolves it. */

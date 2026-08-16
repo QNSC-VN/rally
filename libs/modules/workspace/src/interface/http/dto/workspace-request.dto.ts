@@ -3,20 +3,12 @@ import { createZodDto } from 'nestjs-zod';
 import { PROJECT_ACCESS_LEVEL } from '@shared-kernel';
 import { workspaceMemberStatusEnum } from '../../../../../../../db/schema/enums';
 
-// ── Create Workspace ─────────────────────────────────────────────────────────
-
-export const CreateWorkspaceSchema = z.object({
-  slug: z
-    .string()
-    .min(2)
-    .max(63)
-    .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
-  name: z.string().min(1).max(255).trim(),
-  description: z.string().max(1000).trim().optional(),
-  avatarUrl: z.url().optional(),
-});
-
-export class CreateWorkspaceDto extends createZodDto(CreateWorkspaceSchema) {}
+// ── Create Workspace: NO SCHEMA, because there is no route ───────────────────
+//
+// `CreateWorkspaceSchema` / `CreateWorkspaceDto` are DELETED with `POST /workspaces`
+// (COMPANY-FR-010, §281, AC-8 — see the note in `workspace.controller.ts`). A request contract for
+// a route that must not exist is how the route comes back: it reads as an intentional, validated
+// input shape waiting for a handler.
 
 // ── Update Workspace ─────────────────────────────────────────────────────────
 

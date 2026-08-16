@@ -66,6 +66,39 @@ export class TeamStatusService {
       );
     }
 
+    /**
+     * §9.1's rule has TWO halves — "Validate that the Iteration belongs to the requested
+     * Project/**Team**" (`Phase 3/01_Team_Status/SRS.md:338`, restated by §9.4:426 "Iteration from
+     * another Project/Team" and TS-022:525) — and only the project half was checked. Team A paired
+     * with team B's iteration answered 200, and the screen then rendered team A's roster and Capacity
+     * under team B's timebox header: two teams' facts in one view, with nothing on screen saying so.
+     *
+     * A STRICT `iteration.teamId !== teamId` would be the wrong fix, and would break the ordinary
+     * case. `iterations.team_id` is optional in this product — the timebox says WHICH window, the work
+     * says whose it is — so a project may run one shared sprint every team works inside (195 of 206
+     * local iterations name no team). This is therefore the same predicate as
+     * `IterationDrizzleRepository.teamOrSharedTimebox` (`team_id IS NULL OR team_id = ?`), which is
+     * what the team-scoped iteration PICKER offers, and as
+     * `WorkItemsService.assertIterationAssignable`, which refuses the same pairing with the same code
+     * and the same exception. So this refuses exactly what the picker would never have offered, and
+     * nothing more.
+     *
+     * `teamId` null/undefined is All Teams: the scope is the project, every one of its iterations is
+     * in it, and there is nothing to disagree with — so no check at all, deliberately.
+     *
+     * On the STATUS: §9.4 asks for "400 or 403", and this repo has no 400 in its error vocabulary
+     * (`ValidationException` is 422, `PreconditionFailedException` 412). §9.1/§9.4 state ONE rule over
+     * Project *and* Team, so both halves answer identically — 412 with a stable code, matching the
+     * project half above, which predates this. Moving to the literal 400/403 must move both halves
+     * together.
+     */
+    if (teamId && iteration.teamId && iteration.teamId !== teamId) {
+      throw new PreconditionFailedException(
+        'ITERATION_TEAM_MISMATCH',
+        'Iteration belongs to another team',
+      );
+    }
+
     // Fetch raw task rows (type=task, assigned to this iteration).
     const rows = await this.repo.getTaskRows(iterationId, actor.workspaceId, teamId);
 
@@ -206,11 +239,11 @@ export class TeamStatusService {
 
     // Resolve teamId from iteration when not provided (e.g. "All teams" view)
     let teamId = input.teamId;
+    const iteration = await this.iterationsService.getIteration(
+      actor.workspaceId,
+      input.iterationId,
+    );
     if (!teamId) {
-      const iteration = await this.iterationsService.getIteration(
-        actor.workspaceId,
-        input.iterationId,
-      );
       teamId = iteration.teamId ?? undefined;
       if (!teamId) {
         throw new ValidationException(
@@ -218,6 +251,73 @@ export class TeamStatusService {
           'Cannot determine team for capacity update — iteration is not team-scoped and no teamId was provided',
         );
       }
+    }
+
+    /**
+     * The WRITE takes the same (team, iteration) pairing rule as the READ above, and it has to.
+     *
+     * Without it the two disagreed: `updateCapacity` accepted a team that does not own the iteration,
+     * while `getTeamStatus` refuses that pairing — so the row landed in `member_capacity` and then no
+     * screen could ever surface it. Worse than useless, because it is still summed by anything reading
+     * the table by (iteration, user) rather than by the pairing, and `member_capacity` is the Capacity
+     * denominator on Team Status AND on the Phase 6 Team Capacity report.
+     *
+     * Same predicate as the read (`teamOrSharedTimebox`): a SHARED, team-less iteration is legal for
+     * every team, which is the ordinary case here and the reason this is not a strict equality.
+     */
+    if (iteration.teamId && iteration.teamId !== teamId) {
+      throw new PreconditionFailedException(
+        'ITERATION_TEAM_MISMATCH',
+        'Iteration belongs to another team',
+      );
+    }
+
+    /**
+     * "Return validation error if user is not a member of the selected Team" (§9.2,
+     * `Phase 3/01_Team_Status/SRS.md:374`).
+     *
+     * Nothing checked it: the service validated `capacityHours < 0` and the repository inserted
+     * unconditionally, so ANY uuid could be given planned hours against any team's iteration — and
+     * that row is not cosmetic. It feeds the Team Status Capacity total AND the Phase 6 Team Capacity
+     * report, which are ONE population by contract (see CLAUDE.md and
+     * `test/e2e/team-status-agreement.e2e.spec.ts`), so a fabricated member inflated the denominator on
+     * both surfaces at once — under a member group Team Status refuses to NAME (GAP-P3-TS-008 keeps
+     * off-roster owners out of the roster), i.e. capacity with no visible owner.
+     *
+     * REUSES `getRosterMembers`, the read path's own roster query, rather than adding a second
+     * membership predicate. That is the point, not an economy: `projectTeamContext`'s rule is that the
+     * server must count exactly the population the picker offers, and here the picker IS this roster —
+     * the same call, with the same resolved team, that decides which member rows the screen renders an
+     * editable Capacity cell for. A separate query could drift from it.
+     *
+     * ARCHIVED TEAMS still accept the write. `getRosterMembers` filters `team_members.status`, the
+     * ROSTER ROW's own status, and never joins `teams` — so "archive Team does not delete the linked
+     * Work Item/Sprint history" (DB design §488) holds: an archived team keeps its hours and stays
+     * editable, exactly as Team Capacity keeps reporting its rows with `archived: true`. Read a
+     * `status` column twice: the team's status and its members' statuses are different columns, and
+     * only the second one is membership.
+     *
+     * ALL TEAMS is not a hole here, and needs no rule of its own. A capacity row is keyed on a team
+     * (`uq_member_capacity`), so there is no such thing as an All-Teams row to write: with no `teamId`
+     * the team is resolved from the iteration, and when the iteration is team-less too the write is
+     * already refused above (`TEAM_STATUS_TEAM_REQUIRED`) — it never reaches a state where membership
+     * is unknown and allowed. The consequence worth naming: under All Teams on a SHARED iteration the
+     * screen rosters PROJECT members and none of their Capacity cells can be written. That is the
+     * pre-existing `TEAM_STATUS_TEAM_REQUIRED` behaviour, not a narrowing added here.
+     *
+     * The `(project, team, iteration, user)` grain is untouched — a member of two teams is a member of
+     * both, so both of their legitimate rows still pass.
+     */
+    const roster = await this.repo.getRosterMembers({
+      workspaceId: actor.workspaceId,
+      projectId: input.projectId,
+      teamId,
+    });
+    if (!roster.some((member) => member.id === input.userId)) {
+      throw new ValidationException(
+        'TEAM_STATUS_USER_NOT_TEAM_MEMBER',
+        'User is not an active member of the selected team',
+      );
     }
 
     return this.repo.upsertCapacity({

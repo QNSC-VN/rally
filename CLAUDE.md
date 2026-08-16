@@ -776,6 +776,90 @@ e2e tests were built on it — constructing a read-only planner from a CUSTOM RO
 SRS had deleted. Read `product-docs` `origin/main` rather than a summary of it before building on an AC;
 the local checkout is a gap-audit branch and lags where the BA authors.
 
+## Ending someone's access is TWO writes, and one of them is not ours
+
+Suspending or removing a member used to write `workspace_members.status` and call
+`AccessService.invalidateUser` — which drops the cached PERMISSION resolution and nothing else. The
+session survived: the member kept a valid access token and a live refresh session and landed in the
+shell with zero effective permissions, which is not what AUTH-SSO-006 ("denied access even when
+identity-provider authentication succeeds"), AUTH-FR-013 or `Phase 0/03_Workspace/SRS.md:307` AC-5
+describe.
+
+- **`USER_ACCESS_REVOKER` is a PORT, and the direction is deliberate.** `IdentityModule` imports
+  `WorkspaceModule` (it binds `WorkspaceService` as its own `WORKSPACE_SERVICE` port), so the reverse
+  import would be a module cycle. Workspace DECLARES the port, identity IMPLEMENTS it, and identity
+  being `@Global` is what lets `WorkspaceService` resolve it with no import. A spec that constructs
+  `WorkspaceService` must provide the token or Nest fails to resolve the whole service.
+- **Revoke AFTER commit, like `invalidateUser`** — a revocation whose membership write then rolls back
+  logs someone out for nothing. Reinstating clears the denylist too (`restoreSessions`), or a member
+  reactivated a minute later would look locked out for the token's full TTL with nothing on screen.
+- **`identity.users.status` is the account-level gate and is written separately**, inside the
+  transaction, because it answers a different question: revocation ends the session they HAVE, this
+  decides whether they may obtain a new one. Before this, `updateStatus` had zero callers, so that
+  gate could never fire.
+
+## Workspace provisioning has NO route, and `@ApiExcludeEndpoint()` is not what removed it
+
+`POST /workspaces` and `DELETE /workspaces/:id` were live, and a Workspace Admin held
+`workspace:create`, `workspace:delete` and the `workspace:*` wildcard — so the DELETE could soft-delete
+the single tenant. The BA gives the MVP no workspace CRUD at all (`Phase 0/03_Workspace/SRS.md:98`
+`COMPANY-FR-010`, `:281`, `:310` AC-8), and the routes' own comments already said "system-only" while
+the decorators granted it.
+
+**The trap worth remembering: they carried `@ApiExcludeEndpoint()`.** That hides a route from Swagger
+and from the generated client — which is why removing them produced no codegen diff at all — but it
+does not stop the route being served. A route absent from the schema can still be called.
+
+Gone with them: the service methods, `findBySlug`/`softDelete` on the repository and its port, and
+their specs. `workspace:create`/`workspace:delete` stay in the catalogue, gating nothing, with the
+reason recorded there. The absence is pinned over HTTP for a Workspace ADMIN in
+`authz-cluster.e2e.spec.ts` — a 404 for a lesser principal is what a gate would produce and would
+prove nothing.
+
+## A notification's idempotency key must name the EVENT, not the item
+
+`FR-021` asks for idempotency per **event**-recipient pair. The key was
+`template:item:recipient:discriminator` with a discriminator that added nothing — assignments passed
+`item.assigneeId` (which IS the recipient) and mentions passed `workItemId` (already `item.id`) — so
+both collapsed to **(template, item, user)**. With `notification_outbox.idempotency_key` UNIQUE, an
+`onConflictDoNothing` insert, and `in_app_notifications.source_event_id` UNIQUE downstream, suppression
+was PERMANENT, not a window: re-assigning to someone who had held the item before notified them never
+again, and a second mention of the same person on the same item in a different comment produced
+nothing, ever.
+
+- **Mentions key on the COMMENT id**, threaded from `CollaborationService` — the mention's event
+  identity, and the one thing that distinguishes Note #5 from Note #1.
+- **Assignments key on the row's post-write `updatedAt`.** It is written once per update and is stable
+  inside the transaction the outbox insert shares, so a relay redelivery still dedupes while a later
+  re-assignment does not. `Date.now()` or a random id would defeat the property the key exists for —
+  do not "simplify" it that way.
+
+## Team Status: the (Team, Iteration) pairing is a rule on BOTH the read and the write
+
+Two gaps, one rule. `GET /team-status` validated the iteration's PROJECT and not its team, so team A
+paired with team B's iteration answered 200 and the screen rendered A's roster and Capacity under B's
+timebox header. And `updateCapacity` accepted a capacity row for any uuid — §9.2:374 requires a member
+of the selected team — which inflated the Capacity denominator on Team Status AND on the Phase 6 Team
+Capacity report, under a member group Team Status refuses to name.
+
+- **The pairing predicate is `teamOrSharedTimebox`, never a strict equality.** `iterations.team_id` is
+  optional here: a project may run one shared sprint every team works inside, and most iterations name
+  no team, so a strict `iteration.teamId === teamId` would refuse the ordinary case. The refusal admits
+  exactly what the picker would never have offered.
+- **The WRITE takes the same rule as the READ, and that asymmetry was itself the bug** — found by a
+  test, not by reading. A capacity row for a pairing the read refuses lands in `member_capacity` where
+  no screen can surface it, while still being summed by anything reading the table by (iteration, user).
+- **Membership reuses `getRosterMembers`, the read path's own roster query.** `projectTeamContext`'s
+  rule: the server must count exactly the population the picker offers — and here the picker IS that
+  roster.
+- **An archived team still accepts the write.** `getRosterMembers` filters `team_members.status`, the
+  ROSTER ROW's status, and never joins `teams`, so "archive Team does not delete the linked Work
+  Item/Sprint history" (DB design §488) holds. Read a `status` column twice.
+- Consequence for fixtures: a team created bare cannot be given capacity. `createTeamForProject` also
+  grants its roster `editor` on the linked project (RBE-06), so the user a fixture rosters must be one
+  whose access that cannot CHANGE — rostering the Editor or No Access principal breaks the role-matrix
+  and authz-cluster suites from another file.
+
 ## An invitation binds to an ADDRESS, and grants a real role
 
 Two independent faults on the one flow that onboards every user, both fixed together:

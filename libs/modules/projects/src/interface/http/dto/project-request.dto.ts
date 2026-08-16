@@ -39,11 +39,27 @@ export class UpdateProjectEstimationSettingsDto extends createZodDto(
 // ── Create Project ───────────────────────────────────────────────────────────
 
 export const CreateProjectSchema = z.object({
+  /**
+   * `1–10` characters of `A–Z`/`0–9`, and a digit may lead.
+   *
+   * The BA says so in three places, all agreeing: `Phase 0/04_Project/SRS.md:105` (`PRJ-FR-004`,
+   * "cho phép 1-10 ký tự A-Z/0-9"), `:318` ("Required, 1–10 uppercase A–Z/0–9 sau normalize") and
+   * `Phase 1/08_Manage_Projects_Teams_Users/SRS.md:110` ("1-10 uppercase letters/numbers").
+   *
+   * This was `.min(2)` with a letter-initial regex, so `X` and `1AB` were both 400s — two shapes the
+   * BA explicitly accepts, and `Phase 0/04:18` plus `PHASE0_DEVELOPMENT_TRACKING.md:163` record the
+   * 1-character rule as an accepted reconciliation TWICE. Nothing downstream depends on the letter:
+   * work item keys are minted from `workspace_item_counters` by TYPE (`US-1`, `TA-1`), never from the
+   * project key, so a numeric key cannot collide with an item key.
+   *
+   * TEAM keys are a different rule — `2–10`, letter-initial (`Phase 1/08:§8.2`) — so do not "unify"
+   * the two validators.
+   */
   key: z
     .string()
-    .min(2)
+    .min(1)
     .max(10)
-    .regex(/^[A-Za-z][A-Za-z0-9]*$/, 'Key must start with a letter and be alphanumeric'),
+    .regex(/^[A-Za-z0-9]+$/, 'Key must be letters and digits only'),
   name: z.string().trim().min(2).max(255),
   description: z.string().max(2000).trim().optional(),
   leadId: z.string().uuid().optional(),

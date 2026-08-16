@@ -64,6 +64,7 @@ export function StatusRow({
   selectedIterationId,
   canEdit,
   canOpenPortfolio,
+  canAssignMilestones,
   colStyles,
   dragEnabled,
   selected,
@@ -76,8 +77,8 @@ export function StatusRow({
   projectId: string
   /**
    * Keyed PROJECT-WIDE assignee feed — the shared picker shape (`OwnerSelectMember`), which permits
-   * null. It resolves an owner's NAME. What a picker may OFFER is the row's own Team's roster; see
-   * `ChildTaskRow` and the note on the two parent-row Owner cells below.
+   * null. It resolves an owner's NAME. What a picker may OFFER is the row's own Team's roster — see
+   * `rowOwnerOptions` below, and the same split inside `ChildTaskRow`.
    */
   memberMap: Map<string, OwnerSelectMember>
   milestoneOptions: readonly { id: string; name: string; milestoneKey?: string | null }[]
@@ -91,6 +92,15 @@ export function StatusRow({
    * on a grid the Editor owns; only the journey to a surface they cannot open is withheld.
    */
   canOpenPortfolio: boolean
+  /**
+   * `milestone:view` — whether this caller may DECIDE milestone membership.
+   * `Phase 4/02_Roles_Permissions/SRS.md:80` is one row for `Releases and Milestones` and marks it
+   * Hidden for an Editor, and `MilestonesService.assertMayAssignMilestones` now refuses the write, so
+   * an ungated cell would 403 on every toggle. False leaves the cell READ-ONLY rather than blank — the
+   * `canOpenPortfolio` treatment two fields up, for the same reason: which milestones an item is on is
+   * data on a grid the Editor owns; only the decision is withheld.
+   */
+  canAssignMilestones: boolean
   colStyles: Record<string, CSSProperties>
   dragEnabled: boolean
   selected: boolean
@@ -122,6 +132,29 @@ export function StatusRow({
   const isLoadingTasks = taskFeed.isLoading
 
   const membersList = useMemo(() => Array.from(memberMap.values()), [memberMap])
+
+  /**
+   * Owner / Dev Owner OPTIONS come from THIS ROW's own Team.
+   *
+   * `Phase 2/03_Iteration_Status/SRS.md:435` (= Backlog AC-16, `Phase 2/01_Backlog_Enhancement/
+   * SRS.md:336`): "Owner must be `Unassigned` or an active member of the Work Item Team; a `No team`
+   * Work Item allows only `Unassigned`." The row now carries `teamId` on the read-model, so the rule is
+   * answerable here — this cell used to offer the whole PROJECT while the server refused anyone outside
+   * the team (`ASSIGNEE_NOT_TEAM_MEMBER`), i.e. it offered people the write would reject.
+   *
+   * The iteration's team must NOT be used for this. `iterations.team_id` is the FALLBACK tier of
+   * `coalesce(item.team_id, iteration.team_id)` — a rule for measuring hours, not for judging an owner
+   * — and it is NULL on most iterations (a shared sprint every team works inside), so narrowing by the
+   * selected iteration would collapse every picker on this screen to `Unassigned`.
+   *
+   * Per ROW, not once for the grid: `work_items.team_id` is per item. React Query dedupes by key, so
+   * rows sharing a team make ONE request, and a team-less row never fetches — `useTeamOwnerOptions`
+   * returns `[]` for that case by design, which is the rule's second clause. `ownerName` /
+   * `devOwnerName` above deliberately stay resolved from the PROJECT-WIDE `memberMap`: an owner who has
+   * left the team must still RENDER (`ownerSelectOptions` takes that label as its third argument), or a
+   * genuinely-owned row would read `Unassigned`.
+   */
+  const rowOwnerOptions = useTeamOwnerOptions(projectId, item.teamId).data ?? []
 
   const {
     setNodeRef,
@@ -460,26 +493,10 @@ export function StatusRow({
           {item.actual ?? '--'}
         </div>
 
-        {/* Owner — STILL project-wide, and that is a known gap, not a choice.
-
-            `Phase 2/03_Iteration_Status/SRS.md:435` wants the WORK ITEM TEAM's active members here,
-            the way `ChildTaskRow` below and the Backlog grid now do. It cannot be done from this
-            component yet: `IterationStatusItemSchema`
-            (`libs/modules/iterations/src/interface/http/dto/iteration-status-response.dto.ts`) does not
-            project `teamId`, so the row does not know its own team.
-
-            The two wrong ways to close it, recorded so neither gets tried:
-              • narrowing by the SELECTED ITERATION's team — `iterations.team_id` is the FALLBACK tier
-                of `coalesce(item.team_id, iteration.team_id)`, and it is NULL on 195 of 206 local
-                iterations, so a shared sprint would collapse every Owner picker on this screen to
-                `Unassigned` only;
-              • falling through to the project-wide feed when a team cannot be resolved — the exact
-                defect `useTeamOwnerOptions`' docblock exists to make unreachable.
-
-            What it needs is `teamId` on that DTO plus its projection
-            (`iteration-status.drizzle-repository.ts` ~:257/:301) — a module outside this change's
-            ownership. The SERVER already refuses a bad pair (`ASSIGNEE_NOT_TEAM_MEMBER`), so the cost
-            today is an option that fails on selection rather than a silently accepted write. */}
+        {/* Owner — the ROW's own Team's active members (`rowOwnerOptions`, see its docblock above).
+            The row carries `teamId` now, so the picker offers exactly what the server accepts; the
+            SELECTED ITERATION's team is deliberately never used, because a shared sprint names no team
+            and would collapse every picker here to `Unassigned`. */}
         <div
           style={colStyles.owner}
           className="overflow-hidden px-0"
@@ -488,7 +505,7 @@ export function StatusRow({
           <OwnerSelectCell
             ownerName={ownerName}
             assigneeId={item.assigneeId}
-            members={membersList}
+            members={rowOwnerOptions}
             canEdit={canEdit}
             onChange={handleOwnerChange}
           />
@@ -508,17 +525,17 @@ export function StatusRow({
           <MilestoneSelectCell
             selected={milestones}
             options={milestoneOptions}
-            canEdit={canEdit}
+            canEdit={canEdit && canAssignMilestones}
             saving={setMilestones.isPending}
             onCommit={handleMilestonesChange}
           />
         </div>
 
-        {/* Dev Owner — editable assignee (distinct from Owner). Project-wide for the same reason as
-            the Owner cell above, and it closes with the same one-line DTO addition. Note the BA's
-            sentence names "Owner"; Dev Owner is treated the same way here because it is the same
-            person field on the same row, and the server's rule is deliberately scoped to `assigneeId`
-            alone until the BA rules on `devOwnerId`. */}
+        {/* Dev Owner — editable assignee (distinct from Owner), narrowed to the same row Team roster.
+            Note the BA's sentence names "Owner"; Dev Owner is treated the same way here because it is
+            the same person field on the same row (and `ChildTaskRow` below already did), while the
+            server's refusal stays deliberately scoped to `assigneeId` alone until the BA rules on
+            `devOwnerId` — so this narrowing is a declared reading, not an enforced rule. */}
         <div
           style={colStyles.devOwner}
           className="overflow-hidden px-0"
@@ -527,7 +544,7 @@ export function StatusRow({
           <OwnerSelectCell
             ownerName={devOwnerName}
             assigneeId={item.devOwnerId}
-            members={membersList}
+            members={rowOwnerOptions}
             canEdit={canEdit}
             onChange={handleDevOwnerChange}
             ariaLabel="Dev owner"

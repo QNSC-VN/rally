@@ -10,6 +10,7 @@ import type { JwtPayload, CursorPayload, PagedResult, DrizzleDB } from '@platfor
 import { and, asc, desc, eq, isNull, sql, inArray, type Column, type SQL } from 'drizzle-orm';
 import { ProjectsService } from '@modules/projects';
 import { AccessService } from '@modules/access';
+import { PERMISSION, type ProjectPermission } from '@shared-kernel';
 import {
   workItems,
   portfolioItems,
@@ -278,6 +279,91 @@ export class MilestonesService {
     }
   }
 
+  /**
+   * May this caller decide MILESTONE membership for work that lives in `projectId`?
+   *
+   * `Phase 4/02_Roles_Permissions/SRS.md:80` is ONE row covering both halves of the Timeboxes
+   * surface — `| Releases and Milestones | Create/View/Edit/Delete | Create/View/Edit/Delete |
+   * Hidden |` — and `Phase 3/03_Milestones/SRS.md:138` restates it for this exact write ("Editor or
+   * unassigned-user mutation must return 403"). The RELEASE half of that row is enforced by
+   * `WorkItemsService.assertMayAssignRelease`; this is the MILESTONE half, and it was missing, so
+   * one row had two verdicts.
+   *
+   * The ROUTES cannot express it. `PUT /work-items/:id/milestones` is gated on `work_item:edit` and
+   * `PATCH /portfolio-items/:id` on `portfolio:edit` — codes the caller legitimately holds for every
+   * other field of the same item — so the rule is FIELD-level. It lives HERE rather than at each
+   * call site because `milestone_artifacts` has three writers and this file has already recorded
+   * what happens when one of them enforces less than the others (see
+   * {@link assertArtifactsInMilestoneScope}).
+   *
+   * `milestone:view` is the code, and it is not a new one: `ACCESS_LEVEL_PERMISSIONS` gives it to
+   * `admin` and withholds it from `editor`, which is exactly the §3.2 line, and the authority to put
+   * work on a milestone is the authority to see milestones at all. Same argument
+   * `assertMayAssignRelease` makes for `release:view`.
+   *
+   * CLEARING is gated too, for the reason the release side gives: removing an item from a milestone
+   * decides its membership as much as adding it. Callers must therefore reach this on an EMPTY set
+   * as well, which is why it is separate from {@link assertArtifactsAssignable} — that one loops
+   * over the requested milestones and is a no-op when there are none.
+   */
+  async assertMayAssignMilestones(actor: JwtPayload, projectId: string): Promise<void> {
+    await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.MILESTONE_VIEW);
+  }
+
+  /**
+   * Assert the caller holds `permission` on every one of `projectIds`.
+   *
+   * `assertProjectPermission` rather than `listReadableProjectIds`, deliberately: the ids here are
+   * already CONCRETE (they came off the rows being written), so the question is "may this caller
+   * reach this project", not "which projects may they reach". That also means there is no
+   * `null`-means-unrestricted sentinel to re-derive at a second call site — the one place that
+   * distinction lives stays `AccessService` — and the refusal keeps the established
+   * `PROJECT_PERMISSION_DENIED` code, so no new error code reaches the client. Cost is one cached
+   * `effectiveAssignments` read for the whole loop, not one query per project.
+   */
+  private async assertProjectsAccessible(
+    actor: JwtPayload,
+    projectIds: Iterable<string>,
+    permission: ProjectPermission,
+  ): Promise<void> {
+    for (const projectId of new Set(projectIds)) {
+      await this.accessService.assertProjectPermission(actor, projectId, permission);
+    }
+  }
+
+  /**
+   * The caller must be able to SEE every project they are pulling into a milestone's scope.
+   *
+   * A milestone legitimately spans projects (FR-008 at §43, §70/§74, Q06 at §149), so this is not
+   * "a milestone is single-project" — it is "you may only widen it into projects you can already
+   * reach". Without it, `milestone:edit` on project A was enough to link project B, which put B's
+   * items inside `assertArtifactsInMilestoneScope`'s accepted population and made them readable
+   * through `GET /milestones/:id/artifacts/items` — a route gated `milestone:view` on A.
+   *
+   * `project:view` is the code, not something stronger. The rows a linked project can expose are
+   * each separately gated: attaching one of its artifacts now needs `work_item:view` /
+   * `portfolio:view` on that project (see {@link setMilestoneArtifacts}), and the dashboard only
+   * ever renders ATTACHED artifacts. Requiring `milestone:view` on the far project instead would
+   * make a cross-project milestone reachable only by a Workspace Admin, which FR-008 does not say.
+   *
+   * ADDITIONS only. Removing a project the caller cannot see is allowed, or a milestone widened by
+   * someone else would be permanently un-narrowable by the admin of its own project. The milestone's
+   * OWN project is never an addition — the route's `milestone:edit` gate already decided it.
+   */
+  private async assertProjectLinksAccessible(
+    actor: JwtPayload,
+    milestoneProjectId: string,
+    currentProjectIds: readonly string[],
+    requestedProjectIds: readonly string[],
+  ): Promise<void> {
+    const already = new Set<string>([milestoneProjectId, ...currentProjectIds]);
+    await this.assertProjectsAccessible(
+      actor,
+      requestedProjectIds.filter((id) => !already.has(id)),
+      PERMISSION.PROJECT_VIEW,
+    );
+  }
+
   // ── Recalculate target dates from linked releases ──────────────────────
 
   /**
@@ -337,6 +423,11 @@ export class MilestonesService {
       teamIds: opts.teamIds,
       releaseIds: opts.releaseIds,
     });
+
+    // Every additional project is an ADDITION here — see `assertProjectLinksAccessible`. The rule is
+    // on all three writes that can reach `milestone_projects` rather than on the obvious one:
+    // CLAUDE.md's "a rule stated as an INVARIANT cannot be implemented as one write's hook".
+    await this.assertProjectLinksAccessible(actor, projectId, [], opts.projectIds ?? []);
 
     const releaseIds = opts.releaseIds ?? [];
 
@@ -571,6 +662,12 @@ export class MilestonesService {
     }
     if (input.projectIds !== undefined) {
       await this.assertLinksInWorkspace(actor.workspaceId, { projectIds: input.projectIds });
+      await this.assertProjectLinksAccessible(
+        actor,
+        milestone.projectId,
+        await this.milestoneRepo.getProjectIds(id),
+        input.projectIds,
+      );
       await this.milestoneRepo.setProjectLinks(id, input.projectIds);
     }
     if (input.teamIds !== undefined) {
@@ -915,6 +1012,29 @@ export class MilestonesService {
           'One or more artifacts do not belong to this milestone’s project scope',
         );
       }
+      /**
+       * §134: "Each artifact must be accessible to the current user." A SEPARATE condition from
+       * §135's Project/Team scope, which is the milestone's own declared scope and says nothing
+       * about the caller — this write resolved ids against the WORKSPACE and then checked only that
+       * scope, so `milestone:edit` on the milestone's project was authority over artifacts in every
+       * project the milestone reaches, including ones the caller holds nothing on.
+       *
+       * Per TABLE, because the two halves are not one audience: `work_item:view` is an Editor code
+       * and `portfolio:view` is not (§3.2:82 hides Portfolio from an Editor entirely), so asking one
+       * question for both would either over-refuse a Story or under-refuse a Feature. The read gates
+       * on those surfaces are the same two codes, which is the property that matters — an artifact
+       * is "accessible" here exactly when its own list would serve it.
+       */
+      await this.assertProjectsAccessible(
+        actor,
+        workRows.map((r) => r.projectId),
+        PERMISSION.WORK_ITEM_VIEW,
+      );
+      await this.assertProjectsAccessible(
+        actor,
+        portfolioRows.map((r) => r.projectId),
+        PERMISSION.PORTFOLIO_VIEW,
+      );
       // Project, artifact TYPE and Team scope are all decided in ONE place, because the work-item
       // and portfolio-item sides write the same rows — see assertArtifactsInMilestoneScope.
       assertArtifactsInMilestoneScope(milestone, resolved);
@@ -971,6 +1091,12 @@ export class MilestonesService {
     const milestone = await this.getMilestone(actor.workspaceId, milestoneId);
     await this.projectsService.assertProjectWritable(actor.workspaceId, milestone.projectId);
     await this.assertLinksInWorkspace(actor.workspaceId, { projectIds });
+    await this.assertProjectLinksAccessible(
+      actor,
+      milestone.projectId,
+      await this.milestoneRepo.getProjectIds(milestoneId),
+      projectIds,
+    );
     await this.milestoneRepo.setProjectLinks(milestoneId, projectIds);
     return this.milestoneRepo.getProjectIds(milestoneId);
   }

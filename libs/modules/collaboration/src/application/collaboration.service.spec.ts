@@ -130,6 +130,24 @@ describe('CollaborationService — project-scoped comment writes', () => {
       await service.createComment(mockActor, PORTFOLIO_REF, 'hi');
       expect(workItemsService.notifyCommentAdded).not.toHaveBeenCalled();
     });
+
+    /**
+     * The PERSISTED comment's id, not the work item and not a fresh value: it is the mention
+     * notification's event identity (`P4-NOTIF-FR-021`). Keyed on the item instead, a second mention
+     * of the same person in a later Note produced no notification at all, forever — the outbox
+     * idempotency key is UNIQUE and inserted `onConflictDoNothing`.
+     */
+    it('threads the created comment id through as the mention event identity (FR-021)', async () => {
+      const comment = await service.createComment(mockActor, WORK_ITEM_REF, 'hi', undefined, [
+        'user-2',
+      ]);
+      expect(workItemsService.notifyCommentAdded).toHaveBeenCalledWith(
+        mockActor,
+        'wi-1',
+        comment.id,
+        ['user-2'],
+      );
+    });
   });
 
   describe('updateComment', () => {

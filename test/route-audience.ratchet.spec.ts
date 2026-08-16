@@ -440,8 +440,6 @@ const AUDIENCE: Record<string, Audience> = {
   // `listMemberOptions` carries no code and is scoped in the service (see `roster-split-gate`).
   'WorkspaceController.addMember': 'workspace-admin',
   'WorkspaceController.cancelInvitation': 'workspace-admin',
-  'WorkspaceController.createWorkspace': 'workspace-admin',
-  'WorkspaceController.deleteWorkspace': 'workspace-admin',
   'WorkspaceController.getSettings': 'workspace-admin',
   'WorkspaceController.inviteMember': 'workspace-admin',
   'WorkspaceController.listInvitations': 'workspace-admin',

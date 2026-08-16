@@ -598,6 +598,9 @@ export function IterationStatusPage() {
               // §3.2:85 hides Portfolio Items from an Editor, so the Feature cell must name the
               // Feature without offering a journey into Access Denied.
               canOpenPortfolio={can(PERMISSION.PORTFOLIO_VIEW)}
+              // §3.2:80 is ONE row for `Releases and Milestones` and marks it Hidden for an Editor,
+              // which the server now enforces on the write — see the prop's docblock.
+              canAssignMilestones={can(PERMISSION.MILESTONE_VIEW)}
               colStyles={colStyles}
               dragEnabled={!sortCol}
               selected={selected}

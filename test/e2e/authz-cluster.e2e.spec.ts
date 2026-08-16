@@ -530,4 +530,37 @@ describe('authorization cluster (e2e)', () => {
     const profile = await get(`/workspaces/${ws}/members-with-profile`, admin);
     expect(profile.statusCode, 'the administrative roster survives').toBe(200);
   });
+  /**
+   * Workspace CRUD is GONE, and this asserts the absence rather than trusting it.
+   *
+   * The BA says there is none, three times: `Phase 0/03_Workspace/SRS.md:98` (`COMPANY-FR-010`, "Không
+   * có endpoint/UI self-service tạo, archive hoặc switch Workspace trong MVP"), `:281` ("Không expose
+   * `POST /workspaces`…") and `:310` AC-8 ("Không có Workspace CRUD endpoint hoặc UI trong MVP build").
+   *
+   * Both routes were live and a Workspace Admin held `workspace:create` and `workspace:delete`
+   * explicitly, plus the `workspace:*` wildcard — so the DELETE could soft-delete the single tenant.
+   * `@ApiExcludeEndpoint()` hid them from Swagger, which is why they read as absent in review and were
+   * not: hiding a route from the schema is not the same as not serving it.
+   *
+   * Asserted for a WORKSPACE ADMIN, like the member-list deletion above: a 404 for a lesser principal
+   * is what a gate would produce and would prove nothing. The one caller who could reach these must
+   * also get nothing.
+   */
+  it('has no workspace create or delete route left to reach', async () => {
+    const admin = await tokenFor('admin@qnsc.dev');
+
+    const created = await post('/workspaces', admin, { slug: 'nope', name: 'Nope' });
+    expect(created.statusCode, 'POST /workspaces must not exist').toBe(404);
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/workspaces/${WORKSPACE_ID}`,
+      headers: { authorization: `Bearer ${admin}` },
+    });
+    expect(deleted.statusCode, 'DELETE /workspaces/:id must not exist').toBe(404);
+
+    // The workspace itself is still readable and editable, so this removed provisioning, not function.
+    const read = await get(`/workspaces/${WORKSPACE_ID}`, admin);
+    expect(read.statusCode, 'reading the workspace survives').toBe(200);
+  });
 });

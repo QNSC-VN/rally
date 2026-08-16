@@ -33,6 +33,15 @@ export const IterationStatusItemSchema = z.object({
   taskDone: z.number().int(),
   assigneeId: z.string().uuid().nullable(),
   devOwnerId: z.string().uuid().nullable(),
+  /**
+   * The WORK ITEM's OWN team — never the iteration's.
+   *
+   * `Phase 2/03_Iteration_Status/SRS.md:435` judges Owner against the Work Item Team ("Owner must be
+   * `Unassigned` or an active member of the Work Item Team; a `No team` Work Item allows only
+   * `Unassigned`"), which is the rule `ASSIGNEE_NOT_TEAM_MEMBER` enforces on the write. The inline
+   * Owner picker cannot offer that roster without knowing the row's team, so it travels on the row.
+   */
+  teamId: z.string().uuid().nullable(),
   rank: z.string(),
   featureId: z.string().uuid().nullable(),
   featureKey: z.string().nullable(),

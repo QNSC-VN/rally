@@ -85,11 +85,12 @@ export class NotificationsService {
    * `POST /notifications/:id/read` is the SEVENTH recipient seam, and the only one that WRITES.
    *
    * It used to check recipient + workspace alone, so the unread state of a notification the reader
-   * is not allowed to see could be consumed by id alone. That state is reachable: the write side's
-   * own recipient filter (`filterByProjectAccess`, FR-019) is applied to mentions and NOT to
-   * assignments, so a notification can exist for a principal with no `work_item:view` on the item's
-   * project. The consequence is the one `markAllRead`'s repository docblock refuses in the same
-   * words — the row comes back already-read if access is later granted, so the unread badge the
+   * is not allowed to see could be consumed by id alone. That state is reachable even though the
+   * write side filters BOTH templates: `WorkItemsService.filterByProjectAccess` (FR-019) is applied
+   * to mentions AND to assignments, but only at fan-out time — access is REVOCABLE afterwards, and a
+   * stored row keeps naming the item. So a notification can end up held by a principal who no longer
+   * has `work_item:view` on its project. The consequence is the one `markAllRead`'s repository
+   * docblock refuses in the same words — the row comes back already-read if access is later granted, so the unread badge the
    * reader would then be owed is gone for good. §7 :200 governs this write for the same reason it
    * governs the six reads.
    *
@@ -147,9 +148,16 @@ export class NotificationsService {
    * The SSE live push is the one read that does not go through a list query — the worker relay
    * publishes to Valkey and the stream forwards the payload — so without this check the badge, the
    * page and the replay would apply §7's access filter and the real-time toast would not. That is
-   * reachable: the write side's own recipient filter (`filterByProjectAccess`, FR-019) is applied to
-   * mentions and not to assignments, so a notification CAN be created for a principal with no
-   * `work_item:view` on the item's project.
+   * reachable: `WorkItemsService.filterByProjectAccess` (FR-019) does gate both templates — mentions
+   * and assignments alike, pinned by `test/e2e/notification-flow.e2e.spec.ts` ("assigns across an
+   * access boundary but sends NO notification") — but it decides at FAN-OUT time and access is
+   * revocable after the row is stored, so a notification CAN be held by a principal who no longer has
+   * `work_item:view` on the item's project. The stored row still names the item, which is why the
+   * gate has to be re-applied on every read.
+   *
+   * Do NOT read either of these paragraphs as an unfiltered write path waiting to be "restored":
+   * an earlier revision of this comment claimed the filter was applied to mentions and not to
+   * assignments, which was never true of `notifyAssignee`.
    */
   async isVisible(actor: JwtPayload, notificationId: string): Promise<boolean> {
     return this.notificationRepo.isVisibleToRecipient(

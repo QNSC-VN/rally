@@ -349,7 +349,10 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
       // A fresh uuid has no membership and no grant → no access, must be filtered out.
       const outsider = randomUUID();
 
-      await workItems.notifyCommentAdded(admin, story.id, [DEVELOPER_ID, outsider]);
+      // The third argument is the NOTE's id — the mention notification's event identity under
+      // FR-021. This test calls the fan-out directly rather than through `createComment`, so a
+      // stand-in uuid is enough; what it measures is the recipient filter, not the key.
+      await workItems.notifyCommentAdded(admin, story.id, randomUUID(), [DEVELOPER_ID, outsider]);
 
       const rows = await db
         .select()

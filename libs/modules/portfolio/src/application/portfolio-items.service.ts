@@ -449,6 +449,25 @@ export class PortfolioItemsService {
     // Milestones live in their own link table, so they are NOT a column patch — pull them
     // out before `repo.update` sees them, and write them separately.
     const { milestoneIds, ...columns } = patch;
+    /**
+     * The MILESTONE-membership authority check, on the third writer of `milestone_artifacts` too.
+     *
+     * DEFENCE IN DEPTH here, and deliberately so rather than skipped: the §3.2:80 row this enforces
+     * (`Releases and Milestones … Hidden` for an Editor) is already unreachable for an Editor on this
+     * route, because §3.2:82 hides Portfolio Items from them entirely and `portfolio:edit` is not in
+     * the Editor set at all. So today it refuses nobody the route does not already refuse. It is
+     * still the right place for it: a principal holding `portfolio:edit` WITHOUT `milestone:view` is
+     * expressible (the custom-role deletion is sequenced and step 3 has not run), and the rule
+     * belongs to the LINK rather than to a call site — the exact reasoning that made
+     * `assertArtifactsInMilestoneScope` one function after this writer was missed by the first
+     * unification and drifted from the other two.
+     *
+     * Reached on an `undefined` → no-op, on a CLEAR, and on an assign alike, mirroring
+     * `WorkItemsService.setWorkItemMilestones`.
+     */
+    if (milestoneIds !== undefined) {
+      await this.milestones.assertMayAssignMilestones(actor, existing.projectId);
+    }
     if (milestoneIds !== undefined && milestoneIds.length > 0) {
       /**
        * The SAME assertion the other two writers of `milestone_artifacts` call, not a private copy.

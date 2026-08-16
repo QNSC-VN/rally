@@ -10,6 +10,7 @@ import { PROJECT_MEMBER_REPOSITORY } from '../domain/ports/project-member.reposi
 import { WORKSPACE_MEMBER_REPOSITORY, TeamService } from '@modules/workspace';
 import { ActivityLogger } from '@modules/activity';
 import type { Project, WorkflowStatus } from '../domain/project.types';
+import { CreateProjectSchema } from '../interface/http/dto/project-request.dto';
 
 const activityMock = () => ({
   build: vi.fn(() => ({})),
@@ -1209,6 +1210,32 @@ describe('ProjectsService', () => {
         }),
         expect.anything(),
       );
+    });
+  });
+  /**
+   * The Project KEY rule, which nothing pinned before — which is how the server and the SPA came to
+   * agree with each other and not with the BA.
+   *
+   * `1–10` of `A–Z`/`0–9`, a digit may lead: `Phase 0/04_Project/SRS.md:105` (`PRJ-FR-004`), `:318`,
+   * and `Phase 1/08_Manage_Projects_Teams_Users/SRS.md:110`, all three agreeing. It used to be
+   * `.min(2)` with a letter-initial regex, so the two shapes the BA calls out — a single character,
+   * and a leading digit — were both 400s.
+   */
+  describe('CreateProjectSchema.key', () => {
+    const key = (k: string) => CreateProjectSchema.safeParse({ key: k, name: 'A project' }).success;
+
+    it('accepts the shapes the BA names: one character, a leading digit, the full ten', () => {
+      expect(key('X')).toBe(true);
+      expect(key('1AB')).toBe(true);
+      expect(key('2026')).toBe(true);
+      expect(key('ABCDEFGHIJ')).toBe(true);
+    });
+
+    it('still refuses empty, over-length and non-alphanumeric keys', () => {
+      expect(key('')).toBe(false);
+      expect(key('ABCDEFGHIJK')).toBe(false);
+      expect(key('AB-1')).toBe(false);
+      expect(key('AB 1')).toBe(false);
     });
   });
 });

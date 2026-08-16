@@ -24,6 +24,20 @@ export const PERMISSION = {
   // ── workspace namespace ────────────────────────────────────────────────────
   WORKSPACE_ALL: 'workspace:*',
   WORKSPACE_VIEW: 'workspace:view',
+  /**
+   * `workspace:create` and `workspace:delete` now gate NOTHING, deliberately kept rather than removed.
+   *
+   * `POST /workspaces` and `DELETE /workspaces/:id` are deleted — the BA gives the MVP no workspace
+   * CRUD (`Phase 0/03_Workspace/SRS.md:98` `COMPANY-FR-010`, `:281`, `:310` AC-8) — and no other route
+   * carries either code. They stay because removing a code from a role array that has SHIPPED needs a
+   * backfill migration, not a catalogue edit ("Permissions reach a workspace ONCE"), and the migration
+   * would buy nothing: `workspace_admin` also holds the `workspace:*` wildcard, so no principal's
+   * effective grant changes either way, and there is no route left to reach.
+   *
+   * Same disposition and same reasoning as `capacity:view_draft` below — a code that distinguishes
+   * nobody is retired on a deliberate pass, with a migration, not opportunistically. If a future
+   * ruling reinstates workspace provisioning, the codes are still here and still workspace-tier.
+   */
   WORKSPACE_CREATE: 'workspace:create',
   WORKSPACE_EDIT: 'workspace:edit',
   WORKSPACE_DELETE: 'workspace:delete',

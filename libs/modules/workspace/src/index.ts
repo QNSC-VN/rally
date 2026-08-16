@@ -2,6 +2,8 @@ export * from './workspace.module';
 export * from './domain/workspace.types';
 export * from './domain/ports/workspace.repository';
 export * from './domain/ports/workspace-member.repository';
+/** Declared here, IMPLEMENTED in `libs/modules/identity` — see the port's docblock for why. */
+export * from './domain/ports/user-access.revoker';
 export * from './application/workspace.service';
 export * from './application/guest-invite-scheduler.service';
 /**

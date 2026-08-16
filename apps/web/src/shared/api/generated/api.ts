@@ -3812,6 +3812,7 @@ export interface components {
         taskDone: number
         assigneeId: string | null
         devOwnerId: string | null
+        teamId: string | null
         rank: string
         featureId: string | null
         featureKey: string | null
@@ -3880,8 +3881,8 @@ export interface components {
       name: string
       description?: string
       theme?: string
-      startDate?: string
-      releaseDate?: string
+      startDate: string
+      releaseDate: string
       /**
        * @default planning
        * @enum {string}
@@ -3908,8 +3909,8 @@ export interface components {
       description?: string | null
       theme?: string | null
       notes?: string | null
-      startDate?: string | null
-      releaseDate?: string | null
+      startDate?: string
+      releaseDate?: string
       plannedVelocity?: number | null
       planEstimate?: number | null
       version?: string | null

@@ -15,7 +15,7 @@ import {
   AUDIT_RESOURCE,
   addDays,
 } from '@platform';
-import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
+import type { CursorPayload, PagedResult, DbExecutor } from '@platform';
 import { isProjectAccessLevel } from '@shared-kernel';
 import { AccessService } from '@modules/access';
 import { GuestInviteSchedulerService } from './guest-invite-scheduler.service';
@@ -36,6 +36,7 @@ import {
   IWorkspaceSettingsRepository,
   WORKSPACE_SETTINGS_REPOSITORY,
 } from '../domain/ports/workspace-settings.repository';
+import { IUserAccessRevoker, USER_ACCESS_REVOKER } from '../domain/ports/user-access.revoker';
 import type {
   Workspace,
   WorkspaceMember,
@@ -68,6 +69,12 @@ export class WorkspaceService {
     private readonly audit: AuditProducer,
     private readonly access: AccessService,
     private readonly guestInviteScheduler: GuestInviteSchedulerService,
+    /**
+     * Implemented in `libs/modules/identity` and resolved through its `@Global()` export — see the
+     * port's docblock for why the dependency points that way. It is what makes "suspended" and
+     * "removed" mean loss of ACCESS rather than loss of permissions.
+     */
+    @Inject(USER_ACCESS_REVOKER) private readonly userAccess: IUserAccessRevoker,
   ) {}
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
@@ -158,33 +165,19 @@ export class WorkspaceService {
     return this.workspaceRepo.listForUser(userId, args);
   }
 
-  @Span('workspace.createWorkspace')
-  async createWorkspace(
-    actor: JwtPayload,
-    slug: string,
-    name: string,
-    description?: string,
-    avatarUrl?: string,
-  ): Promise<Workspace> {
-    const existing = await this.workspaceRepo.findBySlug(slug);
-    if (existing) {
-      throw new ConflictException('WORKSPACE_SLUG_TAKEN', `Slug "${slug}" is already taken`);
-    }
-
-    // Atomic: create the workspace and enroll the creator together. A partial
-    // failure would otherwise orphan a workspace its own creator cannot access.
-    const workspace = await this.uow.run(async (tx) => {
-      const ws = await this.workspaceRepo.create(
-        { id: uuidv7(), slug, name, description, avatarUrl },
-        tx,
-      );
-      await this.memberRepo.addMember({ id: uuidv7(), workspaceId: ws.id, userId: actor.sub }, tx);
-      return ws;
-    });
-
-    this.logger.log({ workspaceId: workspace.id, userId: actor.sub }, 'Workspace created');
-    return workspace;
-  }
+  // `createWorkspace` and `deleteWorkspace` are GONE with `POST /workspaces` and
+  // `DELETE /workspaces/:id` (COMPANY-FR-010 / §281 / AC-8 — the route note in
+  // `workspace.controller.ts` carries the quotes). Each had exactly one caller, the deleted handler.
+  //
+  // Nothing legitimate provisioned through either: `db/seeds/bootstrap.ts` writes
+  // `workspace.workspaces` directly with drizzle (`onConflictDoUpdate` on the id), `db/migrate.ts`
+  // only calls `seed()`, and the boot-time root is `ensureDefaultWorkspace` above — which stays,
+  // because a freshly-migrated install still needs something to log into.
+  //
+  // `IWorkspaceRepository.findBySlug` and `.softDelete` went with them, having had no other reader.
+  // The `deleted_at` COLUMN and `getWorkspace`'s check on it stay: nothing writes it through the app
+  // any more, but a row an operator retires by hand must still read as absent rather than as a
+  // half-live workspace.
 
   async getWorkspace(workspaceId: string): Promise<Workspace> {
     const workspace = await this.workspaceRepo.findById(workspaceId);
@@ -223,12 +216,6 @@ export class WorkspaceService {
       );
       return after;
     });
-  }
-
-  async deleteWorkspace(workspaceId: string): Promise<void> {
-    await this.getWorkspace(workspaceId);
-    await this.workspaceRepo.softDelete(workspaceId);
-    this.logger.log({ workspaceId }, 'Workspace soft-deleted');
   }
 
   // ── Members ──────────────────────────────────────────────────────────────────
@@ -373,6 +360,39 @@ export class WorkspaceService {
         { roleId: input.roleId, status: input.status },
         tx,
       );
+      /**
+       * The ACCOUNT-level status, in the SAME transaction as the membership flip.
+       *
+       * AUTH-SSO-006 is about the login path, not the live session: "Inactive/suspended users are
+       * denied access even when identity-provider authentication succeeds". Only
+       * `identity.users.status` can say that — every login path in `@qnsc-vn/identity` refuses a
+       * `suspended | inactive` user (`refresh`, `ssoLogin`, `ssoLoginFromConnection`, `devLogin`,
+       * `switchWorkspace`), and NOTHING in this repository had ever written the column: rally's
+       * `updateStatus` had zero callers, so the gate could not fire. Without it a suspended member
+       * signs straight back in, because `getMemberships` returns no ACTIVE membership and the
+       * package reads that as a half-finished provision and self-heals by re-resolving the
+       * workspace from the SSO connection.
+       *
+       * SUSPENSION ONLY, and `removeMember` deliberately does NOT do this. Removal means "not in
+       * this workspace", which is a per-workspace fact; `identity.users` is workspace-agnostic, so
+       * writing an account disable there would be answering a different question. Suspension is
+       * different in kind — the BA's own word for the action is `Disable/suspend` the USER
+       * (COMPANY-FR-007), and AUTH-SSO-006 spells it `suspended`.
+       *
+       * BLAST RADIUS, stated rather than assumed: the column would lock the member out of every
+       * workspace they belong to, not just this one. That is bounded to nothing here — the MVP has
+       * exactly one workspace (COMPANY-FR-010), and this change also DELETES `POST /workspaces`, so
+       * a second one is no longer reachable through the API at all. If self-service workspaces ever
+       * return, this write is one of the things that has to be reconsidered with them, which is why
+       * it is a labelled one-line call and not spread through the flow.
+       *
+       * Reversible by construction: reactivation sets it back, below and in the same place.
+       */
+      if (input.status === 'suspended') {
+        await this.userAccess.setAccountStatus(member.userId, 'suspended', tx);
+      } else if (input.status === 'active') {
+        await this.userAccess.setAccountStatus(member.userId, 'active', tx);
+      }
       if (input.teamIds !== undefined) {
         await this.teamMemberRepo.setTeamsForUser(workspaceId, member.userId, input.teamIds, tx);
       }
@@ -389,11 +409,32 @@ export class WorkspaceService {
       );
       return next;
     });
-    // §8: company disable/removal takes effect on the user's next page refresh.
-    // Invalidate the cached permission resolution so a suspended/removed member's
-    // next request resolves zero permissions instead of waiting out the 5-min TTL.
+    /**
+     * §8 / AC-5: company disable or removal takes effect on the user's next request.
+     *
+     * TWO things, and the second one used to be missing. Invalidating the permission cache makes the
+     * next request resolve ZERO permissions instead of waiting out the 5-minute TTL — but zero
+     * permissions is not denied access. The suspended member's access token stayed valid and their
+     * refresh session stayed live, so they kept a session and landed in the shell, which is the
+     * defect AUTH-SSO-006 and AUTH-FR-013 describe. `revokeAllSessions` is the other half.
+     *
+     * AFTER COMMIT, both of them, and for one reason: neither is transactional. Run inside
+     * `uow.run` a rollback would leave a member logged out of a suspension that never happened, and
+     * the cache cannot be rolled back at all. Same sequencing `assignRole` and `acceptInvitation`
+     * already use for `invalidateUser`.
+     */
     if (input.status === 'suspended' || input.status === 'removed') {
       await this.access.invalidateUser(workspaceId, member.userId);
+      await this.userAccess.revokeAllSessions(member.userId);
+    } else if (input.status === 'active') {
+      /**
+       * Reinstatement has to clear the per-user token denylist, or it is not a reinstatement: the
+       * key stands for `JWT_ACCESS_EXPIRY` and rejects the freshly issued token of anyone who logs
+       * in inside that window, with nothing on screen to explain it. `invalidateUser` too — the
+       * suspension cached an empty permission set under the same 5-minute TTL.
+       */
+      await this.access.invalidateUser(workspaceId, member.userId);
+      await this.userAccess.restoreSessions(member.userId);
     }
     this.logger.log({ workspaceId, memberId, actorId }, 'Member updated');
     return updated;
@@ -435,9 +476,28 @@ export class WorkspaceService {
         tx,
       );
     });
-    // §8: removal is effective on the next page refresh — drop the permission cache
-    // now so the very next request from the removed member resolves nothing.
+    /**
+     * §8 / AC-5: removal is effective on the removed member's next request. Both halves, after
+     * commit, exactly as in `updateMember` above — the permission cache so nothing resolves, and the
+     * sessions so there is no session left to resolve for.
+     *
+     * `identity.users.status` is deliberately NOT written here. Removal is a statement about THIS
+     * workspace ("no longer a member"), and that column is account-level and workspace-agnostic, so
+     * setting it would disable the person's account to answer a per-workspace question — and it
+     * would not be undone by re-adding them, because `addMember` refuses a user who still has a row
+     * (`removeMember` is a soft flip to `status = 'removed'`, so the row survives).
+     *
+     * THE GAP THIS LEAVES IS REAL AND IS RECORDED, NOT ASSUMED CLOSED: a removed member can still
+     * complete an SSO login. `getMemberships` filters `status = 'active'`, so they resolve no
+     * workspace, and `@qnsc-vn/identity` reads an empty result as a half-finished provision and
+     * self-heals by taking the workspace from the SSO connection instead. They land with no
+     * membership row reactivated (`enrollMember` finds the removed row and returns) and zero
+     * effective permissions — but they land. Closing it belongs where the decision is made: the
+     * login path must consult workspace MEMBERSHIP status, and that path is in the shared package,
+     * which CLAUDE.md says to fix there rather than work around here.
+     */
     await this.access.invalidateUser(workspaceId, userId);
+    await this.userAccess.revokeAllSessions(userId);
     this.logger.log({ workspaceId, userId, actorId }, 'Member removed from workspace');
   }
 

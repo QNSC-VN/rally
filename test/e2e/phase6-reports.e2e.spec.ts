@@ -35,6 +35,7 @@ import {
   iterationDailySnapshots,
   iterationTeamBaselines,
   releaseTeamTargets,
+  teamMembers,
   teams,
   workItems,
 } from '@db/schema/work';
@@ -68,7 +69,12 @@ describe('Phase 6 reports (e2e)', () => {
   const admin = adminActor();
 
   /** A workspace team, inserted directly — teams have no create service in this module's reach. */
-  async function newTeam(label: string): Promise<string> {
+  /**
+   * A team plus its ROSTER. The roster row is not decoration: `updateCapacity` refuses a member who is
+   * not on the selected team (§9.2:374), so a team created bare cannot be given capacity — and
+   * capacity is what the Team Capacity assertions below measure.
+   */
+  async function newTeam(label: string, memberIds: string[] = [ADMIN_USER_ID]): Promise<string> {
     const [row] = await db
       .insert(teams)
       .values({
@@ -78,6 +84,12 @@ describe('Phase 6 reports (e2e)', () => {
         status: 'active',
       })
       .returning({ id: teams.id });
+    if (memberIds.length > 0) {
+      await db
+        .insert(teamMembers)
+        .values(memberIds.map((userId) => ({ workspaceId: WORKSPACE_ID, teamId: row.id, userId })))
+        .onConflictDoNothing();
+    }
     return row.id;
   }
   let projectId: string;

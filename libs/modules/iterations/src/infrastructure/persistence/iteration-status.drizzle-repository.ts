@@ -256,6 +256,12 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         planEstimate: sql<number | null>`${workItems.storyPoints}::float8`,
         assigneeId: workItems.assigneeId,
         devOwnerId: workItems.devOwnerId,
+        // The ITEM's own team. Deliberately not `coalesce(work_items.team_id, iterations.team_id)`:
+        // that two-tier rule is for measuring HOURS in a scope (`getScopedTaskHours`, Team Status),
+        // whereas SRS:435 judges Owner against the Work Item Team alone — and the iteration's team is
+        // NULL on most iterations (a shared sprint), so a coalesce would either invent a team the item
+        // does not carry or, read the other way, collapse every picker on this screen to `Unassigned`.
+        teamId: workItems.teamId,
         rank: workItems.rank,
         taskEstimate,
         toDo,
@@ -300,6 +306,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       taskDone: Number(r.taskDone ?? 0),
       assigneeId: r.assigneeId,
       devOwnerId: r.devOwnerId,
+      teamId: r.teamId,
       rank: r.rank,
       featureId: r.featureId,
       featureKey: r.featureKey,

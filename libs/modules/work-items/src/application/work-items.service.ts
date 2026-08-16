@@ -90,6 +90,39 @@ function isDuplicateKeyError(err: unknown): boolean {
   }
 }
 
+/**
+ * The per-EVENT half of an assignment notification's idempotency key.
+ *
+ * `P4-NOTIF-FR-021` scopes idempotency to the "same event-recipient pair"
+ * (`Phase 4/01_Notifications/SRS.md:103`). The assignment key used to pass `item.assigneeId` as its
+ * discriminator — which IS the recipient — so the key collapsed to (template, item, user), and
+ * because `messaging.notification_outbox.idempotency_key` is UNIQUE under `onConflictDoNothing`
+ * (and the relay copies it into `in_app_notifications.source_event_id`, UNIQUE as
+ * `uq_ian_source_event_id`), suppression was PERMANENT rather than per event: assign an item to A,
+ * then to B, then back to A, and A is notified exactly once in that item's whole lifetime.
+ *
+ * `updatedAt` IS the assignment event's identity. The repository writes it once per update and both
+ * of its branches return the stored row (`work_items` via `RETURNING`, `work.tasks` via a re-read
+ * on the same executor), so the value read here is the POST-write one, not a pre-update copy — and
+ * it is fixed for the whole transaction the outbox insert shares.
+ *
+ * **RETRY-SAFETY, the property this key exists for and must keep:** a retry of the SAME assignment
+ * reuses the same stamp and therefore the same key, so the relay re-processing an outbox row and
+ * `createWorkItem`'s duplicate-key retry loop both still de-dupe. A LATER assignment carries a
+ * later stamp and gets through. Never substitute `Date.now()` or `randomUUID()` here — either makes
+ * every retry look like a new event and turns FR-021 inside out.
+ *
+ * ISO and not `String(date)`, because `Date#toString` rounds to the second and would re-collapse
+ * two assignments landing inside the same second. A non-`Date` value degrades to the old
+ * item-scoped key instead of throwing: the key is built INSIDE the business transaction, and a
+ * notification detail must never be able to roll back the assignment it describes.
+ */
+function assignmentEventStamp(item: WorkItem): string {
+  const at: unknown = item.updatedAt;
+  if (at instanceof Date) return Number.isNaN(at.getTime()) ? '' : at.toISOString();
+  return typeof at === 'string' || typeof at === 'number' ? String(at) : '';
+}
+
 interface CreateWorkItemOpts {
   description?: string;
   statusId?: string;
@@ -1190,6 +1223,10 @@ export class WorkItemsService {
    * do deliberately (they may be about to grant access), and failing the whole write because of a
    * notification would be worse than not sending one. The assignment stands; the notification does
    * not.
+   *
+   * The event component of the idempotency key is `assignmentEventStamp(item)` — see its docblock
+   * for why the row's post-write `updatedAt` and nothing else. Passing `item.assigneeId` here (the
+   * old value) named the RECIPIENT twice and suppressed every re-assignment forever (FR-021).
    */
   private async notifyAssignee(actor: JwtPayload, item: WorkItem, tx: DbExecutor): Promise<void> {
     if (!item.assigneeId) return;
@@ -1205,7 +1242,7 @@ export class WorkItemsService {
       actor.sub,
       notifiable,
       { itemKey: item.itemKey, itemTitle: item.title, projectId: item.projectId },
-      item.assigneeId,
+      assignmentEventStamp(item),
       tx,
     );
   }
@@ -1216,6 +1253,19 @@ export class WorkItemsService {
    * business write — no ghost notification, no silent drop on a post-commit
    * crash. Callers outside a transaction (e.g. comment notifications) may
    * omit it; the scheduler falls back to its own best-effort transaction.
+   *
+   * `eventId` is the caller's identifier for THE EVENT and it carries the whole weight of
+   * `P4-NOTIF-FR-021` ("idempotent for the same event-recipient pair"): `template`, `item.id` and
+   * `recipientId` are already in the key, so anything that merely restates one of those three
+   * reduces the key to (template, item, user) and — the outbox key being UNIQUE under
+   * `onConflictDoNothing`, and its copy in `in_app_notifications.source_event_id` UNIQUE too —
+   * suppresses every subsequent event of that kind PERMANENTLY. Both callers got this wrong once:
+   * assignments passed the assignee (= the recipient), mentions passed the work item id (= `item.id`).
+   *
+   * So an `eventId` must be (a) DIFFERENT for two different events and (b) IDENTICAL for a retry of
+   * one — never `Date.now()` or a fresh uuid, which satisfy (a) by breaking (b) and would make the
+   * relay re-send on every redelivery. `assignmentEventStamp` (the row's post-write `updatedAt`) and
+   * a comment's own id are the two values that hold both halves.
    */
   private async emitWorkItemNotification<K extends NotificationTemplateName>(
     template: K,
@@ -1223,7 +1273,7 @@ export class WorkItemsService {
     actorId: string,
     recipientIds: string[],
     vars: NotificationTemplateVars[K],
-    discriminator: string,
+    eventId: string,
     tx?: DbExecutor,
   ): Promise<void> {
     await Promise.all(
@@ -1240,9 +1290,7 @@ export class WorkItemsService {
               // The relay writes idempotencyKey into in_app_notifications.source_event_id
               // (a UUID). Derive a deterministic UUID from the business-event key so
               // dedup still holds while satisfying the column type.
-              idempotencyKey: stableEventId(
-                `${template}:${item.id}:${recipientId}:${discriminator}`,
-              ),
+              idempotencyKey: stableEventId(`${template}:${item.id}:${recipientId}:${eventId}`),
             },
             tx,
           )
@@ -1259,10 +1307,19 @@ export class WorkItemsService {
   /**
    * F7 — fan out comment + mention notifications. Called by CollaborationService
    * after a comment is persisted. Auto-watches the commenter (BA rule).
+   *
+   * `commentId` is REQUIRED, and it is the mention notification's event identity (FR-021). This used
+   * to pass `workItemId` as the key's discriminator — which is already `item.id` in the key — so the
+   * key was (template, item, user) and the UNIQUE outbox key silently swallowed every mention after
+   * the first: @-mention someone in Note #1 and again in Note #5 and only Note #1 ever notified,
+   * for the life of the item. A comment id is different per Note and stable across a re-run of the
+   * same Note's fan-out, which is exactly the two properties FR-021 asks for. Required rather than
+   * optional on purpose: a defaulted `undefined` here would re-create the collapse in silence.
    */
   async notifyCommentAdded(
     actor: JwtPayload,
     workItemId: string,
+    commentId: string,
     mentionedUserIds: string[] = [],
   ): Promise<void> {
     const item = await this.getWorkItem(actor.workspaceId, workItemId);
@@ -1286,7 +1343,8 @@ export class WorkItemsService {
         actor.sub,
         mentioned,
         vars,
-        workItemId,
+        // The NOTE, not the item — see this method's docblock and FR-021.
+        commentId,
       );
     }
   }
@@ -1984,6 +2042,19 @@ export class WorkItemsService {
     // two can differ, because a milestone's scope spans `milestone_projects`, and one row written
     // from this end touches both.
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
+    /**
+     * The MILESTONE half of `Phase 4/02_Roles_Permissions/SRS.md:80`, whose Release half is
+     * `assertMayAssignRelease` above — one matrix row, one verdict, `Hidden` for an Editor. Before
+     * the route's `work_item:edit` gate was the only check here, so an Editor decided milestone
+     * membership from this end while the same row's Release field refused them, and while every
+     * `PUT /milestones/:id/artifacts` writing the identical row refused them too.
+     *
+     * UNCONDITIONAL, ahead of the scope check and before an empty set short-circuits it: a CLEAR is
+     * a membership decision (§138 refuses Editor "mutation", not Editor additions), and the rule is
+     * about the CALLER, so it must not depend on the payload resolving. See
+     * `MilestonesService.assertMayAssignMilestones` for why the code is `milestone:view`.
+     */
+    await this.milestonesService.assertMayAssignMilestones(actor, item.projectId);
     const uniqueIds = [...new Set(milestoneIds)];
     if (uniqueIds.length > 0) {
       await this.milestonesService.assertArtifactsAssignable(actor.workspaceId, uniqueIds, [item]);

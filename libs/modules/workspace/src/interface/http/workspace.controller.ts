@@ -10,14 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiExcludeEndpoint,
-  ApiOperation,
-  ApiParam,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   Auth,
   ApiCommonErrors,
@@ -33,7 +26,6 @@ import { AuthPolicy, RequirePermission, AuthorizedInService } from '@modules/acc
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
 import { WorkspaceService } from '../../application/workspace.service';
 import {
-  CreateWorkspaceDto,
   UpdateWorkspaceDto,
   AddMemberDto,
   UpdateMemberDto,
@@ -148,28 +140,35 @@ export class WorkspaceController {
     return { data: page.data.map(toWorkspaceDto), pageInfo: page.pageInfo };
   }
 
-  // ── Create workspace ───────────────────────────────────────────────────────
-  // MVP constraint: workspace provisioning is system-only (COMPANY-FR-010).
-
-  @Post()
-  @RequirePermission('workspace:create')
-  @ApiExcludeEndpoint()
-  @ApiOperation({ summary: 'Create a new workspace' })
-  @ApiResponse({ status: 201, type: WorkspaceResponseDto })
-  @ApiCommonErrors(400, 401, 409, 422)
-  async createWorkspace(
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: CreateWorkspaceDto,
-  ): Promise<WorkspaceResponseDto> {
-    const workspace = await this.workspaceService.createWorkspace(
-      user,
-      dto.slug,
-      dto.name,
-      dto.description,
-      dto.avatarUrl,
-    );
-    return toWorkspaceDto(workspace);
-  }
+  // ── `POST /workspaces` and `DELETE /workspaces/:id` ARE DELETED ────────────
+  //
+  // The MVP has ONE workspace, provisioned outside the API, and the BA says so three times:
+  //   • `Phase 0/03_Workspace/SRS.md:98`  COMPANY-FR-010 — "Không có endpoint/UI self-service tạo,
+  //     archive hoặc switch Workspace trong MVP."
+  //   • `:281` — "Không expose `POST /workspaces`, archive Workspace hoặc switch Workspace trong
+  //     MVP." (it names the route)
+  //   • `:310`  AC-8 — "Không có Workspace CRUD endpoint hoặc UI trong MVP build."
+  //
+  // The comments that used to sit here claimed both routes were "system-only", and the decorators
+  // directly contradicted them: `workspace:create` / `workspace:delete` are held by
+  // `workspace_admin`, which also holds the `workspace:*` anchor, so ANY Workspace Admin could mint
+  // a second workspace or SOFT-DELETE the single tenant — `deleteWorkspace` set `deleted_at`, and
+  // `getWorkspace` 404s on a deleted row, so one call took the whole product away from everyone.
+  //
+  // `@ApiExcludeEndpoint()` was doing the hiding, and hiding is not gating: it removes the route
+  // from `/api/docs-json` (which is why the generated SPA client shows `post?: never` on
+  // `/v1/workspaces` and no `delete` on `/v1/workspaces/{id}`), while the router still served it.
+  // That is why the deletion costs the SPA nothing and needs no codegen: the client never knew.
+  //
+  // The SERVICE methods went with them (`WorkspaceService.createWorkspace` / `deleteWorkspace`, and
+  // the two repository methods that had no other reader). Provisioning is `db/seeds/bootstrap.ts`,
+  // which writes `workspace.workspaces` DIRECTLY with drizzle and never touched the service, plus
+  // `ensureDefaultWorkspace` on boot — so nothing legitimate lost a caller. If a future release
+  // needs self-service workspaces it wants a route named for that, a fresh BA ruling, and the
+  // permission codes re-granted by migration; not these back.
+  //
+  // Absence asserted for a WORKSPACE ADMIN in `test/e2e/authz-cluster.e2e.spec.ts` — a 404 for a
+  // lesser role is what a gate would produce and would prove nothing.
 
   // ── Get workspace ──────────────────────────────────────────────────────────
 
@@ -207,25 +206,6 @@ export class WorkspaceController {
     this.assertActive(user, id);
     const workspace = await this.workspaceService.updateWorkspace(id, dto, user.sub);
     return toWorkspaceDto(workspace);
-  }
-
-  // ── Delete workspace ───────────────────────────────────────────────────────
-  // MVP constraint: workspace archival is system-only (COMPANY-FR-010).
-
-  @Delete(':id')
-  @RequirePermission('workspace:delete')
-  @ApiExcludeEndpoint()
-  @HttpCode(204)
-  @ApiOperation({ summary: 'Delete workspace (soft delete)' })
-  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiResponse({ status: 204, description: 'Workspace deleted' })
-  @ApiCommonErrors(401, 404)
-  async deleteWorkspace(
-    @CurrentUser() user: JwtPayload,
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<void> {
-    this.assertActive(user, id);
-    await this.workspaceService.deleteWorkspace(id);
   }
 
   // ── `GET :id/members` IS DELETED. Do not re-add it. ────────────────────────
