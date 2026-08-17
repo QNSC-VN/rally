@@ -121,6 +121,7 @@ describe('PortfolioItemsService', () => {
             update: vi.fn(),
             setArchived: vi.fn(),
             countActiveChildFeatures: vi.fn().mockResolvedValue(0),
+            countActiveChildWorkItems: vi.fn().mockResolvedValue(0),
           },
         },
         {
@@ -877,17 +878,53 @@ describe('PortfolioItemsService', () => {
       expect(repo.setArchived).toHaveBeenCalledWith('ep-1', true, WORKSPACE);
     });
 
-    it('does not apply the child guard to a Feature', async () => {
-      // A Feature's children are Stories/Defects, which keep working when it is archived
-      // — only the Epic→Feature link would dangle.
+    /**
+     * INVERTED by `P5-PI-011` (DEV Handoff 2026-08-14). This case used to assert that a Feature took no
+     * child guard, on the reading that "a Feature's children are Stories/Defects, which keep working
+     * when it is archived". The BA calls that a Fail: "DevInt allowed FE-5 to be archived even though
+     * child Work Item US-8 was linked… Archive must enforce the approved child guard."
+     *
+     * The orphaning is the same shape as the Epic case one level up — the children stay in the Backlog
+     * carrying a Feature column that opens nothing, and they keep feeding the archived Feature's rollup.
+     */
+    it('REFUSES to archive a Feature that still has child work items', async () => {
       repo.findById.mockResolvedValue({
         id: 'fe-1',
         type: 'feature',
         projectId: 'proj-a',
       } as never);
+      repo.countActiveChildWorkItems.mockResolvedValue(1);
+
+      await expect(service.setArchived(actor, 'fe-1', true)).rejects.toMatchObject({
+        code: 'PORTFOLIO_FEATURE_HAS_ACTIVE_WORK_ITEMS',
+      });
+      expect(repo.setArchived).not.toHaveBeenCalled();
+    });
+
+    it('archives a Feature once its work items are gone', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'fe-1',
+        type: 'feature',
+        projectId: 'proj-a',
+      } as never);
+      repo.countActiveChildWorkItems.mockResolvedValue(0);
+
       await service.setArchived(actor, 'fe-1', true);
-      expect(repo.countActiveChildFeatures).not.toHaveBeenCalled();
       expect(repo.setArchived).toHaveBeenCalledWith('fe-1', true, WORKSPACE);
+    });
+
+    it('does not apply the WORK-ITEM guard when restoring a Feature', async () => {
+      // Restoring cannot create the orphaned state; the other direction is guarded by
+      // `PORTFOLIO_PARENT_ARCHIVED` (its Epic must not be archived).
+      repo.findById.mockResolvedValue({
+        id: 'fe-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        parentId: null,
+      } as never);
+      await service.setArchived(actor, 'fe-1', false);
+      expect(repo.countActiveChildWorkItems).not.toHaveBeenCalled();
+      expect(repo.setArchived).toHaveBeenCalledWith('fe-1', false, WORKSPACE);
     });
 
     it('never applies the guard when RESTORING, even for an Epic', async () => {

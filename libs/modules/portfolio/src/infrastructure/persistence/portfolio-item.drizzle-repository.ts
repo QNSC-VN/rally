@@ -658,6 +658,32 @@ export class PortfolioItemDrizzleRepository implements IPortfolioItemRepository 
     return Number(rows[0]?.n ?? 0);
   }
 
+  /**
+   * Active (non-deleted) Story/Defect work items linked to a FEATURE.
+   *
+   * The mirror of `countActiveChildFeatures` one level down, for the same reason: archiving a Feature
+   * that still has children leaves them pointing at a hidden parent — visible in the Backlog with a
+   * Feature column referencing something the reader cannot open, and still feeding that Feature's own
+   * rollup.
+   *
+   * The link is `work_items.feature_id`, NOT `parent_id`: a Story's parent is another work item
+   * (`ix_wi_feature` indexes the Feature link separately). Soft-deleted rows do not count — a deleted
+   * Story is not work anyone is going to lose track of.
+   */
+  async countActiveChildWorkItems(featureId: string, workspaceId: string): Promise<number> {
+    const rows = await this.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(workItems)
+      .where(
+        and(
+          eq(workItems.featureId, featureId),
+          eq(workItems.workspaceId, workspaceId),
+          isNull(workItems.deletedAt),
+        ),
+      );
+    return Number(rows[0]?.n ?? 0);
+  }
+
   /** The one select every read surface shares, so the shapes cannot drift. */
   private async selectViews(
     where: SQL | undefined,

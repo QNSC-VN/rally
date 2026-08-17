@@ -665,6 +665,29 @@ export class PortfolioItemsService {
     }
 
     /**
+     * A FEATURE with active child work items is refused too — the same rule one level down.
+     *
+     * `P5-PI-011` (DEV Handoff 2026-08-14): "DevInt allowed FE-5 to be archived even though child Work
+     * Item US-8 was linked… Archive must enforce the approved child guard". Only the Epic half existed,
+     * so a Feature could be hidden under its own children: they stay in the Backlog with a Feature
+     * column pointing at something the reader cannot open, and they keep feeding that Feature's rollup —
+     * word for word the state this method's docblock says it exists to prevent.
+     *
+     * The link is `work_items.feature_id`, not `parent_id`. Only ARCHIVING is guarded; restoring a
+     * Feature is already guarded in the other direction (its Epic must not be archived), and a restore
+     * cannot create this state.
+     */
+    if (archived && existing.type === 'feature') {
+      const children = await this.repo.countActiveChildWorkItems(id, actor.workspaceId);
+      if (children > 0) {
+        throw new PreconditionFailedException(
+          'PORTFOLIO_FEATURE_HAS_ACTIVE_WORK_ITEMS',
+          `Move or delete the ${children} work item(s) under this Feature first`,
+        );
+      }
+    }
+
+    /**
      * RESTORING a Feature whose Epic is archived is refused too.
      *
      * The archive guard above only looked one way, so the forbidden state was reachable in three

@@ -150,6 +150,7 @@ export interface IPortfolioItemRepository {
 
   /** Count of ACTIVE child Features, for the archive guard on an Epic. */
   countActiveChildFeatures(epicId: string, workspaceId: string): Promise<number>;
+  countActiveChildWorkItems(featureId: string, workspaceId: string): Promise<number>;
 }
 
 /** A linked Story/Defect as the Children tab renders it. */
