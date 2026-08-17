@@ -12,6 +12,7 @@ import { useProjectTeams } from '@/features/teams/api'
 import { useTeamOwnerOptions } from '@/features/teams/api'
 import { useProjects } from '@/features/projects/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { BRAND } from '@/shared/config/brand'
 import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -65,7 +66,17 @@ export function CreateWorkItemModal({
    * P6-TC-007's "null-owner Task attributed to a named member": Team Capacity keys
    * `ownerId ?? 'Unassigned'` correctly, there was simply never a null owner to key.
    */
-  const [assigneeId, setAssigneeId] = useState('')
+  /**
+   * Owner DEFAULTS to the authenticated user (`GAP-P1-CREATE-006`, BA confirmed 2026-08-14: "Owner
+   * defaults to the authenticated/current user, includes an explicit Unassigned option"). It used to
+   * default to Unassigned, and a Workspace Admin was not even offered — the feed excluded them.
+   *
+   * The picker still carries Unassigned explicitly, so defaulting to a person never takes the choice
+   * away. If the current user is not in the offered population the field falls back to Unassigned
+   * rather than showing a value the picker cannot resolve.
+   */
+  const { user } = useAuthStore()
+  const [assigneeId, setAssigneeId] = useState(user?.id ?? '')
   const [storyPoints, setStoryPoints] = useState('')
   const [parentStoryId, setParentStoryId] = useState('')
   const [error, setError] = useState<string | null>(null)

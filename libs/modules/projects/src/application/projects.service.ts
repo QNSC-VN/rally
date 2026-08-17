@@ -1074,18 +1074,38 @@ export class ProjectsService {
     }>
   > {
     await this.getProject(workspaceId, projectId);
-    const admins = await this.workspaceAdminIds(workspaceId);
     const members = teamId
       ? await this.teamRosterOptionSource(workspaceId, projectId, teamId)
       : await this.projectMemberRepo.listByProject(projectId);
-    return members
-      .filter((m) => !admins.has(m.userId) && m.status === 'active')
+    const options = members
+      .filter((m) => m.status === 'active')
       .map((m) => ({
         userId: m.userId,
         displayName: m.displayName ?? null,
         email: m.email ?? null,
         avatarUrl: m.avatarUrl ?? null,
       }));
+
+    /**
+     * WORKSPACE ADMINS ARE OWNER OPTIONS — the BA ruled the other way, and this is the change.
+     *
+     * `GAP-P1-CREATE-006` and `GAP-P1-WID-007` (DEV Handoff 2026-08-14, both marked "BA confirmed"):
+     * "BA requires Workspace Admin to remain selectable/default Owner without Project/Team membership."
+     * This method's docblock above predicted exactly this reversal and said the change would be one
+     * filter — it is slightly more, because a WA holds no `project_members` row (§2.1, migration 0118)
+     * and no team roster row, so there is nothing to un-filter. They are UNIONED in.
+     *
+     * Appended, not merged into the query, and de-duplicated by id: a WA who somehow does hold a roster
+     * row must appear once, and the roster's own copy wins because it carries that project's status.
+     *
+     * They are added under a selected TEAM as well. The BA's sentence is explicit — "without
+     * Project/Team membership" — so team scoping narrows the ordinary population and does not exclude
+     * the admin. This feed is what `WorkItemsService.assertOwnerInTeam` counts, so the server now
+     * accepts a WA as Owner too; picker and write agree, which is the property that rule exists for.
+     */
+    const admins = await this.projectMemberRepo.listWorkspaceAdminOptions(workspaceId);
+    const present = new Set(options.map((o) => o.userId));
+    return [...options, ...admins.filter((a) => !present.has(a.userId))];
   }
 
   /**

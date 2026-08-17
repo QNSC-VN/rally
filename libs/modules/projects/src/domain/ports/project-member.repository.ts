@@ -13,6 +13,15 @@ export interface IProjectMemberRepository {
    * too — see `selectWorkspaceAdminUserIds`, which is the one place the predicate lives.
    */
   listWorkspaceAdminUserIds(workspaceId: string): Promise<string[]>;
+  /** Workspace Admins with picker profile fields — owner options only (GAP-P1-CREATE-006). */
+  listWorkspaceAdminOptions(workspaceId: string): Promise<
+    Array<{
+      userId: string;
+      displayName: string | null;
+      email: string | null;
+      avatarUrl: string | null;
+    }>
+  >;
   // There is deliberately no `addMember` here. CREATING a grant row is
   // `AccessService.grantProjectAccess` — the one writer all three §5 journeys reach (AC-9) — and
   // its SQL moved to `ProjectAccessDrizzleRepository.createGrant` with it. A second insert path
