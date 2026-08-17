@@ -1,4 +1,5 @@
 import type { CursorPayload, PagedResult } from '@platform';
+import type { TeamReadScope } from '../team-read-scope';
 import type {
   Iteration,
   IterationOption,
@@ -34,7 +35,8 @@ export interface IIterationRepository {
   listAssignmentOptions(
     projectId: string,
     workspaceId: string,
-    teamId?: string,
+    teamId: string | undefined,
+    scope: TeamReadScope,
   ): Promise<IterationOption[]>;
   /**
    * REFERENCE. Every state, plus `team_id` — the projection a filter, an id→name label and
@@ -46,7 +48,8 @@ export interface IIterationRepository {
   listReferences(
     projectId: string,
     workspaceId: string,
-    teamId?: string,
+    teamId: string | undefined,
+    scope: TeamReadScope,
   ): Promise<IterationReference[]>;
   /** Next per-project iteration number (drives the IT-<n> display key). */
   nextKeyNumber(projectId: string, workspaceId: string): Promise<number>;

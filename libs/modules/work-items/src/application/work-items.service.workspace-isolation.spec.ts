@@ -320,6 +320,8 @@ describe('WorkItemsService — workspace isolation', () => {
           useValue: {
             assertProjectPermission: vi.fn().mockResolvedValue(undefined),
             assertTeamInScope: vi.fn().mockResolvedValue(undefined),
+            // Unrestricted by default: a test about the Editor Team scope says so explicitly.
+            resolveTeamScope: vi.fn().mockResolvedValue({ unrestricted: true }),
             getProjectPermissions: vi.fn().mockResolvedValue(['work_item:*']),
             getWorkspacePermissions: vi.fn().mockResolvedValue([]),
             getProjectAccessLevel: vi.fn().mockResolvedValue(null),
@@ -694,6 +696,9 @@ describe('WorkItemsService — workspace isolation', () => {
         WORKSPACE_B,
         {},
         expect.anything(),
+        // The Editor Team scope rides along on every list — see the `Editor Team scope` block in
+        // work-items.service.spec.ts for what each answer does to the query.
+        { unrestricted: true },
       );
     });
 
@@ -714,6 +719,7 @@ describe('WorkItemsService — workspace isolation', () => {
         WORKSPACE_B,
         {},
         expect.anything(),
+        { unrestricted: true },
       );
     });
   });

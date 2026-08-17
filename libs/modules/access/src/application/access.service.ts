@@ -36,6 +36,19 @@ import {
 import type { ProjectAccessGrant } from '../domain/project-access';
 import type { SystemRole, UserRoleAssignment } from '../domain/access.types';
 
+/**
+ * WHICH rows a caller may see in one project — the ceiling every list, report, search and picker
+ * narrows by (BA ruling 2026-08-17), produced by {@link AccessService.resolveTeamScope}.
+ *
+ * Exported from here because four modules were each deriving or re-declaring it locally within a day
+ * of the rule landing, and four copies of one decision table is the drift the rule exists to prevent.
+ *
+ * `unrestricted: true` is All Teams AND the Project Backlog. An empty `teamIds` is a REAL answer —
+ * no delivery scope, therefore no rows — and must never be read as "no filter"; that is the same
+ * `null`-versus-`[]` distinction {@link AccessService.listReadableProjectIds} documents.
+ */
+export type TeamReadScope = { unrestricted: true } | { unrestricted: false; teamIds: string[] };
+
 /** The one shape every per-Project grant journey passes to {@link AccessService.grantProjectAccess}. */
 export interface GrantProjectAccessInput {
   workspaceId: string;
@@ -566,24 +579,31 @@ export class AccessService {
    * `assertProjectPermission` is what refuses them, and calling this first would answer the wrong
    * question with the wrong error.
    *
-   * WHY THIS IS A REAL BOUNDARY THIS TIME, AND WHERE IT STILL IS NOT
-   * ---------------------------------------------------------------
-   * The 2026-08-14 removal note below is kept in full because its reasoning was correct: a scope that
-   * can only restrict rows CARRYING a team admits the ordinary case, because `work_items.team_id` is
-   * nullable and mostly unset. That is answered by making the ZERO-TEAM case total rather than
-   * per-row:
+   * `team_id IS NULL` IS THE PROJECT BACKLOG, AND IT IS ADMIN-ONLY (BA ruling, 2026-08-17)
+   * -------------------------------------------------------------------------------------
+   * The 2026-08-14 removal note below is kept in full because its objection was right: a scope that
+   * can only restrict rows CARRYING a team admits the ordinary case, since `work_items.team_id` is
+   * nullable and mostly unset. This first shipped answering that by making only the ZERO-TEAM case
+   * total, and admitting a team-less row — which left exactly the hole that note described, and it was
+   * put to the BA. Their answer closes it without a migration:
    *
-   *   • an Editor with NO active Team in the project has NO delivery scope and is refused
-   *     EVERYTHING here (`EDITOR_NO_TEAM_SCOPE`) — no nullable column can leak past that, and it is
-   *     AC1's "runtime must treat pre-existing violating data as no delivery scope";
-   *   • an Editor WITH Teams is refused a record belonging to another Team
-   *     (`TEAM_NOT_IN_SCOPE`), and a team-agnostic record (`teamId === null`) still passes.
+   *   "Keep `team_id` nullable. Null means Project Backlog, accessible only to Workspace Admin and
+   *    Project Admin. Editor must select one of their assigned Teams when creating a Work Item and
+   *    cannot access team-less items. Enforce this consistently in API queries, lists, reports, search,
+   *    pickers and direct URLs. No DB migration or backfill is required."
    *
-   * So the honest description is: the zero-team case is a boundary, and the per-row case is a
-   * narrowing over rows that carry a team. The remaining gap is the same one as before and is NOT
-   * closed by this change — closing it needs `team_id` to be mandatory on every Editor-writable row,
-   * which is a data-model decision, not an optimisation. Do not describe this as complete team
-   * isolation in a review; describe it as these two rules.
+   * So for an `editor` there are now three refusals and no admitted case:
+   *
+   *   • no active Team in the project at all → `EDITOR_NO_TEAM_SCOPE` (AC1);
+   *   • a record owned by another Team → `TEAM_NOT_IN_SCOPE` (AC3);
+   *   • a record owned by NO Team → `PROJECT_BACKLOG_ADMIN_ONLY`, a named refusal rather than the
+   *     other one, because "this is the Project Backlog" and "this is someone else's Team" are
+   *     different facts and the reader can act on only one of them.
+   *
+   * The nullable column is therefore no longer a gap — it is a THIRD population with its own audience,
+   * which is why no `team_id` had to become mandatory. Enforcement is not only here: every list,
+   * report, search and picker narrows through {@link resolveTeamScope}, because a boundary the reads
+   * do not share is a filter with a security-sounding name, which is what the note below is about.
    */
   async assertTeamInScope(
     workspaceId: string,
@@ -591,23 +611,57 @@ export class AccessService {
     projectId: string,
     teamId: string | null,
   ): Promise<void> {
-    if (await this.isWorkspaceAdmin(workspaceId, userId)) return;
-    const level = await this.getProjectAccessLevel(workspaceId, userId, projectId);
-    if (level !== 'editor') return;
+    const scope = await this.resolveTeamScope(workspaceId, userId, projectId);
+    if (scope.unrestricted) return;
 
-    const scoped = await this.listScopedTeamIds(workspaceId, userId, projectId);
-    if (scoped.length === 0) {
+    if (scope.teamIds.length === 0) {
       throw new PermissionDeniedException(
         'EDITOR_NO_TEAM_SCOPE',
         'An Editor must belong to at least one active Team in this project',
       );
     }
-    if (teamId !== null && !scoped.includes(teamId)) {
+    if (teamId === null) {
+      throw new PermissionDeniedException(
+        'PROJECT_BACKLOG_ADMIN_ONLY',
+        'Items with no Team belong to the Project Backlog, which only a Workspace Admin or Project Admin can open',
+      );
+    }
+    if (!scope.teamIds.includes(teamId)) {
       throw new PermissionDeniedException(
         'TEAM_NOT_IN_SCOPE',
         'This record belongs to a Team you are not assigned to',
       );
     }
+  }
+
+  /**
+   * The team scope every READ must narrow by — the one home of "which rows may this caller see in
+   * this project", so a list, a report, a search and a picker cannot disagree with
+   * {@link assertTeamInScope} or with each other (BA ruling 2026-08-17: "enforce this consistently in
+   * API queries, lists, reports, search, pickers and direct URLs").
+   *
+   * `unrestricted: true` means All Teams AND the Project Backlog — a Workspace Admin, a per-project
+   * `admin`, or a principal with no level at all (whose refusal belongs to
+   * `assertProjectPermission`, not here: answering it with an empty team scope would turn a
+   * permission failure into an empty grid, which reads as "this project has no work").
+   *
+   * For an `editor` the answer is their own active Teams, and a caller MUST read it as
+   * "`team_id IN (…)`", never "`IN (…) OR IS NULL`". An empty array is a real answer — no delivery
+   * scope — and must produce NO rows rather than being flattened into "unrestricted", the same
+   * `null`-versus-`[]` distinction `listReadableProjectIds` documents.
+   */
+  async resolveTeamScope(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+  ): Promise<TeamReadScope> {
+    if (await this.isWorkspaceAdmin(workspaceId, userId)) return { unrestricted: true };
+    const level = await this.getProjectAccessLevel(workspaceId, userId, projectId);
+    if (level !== 'editor') return { unrestricted: true };
+    return {
+      unrestricted: false,
+      teamIds: await this.listScopedTeamIds(workspaceId, userId, projectId),
+    };
   }
 
   /**

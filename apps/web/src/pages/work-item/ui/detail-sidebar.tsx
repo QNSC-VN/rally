@@ -16,7 +16,7 @@ import {
 } from '@/features/work-items/api'
 import { useProjectTeams, useProjectMemberOptions, useTeamOwnerOptions } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
-import { useProjectPermissions } from '@/features/access/api'
+import { useProjectPermissions, useProjectTeamScope } from '@/features/access/api'
 import { PERMISSION } from '@/shared/config/permissions'
 import { usePortfolioFeatureOptions } from '@/features/portfolio/api'
 import { listResource } from '@/shared/lib/query/resource'
@@ -182,6 +182,9 @@ export function DetailSidebar({
   // server agree on one code rather than the client guessing a weaker one.
   const { can } = useProjectPermissions(item.projectId)
   const canAssignRelease = can(PERMISSION.RELEASE_VIEW)
+  // An Editor cannot reach the Project Backlog (BA ruling 2026-08-17), so they cannot send an item
+  // there either — see the Team field below. Shares `useProjectPermissions`' cache with the line above.
+  const { teamRequired } = useProjectTeamScope(item.projectId)
   const { data: releases = [] } = useReleases(item.projectId)
   // The reference feed, NOT the Portfolio grid's: that one takes `portfolio:view`, which
   // P5-PI-FR-017 withholds from an Editor. Scoped to the ITEM's project per §5.3:133.
@@ -366,16 +369,21 @@ export function DetailSidebar({
           </ReadOnlyFieldValue>
         </FormField>
 
-        {/* Team — blank is legal and means the PROJECT backlog.
+        {/* Team — blank is legal FOR AN ADMIN and means the PROJECT backlog.
             GAP-P1-WID-008: "Apply latest Team optional rule: blank Team = Project backlog; selected
             Team must belong to selected Project." Without the unassigned option an item could be
-            given a Team but never returned to the Project backlog, so the move was one-way. */}
+            given a Team but never returned to the Project backlog, so the move was one-way.
+
+            For an Editor the empty option is withdrawn, because clearing the Team is a MOVE INTO the
+            Project Backlog and `updateWorkItem` re-checks the DESTINATION team — an Editor gets
+            `PROJECT_BACKLOG_ADMIN_ONLY` (403) and, worse, would lose the item on success. Same flag,
+            same reason, as the create modal's picker (BA ruling 2026-08-17). */}
         <TeamSelectField
           value={item.teamId}
           onChange={(v) => onUpdate({ teamId: v || null })}
           teams={teams}
           disabled={disabled}
-          allowUnassigned
+          allowUnassigned={!teamRequired}
         />
 
         {/* Priority — Defect only */}

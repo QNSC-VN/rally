@@ -72,6 +72,68 @@ describe('inScope', () => {
     // fell out of all three buckets while its children still fed Planned/Accepted/Burnup.
     expect(inScope(null, T1)).toBe(true);
   });
+
+  /**
+   * The one case where a team-agnostic row is OUT of scope (BA ruling, 2026-08-17): `team_id IS
+   * NULL` is the Project Backlog and only a Workspace Admin or Project Admin may read it.
+   */
+  describe('a team-RESTRICTED reader', () => {
+    const MINE = { kind: 'teams', teamIds: ['t1', 't3'] } as const;
+
+    it('admits the Teams they hold and refuses the ones they do not', () => {
+      expect(inScope('t1', MINE)).toBe(true);
+      expect(inScope('t3', MINE)).toBe(true);
+      expect(inScope('t2', MINE)).toBe(false);
+    });
+
+    it('EXCLUDES the Project Backlog, unlike a selected Team', () => {
+      expect(inScope(null, MINE)).toBe(false);
+      // The admin rule above is untouched, which matters because this predicate is shared with the
+      // FROZEN writer (`ReportSnapshotService` only ever passes `all` or `team`).
+      expect(inScope(null, T1)).toBe(true);
+    });
+
+    it('sees no row at all when they hold no Team', () => {
+      const none = { kind: 'teams', teamIds: [] } as const;
+      expect(inScope('t1', none)).toBe(false);
+      expect(inScope(null, none)).toBe(false);
+    });
+  });
+});
+
+describe('the buckets under a team-RESTRICTED reader', () => {
+  const MINE = { kind: 'teams', teamIds: ['t1'] } as const;
+  const backlogFeature = feature({ id: 'f-nt', releaseId: REL_A, teamId: null, teamName: null });
+  const mine = feature({ id: 'f-mine', releaseId: REL_A, teamId: 't1' });
+  const theirs = feature({ id: 'f-theirs', releaseId: REL_A, teamId: 't2', teamName: 'Team Two' });
+
+  it('keeps their own Features and drops the Project Backlog and other Teams', () => {
+    const buckets = bucketFeatures([mine, backlogFeature, theirs], [], REL_A, MINE);
+    expect(buckets.direct.map((f) => f.id)).toEqual(['f-mine']);
+    // An admin selecting Team One sees all three, and that stays true.
+    expect(bucketFeatures([mine, backlogFeature, theirs], [], REL_A, T1).direct.map((f) => f.id)) //
+      .toEqual(['f-mine', 'f-nt']);
+  });
+
+  it('drops a team-less leaf from Unparented and from the tracked leaves', () => {
+    const backlogLeaf = child({ id: 'c-nt', featureId: null, releaseId: REL_A, teamId: null });
+    const mineLeaf = child({ id: 'c-mine', featureId: null, releaseId: REL_A, teamId: 't1' });
+    expect(unparentedItems([backlogLeaf, mineLeaf], REL_A, MINE).map((c) => c.id)) //
+      .toEqual(['c-mine']);
+    expect(trackedLeaves([backlogLeaf, mineLeaf], REL_A, MINE).map((c) => c.id)) //
+      .toEqual(['c-mine']);
+    // Eligibility counted in the same scope as the measurement: an admin still gets both.
+    expect(trackedLeaves([backlogLeaf, mineLeaf], REL_A, T1).map((c) => c.id)) //
+      .toEqual(['c-nt', 'c-mine']);
+  });
+
+  it('does not derive a Feature from a Project Backlog child', () => {
+    const outsider = feature({ id: 'f-out', releaseId: REL_B, teamId: 't1' });
+    const backlogChild = child({ id: 'c-nt', featureId: 'f-out', releaseId: REL_A, teamId: null });
+    expect(bucketFeatures([outsider], [backlogChild], REL_A, MINE).derived).toEqual([]);
+    expect(bucketFeatures([outsider], [backlogChild], REL_A, T1).derived.map((f) => f.id)) //
+      .toEqual(['f-out']);
+  });
 });
 
 describe('a team-less Feature under a selected Team (P6-01)', () => {

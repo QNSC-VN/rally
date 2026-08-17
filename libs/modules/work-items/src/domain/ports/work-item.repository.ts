@@ -8,6 +8,7 @@ import type {
   MyWorkItem,
   WorkspaceSummary,
 } from '../work-item.types';
+import type { TeamReadScope, ProjectTeamScope } from '../team-read-scope';
 
 export const WORK_ITEM_REPOSITORY = Symbol('WORK_ITEM_REPOSITORY');
 
@@ -54,11 +55,18 @@ export interface IWorkItemRepository {
     updatedBy: string,
     executor?: DbExecutor,
   ): Promise<void>;
+  /**
+   * `teamScope` is the EDITOR Team boundary and is REQUIRED on every one of these reads, deliberately:
+   * an optional scope is one a new call site forgets, and this module's own history is what that costs
+   * (see `team-read-scope.ts`). It is NOT `filters.teamId` — that is the reader's own display filter,
+   * which may narrow the boundary and can never widen it.
+   */
   listByProject(
     projectId: string,
     workspaceId: string,
     filters: WorkItemFilters,
     args: { limit: number; cursor: CursorPayload | null },
+    teamScope: TeamReadScope,
   ): Promise<PagedResult<WorkItem>>;
   /** Backlog: story + defect only (tasks excluded), keyset paginated. */
   listBacklog(
@@ -66,9 +74,20 @@ export interface IWorkItemRepository {
     workspaceId: string,
     filters: WorkItemFilters,
     args: { limit: number; cursor: CursorPayload | null },
+    teamScope: TeamReadScope,
   ): Promise<PagedResult<WorkItem>>;
-  /** Direct child tasks of a parent work item, ordered by rank. */
-  listTasksByParent(parentId: string, workspaceId: string): Promise<WorkItem[]>;
+  /**
+   * Direct child tasks of a parent work item, ordered by rank.
+   *
+   * A Task's team is resolved `coalesce(task, parent, iteration)` here — the three tiers
+   * `getScopedTaskHours` and Team Status already use — because a Task's own `team_id` only DEFAULTS to
+   * its parent's (SRS P1-04) and is commonly unset on a Story that carries one.
+   */
+  listTasksByParent(
+    parentId: string,
+    workspaceId: string,
+    teamScope: TeamReadScope,
+  ): Promise<WorkItem[]>;
   /**
    * Take a transaction-scoped advisory lock on one (project, parent) rank scope.
    *
@@ -93,8 +112,18 @@ export interface IWorkItemRepository {
     workspaceId: string,
     executor?: DbExecutor,
   ): Promise<string | null>;
-  /** Server-side aggregated totals for a parent's tasks (totals row). */
-  getTaskTotals(parentId: string, workspaceId: string): Promise<TaskTotals>;
+  /**
+   * Server-side aggregated totals for a parent's tasks (totals row).
+   *
+   * Same `coalesce(task, parent, iteration)` team scope as {@link listTasksByParent}, and it has to be
+   * the same: a totals row summing tasks the grid above it does not show is the disagreement
+   * "eligibility must be counted in the SAME scope as the measurement" names.
+   */
+  getTaskTotals(
+    parentId: string,
+    workspaceId: string,
+    teamScope: TeamReadScope,
+  ): Promise<TaskTotals>;
   /**
    * The two Home aggregates, and the ONE sentinel both share with every other cross-project read:
    * `readableProjectIds` is `null` for UNRESTRICTED and an array — possibly EMPTY — for restricted.
@@ -106,17 +135,26 @@ export interface IWorkItemRepository {
    * AC4) — against Phase 4 `02_Roles_Permissions/SRS.md` §2.2 and §6, which put an unassigned
    * project out of navigation, selectors, search AND results. `listHealthByWorkspace` in the projects
    * module already took the sentinel for exactly this reason and is the model.
+   *
+   * `teamScoped` is the SECOND boundary, added by the BA ruling of 2026-08-17. These two reads are
+   * CROSS-project, so the Team scope cannot be one answer: it is resolved per project, and only the
+   * projects the caller is an `editor` in appear in the array. A row from a project named there must
+   * carry one of that project's listed teams (`teamIds: []` therefore contributes nothing); a row from
+   * any other readable project is unrestricted. An EMPTY array means no project is narrowed at all —
+   * an admin or a caller who is an editor nowhere — never "narrow everything".
    */
   listMyWork(
     workspaceId: string,
     userId: string,
     args: { limit: number },
     readableProjectIds: string[] | null,
+    teamScoped: ProjectTeamScope[],
   ): Promise<MyWorkItem[]>;
   getWorkspaceSummary(
     workspaceId: string,
     userId: string,
     readableProjectIds: string[] | null,
+    teamScoped: ProjectTeamScope[],
   ): Promise<WorkspaceSummary>;
   /**
    * Check whether ALL non-deleted child tasks of a parent are in 'completed' state.

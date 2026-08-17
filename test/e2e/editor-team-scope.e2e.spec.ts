@@ -147,20 +147,118 @@ describe('Editor Team scope (GAP-P4-RBAC-003)', () => {
     expect(adminTeams).toContain(TEAM_BETA_ID);
   });
 
-  it('leaves a team-agnostic item reachable — stated, not hidden', async () => {
-    // `work_items.team_id` is nullable and mostly unset, so refusing these would make the ordinary
-    // case unreachable. `AccessService.assertTeamInScope` documents this as the remaining gap; the
-    // zero-team case is what closes totally.
+  /**
+   * INVERTED by the BA's ruling of 2026-08-17. This used to assert a team-less item was REACHABLE,
+   * because `work_items.team_id` is nullable and mostly unset. The BA's answer: "Null means Project
+   * Backlog, accessible only to Workspace Admin and Project Admin." No migration, a third audience.
+   */
+  it('REFUSES a team-less item — that is the Project Backlog', async () => {
     const created = await as(adminToken, 'POST', '/work-items', {
       projectId: NXP,
       type: 'story',
-      title: 'RBAC-003 team-agnostic story',
+      title: 'RBAC-003 Project Backlog story',
     });
     expect(created.statusCode).toBe(201);
+    expect(created.json().teamId).toBeNull();
 
     const res = await as(editorToken, 'GET', `/work-items/${created.json().id}`);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.json().teamId).toBeNull();
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('PROJECT_BACKLOG_ADMIN_ONLY');
+    expect(JSON.stringify(res.json())).not.toContain('RBAC-003 Project Backlog story');
+  });
+
+  it('makes the Editor CHOOSE a Team when creating, and names the choice', async () => {
+    const res = await as(editorToken, 'POST', '/work-items', {
+      projectId: NXP,
+      type: 'story',
+      title: 'RBAC-003 editor create with no team',
+    });
+
+    // Not `PROJECT_BACKLOG_ADMIN_ONLY`: on a form the reader needs to know WHICH field to fill.
+    expect(res.statusCode).toBe(412);
+    expect(res.json().error.code).toBe('WORK_ITEM_TEAM_REQUIRED');
+  });
+
+  it('lets the Editor create inside their own Team', async () => {
+    const res = await as(editorToken, 'POST', '/work-items', {
+      projectId: NXP,
+      type: 'story',
+      title: 'RBAC-003 editor create in Alpha',
+      teamId: TEAM_ALPHA_ID,
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().teamId).toBe(TEAM_ALPHA_ID);
+  });
+
+  /**
+   * The READ side of the ruling — "enforce this consistently in API queries, lists, reports, search,
+   * pickers and direct URLs". Unit specs pin the predicates by rendering SQL; these prove the routes
+   * actually reach them, which is the property CLAUDE.md records no service-level spec can see.
+   */
+  describe('lists and sub-resources narrow to the Editor’s Teams', () => {
+    it('keeps another Team’s Story out of the Backlog list', async () => {
+      const res = await as(editorToken, 'GET', `/work-items/backlog?projectId=${NXP}&limit=100`);
+
+      expect(res.statusCode).toBe(200);
+      const ids = (res.json().data as Array<{ id: string }>).map((r) => r.id);
+      expect(ids).toContain(alphaItemId);
+      expect(ids).not.toContain(betaItemId);
+    });
+
+    it('keeps a Project Backlog item out of the list as well', async () => {
+      const created = await as(adminToken, 'POST', '/work-items', {
+        projectId: NXP,
+        type: 'story',
+        title: 'RBAC-003 backlog row',
+      });
+      expect(created.json().teamId).toBeNull();
+
+      const res = await as(editorToken, 'GET', `/work-items/backlog?projectId=${NXP}&limit=100`);
+
+      expect((res.json().data as Array<{ id: string }>).map((r) => r.id)).not.toContain(
+        created.json().id,
+      );
+    });
+
+    it('refuses another Team’s Revision History, links, hours, watchers and attachments', async () => {
+      // The record was refused all along; its CONTENTS were not, which is the same disclosure.
+      for (const path of [
+        'activity',
+        'labels',
+        'relations',
+        'milestones',
+        'time-logs',
+        'watchers',
+        'attachments',
+      ]) {
+        const res = await as(editorToken, 'GET', `/work-items/${betaItemId}/${path}`);
+        expect([403, 404], `${path} answered ${res.statusCode}`).toContain(res.statusCode);
+      }
+    });
+
+    it('refuses a bulk write that includes another Team’s item', async () => {
+      const res = await as(editorToken, 'PATCH', '/work-items/bulk-iteration', {
+        projectId: NXP,
+        itemIds: [alphaItemId, betaItemId],
+        iterationId: null,
+      });
+
+      // All-or-nothing: their own item must not move either.
+      expect(res.statusCode).toBe(403);
+    });
+  });
+
+  it('refuses an Editor creating into another Team', async () => {
+    const res = await as(editorToken, 'POST', '/work-items', {
+      projectId: NXP,
+      type: 'story',
+      title: 'RBAC-003 editor create in Beta',
+      teamId: TEAM_BETA_ID,
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('TEAM_NOT_IN_SCOPE');
   });
 });

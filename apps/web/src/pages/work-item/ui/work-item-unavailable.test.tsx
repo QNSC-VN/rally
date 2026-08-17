@@ -27,6 +27,17 @@ describe('workItemUnavailableReason', () => {
     expect(workItemUnavailableReason(true, new ApiError({}, 403))).toBe('denied')
   })
 
+  it('maps a team-less record (`PROJECT_BACKLOG_ADMIN_ONLY`) to `denied`', () => {
+    // BA ruling 2026-08-17: `team_id IS NULL` is the Project Backlog, "accessible only to Workspace
+    // Admin and Project Admin". An Editor opening `/item/US-17` directly gets a 403 carrying this
+    // code, and it must land on Access Denied like any other refusal — the direct-URL half of
+    // "enforce this consistently in API queries, lists, reports, search, pickers and direct URLs".
+    // Asserted with the CODE present to pin that the mapping does not need to know it: a new refusal
+    // must not fall through to `loadFailed`, which would blame the server for a rule.
+    const denied = new ApiError({ error: { code: 'PROJECT_BACKLOG_ADMIN_ONLY' } }, 403)
+    expect(workItemUnavailableReason(true, denied)).toBe('denied')
+  })
+
   it('maps a resolved-but-absent record to `notFound`', () => {
     // `by-key` maps a 404 to `null`, so the query SUCCEEDS with no data. That is an answer.
     expect(workItemUnavailableReason(false, undefined)).toBe('notFound')

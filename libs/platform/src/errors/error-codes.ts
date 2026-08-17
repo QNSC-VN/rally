@@ -58,6 +58,14 @@ export const ErrorCodes = {
   EDITOR_NO_TEAM_SCOPE: 'EDITOR_NO_TEAM_SCOPE',
   /** The record belongs to a Team this Editor is not assigned to (§3.2, GAP-P4-RBAC-003 AC3). */
   TEAM_NOT_IN_SCOPE: 'TEAM_NOT_IN_SCOPE',
+  /**
+   * `team_id IS NULL` is the Project Backlog, and only a Workspace Admin or Project Admin may reach
+   * it (BA ruling 2026-08-17). Distinct from `TEAM_NOT_IN_SCOPE` on purpose: "no Team" and "another
+   * Team" are different facts, and only one of them is something the reader can act on.
+   */
+  PROJECT_BACKLOG_ADMIN_ONLY: 'PROJECT_BACKLOG_ADMIN_ONLY',
+  /** An Editor must choose one of their Teams when creating a Work Item (BA ruling 2026-08-17). */
+  WORK_ITEM_TEAM_REQUIRED: 'WORK_ITEM_TEAM_REQUIRED',
   PROJECT_LEAD_NOT_MEMBER: 'PROJECT_LEAD_NOT_MEMBER',
   PROJECT_INVALID_DATE_RANGE: 'PROJECT_INVALID_DATE_RANGE',
   LABEL_NOT_FOUND: 'LABEL_NOT_FOUND',

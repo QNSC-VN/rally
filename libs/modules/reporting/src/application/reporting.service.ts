@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { NotFoundException, parseSort } from '@platform';
 import type { JwtPayload } from '@platform';
+import { AccessService } from '@modules/access';
 import { PreliminaryEstimateMapService } from '@modules/portfolio';
 import { IReportingRepository, REPORTING_REPOSITORY } from '../domain/ports/reporting.repository';
 import type { IterationRow } from '../domain/ports/reporting.repository';
@@ -25,7 +26,13 @@ import {
   type ReleaseChild,
   type ReleaseFeature,
 } from '../domain/release-tracking';
-import { endOfWorkspaceDay, teamScope, workspaceLocalDate } from '../domain/report-scope';
+import {
+  endOfWorkspaceDay,
+  restrictedTeamScope,
+  teamScope,
+  workspaceLocalDate,
+  type TeamScope,
+} from '../domain/report-scope';
 import { describeEmptiness, rollUpTeamCapacity } from '../domain/team-capacity';
 import {
   DEFAULT_VELOCITY_WINDOW,
@@ -48,6 +55,21 @@ import type {
 /** What every report calls the scope when no Team is selected (IB §7's context title). */
 const ALL_TEAMS_LABEL = 'All Teams';
 
+/**
+ * What the DEFAULT scope is called for a reader who has no `All Teams` (BA ruling, 2026-08-17).
+ *
+ * `All Teams` would be a false claim on that screen twice over: it excludes every Team the reader
+ * does not hold, and it excludes the Project Backlog (`team_id IS NULL`), which the ruling makes
+ * admin-only. The scope a reader sees FIRST is the one that must not lie about what it counts —
+ * which is exactly why `teamName ?? ''` was fixed to print a real label at all.
+ *
+ * A DECLARED new label, recorded here because the SPA prints this string verbatim through
+ * `teamScopeLabel` and nothing else in the contract distinguishes the two defaults. `My Teams`
+ * rather than a list of names: the roster can hold many teams, the header is a single line, and the
+ * Team picker beside it is what names them.
+ */
+const MY_TEAMS_LABEL = 'My Teams';
+
 interface ScopeArgs {
   projectId: string;
   teamId?: string | null;
@@ -61,12 +83,21 @@ interface ScopeArgs {
  * The Team half is enforced by construction: a selected Team is pushed into each query's
  * WHERE clause rather than filtered afterwards, because "hiding rows in the browser is not
  * sufficient authorization" (§5.2) applies just as much to hiding them in the service.
+ *
+ * THE TEAM HALF IS NOW A CEILING AS WELL AS A CHOICE
+ *
+ * Until the BA ruling of 2026-08-17 the Team was purely the reader's selection, so `teamScope(...)`
+ * ran straight off the query string. It now has to be intersected with what the reader may see —
+ * `AccessService.resolveTeamScope` — because "Editor … cannot access team-less items. Enforce this
+ * consistently in API queries, lists, reports, search, pickers and direct URLs." `resolveScope`
+ * below is the ONE place that happens, and every report method starts with it.
  */
 @Injectable()
 export class ReportingService {
   constructor(
     @Inject(REPORTING_REPOSITORY) private readonly repo: IReportingRepository,
     private readonly preliminaryEstimates: PreliminaryEstimateMapService,
+    private readonly access: AccessService,
   ) {}
 
   // ── Iteration Burndown ────────────────────────────────────────────────────
@@ -76,9 +107,9 @@ export class ReportingService {
     args: ScopeArgs & { iterationId: string },
   ): Promise<IterationBurndownReport> {
     const { workspaceId } = actor;
-    const scope = teamScope(args.teamId);
+    const scope = await this.resolveScope(actor, args);
     const settings = await this.repo.getWorkspaceSettings(workspaceId);
-    const selected = await this.requireIteration(workspaceId, args);
+    const selected = await this.requireIteration(actor, args, scope);
 
     // For All Teams this is every Team's iteration for the shared timebox; for a selected
     // Team it is that Team's alone. An empty result means the Team has no iteration in this
@@ -115,7 +146,7 @@ export class ReportingService {
     });
 
     return {
-      context: await this.context(actor, args, settings.timeZone),
+      context: await this.context(actor, args, settings.timeZone, scope),
       timebox,
       points: series.points,
       totalTaskEstimateAtStart: series.totalTaskEstimateAtStart,
@@ -135,7 +166,7 @@ export class ReportingService {
     args: ScopeArgs & { window?: VelocityWindow },
   ): Promise<VelocityReport> {
     const { workspaceId } = actor;
-    const scope = teamScope(args.teamId);
+    const scope = await this.resolveScope(actor, args);
     const settings = await this.repo.getWorkspaceSettings(workspaceId);
     const window = args.window ?? DEFAULT_VELOCITY_WINDOW;
 
@@ -177,7 +208,7 @@ export class ReportingService {
     );
 
     return {
-      context: await this.context(actor, args, settings.timeZone),
+      context: await this.context(actor, args, settings.timeZone, scope),
       window,
       bars,
       averages: computeAverages(bars),
@@ -192,9 +223,9 @@ export class ReportingService {
     args: ScopeArgs & { iterationId: string },
   ): Promise<TeamCapacityReport> {
     const { workspaceId } = actor;
-    const scope = teamScope(args.teamId);
+    const scope = await this.resolveScope(actor, args);
     const settings = await this.repo.getWorkspaceSettings(workspaceId);
-    const selected = await this.requireIteration(workspaceId, args);
+    const selected = await this.requireIteration(actor, args, scope);
 
     const participating = await this.repo.findTimeboxSiblings(
       workspaceId,
@@ -213,7 +244,7 @@ export class ReportingService {
     const rollup = rollUpTeamCapacity({ capacities, tasks: taskHours });
 
     return {
-      context: await this.context(actor, args, settings.timeZone),
+      context: await this.context(actor, args, settings.timeZone, scope),
       timebox: this.toTimebox(selected, participating),
       totals: rollup.totals,
       teams: rollup.teams,
@@ -238,7 +269,7 @@ export class ReportingService {
     },
   ): Promise<ReleaseTrackingReport> {
     const { workspaceId } = actor;
-    const scope = teamScope(args.teamId);
+    const scope = await this.resolveScope(actor, args);
     const unit: ChartUnit = args.unit ?? 'points';
     const bucket: ReleaseBucket = args.bucket ?? 'direct';
     const pageSize = args.pageSize ?? RELEASE_TRACKING_PAGE_SIZE;
@@ -355,7 +386,7 @@ export class ReportingService {
     const rows = entries.slice(offset, offset + pageSize).map((entry) => entry.row());
 
     return {
-      context: await this.context(actor, args, settings.timeZone),
+      context: await this.context(actor, args, settings.timeZone, scope),
       release: {
         id: release.id,
         name: release.name,
@@ -380,7 +411,7 @@ export class ReportingService {
     args: ScopeArgs & { releaseId: string; unit?: ChartUnit },
   ): Promise<ReleaseBurnupReport> {
     const { workspaceId } = actor;
-    const scope = teamScope(args.teamId);
+    const scope = await this.resolveScope(actor, args);
     const unit: ChartUnit = args.unit ?? 'points';
 
     /**
@@ -448,15 +479,35 @@ export class ReportingService {
   // ── internals ─────────────────────────────────────────────────────────────
 
   private async requireIteration(
-    workspaceId: string,
+    actor: JwtPayload,
     args: ScopeArgs & { iterationId: string },
+    scope: TeamScope,
   ): Promise<IterationRow> {
-    const selected = await this.repo.findIteration(workspaceId, args.iterationId);
+    const selected = await this.repo.findIteration(actor.workspaceId, args.iterationId);
     // The project check is not redundant with the guard: `report:view` is enforced against
     // the projectId in the query string, so an iteration id from another project would
     // otherwise be read under a project the caller legitimately holds.
     if (!selected || selected.projectId !== args.projectId) {
       throw new NotFoundException('ITERATION_NOT_FOUND', 'Iteration not found');
+    }
+    /**
+     * A team-restricted reader may open their own Teams' timeboxes and the SHARED ones — the server
+     * half of the SPA's `iterationsInScope`, and the same rule `timeboxInScope` applies to the
+     * siblings query. Enforced on the SELECTED id too, because "direct URLs" is in the ruling: the
+     * narrowed queries would otherwise serve another Team's sprint as an empty chart with that
+     * sprint's name and dates in the header.
+     *
+     * `teamId === null` is deliberately NOT refused here. A team-less ITERATION is a window every
+     * team works inside, not the Project Backlog — that is a property of a work item's own
+     * `team_id`, and it is the per-item predicates that withhold it.
+     */
+    if (scope.kind === 'teams' && selected.teamId !== null) {
+      await this.access.assertTeamInScope(
+        actor.workspaceId,
+        actor.sub,
+        args.projectId,
+        selected.teamId,
+      );
     }
     return selected;
   }
@@ -588,10 +639,46 @@ export class ReportingService {
     return { projectName, teamName };
   }
 
+  /**
+   * The scope this reader gets for this request: their selection, bounded by their access.
+   *
+   * Three answers, and the middle one is the whole ruling:
+   *
+   *   • an UNRESTRICTED reader (Workspace Admin, per-project `admin`, or a principal with no level
+   *     at all — `assertProjectPermission` is what refuses that one, not this) keeps exactly the old
+   *     behaviour: `teamScope(args.teamId)`, All Teams by default, Project Backlog included. Their
+   *     numbers must not move, and this is the line that guarantees it;
+   *   • a team-restricted reader who NAMED a Team must hold it — `assertTeamInScope` is the single
+   *     home of that refusal (`TEAM_NOT_IN_SCOPE` for another Team, `EDITOR_NO_TEAM_SCOPE` for a
+   *     reader with none), so a report cannot disagree with a work-item write about who a Team
+   *     belongs to. Note the scope becomes a one-element `teams`, NOT `{ kind: 'team' }`: the
+   *     difference is the Project Backlog, which stays admin-only even inside a Team they hold;
+   *   • a team-restricted reader who named NO Team gets their own Teams. This is where `All Teams`
+   *     stops meaning "every Team" — see `MY_TEAMS_LABEL`. An empty roster yields an empty scope,
+   *     which every query reads as "no rows" and never as "no filter".
+   *
+   * `args.teamId` is treated as absent when falsy, matching `teamScope('')`.
+   */
+  private async resolveScope(actor: JwtPayload, args: ScopeArgs): Promise<TeamScope> {
+    const access = await this.access.resolveTeamScope(actor.workspaceId, actor.sub, args.projectId);
+    if (access.unrestricted) return teamScope(args.teamId);
+    if (args.teamId) {
+      await this.access.assertTeamInScope(
+        actor.workspaceId,
+        actor.sub,
+        args.projectId,
+        args.teamId,
+      );
+      return restrictedTeamScope([args.teamId]);
+    }
+    return restrictedTeamScope(access.teamIds);
+  }
+
   private async context(
     actor: JwtPayload,
     args: ScopeArgs,
     timeZone: string,
+    scope: TeamScope,
   ): Promise<ReportContext> {
     const { projectName, teamName } = await this.resolveScopeNames(actor, args);
     return {
@@ -599,8 +686,10 @@ export class ReportingService {
       projectName,
       teamId: args.teamId ?? null,
       // The centred context title is `{Project} - {Team|All Teams}` (IB §7), so the label for
-      // "no Team selected" belongs to the contract rather than to the SPA.
-      teamName: args.teamId ? teamName : ALL_TEAMS_LABEL,
+      // "no Team selected" belongs to the contract rather than to the SPA — and for a reader with
+      // no All Teams scope that default label is `My Teams`, because theirs counts neither the
+      // other Teams nor the Project Backlog.
+      teamName: args.teamId ? teamName : scope.kind === 'teams' ? MY_TEAMS_LABEL : ALL_TEAMS_LABEL,
       timeZone,
     };
   }

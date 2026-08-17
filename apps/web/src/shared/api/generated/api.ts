@@ -3838,6 +3838,8 @@ export interface components {
       /** Format: uuid */
       assigneeId?: string
       planEstimate?: number
+      /** Format: uuid */
+      teamId?: string
     }
     CreateIterationItemResponseDto: {
       /** Format: uuid */

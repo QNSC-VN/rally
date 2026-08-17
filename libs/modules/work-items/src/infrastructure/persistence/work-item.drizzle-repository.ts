@@ -1,5 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, isNull, or, ilike, inArray, sql, asc, desc, type AnyColumn } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  isNull,
+  or,
+  ilike,
+  inArray,
+  notInArray,
+  sql,
+  asc,
+  desc,
+  type AnyColumn,
+  type SQL,
+} from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
@@ -36,6 +50,8 @@ import type {
   WorkspaceSummary,
 } from '../../domain/work-item.types';
 import { UNASSIGNED_FILTER } from '../../domain/work-item.types';
+import { teamRowFilter } from '../../domain/team-read-scope';
+import type { TeamReadScope, ProjectTeamScope } from '../../domain/team-read-scope';
 import { IWorkItemRepository, IterationScope } from '../../domain/ports/work-item.repository';
 
 /**
@@ -403,13 +419,55 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return conditions;
   }
 
+  /**
+   * The EDITOR Team boundary as a `work_items` predicate — `team_id IN (…)`, never `OR IS NULL`.
+   *
+   * Returns `null` for "this read has no rows at all", which the caller must answer by returning an
+   * empty result WITHOUT querying: `inArray(col, [])` is not portable as "match nothing", and turning
+   * an empty scope into no predicate is the `null`-versus-`[]` leak `listReadableProjectIds` documents.
+   * `[]` means "no predicate needed" (an unrestricted caller).
+   */
+  private teamConditions(scope: TeamReadScope): SQL[] | null {
+    const filter = teamRowFilter(scope);
+    switch (filter.kind) {
+      case 'all':
+        return [];
+      case 'none':
+        return null;
+      case 'in':
+        return [inArray(workItems.teamId, filter.teamIds)];
+    }
+  }
+
+  /** The same three-way decision over a task's RESOLVED team (`coalesce(task, parent, iteration)`). */
+  private resolvedTeamConditions(scope: TeamReadScope, resolvedTeam: SQL): SQL[] | null {
+    const filter = teamRowFilter(scope);
+    switch (filter.kind) {
+      case 'all':
+        return [];
+      case 'none':
+        return null;
+      case 'in':
+        return [
+          sql`${resolvedTeam} in (${sql.join(
+            filter.teamIds.map((id) => sql`${id}::uuid`),
+            sql`, `,
+          )})`,
+        ];
+    }
+  }
+
   async listByProject(
     projectId: string,
     workspaceId: string,
     filters: WorkItemFilters,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
+    teamScope: TeamReadScope,
   ): Promise<PagedResult<WorkItem>> {
-    const conditions = this.buildFilters(projectId, workspaceId, filters);
+    const team = this.teamConditions(teamScope);
+    // An Editor with no active Team in this project reads NOTHING — no query, no rows.
+    if (team === null) return buildPageResult<WorkItem>([], limit, () => [], 'desc');
+    const conditions = [...this.buildFilters(projectId, workspaceId, filters), ...team];
     if (cursor) {
       conditions.push(keysetCondition(workItems.createdAt, workItems.id, cursor));
     }
@@ -432,8 +490,13 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     workspaceId: string,
     filters: WorkItemFilters,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
+    teamScope: TeamReadScope,
   ): Promise<PagedResult<WorkItem>> {
-    const conditions = this.buildFilters(projectId, workspaceId, filters);
+    const team = this.teamConditions(teamScope);
+    // No Team in this project → no Backlog. `total` is 0 because that IS the count in scope, and the
+    // direction only shapes a cursor, which an empty page does not have.
+    if (team === null) return buildPageResult<WorkItem>([], limit, () => [], 'asc', 0);
+    const conditions = [...this.buildFilters(projectId, workspaceId, filters), ...team];
     // Backlog shows only story + defect (tasks live under their parent item).
     conditions.push(inArray(workItems.type, ['story', 'defect']));
 
@@ -496,7 +559,33 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     );
   }
 
-  async listTasksByParent(parentId: string, workspaceId: string): Promise<WorkItem[]> {
+  /**
+   * A Task's team, three tiers, most specific first — the rule `getScopedTaskHours` and Team Status
+   * already share (`coalesce(task.team_id, parent.team_id, iteration.team_id)`).
+   *
+   * A Task's own `team_id` only DEFAULTS to its parent's (SRS P1-04) and is commonly unset on a Story
+   * that carries one, so the task table alone cannot answer whose work this is. The parent and the
+   * iteration are LEFT-joined: with an unrestricted caller no predicate is added, so the joins can
+   * never change which rows come back.
+   */
+  private taskTeamJoins() {
+    const parent = alias(workItems, 'task_parent');
+    const iteration = alias(iterations, 'task_iteration');
+    return {
+      parent,
+      iteration,
+      resolvedTeam: sql`coalesce(${tasks.teamId}, ${parent.teamId}, ${iteration.teamId})`,
+    };
+  }
+
+  async listTasksByParent(
+    parentId: string,
+    workspaceId: string,
+    teamScope: TeamReadScope,
+  ): Promise<WorkItem[]> {
+    const { parent, iteration, resolvedTeam } = this.taskTeamJoins();
+    const team = this.resolvedTeamConditions(teamScope, resolvedTeam);
+    if (team === null) return [];
     const rows = await this.db
       .select({
         id: tasks.id,
@@ -542,11 +631,14 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         fixedInBuild: sql<string | null>`null`.as('fixed_in_build'),
       })
       .from(tasks)
+      .leftJoin(parent, eq(parent.id, tasks.parentId))
+      .leftJoin(iteration, eq(iteration.id, tasks.iterationId))
       .where(
         and(
           eq(tasks.parentId, parentId),
           eq(tasks.workspaceId, workspaceId),
           isNull(tasks.deletedAt),
+          ...team,
         ),
       )
       .orderBy(tasks.rank, tasks.createdAt, asc(tasks.id));
@@ -678,7 +770,16 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return updated.length > 0;
   }
 
-  async getTaskTotals(parentId: string, workspaceId: string): Promise<TaskTotals> {
+  async getTaskTotals(
+    parentId: string,
+    workspaceId: string,
+    teamScope: TeamReadScope,
+  ): Promise<TaskTotals> {
+    const EMPTY: TaskTotals = { taskCount: 0, estimateHours: 0, todoHours: 0, actualHours: 0 };
+    const { parent, iteration, resolvedTeam } = this.taskTeamJoins();
+    const team = this.resolvedTeamConditions(teamScope, resolvedTeam);
+    // Zeros, in the SAME scope the grid above is drawn in — not the project-wide sum.
+    if (team === null) return EMPTY;
     // P3: Query the dedicated `tasks` table.
     const rows = await this.db
       .select({
@@ -688,11 +789,14 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         actualHours: sql<string>`coalesce(sum(${tasks.actualHours}), 0)`,
       })
       .from(tasks)
+      .leftJoin(parent, eq(parent.id, tasks.parentId))
+      .leftJoin(iteration, eq(iteration.id, tasks.iterationId))
       .where(
         and(
           eq(tasks.parentId, parentId),
           eq(tasks.workspaceId, workspaceId),
           isNull(tasks.deletedAt),
+          ...team,
         ),
       );
     const r = rows[0];
@@ -707,6 +811,30 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
   // ── Home dashboard aggregates ─────────────────────────────────────────────
   // Bounded / workspace-scoped queries that replace the old per-project fan-out.
 
+  /**
+   * The EDITOR Team boundary for a CROSS-project read, where the scope differs per project.
+   *
+   * One predicate: a row is admitted if its project is NOT one of the narrowed ones, or if it is and
+   * the row carries one of that project's teams. A narrowed project with no teams contributes no term
+   * at all, which is how "an Editor with no Team in that project sees none of its work" is expressed
+   * without an `inArray(col, [])`. Returns `[]` when nothing is narrowed — never a predicate that
+   * would silently exclude everything.
+   */
+  private crossProjectTeamConditions(
+    projectColumn: AnyColumn,
+    teamColumn: AnyColumn,
+    teamScoped: ProjectTeamScope[],
+  ): SQL[] {
+    if (teamScoped.length === 0) return [];
+    const narrowed = teamScoped.map((s) => s.projectId);
+    const terms: SQL[] = [notInArray(projectColumn, narrowed)];
+    for (const scope of teamScoped) {
+      if (scope.teamIds.length === 0) continue;
+      terms.push(and(eq(projectColumn, scope.projectId), inArray(teamColumn, scope.teamIds))!);
+    }
+    return [or(...terms)!];
+  }
+
   /** Top-N work items assigned to the actor across the workspace, ordered by
    *  priority (urgent→none) then rank. One query, project key/name joined. */
   async listMyWork(
@@ -714,6 +842,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     userId: string,
     { limit }: { limit: number },
     readableProjectIds: string[] | null,
+    teamScoped: ProjectTeamScope[],
   ): Promise<MyWorkItem[]> {
     // `null` = UNRESTRICTED; an array restricts, and the EMPTY one short-circuits because
     // `inArray(col, [])` is not portable as "match nothing". See the port for why this widget needs
@@ -741,6 +870,9 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           ...(readableProjectIds === null
             ? []
             : [inArray(workItems.projectId, readableProjectIds)]),
+          // An item assigned to an Editor is still another Team's item, or the Project Backlog's, and
+          // Home is a "results" surface under §6 exactly like a list.
+          ...this.crossProjectTeamConditions(workItems.projectId, workItems.teamId, teamScoped),
         ),
       )
       .orderBy(
@@ -767,11 +899,22 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
    * An EMPTY scope returns zeros, and zero is a MEASUREMENT here, not an absence: the reader has no
    * readable project, so nothing is genuinely in scope. The SPA renders `--` only for a value it never
    * received (`EMPTY_VALUE`), which keeps the two distinguishable on screen.
+   *
+   * THE TEAM SCOPE NARROWS THE WORK-ITEM TILES ONLY, AND THAT IS DELIBERATE.
+   * `openWorkItems`, `blockedItems`, `openDefects` and `assignedToMe` count WORK, which the BA ruling
+   * of 2026-08-17 scopes by Team. `activeProjects` and `activeSprints` count CONTAINERS, and neither is
+   * a work item: an Editor holds `project:view` on a project whose work they may only partly see, and
+   * an iteration's `team_id` is optional and unset on the large majority of rows (195 of 206 locally),
+   * so `iterations.team_id = ANY(…)` would drop exactly the SHARED sprints an Editor works inside —
+   * the `teamOrSharedTimebox` mistake the reporting module already made and fixed. Narrowing these two
+   * honestly needs the same two-tier rule over the work in them, which is a reporting-side change, not
+   * a predicate on this table.
    */
   async getWorkspaceSummary(
     workspaceId: string,
     userId: string,
     readableProjectIds: string[] | null,
+    teamScoped: ProjectTeamScope[],
   ): Promise<WorkspaceSummary> {
     const EMPTY: WorkspaceSummary = {
       activeProjects: 0,
@@ -821,6 +964,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           eq(workItems.workspaceId, workspaceId),
           isNull(workItems.deletedAt),
           ...inScope(workItems.projectId),
+          ...this.crossProjectTeamConditions(workItems.projectId, workItems.teamId, teamScoped),
         ),
       );
     return {

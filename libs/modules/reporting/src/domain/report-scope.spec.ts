@@ -4,9 +4,12 @@ import {
   DEFAULT_WORKING_DAYS,
   addDays,
   endOfWorkspaceDay,
+  frozenSeriesScope,
   isDayClosed,
+  isEmptyTeamScope,
   isWorkingDay,
   isoDayOfWeek,
+  restrictedTeamScope,
   roundForDisplay,
   startOfWorkspaceDay,
   teamScope,
@@ -20,6 +23,55 @@ describe('teamScope', () => {
     expect(teamScope(undefined)).toEqual(ALL_TEAMS);
     expect(teamScope('')).toEqual(ALL_TEAMS);
     expect(teamScope('t1')).toEqual({ kind: 'team', teamId: 't1' });
+  });
+});
+
+/**
+ * The BA ruling of 2026-08-17: an Editor has no All Teams and no Project Backlog, so their scope is
+ * a THIRD kind rather than a flag on the other two.
+ */
+describe('restrictedTeamScope', () => {
+  it('is a distinct kind, so no query can mistake it for All Teams', () => {
+    expect(restrictedTeamScope(['t1', 't2'])).toEqual({ kind: 'teams', teamIds: ['t1', 't2'] });
+  });
+
+  it('de-duplicates, so a doubled roster row cannot lengthen the IN list', () => {
+    expect(restrictedTeamScope(['t1', 't1'])).toEqual({ kind: 'teams', teamIds: ['t1'] });
+  });
+
+  it('keeps a ONE-team scope distinguishable from a selected Team', () => {
+    // Not `{ kind: 'team', teamId: 't1' }`: the difference is the Project Backlog, which a selected
+    // Team admits (`inScope`) and a restricted reader must not see.
+    expect(restrictedTeamScope(['t1'])).not.toEqual({ kind: 'team', teamId: 't1' });
+  });
+
+  it('reports an empty roster as EMPTY, never as unrestricted', () => {
+    expect(isEmptyTeamScope(restrictedTeamScope([]))).toBe(true);
+    expect(isEmptyTeamScope(restrictedTeamScope(['t1']))).toBe(false);
+    expect(isEmptyTeamScope(ALL_TEAMS)).toBe(false);
+    expect(isEmptyTeamScope(teamScope('t1'))).toBe(false);
+  });
+});
+
+describe('frozenSeriesScope', () => {
+  it('leaves an unrestricted reader exactly as they were', () => {
+    expect(frozenSeriesScope(ALL_TEAMS)).toEqual({ kind: 'all' });
+    expect(frozenSeriesScope(teamScope('t1'))).toEqual({ kind: 'team', teamId: 't1' });
+  });
+
+  it('serves a single-Team reader that Team OWN rows', () => {
+    expect(frozenSeriesScope(restrictedTeamScope(['t1']))).toEqual({ kind: 'team', teamId: 't1' });
+  });
+
+  it('serves NOTHING to a multi-Team reader rather than leaking or summing', () => {
+    // The `team_id IS NULL` row was measured over every Team (a disclosure), and summing the two
+    // team rows is forbidden — for the release burnup it also double-counts a team-agnostic child.
+    // So the series they asked for was never measured, and the report says unavailable.
+    expect(frozenSeriesScope(restrictedTeamScope(['t1', 't2']))).toBeNull();
+  });
+
+  it('serves nothing to a reader with no Team at all', () => {
+    expect(frozenSeriesScope(restrictedTeamScope([]))).toBeNull();
   });
 });
 

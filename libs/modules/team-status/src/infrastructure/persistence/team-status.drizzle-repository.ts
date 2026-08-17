@@ -14,7 +14,10 @@ import {
 import { alias } from 'drizzle-orm/pg-core';
 import { users } from '../../../../../../db/schema/identity';
 import type { RawTeamStatusTaskRow, TeamStatusRosterMember } from '../../domain/team-status.types';
-import { ITeamStatusRepository } from '../../domain/ports/team-status.repository';
+import {
+  ITeamStatusRepository,
+  type TeamReadScope,
+} from '../../domain/ports/team-status.repository';
 
 @Injectable()
 export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
@@ -23,8 +26,11 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
   async getTaskRows(
     iterationId: string,
     workspaceId: string,
-    teamId?: string | null,
+    teamId: string | null | undefined,
+    scope: TeamReadScope,
   ): Promise<RawTeamStatusTaskRow[]> {
+    // No teams, no rows — and no query. An Editor with no active Team has no delivery scope at all.
+    if (!scope.unrestricted && scope.teamIds.length === 0) return [];
     // P3 refactor: Query from the dedicated `tasks` table instead of
     // `work_items WHERE type='task'`. Join with work_items for the
     // parent (work product) info.
@@ -60,6 +66,25 @@ export class TeamStatusDrizzleRepository implements ITeamStatusRepository {
     ];
     if (teamId) {
       conditions.push(sql`${resolvedTeam} = ${teamId}::uuid`);
+    }
+    /**
+     * The caller's OWN scope, on top of whatever team they asked for (BA ruling 2026-08-17).
+     *
+     * `IN (…)` over the SAME three-tier expression above, and deliberately no `OR IS NULL`: a task
+     * whose resolved team is null belongs to the Project Backlog, which only a Workspace Admin or
+     * Project Admin may see. The OR-NULL form is right one table over — a team-less ITERATION is a
+     * shared timebox — and wrong here.
+     *
+     * An empty `teamIds` returns before any SQL is issued (see the caller): `inArray` with an empty
+     * list is not portable as "match nothing".
+     */
+    if (!scope.unrestricted) {
+      conditions.push(
+        sql`${resolvedTeam} in (${sql.join(
+          scope.teamIds.map((id) => sql`${id}::uuid`),
+          sql`, `,
+        )})`,
+      );
     }
 
     // Fetch tasks with parent (work product) info via lateral subqueries.

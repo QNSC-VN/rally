@@ -199,10 +199,26 @@ describe('AccessService — scope-aware permission resolution', () => {
       asEditor();
       scoped([]);
 
-      // Including a team-agnostic record. This is what makes the zero-team case a boundary rather
-      // than a filter a nullable column walks past.
       await expect(service.assertTeamInScope('ws-1', 'u-1', 'proj-1', null)).rejects.toMatchObject({
         code: 'EDITOR_NO_TEAM_SCOPE',
+      });
+      await expect(
+        service.assertTeamInScope('ws-1', 'u-1', 'proj-1', 'team-any'),
+      ).rejects.toMatchObject({ code: 'EDITOR_NO_TEAM_SCOPE' });
+    });
+
+    /**
+     * INVERTED by the BA's ruling of 2026-08-17. This used to assert that a team-agnostic record
+     * PASSED, on the reading that `work_items.team_id` is nullable and mostly unset so refusing it
+     * would make the ordinary case unreachable. The BA closed that hole without a migration: "Null
+     * means Project Backlog, accessible only to Workspace Admin and Project Admin."
+     */
+    it('refuses a record with NO Team — that is the Project Backlog', async () => {
+      asEditor();
+      scoped(['team-mine']);
+
+      await expect(service.assertTeamInScope('ws-1', 'u-1', 'proj-1', null)).rejects.toMatchObject({
+        code: 'PROJECT_BACKLOG_ADMIN_ONLY',
       });
     });
 
@@ -215,18 +231,70 @@ describe('AccessService — scope-aware permission resolution', () => {
       ).rejects.toMatchObject({ code: 'TEAM_NOT_IN_SCOPE' });
     });
 
-    it('admits their own Team, and a team-agnostic record once they have any Team', async () => {
+    it('admits their own Team, which is the only thing it admits', async () => {
       asEditor();
       scoped(['team-mine']);
 
       await expect(
         service.assertTeamInScope('ws-1', 'u-1', 'proj-1', 'team-mine'),
       ).resolves.toBeUndefined();
-      // Stated, not hidden: `work_items.team_id` is nullable and mostly unset, so refusing these
-      // would make the ordinary case unreachable. See the method's own docblock.
-      await expect(
-        service.assertTeamInScope('ws-1', 'u-1', 'proj-1', null),
-      ).resolves.toBeUndefined();
+    });
+
+    /**
+     * `resolveTeamScope` is the same decision in the shape a QUERY needs, and every list, report,
+     * search and picker narrows through it — a boundary the reads do not share is a filter with a
+     * security-sounding name, which is the failure the 2026-08-14 removal note describes.
+     */
+    describe('resolveTeamScope — the same rule, for reads', () => {
+      it('is UNRESTRICTED for a Workspace Admin', async () => {
+        projectAccessRepo.listWorkspaceAdminUserIds.mockResolvedValue(['u-1']);
+
+        await expect(service.resolveTeamScope('ws-1', 'u-1', 'proj-1')).resolves.toEqual({
+          unrestricted: true,
+        });
+      });
+
+      it('is UNRESTRICTED for a per-project Admin — All Teams plus the Project Backlog', async () => {
+        assignmentRepo.listEffectiveForUser.mockResolvedValue([] as never);
+        accessLevelRows = [{ projectId: 'proj-1', accessLevel: 'admin' }];
+
+        await expect(service.resolveTeamScope('ws-1', 'u-1', 'proj-1')).resolves.toEqual({
+          unrestricted: true,
+        });
+      });
+
+      it("is the Editor's own Teams", async () => {
+        asEditor();
+        scoped(['team-mine', 'team-also-mine']);
+
+        await expect(service.resolveTeamScope('ws-1', 'u-1', 'proj-1')).resolves.toEqual({
+          unrestricted: false,
+          teamIds: ['team-mine', 'team-also-mine'],
+        });
+      });
+
+      it('answers an EMPTY list rather than unrestricted for an Editor with no Team', async () => {
+        // The `null`-versus-`[]` distinction `listReadableProjectIds` documents: a caller that
+        // flattens `[]` into "no filter" hands that Editor the whole project.
+        asEditor();
+        scoped([]);
+
+        await expect(service.resolveTeamScope('ws-1', 'u-1', 'proj-1')).resolves.toEqual({
+          unrestricted: false,
+          teamIds: [],
+        });
+      });
+
+      it('leaves a principal with NO level unrestricted — their refusal is a permission one', async () => {
+        assignmentRepo.listEffectiveForUser.mockResolvedValue([] as never);
+        accessLevelRows = [];
+
+        // Narrowing them to zero teams would turn a 403 into an empty grid, which reads as "this
+        // project has no work" — `assertProjectPermission` is what refuses them.
+        await expect(service.resolveTeamScope('ws-1', 'u-1', 'proj-1')).resolves.toEqual({
+          unrestricted: true,
+        });
+      });
     });
 
     it('does not apply to a per-project Admin — All Teams, §3.1', async () => {

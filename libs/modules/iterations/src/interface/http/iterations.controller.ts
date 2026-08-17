@@ -480,6 +480,7 @@ export class IterationsController {
       title: dto.title,
       assigneeId: dto.assigneeId,
       planEstimate: dto.planEstimate,
+      teamId: dto.teamId,
     });
   }
 }

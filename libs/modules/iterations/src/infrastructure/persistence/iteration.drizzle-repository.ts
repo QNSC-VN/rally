@@ -13,6 +13,7 @@ import type {
 } from '../../domain/iteration.types';
 import { IIterationRepository } from '../../domain/ports/iteration.repository';
 import { timeboxGroupIdFor } from '../../domain/timebox-group';
+import type { TeamReadScope } from '../../domain/team-read-scope';
 
 @Injectable()
 export class IterationDrizzleRepository implements IIterationRepository {
@@ -171,6 +172,28 @@ export class IterationDrizzleRepository implements IIterationRepository {
   }
 
   /**
+   * The SAME rule as {@link teamOrSharedTimebox}, applied to an EDITOR's whole scope rather than to
+   * one requested team — the read half of the BA ruling of 2026-08-17 for these two feeds.
+   *
+   * A TIMEBOX, so a NULL team is admitted: an iteration naming no team is a SHARED sprint every team
+   * in the project works inside, and dropping it would empty the picker for the ordinary case. That is
+   * the opposite of the rule for a WORK row, where `team_id IS NULL` is the Project Backlog and
+   * `IterationStatusDrizzleRepository.teamScope` refuses it. Both predicates read `team_id`; only one
+   * of them may see NULL as "everyone's".
+   *
+   * `teamIds: []` therefore leaves the SHARED timeboxes and nothing else. It is not flattened to "no
+   * filter" (which would fail open) and it never emits `inArray(col, [])` (not portable as "match
+   * nothing"): an Editor with no active Team can name a shared sprint but reaches no work inside it,
+   * because every work row they could touch is refused by `assertTeamInScope` and by the read
+   * narrowing in the status read-model.
+   */
+  private timeboxesInScope(scope: TeamReadScope): SQL | undefined {
+    if (scope.unrestricted) return undefined;
+    if (scope.teamIds.length === 0) return isNull(iterations.teamId);
+    return or(isNull(iterations.teamId), inArray(iterations.teamId, scope.teamIds))!;
+  }
+
+  /**
    * ELIGIBILITY, and eligibility does NOT depend on STATE (P6-VEL-004, BA retest 2026-08-17).
    *
    * This query used to carry `inArray(state, ['planning', 'committed'])`, so an ACCEPTED — closed —
@@ -202,13 +225,16 @@ export class IterationDrizzleRepository implements IIterationRepository {
   async listAssignmentOptions(
     projectId: string,
     workspaceId: string,
-    teamId?: string,
+    teamId: string | undefined,
+    scope: TeamReadScope,
   ): Promise<IterationOption[]> {
     const conditions: SQL[] = [
       eq(iterations.projectId, projectId),
       eq(iterations.workspaceId, workspaceId),
     ];
     if (teamId) conditions.push(this.teamOrSharedTimebox(teamId));
+    const inScope = this.timeboxesInScope(scope);
+    if (inScope) conditions.push(inScope);
 
     const rows = await this.db
       .select({
@@ -229,7 +255,8 @@ export class IterationDrizzleRepository implements IIterationRepository {
   async listReferences(
     projectId: string,
     workspaceId: string,
-    teamId?: string,
+    teamId: string | undefined,
+    scope: TeamReadScope,
   ): Promise<IterationReference[]> {
     const conditions: SQL[] = [
       eq(iterations.projectId, projectId),
@@ -238,6 +265,11 @@ export class IterationDrizzleRepository implements IIterationRepository {
     // No state predicate, deliberately: a filter, a label and a report scope picker must all be
     // able to name an ACCEPTED or finished timebox.
     if (teamId) conditions.push(this.teamOrSharedTimebox(teamId));
+    // The scope narrowing is applied to BOTH feeds, from one helper: they answer the same question
+    // about membership and differ only in projection, so a predicate on one and not the other is how
+    // a picker and its own labels start disagreeing.
+    const inScope = this.timeboxesInScope(scope);
+    if (inScope) conditions.push(inScope);
 
     const rows = await this.db
       .select({

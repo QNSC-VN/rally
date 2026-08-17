@@ -22,6 +22,7 @@ const projectMemberOptions = vi.fn()
 const recordProject = vi.fn()
 const assignableIterations = vi.fn()
 const iterationOptions = vi.fn()
+const teamScope = vi.fn()
 
 vi.mock('@/features/teams/api', () => ({
   useProjectTeams: () => ({ data: [{ id: 'team-1', name: 'Team Alpha', key: 'TA' }] }),
@@ -50,6 +51,7 @@ vi.mock('@/features/portfolio/api', () => ({
 vi.mock('@/features/milestones/api', () => ({ useMilestoneOptions: () => ({ data: [] }) }))
 vi.mock('@/features/access/api', () => ({
   useProjectPermissions: () => ({ can: () => true }),
+  useProjectTeamScope: () => teamScope(),
 }))
 
 import '@/shared/i18n/i18n'
@@ -99,6 +101,8 @@ function setup() {
   })
   assignableIterations.mockReturnValue({ data: [] })
   iterationOptions.mockReturnValue({ data: [] })
+  // An admin by default — the caller who may still move an item to the Project Backlog.
+  teamScope.mockReturnValue({ unrestricted: true, teamRequired: false, isLoading: false })
 }
 
 function renderSidebar(over: Partial<WorkItem> = {}) {
@@ -283,5 +287,37 @@ describe('DetailSidebar — the Iteration label comes from the reference feed', 
     const options = openOptions('Iteration')
     expect(has(options, 'IT-1')).toBe(false)
     expect(has(options, 'IT-2')).toBe(true)
+  })
+})
+
+/**
+ * Clearing the Team is a MOVE INTO the Project Backlog — BA ruling 2026-08-17.
+ *
+ * "Null means Project Backlog, accessible only to Workspace Admin and Project Admin. Editor … cannot
+ * access team-less items." `updateWorkItem` re-checks the DESTINATION team, so an Editor choosing the
+ * empty option gets `PROJECT_BACKLOG_ADMIN_ONLY` (403) — and were it ever to succeed they would have
+ * sent the item somewhere they can no longer open it. The option is therefore not offered to them.
+ *
+ * Both directions, because withdrawing it from everyone would make the Team a one-way move for the
+ * admin it belongs to — the exact defect the field's own comment records being fixed once already.
+ */
+describe('DetailSidebar — the Project Backlog is admin-only (BA ruling 2026-08-17)', () => {
+  it('offers no empty Team option to an Editor', () => {
+    setup()
+    teamScope.mockReturnValue({ unrestricted: false, teamRequired: true, isLoading: false })
+    renderSidebar({ teamId: 'team-1' })
+
+    const options = openOptions('Team')
+    // The team itself is still offered — a narrowing, not a disabled field.
+    expect(has(options, 'Team Alpha')).toBe(true)
+    expect(has(options, 'No team')).toBe(false)
+  })
+
+  it('keeps it for an admin, so the move stays two-way', () => {
+    setup()
+    renderSidebar({ teamId: 'team-1' })
+
+    const options = openOptions('Team')
+    expect(has(options, 'No team')).toBe(true)
   })
 })

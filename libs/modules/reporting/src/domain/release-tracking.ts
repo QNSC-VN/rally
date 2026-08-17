@@ -97,6 +97,21 @@ export function inScope(teamId: string | null, scope: TeamScope): boolean {
   // excluding it would make the three bucket totals disagree with the project's own
   // backlog, and the page's only scope control is the global one.
   if (scope.kind === 'all') return true;
+  /**
+   * A TEAM-RESTRICTED reader is the one case where a team-agnostic row is OUT of scope.
+   *
+   * The paragraph above is kept exactly as it was, because it still governs an admin: this
+   * predicate is shared with `ReportSnapshotService`, so changing what a `{ kind: 'team' }` scope
+   * admits would change what the FROZEN writer records — and `release_team_targets` is captured
+   * once, so a widened or narrowed population there is permanent. The writer only ever passes
+   * `all` or `team`, so both branches below it are untouched by this addition.
+   *
+   * For an `editor` the BA ruling of 2026-08-17 is the deciding sentence: `team_id IS NULL` is the
+   * Project Backlog and it is admin-only, so a team-less Feature or leaf is not "in every scope"
+   * for them — it is a population they may not read. Hence the strict membership test, and hence a
+   * one-element `teams` scope is deliberately NOT the same predicate as `{ kind: 'team' }`.
+   */
+  if (scope.kind === 'teams') return teamId !== null && scope.teamIds.includes(teamId);
   return teamId === null || teamId === scope.teamId;
 }
 

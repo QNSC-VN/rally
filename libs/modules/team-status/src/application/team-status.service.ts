@@ -3,6 +3,7 @@ import { PreconditionFailedException, ValidationException, type JwtPayload } fro
 import { IterationsService } from '@modules/iterations';
 import { WorkItemsService, type UpdateWorkItemInput } from '@modules/work-items';
 import { ProjectsService } from '@modules/projects';
+import { AccessService } from '@modules/access';
 import {
   ITeamStatusRepository,
   TEAM_STATUS_REPOSITORY,
@@ -46,6 +47,9 @@ export class TeamStatusService {
     // For `assertProjectWritable` in `updateCapacity`. `updateTask` needs nothing here: it writes
     // through `WorkItemsService.updateWorkItem`, which already carries the rule.
     private readonly projectsService: ProjectsService,
+    // The Editor Team scope (BA ruling 2026-08-17) — `editor` holds `team_status:view`, so this
+    // surface has to narrow like every other read.
+    private readonly access: AccessService,
   ) {}
 
   /**
@@ -66,8 +70,35 @@ export class TeamStatusService {
       );
     }
 
+    /**
+     * The Editor Team scope reaches this screen too (BA ruling 2026-08-17: enforce it "consistently in
+     * API queries, lists, reports, search, pickers and direct URLs").
+     *
+     * `editor` DOES hold `team_status:view`, and this service passed the query's `teamId` straight
+     * through — so an Editor could name any team, or omit it for All Teams, and the repository's
+     * three-tier `coalesce(task, parent, iteration)` predicate then admitted other teams' tasks AND
+     * team-less ones, which are now the Project Backlog.
+     *
+     * A requested team is ASSERTED rather than quietly narrowed: answering about team B with team A's
+     * rows would read as "team B logged no hours", which is worse than a refusal. All Teams is narrowed
+     * to the caller's own teams instead, because for an Editor that is what All Teams means.
+     */
+    const teamScope = await this.access.resolveTeamScope(
+      actor.workspaceId,
+      actor.sub,
+      iteration.projectId,
+    );
+    if (teamId) {
+      await this.access.assertTeamInScope(
+        actor.workspaceId,
+        actor.sub,
+        iteration.projectId,
+        teamId,
+      );
+    }
+
     // Fetch raw task rows (type=task, assigned to this iteration).
-    const rows = await this.repo.getTaskRows(iterationId, actor.workspaceId, teamId);
+    const rows = await this.repo.getTaskRows(iterationId, actor.workspaceId, teamId, teamScope);
 
     /**
      * Full member roster — Rally lists every team member for the iteration, including those with
@@ -219,6 +250,20 @@ export class TeamStatusService {
         );
       }
     }
+
+    /**
+     * The team is only decided NOW, which is why the check is here and not at the top: an omitted
+     * `teamId` is resolved from the iteration above, so validating the input alone would have let an
+     * Editor write another team's capacity row by leaving the field out (BA ruling 2026-08-17).
+     * `member_capacity` is unique per (project, team, iteration, user), so this row is that team's
+     * denominator on both Team Status and Team Capacity.
+     */
+    await this.access.assertTeamInScope(
+      actor.workspaceId,
+      actor.sub,
+      input.projectId,
+      teamId ?? null,
+    );
 
     return this.repo.upsertCapacity({
       workspaceId: actor.workspaceId,

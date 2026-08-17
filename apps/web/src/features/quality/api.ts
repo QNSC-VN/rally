@@ -33,6 +33,8 @@ export interface DefectRow {
   foundInReleaseId: string | null
   foundInReleaseName: string | null
   assigneeId: string | null
+  /** The owning Team — carried so bulk `Copy` re-creates the defect in it (BA ruling 2026-08-17). */
+  teamId: string | null
   assigneeName: string | null
   scheduleState: string
   defectState: string | null
@@ -141,6 +143,15 @@ export interface CreateDefectInput {
   notes?: string
   /** Optional linked User Story (P3-QA-FR-007) — the defect's parent work item. */
   parentId?: string
+  /**
+   * REQUIRED of an Editor, optional for an admin (BA ruling 2026-08-17).
+   *
+   * Without it `POST /work-items` answers `WORK_ITEM_TEAM_REQUIRED` (412) for a team-scoped caller,
+   * so `Log Defect` — a surface `quality:view` deliberately gives an Editor (§5 Editor rows) — could
+   * not create anything at all. Omitted still means the Project Backlog, which is an admin's to file
+   * into.
+   */
+  teamId?: string
 }
 
 export function useCreateDefect() {
@@ -164,11 +175,15 @@ export function useCreateDefect() {
           rootCause: body.rootCause,
           notes: body.notes,
           parentId: body.parentId,
+          teamId: body.teamId,
         }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
-        throw new Error(json.message ?? `Failed to create defect (${res.status})`)
+        // `apiErrorMessage`, not `json.message`: the API's envelope is `{ error: { code, message } }`,
+        // so reading a flat `message` found nothing and every refusal rendered as
+        // `Failed to create defect (412)` — the status of a rule the server had explained in words.
+        throw new Error(apiErrorMessage(json, res.status))
       }
       return json
     },

@@ -3,6 +3,7 @@ import type { JwtPayload, CursorPayload, PagedResult } from '@platform';
 import { PreconditionFailedException } from '@platform';
 import { WorkItemsService } from '@modules/work-items';
 import type { WorkItemType } from '@modules/work-items';
+import { AccessService } from '@modules/access';
 import { IterationsService } from './iterations.service';
 import type { Iteration } from '../domain/iteration.types';
 import {
@@ -28,6 +29,7 @@ export class IterationStatusService {
     private readonly statusRepo: IIterationStatusRepository,
     private readonly iterationsService: IterationsService,
     private readonly workItemsService: WorkItemsService,
+    private readonly accessService: AccessService,
   ) {}
 
   /** Percent helper — guards divide-by-zero (SRS §8: show 0% when denominator is 0). */
@@ -57,9 +59,33 @@ export class IterationStatusService {
     // (throws ITERATION_NOT_FOUND / 403 for a project the actor can't see).
     const iteration = await this.iterationsService.getIterationForView(actor, iterationId);
 
+    /**
+     * ONE scope, resolved ONCE, passed to BOTH queries (BA ruling 2026-08-17, read half).
+     *
+     * §3.2 gives an Editor `Iteration Status | View and update in assigned Teams`, and this is the
+     * surface the `iteration:view` / `timebox:view` split exists to keep open for them — so the
+     * narrowing has to happen in the read model rather than at the gate. Resolved here and not inside
+     * the repository so the strip and the grid are provably measured over the SAME population: two
+     * resolutions could differ (the assignment cache expires between them), and one metric computed
+     * over a wider population than its own rows is the fault CLAUDE.md records for Velocity's
+     * eligibility join and again for `countScheduledWork`.
+     *
+     * The ITERATION itself is deliberately NOT refused when it names another team: a team-less
+     * iteration is a SHARED timebox every team works inside (195 of 206 local iterations name no
+     * team), so there is no honest refusal to make on the timebox — the WORK rows are what carry the
+     * team, and they narrow below. An Editor opening a foreign team's sprint by URL therefore sees its
+     * window and an empty grid with a zeroed strip, which is the true answer: none of that work is
+     * theirs.
+     */
+    const scope = await this.accessService.resolveTeamScope(
+      actor.workspaceId,
+      actor.sub,
+      iteration.projectId,
+    );
+
     const [raw, items] = await Promise.all([
-      this.statusRepo.getMetrics(iterationId, actor.workspaceId),
-      this.statusRepo.listItems(iterationId, actor.workspaceId, filters, args),
+      this.statusRepo.getMetrics(iterationId, actor.workspaceId, scope),
+      this.statusRepo.listItems(iterationId, actor.workspaceId, filters, args, scope),
     ]);
 
     /**
@@ -114,6 +140,7 @@ export class IterationStatusService {
       title: string;
       assigneeId?: string;
       planEstimate?: string;
+      teamId?: string;
     },
   ): Promise<{ workItemId: string; itemKey: string }> {
     // Only stories and defects can live in an iteration (SRS P2.1). Enforced at
@@ -133,7 +160,16 @@ export class IterationStatusService {
       input.type,
       input.title,
       {
-        teamId: iteration.teamId ?? undefined,
+        /**
+         * A CHOSEN team wins over the inherited one (BA ruling 2026-08-17).
+         *
+         * The inheritance is right for a team-scoped sprint and cannot work for a SHARED one, where
+         * `iteration.teamId` is null and an Editor must still name one of their teams. The order is
+         * chosen-then-inherited rather than the reverse so a team-scoped iteration keeps its default
+         * while remaining overridable by an admin filing for another team in that same window —
+         * `createWorkItem` refuses anything the caller may not do, so this cannot widen a scope.
+         */
+        teamId: input.teamId ?? iteration.teamId ?? undefined,
         assigneeId: input.assigneeId,
         storyPoints: input.planEstimate,
         iterationId,

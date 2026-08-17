@@ -29,6 +29,13 @@ export const DefectRowSchema = z.object({
   foundInReleaseId: z.string().uuid().nullable(),
   foundInReleaseName: z.string().nullable(),
   assigneeId: z.string().uuid().nullable(),
+  /**
+   * The owning Team. On the wire because the grid's bulk `Copy` re-creates the defect and has to carry
+   * it: a copy with no team filed into the Project Backlog, which under the BA ruling of 2026-08-17
+   * only a Workspace Admin or Project Admin may reach — so for an Editor `Copy` could not succeed at
+   * all, on a surface `quality:view` grants them.
+   */
+  teamId: z.string().uuid().nullable(),
   assigneeName: z.string().nullable(),
   scheduleState: z.string(),
   iterationId: z.string().uuid().nullable(),

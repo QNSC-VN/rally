@@ -71,6 +71,21 @@ export const CreateIterationItemSchema = z.object({
     .max(999)
     .transform((v) => v.toFixed(2))
     .optional(),
+  /**
+   * WHOSE work this is — required in practice for an Editor, optional in the contract.
+   *
+   * The service inherits the ITERATION's team when this is omitted, which is right for a team-scoped
+   * sprint and impossible for a shared one: 195 of 206 local iterations name no team, and under the BA
+   * ruling of 2026-08-17 an Editor "must select one of their assigned Teams when creating a Work Item".
+   * Without this field, Add Item on a shared iteration answered `WORK_ITEM_TEAM_REQUIRED` with no way
+   * for the form to comply — the surface was closed to exactly the role §3.2 grants it to.
+   *
+   * Optional rather than required because a Workspace Admin or Project Admin may still file into the
+   * Project Backlog, and on a team-scoped iteration the inheritance is the better default. The
+   * refusals live in `createWorkItem`, so this field cannot widen anyone's scope: a team that is not
+   * the caller's is `TEAM_NOT_IN_SCOPE`.
+   */
+  teamId: z.string().uuid().optional(),
 });
 
 export class CreateIterationItemDto extends createZodDto(CreateIterationItemSchema) {}

@@ -13,6 +13,14 @@
  * selected one) and deliberately renders its children when its own permission read fails.
  *
  *   • `denied`     — 403. The record exists and is not ours. Phase 4 §7's Access Denied.
+ *                    THREE server refusals arrive this way and all three are the same sentence to a
+ *                    reader: `TEAM_NOT_IN_SCOPE` (another Team's record), `EDITOR_NO_TEAM_SCOPE` (an
+ *                    Editor with no Team at all) and — since the BA's 2026-08-17 ruling —
+ *                    `PROJECT_BACKLOG_ADMIN_ONLY`, a team-less record, which only a Workspace Admin
+ *                    or Project Admin may open. Deliberately NOT split into a fourth reason: §7
+ *                    forbids disclosing the restricted record's Project or TEAM, and "this item has
+ *                    no Team" is that disclosure. The status is what this function reads, so a new
+ *                    403 code needs no change here — which is the property worth keeping.
  *   • `notFound`   — the query SUCCEEDED with `null` (a 404 mapped in the query fn). An answer.
  *   • `loadFailed` — a 500 or a transport fault. Not a claim about the reader or the record.
  *

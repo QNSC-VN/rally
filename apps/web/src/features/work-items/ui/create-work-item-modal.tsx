@@ -10,6 +10,7 @@ import { Loader2 } from 'lucide-react'
 import { useCreateWorkItem, useBacklog, type WorkItem } from '@/features/work-items/api'
 import { useProjectTeams } from '@/features/teams/api'
 import { useTeamOwnerOptions } from '@/features/teams/api'
+import { useProjectTeamScope } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useRecordProject } from '@/shared/lib/deep-link-project'
 import { BRAND } from '@/shared/config/brand'
@@ -99,17 +100,37 @@ export function CreateWorkItemModal({
   // treated as unset so the backend can't reject the create with
   // PROJECT_TEAM_LINK_NOT_FOUND (DEV-007). Derived — no effect needed.
   const validTeamId = teams.some((t) => t.id === teamId) ? teamId : ''
+  /**
+   * Is Team REQUIRED here? Per CALLER, not per form (BA ruling 2026-08-17): an Editor "must select
+   * one of their assigned Teams when creating a Work Item", while for a Workspace Admin or
+   * per-project Admin blank stays legal and means the Project Backlog (WIC-FR-005).
+   */
+  const { teamRequired } = useProjectTeamScope(projectId)
+  /**
+   * A SINGLE Team is not a choice, so it is not asked for twice.
+   *
+   * `GET /projects/:id/teams` returns only the Editor's own teams, so an Editor on one team gets a
+   * one-option required picker — the shape that makes a form refuse itself. Derived rather than
+   * seeded into state (like `validTeamId` above, and for the same reason): the feed resolves after
+   * the first render, so an effect would have to chase it, and there is no state to chase because
+   * with `allowUnassigned` off there is no way to select back to blank.
+   *
+   * NOT prefilled for an admin — with the Project Backlog available to them, silently picking the
+   * project's only team would file work into a team nobody chose.
+   */
+  const soleTeamId = teamRequired && teams.length === 1 ? teams[0].id : ''
+  const selectedTeamId = validTeamId || soleTeamId
 
   /**
    * Owner OPTIONS follow the TEAM selected in this form, not the project (GAP-P1-WID-007: "Selected
    * Team offers Unassigned plus its ACTIVE MEMBERS; No Team offers only Unassigned. Do not add No Team
    * or unrelated Workspace users to Owner options").
    *
-   * Keyed on `validTeamId` rather than the raw `teamId`, so an inherited team that is not linked to
-   * the fixed project asks for nothing instead of 422-ing the feed — the same value the create
-   * itself will send.
+   * Keyed on `selectedTeamId` rather than the raw `teamId`, so an inherited team that is not linked
+   * to the fixed project asks for nothing instead of 422-ing the feed — the same value the create
+   * itself will send, prefilled sole team included.
    */
-  const { data: members = [] } = useTeamOwnerOptions(projectId, validTeamId || null)
+  const { data: members = [] } = useTeamOwnerOptions(projectId, selectedTeamId || null)
 
   const titleRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef(submit)
@@ -125,8 +146,8 @@ export function CreateWorkItemModal({
       setError(t('create.titleRequired'))
       return
     }
-    // Team is OPTIONAL. Blank means the item belongs to the PROJECT backlog, which is the
-    // documented default state — three sources, no dissent:
+    // Team is optional FOR AN ADMIN. Blank means the item belongs to the PROJECT backlog, which is
+    // the documented default state for a caller who may reach it — three sources, no dissent:
     //   WIC-FR-005: "Team optional; default blank/Project backlog unless current Team context is
     //     explicitly selected and valid for the Project."
     //   GAP-P1-CREATE-003 (P0): "Team is optional: blank = Project backlog, selected Team = Team
@@ -145,6 +166,18 @@ export function CreateWorkItemModal({
     setError(null)
     setTeamError(null)
     setFormError(null)
+    /**
+     * The Editor half of the rule, checked HERE rather than left to the 412.
+     *
+     * `POST /work-items` answers `WORK_ITEM_TEAM_REQUIRED` for exactly this, and that refusal is
+     * correct — but it arrives as a modal-level banner about a request, for a field the form itself
+     * knows is required. The message goes under the Team picker instead, which is the field the
+     * reader has to act on. The server check stays the authority; this one only stops the round trip.
+     */
+    if (teamRequired && !selectedTeamId) {
+      setTeamError(t('create.teamRequired'))
+      return
+    }
     setSubmitting(true)
     try {
       const item = await createMutation.mutateAsync({
@@ -152,7 +185,7 @@ export function CreateWorkItemModal({
         type,
         title: title.trim(),
         priority: 'none',
-        teamId: validTeamId || undefined,
+        teamId: selectedTeamId || undefined,
         assigneeId: assigneeId || undefined,
         storyPoints: storyPoints ? Number(storyPoints) : undefined,
         parentId: type === 'defect' ? parentStoryId || undefined : undefined,
@@ -289,7 +322,7 @@ export function CreateWorkItemModal({
         <div className="grid grid-cols-2 gap-4">
           <TeamSelectField
             id="wi-team"
-            value={validTeamId}
+            value={selectedTeamId}
             onChange={(v) => {
               setTeamId(v)
               setTeamError(null)
@@ -299,9 +332,13 @@ export function CreateWorkItemModal({
               setAssigneeId('')
             }}
             teams={teams}
-            /* Blank is a legal, and the DEFAULT, choice — WIC-FR-005 / GAP-P1-CREATE-003. Without
-               the unassigned option the field could not express "Project backlog" at all. */
-            allowUnassigned
+            /* Blank is a legal, and the DEFAULT, choice FOR AN ADMIN — WIC-FR-005 /
+               GAP-P1-CREATE-003. Without the unassigned option the field could not express "Project
+               backlog" at all. For an Editor the Project Backlog is not theirs to file into (BA
+               ruling 2026-08-17), so the option is not offered and `TeamSelectField` marks the field
+               required from the same flag — one source for both, so the asterisk and the option list
+               cannot disagree. */
+            allowUnassigned={!teamRequired}
             error={teamError ?? undefined}
           />
           <OwnerSelectField

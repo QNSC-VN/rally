@@ -16,19 +16,23 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const createWorkItem = vi.fn()
 const teamOwnerOptions = vi.fn()
+const projectTeams = vi.fn()
+const teamScope = vi.fn()
+const appContext = vi.fn()
 
 vi.mock('@/features/work-items/api', () => ({
   useCreateWorkItem: () => ({ mutateAsync: createWorkItem }),
   useBacklog: () => ({ data: undefined }),
 }))
 vi.mock('@/features/teams/api', () => ({
-  useProjectTeams: () => ({
-    data: [
-      { id: 'team-1', name: 'Team Alpha', key: 'TA' },
-      { id: 'team-2', name: 'Team Beta', key: 'TB' },
-    ],
-  }),
+  useProjectTeams: () => projectTeams(),
   useTeamOwnerOptions: (...args: unknown[]) => teamOwnerOptions(...args),
+}))
+// The caller's TEAM SCOPE, mocked rather than derived from a permission array, because this component
+// must not care HOW the level was resolved — `useProjectTeamScope` owns that (and `access-levels`
+// pins the codes → scope mapping on its own).
+vi.mock('@/features/access/api', () => ({
+  useProjectTeamScope: () => teamScope(),
 }))
 // The record's own project, resolved from the id the caller passed — NOT a list of projects to
 // choose from. `@/features/projects/api` is deliberately NOT mocked here: the modal no longer
@@ -40,18 +44,28 @@ vi.mock('@/shared/lib/deep-link-project', () => ({
       : undefined,
 }))
 vi.mock('@/shared/lib/stores/app-context.store', () => ({
-  useAppContext: () => ({ workspace: { workspaceId: 'ws-1' }, team: { teamId: 'team-1' } }),
+  useAppContext: () => appContext(),
 }))
 
 import '@/shared/i18n/i18n'
 import { CreateWorkItemModal } from './create-work-item-modal'
 
 const ALICE = { userId: 'alice', displayName: 'Alice Smith', email: 'alice@qnsc.dev' }
+const ALPHA = { id: 'team-1', name: 'Team Alpha', key: 'TA' }
+const BETA = { id: 'team-2', name: 'Team Beta', key: 'TB' }
+
+/** A Workspace Admin / per-project Admin: every Team plus the Project Backlog. */
+const ADMIN = { unrestricted: true, teamRequired: false, isLoading: false }
+/** A team-scoped Editor: a Team must be chosen, and `No team` is not theirs to choose. */
+const EDITOR = { unrestricted: false, teamRequired: true, isLoading: false }
 
 beforeEach(() => {
   vi.clearAllMocks()
   createWorkItem.mockResolvedValue({ id: 'wi-1', itemKey: 'US-1' })
   teamOwnerOptions.mockReturnValue({ data: [ALICE] })
+  projectTeams.mockReturnValue({ data: [ALPHA, BETA] })
+  teamScope.mockReturnValue(ADMIN)
+  appContext.mockReturnValue({ workspace: { workspaceId: 'ws-1' }, team: { teamId: 'team-1' } })
 })
 
 function open() {
@@ -154,6 +168,101 @@ describe('CreateWorkItemModal — Owner options follow the selected Team (GAP-P1
     fireEvent.click(screen.getByText('No team'))
 
     // `null`, not `''` — `useTeamOwnerOptions` is disabled and returns no rows, which IS the rule.
+    expect(teamOwnerOptions).toHaveBeenLastCalledWith('proj-1', null)
+  })
+})
+
+/**
+ * Team is REQUIRED OF AN EDITOR, and optional for an admin — BA ruling 2026-08-17.
+ *
+ * "Keep `team_id` nullable. Null means Project Backlog, accessible only to Workspace Admin and
+ * Project Admin. Editor must select one of their assigned Teams when creating a Work Item and cannot
+ * access team-less items." The requirement is therefore per-CALLER, not per-form, which is why every
+ * case below renders the SAME component and changes only the scope.
+ *
+ * All four directions are asserted, because each one alone passes for the wrong reason: refusing a
+ * blank Team for everybody would take the Project Backlog away from the admin it belongs to (this
+ * modal used to do exactly that, citing a rule the SRS had superseded), and offering the blank to an
+ * Editor turns the server's 412 into the only feedback there is.
+ */
+describe('CreateWorkItemModal — Team is required for an Editor (BA ruling 2026-08-17)', () => {
+  beforeEach(() => {
+    // No inherited context team, so the field starts genuinely empty.
+    appContext.mockReturnValue({ workspace: { workspaceId: 'ws-1' }, team: undefined })
+  })
+
+  it('refuses to submit without a Team, and says so on the FIELD', async () => {
+    teamScope.mockReturnValue(EDITOR)
+    open()
+    fireEvent.change(screen.getByLabelText(/Title/i), { target: { value: 'No team chosen' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create Item' }))
+
+    expect(await screen.findByText(/Select one of your Teams/)).toBeInTheDocument()
+    // The point of the client check: the request is never made, so there is no 412 to explain.
+    expect(createWorkItem).not.toHaveBeenCalled()
+  })
+
+  it('refuses `Create with details` on the same rule', async () => {
+    teamScope.mockReturnValue(EDITOR)
+    open()
+    fireEvent.change(screen.getByLabelText(/Title/i), { target: { value: 'No team chosen' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create with details' }))
+
+    expect(await screen.findByText(/Select one of your Teams/)).toBeInTheDocument()
+    expect(createWorkItem).not.toHaveBeenCalled()
+  })
+
+  it('does not OFFER No Team to an Editor', () => {
+    teamScope.mockReturnValue(EDITOR)
+    open()
+    fireEvent.click(screen.getByRole('button', { name: 'Team' }))
+
+    // The teams themselves are still offered — this is a narrowing, not a disabled field.
+    expect(screen.getByText('Team Alpha')).toBeInTheDocument()
+    expect(screen.queryByText('No team')).toBeNull()
+  })
+
+  it('KEEPS No Team for an admin, and creates with no team when it is chosen', async () => {
+    teamScope.mockReturnValue(ADMIN)
+    open()
+    fireEvent.click(screen.getByRole('button', { name: 'Team' }))
+    // The TRIGGER also reads `No team` — that is the placeholder for an empty value — so the OPTION
+    // is the later node with that text. The Editor case above asserts there is no such node at all.
+    const noTeam = screen.getAllByText('No team')
+    expect(noTeam.length).toBeGreaterThan(1)
+    fireEvent.click(noTeam[noTeam.length - 1])
+
+    fireEvent.change(screen.getByLabelText(/Title/i), { target: { value: 'Project backlog item' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create Item' }))
+
+    await waitFor(() => expect(createWorkItem).toHaveBeenCalled())
+    // `undefined`, which is what "file this into the Project Backlog" looks like on the wire.
+    expect(createWorkItem.mock.calls[0][0].teamId).toBeUndefined()
+  })
+
+  it("prefills an Editor's ONE team, so it is not a choice to be made twice", async () => {
+    teamScope.mockReturnValue(EDITOR)
+    projectTeams.mockReturnValue({ data: [ALPHA] })
+    open()
+
+    // Shown as chosen, not merely defaulted at submit time — and the Owner feed follows it, which is
+    // what proves the prefilled value is the one the form is actually using.
+    expect(screen.getByRole('button', { name: 'Team' }).textContent).toContain('Team Alpha')
+    expect(teamOwnerOptions).toHaveBeenLastCalledWith('proj-1', 'team-1')
+
+    fireEvent.change(screen.getByLabelText(/Title/i), { target: { value: 'Sole team' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create Item' }))
+
+    await waitFor(() => expect(createWorkItem).toHaveBeenCalled())
+    expect(createWorkItem.mock.calls[0][0].teamId).toBe('team-1')
+  })
+
+  it("does NOT prefill an admin's single team — nobody chose it", () => {
+    teamScope.mockReturnValue(ADMIN)
+    projectTeams.mockReturnValue({ data: [ALPHA] })
+    open()
+
+    expect(screen.getByRole('button', { name: 'Team' }).textContent).not.toContain('Team Alpha')
     expect(teamOwnerOptions).toHaveBeenLastCalledWith('proj-1', null)
   })
 })

@@ -67,6 +67,8 @@ import type {
   MyWorkItem,
   WorkspaceSummary,
 } from '../domain/work-item.types';
+import { teamScopeAdmits } from '../domain/team-read-scope';
+import type { TeamReadScope, ProjectTeamScope } from '../domain/team-read-scope';
 import type { TimeLog } from '../domain/time-log.types';
 import type { Watcher } from '../domain/watcher.types';
 import { diffWorkItem } from './activity-diff';
@@ -199,7 +201,26 @@ export class WorkItemsService {
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<WorkItem>> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
-    return this.workItemRepo.listByProject(projectId, actor.workspaceId, filters, args);
+    return this.workItemRepo.listByProject(
+      projectId,
+      actor.workspaceId,
+      filters,
+      args,
+      await this.teamScopeFor(actor, projectId),
+    );
+  }
+
+  /**
+   * The EDITOR Team scope for one project's READS — the list/count half of {@link assertTeamScope}.
+   *
+   * Delegated to `AccessService.resolveTeamScope`, which is its single home, so a list and the
+   * per-record refusal cannot answer differently for the same caller (BA ruling 2026-08-17: "enforce
+   * this consistently in API queries, lists, reports, search, pickers and direct URLs"). A restricted
+   * answer of `[]` is passed through as `[]`: the read then returns NOTHING, and flattening it into
+   * "unrestricted" is the leak `listReadableProjectIds` documents for its own sentinel.
+   */
+  private async teamScopeFor(actor: JwtPayload, projectId: string): Promise<TeamReadScope> {
+    return this.accessService.resolveTeamScope(actor.workspaceId, actor.sub, projectId);
   }
 
   /**
@@ -234,7 +255,49 @@ export class WorkItemsService {
    */
   async listMyWork(actor: JwtPayload, limit: number): Promise<MyWorkItem[]> {
     const readable = await this.readableProjectScope(actor);
-    return this.workItemRepo.listMyWork(actor.workspaceId, actor.sub, { limit }, readable);
+    return this.workItemRepo.listMyWork(
+      actor.workspaceId,
+      actor.sub,
+      { limit },
+      readable,
+      await this.crossProjectTeamScope(actor, readable),
+    );
+  }
+
+  /**
+   * The Team scope for a CROSS-project read, resolved PER PROJECT — because it is per project.
+   *
+   * A team belongs to projects, and a caller's level differs between them: they may be a per-project
+   * `admin` in one (All Teams) and an `editor` in the next (their own Teams only). One workspace-wide
+   * set of team ids would therefore be wrong in both directions, so this asks
+   * `AccessService.resolveTeamScope` for each readable project and returns only the RESTRICTED answers.
+   * Everything absent from the result is unrestricted, which keeps the common case (an admin) free of
+   * any predicate at all.
+   *
+   * `readable === null` is the `listReadableProjectIds` UNRESTRICTED sentinel, and it is returned only
+   * for a WORKSPACE-WIDE grant of `project:view`. The only role holding one is `workspace_admin`
+   * (`workspace:*`), whom `resolveTeamScope` answers unrestricted for anyway, and custom
+   * workspace-tier roles are deleted by ruling — so there is no project list to iterate and no scope to
+   * apply. If a future workspace-tier role grants `project:view` to someone who is ALSO a per-project
+   * editor, this shortcut becomes wrong and the fix is a project list, not a wider team scope.
+   *
+   * Cost: one `resolveTeamScope` per readable project, resolved in parallel. The level comes from
+   * `effectiveAssignments`' 5-minute cache; only an `editor` project costs a query (its team roster).
+   */
+  private async crossProjectTeamScope(
+    actor: JwtPayload,
+    readable: string[] | null,
+  ): Promise<ProjectTeamScope[]> {
+    if (readable === null || readable.length === 0) return [];
+    const scopes = await Promise.all(
+      readable.map(async (projectId) => ({
+        projectId,
+        scope: await this.teamScopeFor(actor, projectId),
+      })),
+    );
+    return scopes.flatMap(({ projectId, scope }) =>
+      scope.unrestricted ? [] : [{ projectId, teamIds: scope.teamIds }],
+    );
   }
 
   /**
@@ -249,7 +312,12 @@ export class WorkItemsService {
    */
   async getWorkspaceSummary(actor: JwtPayload): Promise<WorkspaceSummary> {
     const readable = await this.readableProjectScope(actor);
-    return this.workItemRepo.getWorkspaceSummary(actor.workspaceId, actor.sub, readable);
+    return this.workItemRepo.getWorkspaceSummary(
+      actor.workspaceId,
+      actor.sub,
+      readable,
+      await this.crossProjectTeamScope(actor, readable),
+    );
   }
 
   /** Backlog list — story + defect only, server-side filter/search/pagination. */
@@ -260,7 +328,13 @@ export class WorkItemsService {
     args: { limit: number; cursor: CursorPayload | null },
   ): Promise<PagedResult<WorkItem>> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
-    return this.workItemRepo.listBacklog(projectId, actor.workspaceId, filters, args);
+    return this.workItemRepo.listBacklog(
+      projectId,
+      actor.workspaceId,
+      filters,
+      args,
+      await this.teamScopeFor(actor, projectId),
+    );
   }
 
   // ── Create ────────────────────────────────────────────────────────────────
@@ -290,9 +364,27 @@ export class WorkItemsService {
     opts: CreateWorkItemOpts = {},
   ): Promise<WorkItem> {
     await this.assertProjectWritable(actor.workspaceId, projectId);
-    // An Editor creates only inside their own Teams (`GAP-P4-RBAC-003` AC1/AC3). The zero-team case is
-    // refused whatever team is asked for, which is what makes an Editor with no delivery scope unable
-    // to create a team-less item either.
+    /**
+     * "Editor must SELECT one of their assigned Teams when creating a Work Item" (BA ruling
+     * 2026-08-17). Omitting the Team is therefore not the Project Backlog's refusal on this path — it
+     * is a missing required choice, and the message has to say which choice, so it gets its own code
+     * rather than `PROJECT_BACKLOG_ADMIN_ONLY` (which reads as "you may not open that", true of a
+     * READ and useless on a form).
+     */
+    if (opts.teamId === undefined || opts.teamId === null) {
+      const scope = await this.accessService.resolveTeamScope(
+        actor.workspaceId,
+        actor.sub,
+        projectId,
+      );
+      if (!scope.unrestricted) {
+        throw new PreconditionFailedException(
+          'WORK_ITEM_TEAM_REQUIRED',
+          'Select one of your Teams — only a Workspace Admin or Project Admin can file into the Project Backlog',
+        );
+      }
+    }
+    // The Team that WAS chosen must be one of theirs, and an Editor with no Team has no scope at all.
     await this.assertTeamScope(actor, { projectId, teamId: opts.teamId ?? null });
 
     // P1-15: parentId must belong to the same project
@@ -636,14 +728,47 @@ export class WorkItemsService {
    */
   private async assertTeamScope(
     actor: JwtPayload,
-    item: { projectId: string; teamId: string | null },
+    item: {
+      projectId: string;
+      teamId: string | null;
+      type?: WorkItemType;
+      parentId?: string | null;
+    },
   ): Promise<void> {
     await this.accessService.assertTeamInScope(
       actor.workspaceId,
       actor.sub,
       item.projectId,
-      item.teamId ?? null,
+      await this.resolveRowTeam(actor.workspaceId, item),
     );
+  }
+
+  /**
+   * WHOSE work a row is, for the access decision — `coalesce(task, parent, iteration)` for a TASK and
+   * its own column for a Story/Defect.
+   *
+   * A Task's team only DEFAULTS to its parent's (SRS P1-04) and is nullable, so a task under a teamed
+   * Story ordinarily carries no team of its own. Reading the row's own column alone made the Tasks tab
+   * and the record disagree: the grid LISTED such a row (it narrows by the three-tier expression, like
+   * `getScopedTaskHours` and Team Status) while `GET /work-items/:taskId` refused it as the Project
+   * Backlog. A grid that offers a row nobody can open is the two-call-sites bug this repo keeps
+   * re-learning, so the reads share one resolution.
+   *
+   * The third tier costs a query and is asked for LAST, only when the first two are null — which is
+   * also the only case where it can change the answer.
+   */
+  private async resolveRowTeam(
+    workspaceId: string,
+    item: { teamId: string | null; type?: WorkItemType; parentId?: string | null },
+  ): Promise<string | null> {
+    if (item.teamId) return item.teamId;
+    if (item.type !== 'task' || !item.parentId) return null;
+
+    const parent = await this.workItemRepo.findById(item.parentId, workspaceId);
+    if (parent?.teamId) return parent.teamId;
+    if (!parent?.iterationId) return null;
+    const scope = await this.workItemRepo.findIterationScope(parent.iterationId, workspaceId);
+    return scope?.teamId ?? null;
   }
 
   /**
@@ -692,6 +817,44 @@ export class WorkItemsService {
   }
 
   /**
+   * THE read path for a route that names a work item — load it, then apply the Team scope.
+   *
+   * `getWorkItem` is the internal loader and deliberately stays unscoped: `updateWorkItem`,
+   * `deleteWorkItem` and other modules need a row in hand BEFORE deciding anything, and some of those
+   * decisions are what produce a better error than a scope refusal would. So the scope lives one level
+   * up, in the path a READ handler takes.
+   *
+   * It has to be here rather than only on `GET /work-items/:id`, and that was a live leak: every
+   * per-item SUB-RESOURCE read (`:id/activity`, `:id/labels`, `:id/relations`, `:id/milestones`,
+   * `:id/time-logs`, `:id/watchers`, `:id/attachments` and the two attachment-download routes, plus
+   * `:id/tasks` and its totals) loaded the row through `getWorkItem` and never asked the question.
+   * `PolicyGuard`'s `resource: 'work_item'` resolves the row's PROJECT and nothing else, so an Editor on
+   * Team Alpha was refused a Team Beta Story and could still read its Revision History, its links, its
+   * logged hours, its watchers and — worst, because a signed URL outlives the request — its
+   * attachments' bytes. §7 is about the DISCLOSURE, not about the record's own endpoint.
+   *
+   * `checkProjectPermission` adds the `work_item:view` check for a SECONDARY target the route-scoped
+   * guard cannot see (the far end of a relation link). One method with one switch rather than two
+   * variants, so a third read path cannot be written that skips the scope.
+   */
+  private async requireReadable(
+    actor: JwtPayload,
+    id: string,
+    { checkProjectPermission = false }: { checkProjectPermission?: boolean } = {},
+  ): Promise<WorkItem> {
+    const item = await this.getWorkItem(actor.workspaceId, id);
+    if (checkProjectPermission) {
+      await this.accessService.assertProjectPermission(
+        actor,
+        item.projectId,
+        PERMISSION.WORK_ITEM_VIEW,
+      );
+    }
+    await this.assertTeamScope(actor, item);
+    return item;
+  }
+
+  /**
    * Load a work item for a READ and authorize the actor against the item's OWN
    * project via `work_item:view`. Now that the PolicyGuard authorizes the route
    * id up-front, this remains only for SECONDARY targets a route-scoped guard
@@ -699,14 +862,7 @@ export class WorkItemsService {
    * able to view the target too or linking would leak its key/title/state.
    */
   async getWorkItemForView(actor: JwtPayload, id: string): Promise<WorkItem> {
-    const item = await this.getWorkItem(actor.workspaceId, id);
-    await this.accessService.assertProjectPermission(
-      actor,
-      item.projectId,
-      PERMISSION.WORK_ITEM_VIEW,
-    );
-    await this.assertTeamScope(actor, item);
-    return item;
+    return this.requireReadable(actor, id, { checkProjectPermission: true });
   }
 
   /**
@@ -734,14 +890,28 @@ export class WorkItemsService {
 
   // ── Tasks (list + totals) ───────────────────────────────────────────────────
 
+  /**
+   * The Tasks tab. Two scopes, and both are needed: the PARENT must be readable (a Team Beta Story's
+   * tasks are Team Beta's work), and the rows are narrowed again by their own resolved team, because a
+   * task's `team_id` is settable independently of its parent's (SRS P1-04).
+   */
   async listTasks(actor: JwtPayload, parentId: string): Promise<WorkItem[]> {
-    await this.getWorkItem(actor.workspaceId, parentId);
-    return this.workItemRepo.listTasksByParent(parentId, actor.workspaceId);
+    const parent = await this.requireReadable(actor, parentId);
+    return this.workItemRepo.listTasksByParent(
+      parentId,
+      actor.workspaceId,
+      await this.teamScopeFor(actor, parent.projectId),
+    );
   }
 
+  /** The totals row under {@link listTasks}, measured in the SAME scope as the rows above it. */
   async getTaskTotals(actor: JwtPayload, parentId: string): Promise<TaskTotals> {
-    await this.getWorkItem(actor.workspaceId, parentId);
-    return this.workItemRepo.getTaskTotals(parentId, actor.workspaceId);
+    const parent = await this.requireReadable(actor, parentId);
+    return this.workItemRepo.getTaskTotals(
+      parentId,
+      actor.workspaceId,
+      await this.teamScopeFor(actor, parent.projectId),
+    );
   }
 
   // ── Activity (Revision History) ──────────────────────────────────────────────
@@ -751,7 +921,7 @@ export class WorkItemsService {
     workItemId: string,
     args: { limit: number; offset: number },
   ): Promise<{ items: ActivityLog[]; total: number }> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.requireReadable(actor, workItemId);
     const page = Math.floor(args.offset / args.limit) + 1;
     const res = await this.activity.listFor(workItemId, actor.workspaceId, page, args.limit);
     return { items: res.data, total: res.total };
@@ -1418,9 +1588,77 @@ export class WorkItemsService {
 
   @Span('work-items.list-relations')
   async listRelations(actor: JwtPayload, id: string): Promise<WorkItemRelationView[]> {
-    // Authorize a read on the item's own project (project isolation).
-    await this.getWorkItem(actor.workspaceId, id);
-    return this.relationRepo.listForItem(id, actor.workspaceId);
+    // Authorize a read on the item's own project AND its Team (project isolation + the Editor scope).
+    await this.requireReadable(actor, id);
+    return this.admitRelationEnds(
+      actor,
+      await this.relationRepo.listForItem(id, actor.workspaceId),
+    );
+  }
+
+  /**
+   * A relation VIEW is mostly its far end — `relatedItem` carries that item's key, title, type and
+   * schedule state — so the list has to be filtered by what the reader may see at the OTHER end, not
+   * only at this one. `linkWorkItem` checks the target through `getWorkItemForView` when the link is
+   * CREATED, and that check does not survive: access is removed, Teams change, and the row stays.
+   *
+   * Two facts per far end, both resolved once per distinct project:
+   *   • `work_item:view` on its project — cross-project links are legal (see `linkWorkItem`), so the
+   *     far end may sit in a project this reader has no access to at all;
+   *   • the Editor Team scope, via the same `resolveTeamScope` every list here uses.
+   *
+   * FILTERED, not refused: the relation belongs to the item being read, and failing the whole request
+   * because one link points somewhere private would make an unrelated item unreadable — the same
+   * reasoning `notifyAssignee` states for dropping a recipient rather than rejecting the write. A
+   * far end that cannot be resolved at all is dropped too (fail closed).
+   *
+   * A far end that is a TASK is judged on its own `team_id`, which is what `assertTeamInScope` does for
+   * a task record; the three-tier `coalesce` is used only where the parent is already in hand (the
+   * Tasks tab). A task under a teamed Story with no team of its own is therefore dropped here — a
+   * narrower answer than the Tasks tab gives, never a wider one.
+   */
+  private async admitRelationEnds(
+    actor: JwtPayload,
+    relations: WorkItemRelationView[],
+  ): Promise<WorkItemRelationView[]> {
+    if (relations.length === 0) return relations;
+    const farEnds = await this.workItemRepo.findByIds(
+      [...new Set(relations.map((r) => r.relatedItem.id))],
+      actor.workspaceId,
+    );
+    const byId = new Map(farEnds.map((item) => [item.id, item]));
+    const projectIds = [...new Set(farEnds.map((item) => item.projectId))];
+    const scopes = new Map(
+      await Promise.all(
+        projectIds.map(
+          async (projectId) =>
+            [
+              projectId,
+              {
+                readable: await this.canReadProject(actor, projectId),
+                team: await this.teamScopeFor(actor, projectId),
+              },
+            ] as const,
+        ),
+      ),
+    );
+    return relations.filter((relation) => {
+      const farEnd = byId.get(relation.relatedItem.id);
+      if (!farEnd) return false;
+      const scope = scopes.get(farEnd.projectId);
+      if (!scope?.readable) return false;
+      return teamScopeAdmits(scope.team, farEnd.teamId);
+    });
+  }
+
+  /** `work_item:view` on one project, as a boolean — the filtering half of `assertProjectPermission`. */
+  private async canReadProject(actor: JwtPayload, projectId: string): Promise<boolean> {
+    const permissions = await this.accessService.getProjectPermissions(
+      actor.sub,
+      actor.workspaceId,
+      projectId,
+    );
+    return permissionGrants(permissions, PERMISSION.WORK_ITEM_VIEW);
   }
 
   @Span('work-items.link')
@@ -1431,7 +1669,7 @@ export class WorkItemsService {
     relationType: WorkItemRelationType,
   ): Promise<WorkItemRelationView[]> {
     // Editing the source item's links requires edit on its project.
-    const sourceItem = await this.getWorkItem(actor.workspaceId, sourceId);
+    const sourceItem = await this.requireReadable(actor, sourceId);
     /**
      * The SOURCE's project only — the relation row belongs to the item that owns it.
      *
@@ -1496,7 +1734,7 @@ export class WorkItemsService {
      * History) whose entire purpose is to answer that. Every other activity write in this service
      * takes the transaction handle; these two were the exceptions.
      */
-    const source = await this.getWorkItem(actor.workspaceId, sourceId);
+    const source = await this.requireReadable(actor, sourceId);
     await this.uow.run(async (tx) => {
       await this.relationRepo.create(
         { sourceItemId: sourceId, targetItemId: targetId, relationType, createdBy: actor.sub },
@@ -1519,7 +1757,7 @@ export class WorkItemsService {
 
   @Span('work-items.unlink')
   async unlinkWorkItem(actor: JwtPayload, sourceId: string, relationId: string): Promise<void> {
-    const sourceItem = await this.getWorkItem(actor.workspaceId, sourceId);
+    const sourceItem = await this.requireReadable(actor, sourceId);
     // Same scope as `linkWorkItem` — the source's project owns the relation row.
     await this.assertProjectWritable(actor.workspaceId, sourceItem.projectId);
     const relation = await this.relationRepo.findById(relationId, actor.workspaceId);
@@ -1534,7 +1772,7 @@ export class WorkItemsService {
       );
     }
     // Unlink + history in one transaction, for the reason given in `linkWorkItem`.
-    const source = await this.getWorkItem(actor.workspaceId, sourceId);
+    const source = await this.requireReadable(actor, sourceId);
     await this.uow.run(async (tx) => {
       await this.relationRepo.delete(relationId, actor.workspaceId, tx);
       await this.appendActivity(
@@ -1577,6 +1815,13 @@ export class WorkItemsService {
       await this.accessService.assertProjectPermission(actor, projectId, PERMISSION.WORK_ITEM_EDIT);
       await this.assertProjectWritable(actor.workspaceId, projectId);
     }
+    // And every ROW must be one the caller can reach (BA ruling 2026-08-17). Rank is order, which is
+    // planning data: reordering another Team's backlog — or the Project Backlog's — changes what their
+    // grid says without touching a field. Per row rather than per project, because the project check
+    // above is exactly the one that cannot see a team.
+    for (const item of existing) {
+      await this.assertTeamScope(actor, item);
+    }
     // Wrap in UoW so all rank UPDATEs are one atomic transaction with RLS active.
     await this.uow.run((tx) => this.workItemRepo.reorderItems(items, actor.workspaceId, tx));
   }
@@ -1595,7 +1840,7 @@ export class WorkItemsService {
     id: string,
     opts: { projectId: string; beforeId?: string | null; afterId?: string | null },
   ): Promise<WorkItem> {
-    const item = await this.getWorkItem(actor.workspaceId, id);
+    const item = await this.requireReadable(actor, id);
     if (item.projectId !== opts.projectId) {
       throw new PreconditionFailedException(
         'WORK_ITEM_PARENT_SCOPE_MISMATCH',
@@ -1777,6 +2022,21 @@ export class WorkItemsService {
         'WORK_ITEM_PARENT_SCOPE_MISMATCH',
         'All items must belong to the same project',
       );
+    }
+    /**
+     * EVERY item in the selection, not the project it names (BA ruling 2026-08-17).
+     *
+     * A bulk write is the cheapest way to reach a row a reader cannot open: the guard authorises the
+     * PROJECT in the body, so without this an Editor could bulk-assign another Team's Stories — or the
+     * Project Backlog's — a release or an iteration, one request, no UI needed. All-or-nothing, like
+     * every other rule on these two routes: a partial success would leave the caller guessing which
+     * ids landed.
+     *
+     * Sequential rather than `Promise.all` on purpose: the first refusal is the answer, and the team
+     * scope is served from one cached assignment read per (workspace, user) anyway.
+     */
+    for (const item of items) {
+      await this.assertTeamScope(actor, item);
     }
     return items;
   }
@@ -1987,12 +2247,12 @@ export class WorkItemsService {
     actor: JwtPayload,
     id: string,
   ): Promise<Array<{ id: string; name: string; color: string }>> {
-    await this.getWorkItem(actor.workspaceId, id);
+    await this.requireReadable(actor, id);
     return this.workItemRepo.listLabels(id);
   }
 
   async addLabelToWorkItem(actor: JwtPayload, id: string, labelId: string): Promise<void> {
-    const item = await this.getWorkItem(actor.workspaceId, id);
+    const item = await this.requireReadable(actor, id);
     // The label CATALOGUE is already guarded on an archived project
     // (`ProjectsService.createLabel`); the ASSIGNMENT was not, so labels could not be created on an
     // archived project but could still be applied and removed.
@@ -2003,7 +2263,7 @@ export class WorkItemsService {
   }
 
   async removeLabelFromWorkItem(actor: JwtPayload, id: string, labelId: string): Promise<void> {
-    const item = await this.getWorkItem(actor.workspaceId, id);
+    const item = await this.requireReadable(actor, id);
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     await this.workItemRepo.removeLabel(id, labelId, actor.workspaceId);
   }
@@ -2014,7 +2274,7 @@ export class WorkItemsService {
     actor: JwtPayload,
     id: string,
   ): Promise<Array<{ id: string; name: string }>> {
-    await this.getWorkItem(actor.workspaceId, id);
+    await this.requireReadable(actor, id);
     return this.workItemRepo.listMilestones(id);
   }
 
@@ -2033,7 +2293,7 @@ export class WorkItemsService {
     id: string,
     milestoneIds: string[],
   ): Promise<Array<{ id: string; name: string }>> {
-    const item = await this.getWorkItem(actor.workspaceId, id);
+    const item = await this.requireReadable(actor, id);
     // The ITEM's project. The MILESTONE's project is checked by `assertArtifactsAssignable` — the
     // two can differ, because a milestone's scope spans `milestone_projects`, and one row written
     // from this end touches both.
@@ -2054,7 +2314,7 @@ export class WorkItemsService {
     workItemId: string,
     args: { page: number; pageSize: number },
   ): Promise<{ items: TimeLog[]; total: number }> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.requireReadable(actor, workItemId);
     return this.timeLogRepo.listByWorkItem(workItemId, actor.workspaceId, {
       limit: args.pageSize,
       offset: (args.page - 1) * args.pageSize,
@@ -2067,7 +2327,7 @@ export class WorkItemsService {
     workItemId: string,
     input: { loggedDate: string; hours: string; description?: string },
   ): Promise<TimeLog> {
-    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.requireReadable(actor, workItemId);
     /**
      * Logged hours are project content, so all three time-log writes are guarded (PRJ-FR-010).
      *
@@ -2101,7 +2361,7 @@ export class WorkItemsService {
     logId: string,
     input: { loggedDate?: string; hours?: string; description?: string | null },
   ): Promise<TimeLog> {
-    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.requireReadable(actor, workItemId);
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     const log = await this.timeLogRepo.findById(logId, actor.workspaceId);
     if (!log || log.workItemId !== workItemId) {
@@ -2119,7 +2379,7 @@ export class WorkItemsService {
 
   @Span('work-items.delete-time-log')
   async deleteTimeLog(actor: JwtPayload, workItemId: string, logId: string): Promise<void> {
-    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.requireReadable(actor, workItemId);
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     const log = await this.timeLogRepo.findById(logId, actor.workspaceId);
     if (!log || log.workItemId !== workItemId) {
@@ -2155,19 +2415,19 @@ export class WorkItemsService {
 
   @Span('work-items.list-watchers')
   async listWatchers(actor: JwtPayload, workItemId: string): Promise<Watcher[]> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.requireReadable(actor, workItemId);
     return this.watcherRepo.listByWorkItem(workItemId, actor.workspaceId);
   }
 
   @Span('work-items.watch')
   async watch(actor: JwtPayload, workItemId: string): Promise<void> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.requireReadable(actor, workItemId);
     await this.watcherRepo.watch(workItemId, actor.sub, actor.workspaceId);
   }
 
   @Span('work-items.unwatch')
   async unwatch(actor: JwtPayload, workItemId: string): Promise<void> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.requireReadable(actor, workItemId);
     await this.watcherRepo.unwatch(workItemId, actor.sub);
   }
 
@@ -2194,7 +2454,7 @@ export class WorkItemsService {
     workItemId: string,
     input: { filename: string; mimeType: string; sizeBytes: number; checksumSha256: string },
   ): Promise<{ attachmentId: string; uploadUrl: string; requiredHeaders: Record<string, string> }> {
-    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.requireReadable(actor, workItemId);
     /**
      * Refused at PRESIGN, not only at confirm.
      *
@@ -2215,7 +2475,7 @@ export class WorkItemsService {
     workItemId: string,
     attachmentId: string,
   ): Promise<EntityAttachment> {
-    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.requireReadable(actor, workItemId);
     // Checked again at confirm: presign and confirm are two requests, and a project archived
     // between them must not gain a visible attachment. Same reason the quota is re-checked there.
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
@@ -2229,7 +2489,7 @@ export class WorkItemsService {
 
   @Span('work-items.list-attachments')
   async listAttachments(actor: JwtPayload, workItemId: string): Promise<EntityAttachment[]> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    await this.requireReadable(actor, workItemId);
     return this.entityAttachments.list(actor, WorkItemsService.attachmentRef(workItemId));
   }
 
@@ -2239,7 +2499,9 @@ export class WorkItemsService {
     workItemId: string,
     attachmentId: string,
   ): Promise<{ downloadUrl: string }> {
-    await this.getWorkItem(actor.workspaceId, workItemId);
+    // Both `:aid/download` and `:aid/content` land here, and a signed URL OUTLIVES the request that
+    // minted it — so this is the one read where a missing scope keeps leaking after the refusal.
+    await this.requireReadable(actor, workItemId);
     return this.entityAttachments.downloadUrl(
       actor,
       WorkItemsService.attachmentRef(workItemId),
@@ -2253,7 +2515,7 @@ export class WorkItemsService {
     workItemId: string,
     attachmentId: string,
   ): Promise<void> {
-    const item = await this.getWorkItem(actor.workspaceId, workItemId);
+    const item = await this.requireReadable(actor, workItemId);
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     await this.entityAttachments.delete(
       actor,

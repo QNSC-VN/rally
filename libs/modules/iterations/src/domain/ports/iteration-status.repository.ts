@@ -4,6 +4,7 @@ import type {
   IterationStatusItem,
   IterationStatusFilters,
 } from '../iteration-status.types';
+import type { TeamReadScope } from '../team-read-scope';
 
 export const ITERATION_STATUS_REPOSITORY = Symbol('ITERATION_STATUS_REPOSITORY');
 
@@ -17,14 +18,28 @@ export type RawIterationMetrics = Pick<
   'totalPlanEstimate' | 'acceptedPoints' | 'defectCount' | 'taskCount' | 'activeTaskCount'
 >;
 
+/**
+ * `scope` is REQUIRED on both methods, not optional with an "unrestricted" default.
+ *
+ * The strip above the grid and the grid itself are two queries over one population, and a metric
+ * computed over a wider population than the rows below it is the defect this repo keeps re-learning
+ * (CLAUDE.md: "Eligibility must be counted in the SAME scope as the measurement"). An optional
+ * parameter makes forgetting it a silent widening on whichever of the two the next caller misses; a
+ * required one makes it a compile error.
+ */
 export interface IIterationStatusRepository {
-  /** Aggregate metrics across all non-deleted items assigned to the iteration. */
-  getMetrics(iterationId: string, workspaceId: string): Promise<RawIterationMetrics>;
-  /** Paginated story/defect list assigned to the iteration, with task rollups. */
+  /** Aggregate metrics across the non-deleted items assigned to the iteration that `scope` admits. */
+  getMetrics(
+    iterationId: string,
+    workspaceId: string,
+    scope: TeamReadScope,
+  ): Promise<RawIterationMetrics>;
+  /** Paginated story/defect list assigned to the iteration, with task rollups, narrowed by `scope`. */
   listItems(
     iterationId: string,
     workspaceId: string,
     filters: IterationStatusFilters,
     args: { limit: number; cursor: CursorPayload | null },
+    scope: TeamReadScope,
   ): Promise<PagedResult<IterationStatusItem>>;
 }

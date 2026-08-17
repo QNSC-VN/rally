@@ -21,11 +21,20 @@
  *   3. the team predicate is `team_id IS NULL OR team_id = ?`, so a team-scoped picker still offers
  *      the project's SHARED timeboxes. SQL equality never matches NULL and most iterations name no
  *      team, so a strict `= ?` empties the picker instead of narrowing it.
+ *   4. an EDITOR's own scope narrows both feeds the same way (BA ruling 2026-08-17, which names
+ *      pickers), and a shared timebox survives that narrowing — the property that must NOT be
+ *      "aligned" with the work-row rule, where a null team is the admin-only Project Backlog.
  */
 import { describe, expect, it } from 'vitest';
 import { drizzle } from 'drizzle-orm/pg-proxy';
 import type { DrizzleDB } from '@platform';
 import { IterationDrizzleRepository } from './iteration.drizzle-repository';
+import type { TeamReadScope } from '../../domain/team-read-scope';
+
+/** A Workspace Admin or per-project `admin`: All Teams AND the Project Backlog, so no predicate. */
+const ALL_TEAMS: TeamReadScope = { unrestricted: true };
+/** An `editor` restricted to their own active Teams in this project. */
+const editorScope = (...teamIds: string[]): TeamReadScope => ({ unrestricted: false, teamIds });
 
 interface Captured {
   sql: string;
@@ -57,7 +66,7 @@ describe('IterationDrizzleRepository — the compact feed predicates', () => {
     it('filters on project and tenancy — and NOT on state', async () => {
       const { repo, captured } = recordingRepo();
 
-      await repo.listAssignmentOptions('proj-1', 'ws-1');
+      await repo.listAssignmentOptions('proj-1', 'ws-1', undefined, ALL_TEAMS);
 
       expect(captured).toHaveLength(1);
       const where = whereClause(captured[0].sql);
@@ -80,7 +89,7 @@ describe('IterationDrizzleRepository — the compact feed predicates', () => {
     it('offers a team its OWN timeboxes plus the project SHARED ones', async () => {
       const { repo, captured } = recordingRepo();
 
-      await repo.listAssignmentOptions('proj-1', 'ws-1', 'team-1');
+      await repo.listAssignmentOptions('proj-1', 'ws-1', 'team-1', ALL_TEAMS);
 
       const where = whereClause(captured[0].sql);
       expect(where).toContain('"team_id" is null');
@@ -93,7 +102,7 @@ describe('IterationDrizzleRepository — the compact feed predicates', () => {
     it('omits the team predicate entirely when no team is asked for', async () => {
       const { repo, captured } = recordingRepo();
 
-      await repo.listAssignmentOptions('proj-1', 'ws-1');
+      await repo.listAssignmentOptions('proj-1', 'ws-1', undefined, ALL_TEAMS);
 
       expect(whereClause(captured[0].sql)).not.toContain('"team_id"');
     });
@@ -110,7 +119,7 @@ describe('IterationDrizzleRepository — the compact feed predicates', () => {
     it('filters on scope only, exactly like the eligibility feed', async () => {
       const { repo, captured } = recordingRepo();
 
-      await repo.listReferences('proj-1', 'ws-1', 'team-1');
+      await repo.listReferences('proj-1', 'ws-1', 'team-1', ALL_TEAMS);
 
       const where = whereClause(captured[0].sql);
       expect(where).toContain('"project_id" = $1');
@@ -123,8 +132,8 @@ describe('IterationDrizzleRepository — the compact feed predicates', () => {
     it('asks for the same ROWS as the eligibility feed', async () => {
       const { repo, captured } = recordingRepo();
 
-      await repo.listAssignmentOptions('proj-1', 'ws-1', 'team-1');
-      await repo.listReferences('proj-1', 'ws-1', 'team-1');
+      await repo.listAssignmentOptions('proj-1', 'ws-1', 'team-1', ALL_TEAMS);
+      await repo.listReferences('proj-1', 'ws-1', 'team-1', ALL_TEAMS);
 
       const [eligibility, reference] = captured;
       expect(whereClause(reference.sql)).toBe(whereClause(eligibility.sql));
@@ -134,6 +143,81 @@ describe('IterationDrizzleRepository — the compact feed predicates', () => {
       expect(eligibility.sql.slice(0, eligibility.sql.indexOf(' from '))).not.toContain(
         '"team_id"',
       );
+    });
+  });
+
+  /**
+   * THE EDITOR'S TEAM SCOPE (BA ruling 2026-08-17, read half). A picker is one of the surfaces the
+   * ruling names, and these two feeds are the ones behind every Iteration selector, filter and label.
+   *
+   * The distinction being pinned is the one that is easy to "fix" in the wrong direction: here a
+   * `team_id IS NULL` row is a SHARED timebox and must survive, while the same NULL on a WORK row is
+   * the Project Backlog and must not (see `iteration-status.drizzle-repository.predicates.spec.ts`).
+   * Two predicates over the same column name, opposite treatments of NULL, and only a test says so.
+   */
+  describe('an EDITOR scope narrows both feeds — and a SHARED timebox survives it', () => {
+    it('emits `team_id IS NULL OR team_id IN (…)`, so shared sprints stay selectable', async () => {
+      const { repo, captured } = recordingRepo();
+
+      await repo.listAssignmentOptions(
+        'proj-1',
+        'ws-1',
+        undefined,
+        editorScope('team-a', 'team-b'),
+      );
+
+      const where = whereClause(captured[0].sql);
+      expect(where).toContain('"team_id" is null');
+      expect(where).toContain('"team_id" in ($3, $4)');
+      expect(captured[0].params).toEqual(['proj-1', 'ws-1', 'team-a', 'team-b']);
+      // Never a state predicate, even now (P6-VEL-004 is orthogonal to team scope).
+      expect(where).not.toContain('"state"');
+    });
+
+    it('narrows the REFERENCE feed identically, so labels and the picker cannot disagree', async () => {
+      const { repo, captured } = recordingRepo();
+
+      await repo.listAssignmentOptions('proj-1', 'ws-1', undefined, editorScope('team-a'));
+      await repo.listReferences('proj-1', 'ws-1', undefined, editorScope('team-a'));
+
+      const [eligibility, reference] = captured;
+      expect(whereClause(reference.sql)).toBe(whereClause(eligibility.sql));
+      expect(reference.params).toEqual(eligibility.params);
+    });
+
+    it('leaves ONLY the shared timeboxes for an editor with no team — never `IN ()`', async () => {
+      const { repo, captured } = recordingRepo();
+
+      await repo.listReferences('proj-1', 'ws-1', undefined, editorScope());
+
+      const where = whereClause(captured[0].sql);
+      expect(where).toContain('"team_id" is null');
+      // `inArray(col, [])` is not portable as "match nothing", so the empty scope must never render one.
+      expect(where).not.toMatch(/in \(\)/);
+      expect(captured[0].params).toEqual(['proj-1', 'ws-1']);
+    });
+
+    it('emits NO team predicate at all for an unrestricted caller', async () => {
+      const { repo, captured } = recordingRepo();
+
+      await repo.listReferences('proj-1', 'ws-1', undefined, ALL_TEAMS);
+
+      // Not a tautology, not `IS NULL OR IN (...)` over every team: literally absent.
+      expect(whereClause(captured[0].sql)).not.toContain('"team_id"');
+    });
+
+    it('combines an explicitly requested team WITH the caller scope', async () => {
+      const { repo, captured } = recordingRepo();
+
+      // The service asserts the requested team is one of the caller's before reaching here
+      // (`resolveTimeboxScope` → `assertTeamInScope`), so this is belt-and-braces rather than the
+      // boundary: the requested-team predicate must not REPLACE the scope predicate.
+      await repo.listAssignmentOptions('proj-1', 'ws-1', 'team-a', editorScope('team-a'));
+
+      const where = whereClause(captured[0].sql);
+      expect(where).toContain('"team_id" = $3');
+      expect(where).toContain('"team_id" in ($4)');
+      expect(captured[0].params).toEqual(['proj-1', 'ws-1', 'team-a', 'team-a']);
     });
   });
 });

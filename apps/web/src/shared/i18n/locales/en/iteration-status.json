@@ -27,7 +27,8 @@
     "unassigned": "Unassigned",
     "type": "Type",
     "blocked": "Blocked",
-    "notBlocked": "Not blocked"
+    "notBlocked": "Not blocked",
+    "noTeam": "No team"
   },
   "totals": {
     "label": "Totals",
@@ -90,6 +91,8 @@
     "added": "{{type}} \"{{title}}\" added to iteration",
     "createFailed": "Failed to create item",
     "withDetails": "Create with details",
-    "createItem": "Create Item"
+    "createItem": "Create Item",
+    "teamOutOfScope": "This iteration belongs to a Team you are not assigned to, so an item added here would be outside your Teams. Add it from one of your own Teams instead.",
+    "teamRequired": "Choose one of your Teams — this iteration is shared, so it cannot supply one."
   }
 }

@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { IterationStatusService } from './iteration-status.service';
 import { IterationsService } from './iterations.service';
 import { WorkItemsService } from '@modules/work-items';
+import { AccessService } from '@modules/access';
 import { ITERATION_STATUS_REPOSITORY } from '../domain/ports/iteration-status.repository';
 import type { Iteration } from '../domain/iteration.types';
 
@@ -57,6 +58,7 @@ describe('IterationStatusService', () => {
     createWorkItem: ReturnType<typeof vi.fn>;
     bulkAssignIteration: ReturnType<typeof vi.fn>;
   };
+  let access: { resolveTeamScope: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     statusRepo = {
@@ -78,6 +80,8 @@ describe('IterationStatusService', () => {
       createWorkItem: vi.fn().mockResolvedValue({ id: 'wi-new' }),
       bulkAssignIteration: vi.fn().mockResolvedValue(1),
     };
+    // Default: a Workspace Admin or per-project `admin` — All Teams and the Project Backlog.
+    access = { resolveTeamScope: vi.fn().mockResolvedValue({ unrestricted: true }) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -85,6 +89,7 @@ describe('IterationStatusService', () => {
         { provide: ITERATION_STATUS_REPOSITORY, useValue: statusRepo },
         { provide: IterationsService, useValue: iterationsService },
         { provide: WorkItemsService, useValue: workItemsService },
+        { provide: AccessService, useValue: access },
       ],
     }).compile();
 
@@ -211,6 +216,76 @@ describe('IterationStatusService', () => {
     });
   });
 
+  /**
+   * THE TEAM SCOPE (BA ruling 2026-08-17, read half). §3.2 gives an Editor `Iteration Status | View and
+   * update in assigned Teams`, so this screen is the one the `iteration:view` / `timebox:view` split
+   * exists to keep open for them — which means the narrowing lands in the read model rather than at the
+   * gate.
+   *
+   * What is pinned here is that the scope is resolved ONCE, for the ITERATION'S OWN PROJECT, and handed
+   * to BOTH queries. The predicates it becomes are pinned in
+   * `infrastructure/persistence/iteration-status.drizzle-repository.predicates.spec.ts`; the fault this
+   * layer can introduce is a strip and a grid narrowed differently, which is the shape of every
+   * "eligibility counted in a different scope from the measurement" defect in CLAUDE.md.
+   */
+  describe('getStatus — team scope', () => {
+    it("resolves the scope against the ITERATION's project, not the request", async () => {
+      iterationsService.getIteration.mockResolvedValue(mockIteration({ projectId: 'proj-9' }));
+
+      await service.getStatus(actor, 'it-1', {}, pageArgs);
+
+      expect(access.resolveTeamScope).toHaveBeenCalledWith('ws-1', 'user-1', 'proj-9');
+    });
+
+    it('passes ONE unrestricted scope to both the metrics and the items query', async () => {
+      await service.getStatus(actor, 'it-1', {}, pageArgs);
+
+      expect(access.resolveTeamScope).toHaveBeenCalledTimes(1);
+      expect(statusRepo.getMetrics).toHaveBeenCalledWith('it-1', 'ws-1', { unrestricted: true });
+      expect(statusRepo.listItems.mock.calls[0][4]).toEqual({ unrestricted: true });
+    });
+
+    it("hands an editor's team ids to the strip and the grid — the SAME object", async () => {
+      const scope = { unrestricted: false, teamIds: ['team-a', 'team-b'] };
+      access.resolveTeamScope.mockResolvedValue(scope);
+
+      await service.getStatus(actor, 'it-1', {}, pageArgs);
+
+      expect(access.resolveTeamScope).toHaveBeenCalledTimes(1);
+      expect(statusRepo.getMetrics.mock.calls[0][2]).toBe(scope);
+      expect(statusRepo.listItems.mock.calls[0][4]).toBe(scope);
+    });
+
+    it('forwards an EMPTY editor scope rather than flattening it to unrestricted', async () => {
+      // `[]` is a real answer — "no delivery scope" — and the repository short-circuits it to no rows
+      // and a zeroed strip. Flattening it here would report the whole iteration to a caller who may
+      // read none of it, the `null`-versus-`[]` failure `listReadableProjectIds` documents.
+      access.resolveTeamScope.mockResolvedValue({ unrestricted: false, teamIds: [] });
+
+      await service.getStatus(actor, 'it-1', {}, pageArgs);
+
+      expect(statusRepo.getMetrics.mock.calls[0][2]).toEqual({
+        unrestricted: false,
+        teamIds: [],
+      });
+      expect(statusRepo.listItems.mock.calls[0][4]).toEqual({ unrestricted: false, teamIds: [] });
+    });
+
+    it('still serves a SHARED (team-less) iteration to an editor — the timebox is not the work', async () => {
+      // A team-less iteration is a shared sprint every team works inside (195 of 206 local iterations
+      // name no team), so there is no honest refusal to make on the timebox itself. The work rows carry
+      // the team and narrow below — the opposite rule from a team-less WORK row, which is the
+      // admin-only Project Backlog.
+      iterationsService.getIteration.mockResolvedValue(mockIteration({ teamId: null }));
+      access.resolveTeamScope.mockResolvedValue({ unrestricted: false, teamIds: ['team-a'] });
+
+      const res = await service.getStatus(actor, 'it-1', {}, pageArgs);
+
+      expect(res.iteration.id).toBe('it-1');
+      expect(statusRepo.listItems).toHaveBeenCalled();
+    });
+  });
+
   describe('getStatus — work items list', () => {
     it('passes filters and page args to statusRepo.listItems', async () => {
       iterationsService.getIteration.mockResolvedValue(mockIteration());
@@ -219,7 +294,9 @@ describe('IterationStatusService', () => {
 
       await service.getStatus(actor, 'it-1', filters, args);
 
-      expect(statusRepo.listItems).toHaveBeenCalledWith('it-1', 'ws-1', filters, args);
+      expect(statusRepo.listItems).toHaveBeenCalledWith('it-1', 'ws-1', filters, args, {
+        unrestricted: true,
+      });
     });
 
     it('forwards the paged items list in the response', async () => {

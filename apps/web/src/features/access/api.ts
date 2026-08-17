@@ -18,6 +18,7 @@ import { apiClient } from '@/shared/api/http-client'
 import { apiErrorMessage } from '@/shared/api/api-error'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { grants } from '@/shared/config/permission-check'
+import { coversAllTeams } from '@/shared/config/access-levels'
 
 export const accessKeys = {
   myProjectPermissions: (projectId: string) => ['my-project-permissions', projectId] as const,
@@ -65,6 +66,42 @@ export function useProjectPermissions(projectId: string | undefined): ProjectPer
     isLoading: query.isLoading,
     isError: query.isError,
   }
+}
+
+/**
+ * The caller's TEAM SCOPE in one project — the client half of `AccessService.resolveTeamScope`.
+ *
+ * BA ruling 2026-08-17: "Null means Project Backlog, accessible only to Workspace Admin and Project
+ * Admin. Editor must select one of their assigned Teams when creating a Work Item and cannot access
+ * team-less items. Enforce this consistently in API queries, lists, reports, search, pickers and
+ * direct URLs." The server refuses a team-less create by an Editor with `WORK_ITEM_TEAM_REQUIRED`
+ * (412) and a team-less READ with `PROJECT_BACKLOG_ADMIN_ONLY` (403), so the client's whole job here
+ * is to stop offering what those two refuse — without withdrawing the Project Backlog from an admin,
+ * for whom "no Team" remains a legitimate, documented choice (WIC-FR-005).
+ *
+ * ONE hook, because the answer decides three things that must agree on every create surface: whether
+ * Team is required, whether the picker offers the empty option, and whether a single team is
+ * prefilled. Three surfaces deriving that separately is how they diverge.
+ */
+export interface ProjectTeamScope {
+  /** Workspace Admin or per-project Admin: every Team AND the Project Backlog. */
+  unrestricted: boolean
+  /**
+   * A team-scoped Editor: a Team must be chosen, and `No team` must not be offered.
+   *
+   * TRUE while the per-project read is still in flight and the workspace baseline alone does not
+   * cover all teams — the restrictive direction on purpose. Mis-restricting an admin for one render
+   * costs a briefly-hidden option; mis-permitting an Editor offers a choice the server answers with
+   * a 412, which is the failure this hook exists to prevent.
+   */
+  teamRequired: boolean
+  isLoading: boolean
+}
+
+export function useProjectTeamScope(projectId: string | undefined): ProjectTeamScope {
+  const { permissions, isLoading } = useProjectPermissions(projectId)
+  const unrestricted = coversAllTeams(permissions)
+  return { unrestricted, teamRequired: !unrestricted, isLoading }
 }
 
 /**
