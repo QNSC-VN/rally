@@ -235,9 +235,14 @@ export function computeCapacityWarnings(input: CapacityWarningInput): CapacityWa
  * where cumulative planning Estimated reaches or exceeds Plan total Capacity" — that puts the
  * overflowing Feature above the line. The two readings differ by exactly one row, and it is the row a
  * planner argues about: capacity 100 against estimates 90, 20, 5 puts the 20 below the line here and
- * above it under §189. Ruled in Rally's favour, on the same grounds as the Project/Release child filter
- * in `childWorkPredicate` — the product's documented behaviour wins where the SRS restates it
- * differently, and "above the line fits" is the sentence the whole feature exists to communicate.
+ * above it under §189. Ruled in Rally's favour — the product's documented behaviour wins where the SRS
+ * restates it differently, and "above the line fits" is the sentence the whole feature exists to
+ * communicate.
+ *
+ * This used to cite the Project/Release child filter in `childWorkPredicate` as the sibling ruling.
+ * That one was REVERSED by the BA on 2026-08-17 (`P5-CP-029`, P0): Rollup/Complete now count every
+ * linked child, with no Project or Release qualifier. The cutline reading stands, so the two no longer
+ * agree on which source wins — recorded in `CLAUDE.md` rather than quietly re-decided here.
  *
  * This briefly shipped as §189's reading and was reverted once Broadcom's wording was confirmed; see
  * `CLAUDE.md`, "Declared divergences from the BA".

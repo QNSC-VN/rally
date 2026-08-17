@@ -184,7 +184,7 @@
     "title": "Publish this plan",
     "explain": "Publishing makes the plan visible to everyone, not just planners.",
     "willWrite": "Each Feature assigned to a team takes this plan’s planned start and end dates.",
-    "releaseRule": "The Release is written only when the plan’s window falls inside its release.",
+    "releaseRule": "The Release is written only when the plan’s planned start and end dates exactly match the selected Release start and end dates.",
     "revertWarning": "Reverting later does NOT undo these field values — they must be cleared by hand.",
     "noWindowNote": "This plan has no planned start and end dates, so no dates or Release will be written to any Feature. Set the plan’s window in Edit Plan Details first, or publish for visibility only.",
     "confirm": "Publish and update fields",
@@ -194,7 +194,7 @@
     "skipReason": {
       "unallocated": "no team assigned, so there was no plan for it to take",
       "no_window": "this plan has no planned start and end dates, so there was no window to write — set them in Edit Plan Details",
-      "release_span_mismatch": "the plan’s window reaches outside its release, so the dates were written but the Release was not",
+      "release_span_mismatch": "Plan dates {{planStart}} to {{planEnd}} do not exactly match Release dates {{releaseStart}} to {{releaseEnd}}. Planned dates were updated; Release was not changed.",
       "archived": "it is archived, so the plan had nothing to write to — remove it from the plan or unarchive it",
       "other_release": "it already belongs to another release, so its Release was left alone — the planned dates were still written"
     },

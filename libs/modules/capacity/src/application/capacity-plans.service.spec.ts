@@ -89,7 +89,6 @@ describe('CapacityPlansService', () => {
             updateAllocation: vi.fn(),
             deleteAllocation: vi.fn(),
             totalAllocatedFor: vi.fn().mockResolvedValue(0),
-            teamMetrics: vi.fn().mockResolvedValue({ complete: 0, rollup: 0 }),
             teamVelocitySamples: vi.fn().mockResolvedValue([]),
             projectIterationCadenceDays: vi.fn().mockResolvedValue(null),
             hasPrimaryAllocation: vi.fn().mockResolvedValue(false),
@@ -693,6 +692,161 @@ describe('CapacityPlansService', () => {
     });
   });
 
+  /**
+   * `P5-CP-029` (BA retest 2026-08-17, P0) — Complete and Rollup compute from child Plan Estimate.
+   *
+   * `AC-016`: Complete is the live sum of child Plan Estimate at `Completed`, `Accepted` or `Release`;
+   * Rollup is the live sum of EVERY linked Story/Defect. The BA saw `0` for both on the plan header, the
+   * Team row and the Features tab for a Feature with one Completed 3-point child — the child filter was
+   * still qualifying on the plan's Project AND Release, which an ordinary Story does not carry.
+   *
+   * The child measurement itself is SQL (`capacity-metrics.sql.ts`), so what is pinned here is the part
+   * the service owns and the part the BA's three screens actually disagreed on: a Team row's numbers are
+   * the SUM OF ITS OWN ALLOCATION ROWS, so the Team row, the Feature rows under it and the plan header
+   * (which sums the team rows) cannot report different totals for one child.
+   */
+  describe('P5-CP-029 — Complete and Rollup, and the scopes that must agree', () => {
+    const child = (over: Partial<CapacityAllocationRow>): CapacityAllocationRow => ({
+      id: `alloc-${over.portfolioItemId ?? 'fe-2'}-${over.teamId ?? 'none'}`,
+      planId: 'plan-1',
+      portfolioItemId: 'fe-2',
+      teamId: 'team-pegasus',
+      isPrimary: true,
+      value: '3',
+      source: 'manual',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      itemKey: 'FE-2',
+      name: 'A feature',
+      refined: null,
+      preliminarySize: 'm',
+      rollup: 0,
+      complete: 0,
+      rank: 'm',
+      itemRollup: 0,
+      itemComplete: 0,
+      itemProjectId: 'proj-a',
+      itemProjectName: 'Project A',
+      itemArchivedAt: null,
+      itemTeamId: null,
+      itemTeamName: null,
+      itemReleaseId: null,
+      state: 'developing',
+      ...over,
+    });
+
+    const pegasus = (capacity: string | null = '10') => ({
+      id: 'pt-pegasus',
+      planId: 'plan-1',
+      teamId: 'team-pegasus',
+      capacity,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      teamName: 'Team Pegasus',
+    });
+
+    it('moves US-5 to Completed: Complete AND Rollup both read 3, on every scope', async () => {
+      // The BA's repro. One child, Plan Estimate 3, now `Completed`, so it is inside BOTH sums.
+      repo.findViewById.mockResolvedValue(view({ teams: [pegasus()] }));
+      repo.listAllocations.mockResolvedValue([
+        child({ rollup: 3, complete: 3, itemRollup: 3, itemComplete: 3 }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      // The Features tab.
+      expect(detail.items[0]).toMatchObject({ rollup: 3, complete: 3 });
+      // Teams by Total — and therefore the plan header, which is the sum of these rows.
+      expect(detail.teams[0].metrics).toMatchObject({ rollup: 3, complete: 3 });
+    });
+
+    it('moves it back to Idea: Complete falls to 0 and Rollup STAYS 3', async () => {
+      // AC-016's live clause, stated twice in SRS §325: "If a completed child is moved back to
+      // In-Progress, it is immediately removed from Complete but remains in Rollup."
+      repo.findViewById.mockResolvedValue(view({ teams: [pegasus()] }));
+      repo.listAllocations.mockResolvedValue([
+        child({ rollup: 3, complete: 0, itemRollup: 3, itemComplete: 0 }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.items[0]).toMatchObject({ rollup: 3, complete: 0 });
+      expect(detail.teams[0].metrics).toMatchObject({ rollup: 3, complete: 0 });
+    });
+
+    it('a team row is the SUM of its own allocation rows, never a separate aggregate', async () => {
+      // SRS §341/§347 word it exactly this way. It used to be its own query over its own copy of the
+      // child predicate, which is how the Team row and the Feature rows under it came to disagree.
+      repo.findViewById.mockResolvedValue(view({ teams: [pegasus('40')] }));
+      repo.listAllocations.mockResolvedValue([
+        child({ portfolioItemId: 'fe-2', rollup: 3, complete: 3, value: '3' }),
+        child({ portfolioItemId: 'fe-3', itemKey: 'FE-3', rollup: 8, complete: 0, value: '8' }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.teams[0].metrics).toMatchObject({
+        rollup: 11,
+        complete: 3,
+        estimated: 11,
+      });
+    });
+
+    it('counts a SPLIT Feature’s children once: the team slices sum to the Feature total', async () => {
+      /**
+       * AC-017's reconciliation requirement. FE-2 is allocated to two teams and has one 3-point
+       * Completed child, so exactly one slice may carry it — `teamSliceChildScope` attributes an
+       * unteamed child to the Feature's OWNER (`is_primary`) rather than to every row or to none.
+       */
+      repo.findViewById.mockResolvedValue(
+        view({
+          teams: [
+            pegasus('20'),
+            {
+              id: 'pt-orion',
+              planId: 'plan-1',
+              teamId: 'team-orion',
+              capacity: '20',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              teamName: 'Team Orion',
+            },
+          ],
+        }),
+      );
+      repo.listAllocations.mockResolvedValue([
+        // The owner takes the child.
+        child({ teamId: 'team-pegasus', isPrimary: true, rollup: 3, complete: 3, itemRollup: 3 }),
+        // The contributor's slice is empty, and its rows still report the FEATURE's own total.
+        child({ teamId: 'team-orion', isPrimary: false, rollup: 0, complete: 0, itemRollup: 3 }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      const byTeam = Object.fromEntries(detail.teams.map((t) => [t.teamId, t.metrics.rollup]));
+      expect(byTeam).toEqual({ 'team-pegasus': 3, 'team-orion': 0 });
+      // The whole point: the slices sum to the Feature's own number, so the plan header agrees with
+      // the Features tab instead of double counting or losing the child.
+      const sliceSum = detail.teams.reduce((sum, t) => sum + t.metrics.rollup, 0);
+      expect(sliceSum).toBe(detail.items[0].rollup);
+    });
+
+    it('charges an ARCHIVED Feature nothing to its team, as well as on the Features tab', async () => {
+      // §15: an archived item is not actionable planning demand. The team row sums the allocation
+      // rows now, and those are zeroed — so the two tabs cannot report it differently.
+      repo.findViewById.mockResolvedValue(view({ teams: [pegasus()] }));
+      repo.listAllocations.mockResolvedValue([
+        child({
+          rollup: 3,
+          complete: 3,
+          itemRollup: 3,
+          itemComplete: 3,
+          itemArchivedAt: new Date(),
+        }),
+      ]);
+
+      const detail = await service.getPlanDetail(actor, 'plan-1');
+      expect(detail.teams[0].metrics).toMatchObject({ rollup: 0, complete: 0 });
+      expect(detail.items[0]).toMatchObject({ rollup: 0, complete: 0 });
+    });
+  });
+
   describe('primary team assignment', () => {
     // Rally: "you can assign the portfolio item to one primary team and then allocate points or
     // story counts to the additional teams that will contribute to the work." One team owns the
@@ -1003,6 +1157,109 @@ describe('CapacityPlansService', () => {
       expect(result.featuresUpdated).toBe(1);
       expect(result.skipped).toEqual([
         { portfolioItemId: 'fe-1', itemKey: 'FE-1', reason: 'release_span_mismatch' },
+      ]);
+    });
+
+    it('reports a mismatch when the plan ends EARLIER than its release — P5-CP-035’s repro', async () => {
+      /**
+       * The BA's own dates: plan 2026-08-07..08-30 inside release 2026-08-07..08-31. The plan does not
+       * reach OUTSIDE its release at any point, and it is still a mismatch, because AC-019 compares the
+       * two windows for equality. Pinned separately from the `inside` case above because this is the
+       * shape that made the old "reaches outside its release" advisory read as a data fault: one end
+       * matches exactly and the other is short.
+       */
+      const earlier = { plannedStartDate: '2026-08-07', plannedEndDate: '2026-08-30' };
+      repo.releaseWindow.mockResolvedValue({ startDate: '2026-08-07', endDate: '2026-08-31' });
+      repo.findById.mockResolvedValue(plan(earlier));
+      repo.findViewById.mockResolvedValue(view(earlier));
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      // AC2: it still publishes, and the planned dates ARE written.
+      expect(repo.applyPlanToFeature).toHaveBeenCalledWith(
+        'fe-1',
+        WORKSPACE,
+        'proj-a',
+        { window: { start: '2026-08-07', end: '2026-08-30' } },
+        expect.anything(),
+      );
+      expect(result.featuresUpdated).toBe(1);
+      expect(result.skipped).toEqual([
+        { portfolioItemId: 'fe-1', itemKey: 'FE-1', reason: 'release_span_mismatch' },
+      ]);
+    });
+
+    it('compares DATES, not timestamps: a release window carrying a time still matches', async () => {
+      // Never compare raw timestamps — `2026-07-01T00:00:00.000Z` is not `=== '2026-07-01'`, so an
+      // exactly matching plan would report a mismatch with timezone as the invisible variable.
+      repo.releaseWindow.mockResolvedValue({
+        startDate: '2026-07-01T00:00:00.000Z',
+        endDate: '2026-07-31T00:00:00.000Z',
+      });
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(repo.applyPlanToFeature).toHaveBeenCalledWith(
+        'fe-1',
+        WORKSPACE,
+        'proj-a',
+        { window: { start: '2026-07-01', end: '2026-07-31' }, releaseId: 'rel-1' },
+        expect.anything(),
+      );
+      expect(result.skipped).toEqual([]);
+    });
+
+    it('updates a SPLIT Feature ONCE and advises about it ONCE', async () => {
+      /**
+       * `P5-CP-035` AC1/AC4. FE-2 is allocated to two teams, which is two allocation rows and ONE
+       * publish decision — the same window, the same Release answer. Publishing used to loop the rows,
+       * so `applyPlanToFeature` ran twice (churning `updated_at`) and the advisory was pushed twice,
+       * which the planner read as two separate problems with one Feature.
+       */
+      const earlier = { plannedStartDate: '2026-08-07', plannedEndDate: '2026-08-30' };
+      repo.releaseWindow.mockResolvedValue({ startDate: '2026-08-07', endDate: '2026-08-31' });
+      repo.findById.mockResolvedValue(plan(earlier));
+      repo.findViewById.mockResolvedValue(view(earlier));
+      repo.listAllocations.mockResolvedValue([
+        allocation({ id: 'a-1', portfolioItemId: 'fe-2', itemKey: 'FE-2', teamId: 'team-1' }),
+        allocation({ id: 'a-2', portfolioItemId: 'fe-2', itemKey: 'FE-2', teamId: 'team-2' }),
+      ]);
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(repo.applyPlanToFeature).toHaveBeenCalledTimes(1);
+      expect(result.featuresUpdated).toBe(1);
+      expect(result.skipped).toEqual([
+        { portfolioItemId: 'fe-2', itemKey: 'FE-2', reason: 'release_span_mismatch' },
+      ]);
+    });
+
+    it('does not call a Feature UNALLOCATED because one of its rows is parked', async () => {
+      // AC5's other half: `unallocated` is a fact about the FEATURE, so a Feature holding one team row
+      // and one parked row is assigned. Per row it was updated AND told it had no team.
+      repo.listAllocations.mockResolvedValue([
+        allocation({ id: 'a-1', teamId: 'team-1' }),
+        allocation({ id: 'a-2', teamId: null }),
+      ]);
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(repo.applyPlanToFeature).toHaveBeenCalledTimes(1);
+      expect(result.featuresUpdated).toBe(1);
+      expect(result.skipped).toEqual([]);
+    });
+
+    it('gives a Feature with NO team allocation exactly one advisory, and no write', async () => {
+      // AC5. FE-4 is on the plan but staffed by nobody, so there is no plan for it to inherit.
+      repo.listAllocations.mockResolvedValue([
+        allocation({ portfolioItemId: 'fe-4', itemKey: 'FE-4', teamId: null }),
+      ]);
+
+      const result = await service.publishPlan(actor, 'plan-1', { updateFields: true });
+
+      expect(repo.applyPlanToFeature).not.toHaveBeenCalled();
+      expect(result.skipped).toEqual([
+        { portfolioItemId: 'fe-4', itemKey: 'FE-4', reason: 'unallocated' },
       ]);
     });
 

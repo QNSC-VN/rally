@@ -4993,7 +4993,7 @@ export interface components {
         portfolioItemId: string
         itemKey: string
         /**
-         * @description unallocated: no team, so no plan to inherit. no_window: the plan states no planned start/end, so nothing was written — a publish does not write emptiness, and with no window AC-019 refuses the Release field too. release_span_mismatch: the plan window reaches outside its release, so the dates are written but not the Release. archived: the Feature is not actionable demand. other_release: the Feature already belongs to a different release (§226 allows the allocation; publish must not move it).
+         * @description unallocated: no team, so no plan to inherit. no_window: the plan states no planned start/end, so nothing was written — a publish does not write emptiness, and with no window AC-019 refuses the Release field too. release_span_mismatch: the plan window does not EXACTLY match the release start and end dates, so the dates are written but not the Release (equality, not containment — a plan narrower than its release also lands here). archived: the Feature is not actionable demand. other_release: the Feature already belongs to a different release (§226 allows the allocation; publish must not move it).
          * @enum {string}
          */
         reason: 'unallocated' | 'no_window' | 'release_span_mismatch' | 'archived' | 'other_release'

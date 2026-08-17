@@ -5,6 +5,8 @@ import { Loader2 } from 'lucide-react'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { notify } from '@/shared/lib/toast'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
+import { useReleaseOptions } from '@/features/releases/api'
 import {
   usePublishPlan,
   type CapacityPlan,
@@ -42,6 +44,27 @@ export function PublishPlanModal({ plan, onClose }: { plan: CapacityPlan; onClos
    * read-only, so the fix — `Edit Plan Details` — is only reachable by reverting to draft first.
    */
   const hasWindow = Boolean(plan.plannedStartDate && plan.plannedEndDate)
+
+  /**
+   * The RELEASE's own window, so a mismatch advisory can print both date pairs side by side.
+   *
+   * From the release REFERENCE feed, which already carries `startDate`/`releaseDate` and is cached by
+   * every other picker on this surface — the publish response deliberately carries only the reason
+   * code, and inventing a second server field for two dates the client can already name would be one
+   * more number free to disagree with the plan header beside it.
+   *
+   * The advisory is why the dates matter: AC-019 compares them for EQUALITY, so a plan that ends
+   * EARLIER than its release is a mismatch without being outside it. Naming both windows is the only
+   * wording that survives that case (`P5-CP-035`).
+   */
+  const { data: releases = [] } = useReleaseOptions(plan.projectId)
+  const release = releases.find((candidate) => candidate.id === plan.releaseId)
+  const windowDates = {
+    planStart: plan.plannedStartDate ?? EMPTY_VALUE,
+    planEnd: plan.plannedEndDate ?? EMPTY_VALUE,
+    releaseStart: release?.startDate ?? EMPTY_VALUE,
+    releaseEnd: release?.releaseDate ?? EMPTY_VALUE,
+  }
 
   async function run(updateFields: boolean) {
     setError(null)
@@ -85,11 +108,15 @@ export function PublishPlanModal({ plan, onClose }: { plan: CapacityPlan; onClos
               {t('publish.done', { count: result.featuresUpdated })}
             </p>
             <p className="text-ui-sm font-medium text-foreground">{t('publish.skippedHeading')}</p>
+            {/* Keyed by Feature, which the server guarantees is unique here: a Feature split across
+                two teams has two allocation rows and ONE publish decision, so it used to appear twice
+                with a duplicate React key as well (`P5-CP-035`). The date pair is passed to every
+                reason; only the mismatch one names it. */}
             <ul className="space-y-1 text-ui-sm text-muted-foreground">
               {result.skipped.map((skip) => (
                 <li key={skip.portfolioItemId}>
                   <span className="font-medium text-foreground">{skip.itemKey}</span> —{' '}
-                  {t(`publish.skipReason.${skip.reason}`)}
+                  {t(`publish.skipReason.${skip.reason}`, windowDates)}
                 </li>
               ))}
             </ul>

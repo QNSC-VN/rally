@@ -100,9 +100,9 @@ export interface CapacityPlanItem {
   /**
    * The Feature has been archived, so it charges 0 on every tab.
    *
-   * On the wire because the client had no way to explain a Feature reading zero: the team grid
-   * excludes archived Features outright (`childWorkPredicate`), so a row present on the Features
-   * tab with nothing behind it looks like a data fault rather than an archived item.
+   * On the wire because the client had no way to explain a Feature reading zero: an archived Feature's
+   * row metrics are zeroed, and the team rows sum those rows, so a Feature present on the Features tab
+   * with nothing behind it looks like a data fault rather than an archived item.
    */
   archived: boolean;
   tier: EstimateTier;
@@ -162,19 +162,26 @@ export interface CapacityPlanDetail extends Omit<CapacityPlanView, 'teams'> {
   warnings: CapacityWarning[];
 }
 
-/** Why a Feature did not take the full publish. Reported, never thrown. */
+/**
+ * Why a Feature did not take the full publish. Reported, never thrown.
+ *
+ * ONE entry per unique FEATURE, never per allocation row. A Feature split across two teams has two
+ * allocation rows and one publish decision, so iterating the rows printed the same advisory twice —
+ * `P5-CP-035`, and the reason `publishPlan` groups before it writes anything.
+ */
 export interface PublishSkip {
   portfolioItemId: string;
   itemKey: string;
   /**
-   * `unallocated` — the allocation names no team, so there is no plan to inherit.
+   * `unallocated` — NO allocation of this Feature names a team, so there is no plan to inherit.
    * `no_window` — the PLAN states no planned start/end, so there is no window to stamp. Nothing is
    * written at all: with no window the span question is unanswerable too, so AC-019 already refuses
    * the Release field, which leaves this publish with no field it is allowed to touch. Reported per
-   * row like `release_span_mismatch` (also a plan-level fact) because the rows are what the planner
-   * is looking at — but the fix is on the PLAN, in `Edit Plan Details`.
-   * `release_span_mismatch` — the plan's window reaches outside its release, so Rally writes
-   * the dates but not the Release field.
+   * Feature like `release_span_mismatch` (also a plan-level fact) because the rows are what the
+   * planner is looking at — but the fix is on the PLAN, in `Edit Plan Details`.
+   * `release_span_mismatch` — the plan's window does not EXACTLY match its release's, so Rally writes
+   * the dates but not the Release field. Not containment: a plan narrower than its release does not
+   * reach outside it and still reports this, which is what AC-019 asks for.
    * `other_release` — the Feature is already committed to a DIFFERENT release. §226 lets the Team
    * picker pull such a Feature in, and publish must not be what moves it: dates written, Release
    * left alone, row reported.
@@ -488,8 +495,6 @@ export class CapacityPlansService {
 
     const skipped: PublishSkip[] = [];
     let featuresUpdated = 0;
-    // A split Feature has one allocation row per team; count each Feature once.
-    const writtenFeatures = new Set<string>();
 
     if (options.updateFields) {
       // Read once, outside the loop: every Feature takes the same window and the same release
@@ -498,13 +503,22 @@ export class CapacityPlansService {
       const releaseWindow = await this.repo.releaseWindow(plan.releaseId, actor.workspaceId);
       const window = planWindow(plan);
       const spansReleases = !windowsMatch(window, releaseWindow);
+      // ONE entry per FEATURE, resolved BEFORE anything is written or reported. A publish is a
+      // decision about a Feature — which window, which Release — and a split Feature's two allocation
+      // rows carry the identical answer, so iterating rows wrote the same Feature twice and printed
+      // its advisory twice (`P5-CP-035`). Order follows first appearance, which is the repository's
+      // rank order with unallocated rows last.
+      const features = publishTargets(rows);
 
       await this.uow.run(async (tx) => {
-        for (const row of rows) {
-          if (row.teamId === null) {
+        for (const feature of features) {
+          // NO allocation of this Feature names a team, so there is no plan for it to inherit.
+          // Decided over the whole Feature, not per row: a Feature with one team row and one parked
+          // row IS assigned, and used to be updated AND told it was unallocated.
+          if (!feature.hasTeam) {
             skipped.push({
-              portfolioItemId: row.portfolioItemId,
-              itemKey: row.itemKey,
+              portfolioItemId: feature.portfolioItemId,
+              itemKey: feature.itemKey,
               reason: 'unallocated',
             });
             continue;
@@ -528,8 +542,8 @@ export class CapacityPlansService {
            */
           if (window === null) {
             skipped.push({
-              portfolioItemId: row.portfolioItemId,
-              itemKey: row.itemKey,
+              portfolioItemId: feature.portfolioItemId,
+              itemKey: feature.itemKey,
               reason: 'no_window',
             });
             continue;
@@ -547,10 +561,10 @@ export class CapacityPlansService {
            * is about what publish WRITES, not about what a planner may staff.
            */
           const ownsOtherRelease =
-            row.itemReleaseId !== null && row.itemReleaseId !== plan.releaseId;
+            feature.releaseId !== null && feature.releaseId !== plan.releaseId;
 
           const written = await this.repo.applyPlanToFeature(
-            row.portfolioItemId,
+            feature.portfolioItemId,
             actor.workspaceId,
             // The PLAN's project: a Feature that has moved elsewhere must not receive this
             // plan's Release, which is the state `assertReferences` rejects on the next save.
@@ -563,31 +577,28 @@ export class CapacityPlansService {
           );
           if (!written) {
             skipped.push({
-              portfolioItemId: row.portfolioItemId,
-              itemKey: row.itemKey,
+              portfolioItemId: feature.portfolioItemId,
+              itemKey: feature.itemKey,
               reason: 'archived',
             });
             continue;
           }
-          if (!writtenFeatures.has(row.portfolioItemId)) {
-            writtenFeatures.add(row.portfolioItemId);
-            featuresUpdated += 1;
-          }
+          featuresUpdated += 1;
 
           if (ownsOtherRelease) {
             // Reported ahead of the window mismatch: this Feature's Release was left alone because it
             // is committed elsewhere, which is a different fact from the plan's window not matching.
             skipped.push({
-              portfolioItemId: row.portfolioItemId,
-              itemKey: row.itemKey,
+              portfolioItemId: feature.portfolioItemId,
+              itemKey: feature.itemKey,
               reason: 'other_release',
             });
           } else if (spansReleases) {
-            // Dates written, Release deliberately not. Reported per Feature because that is
+            // Dates written, Release deliberately not. Reported once per Feature because that is
             // the row the planner has to fix.
             skipped.push({
-              portfolioItemId: row.portfolioItemId,
-              itemKey: row.itemKey,
+              portfolioItemId: feature.portfolioItemId,
+              itemKey: feature.itemKey,
               reason: 'release_span_mismatch',
             });
           }
@@ -1410,33 +1421,45 @@ export class CapacityPlansService {
       };
     });
 
-    const teams = await Promise.all(
-      plan.teams.map(async (team) => {
-        const { complete, rollup } = await this.repo.teamMetrics(plan, team.teamId);
-        // Sums the RESOLVED charge, not the raw column: a row with no explicit allocation still
-        // costs this team the Feature's estimate, which is the whole point of Rally's assignment.
-        const estimated = allocations
-          .filter((a) => a.teamId === team.teamId)
-          .reduce((sum, a) => sum + a.metrics.estimated, 0);
-        const capacity = team.capacity === null ? null : Number(team.capacity);
+    /**
+     * A team row is the SUM OF ITS OWN ALLOCATION ROWS — all four numbers, from one source.
+     *
+     * SRS §341/§347 state it exactly that way: "Team Rollup = SUM(Feature/Team Rollup for allocation
+     * rows in Team)", "Team Complete = SUM(Feature/Team Complete for allocation rows in Team)". It used
+     * to be a SEPARATE per-team aggregate query (`repo.teamMetrics`, over its own copy of the child
+     * predicate) while `estimated` was already summed from the rows here — two definitions of one
+     * number, free to disagree, and they did: the team query narrowed children with a strict
+     * `work_items.team_id = ?` where the row subquery falls back to the Feature's owner. Summing the
+     * rows makes the Team row, the expanded Feature rows under it and the plan header (which is the sum
+     * of the team rows, `planTotals`) arithmetically incapable of disagreeing — which is `AC-017`'s
+     * reconciliation requirement and the `P5-CP-029` retest's "Team slices must be consistent with the
+     * Feature/Plan totals".
+     *
+     * Archived Features drop out for free: their row metrics are zeroed above (§15).
+     */
+    const teams = plan.teams.map((team) => {
+      const mine = allocations.filter((a) => a.teamId === team.teamId);
+      const complete = mine.reduce((sum, a) => sum + a.metrics.complete, 0);
+      const rollup = mine.reduce((sum, a) => sum + a.metrics.rollup, 0);
+      const estimated = mine.reduce((sum, a) => sum + a.metrics.estimated, 0);
+      const capacity = team.capacity === null ? null : Number(team.capacity);
 
-        return {
-          ...team,
-          metrics: {
-            complete,
+      return {
+        ...team,
+        metrics: {
+          complete,
+          rollup,
+          estimated,
+          capacity,
+          warnings: computeCapacityWarnings({
+            kind: 'team',
             rollup,
             estimated,
             capacity,
-            warnings: computeCapacityWarnings({
-              kind: 'team',
-              rollup,
-              estimated,
-              capacity,
-            }),
-          },
-        };
-      }),
-    );
+          }),
+        },
+      };
+    });
 
     /**
      * Rally's Items tab: ONE row per Feature, in rank order, with its own totals.
@@ -1488,8 +1511,8 @@ export class CapacityPlansService {
            * `estimated` was already zeroed for an archived Feature (`:1194` does the same for the
            * allocation row) but `rollup` and `complete` were assigned unconditionally, so the
            * Features tab showed Rollup 21 / Estimated 0 and raised `rollup_exceeds_estimated` —
-           * "Rollup exceeds Estimated" — for work contributing nothing. Meanwhile
-           * `childWorkPredicate` excludes archived Features from the team grid entirely, so
+           * "Rollup exceeds Estimated" — for work contributing nothing. Meanwhile the team grid
+           * zeroes an archived Feature's allocation rows, so
            * Teams-by-Total showed 0 for the same Feature: two tabs, two numbers, one of them
            * warning about the other. SRS §15 calls archived work "not actionable planning demand",
            * and AC-017 requires the split views to reconcile.
@@ -1921,6 +1944,51 @@ export function mergeParked(
   };
 }
 
+/** One Feature's publish decision, folded from however many allocation rows carry it. */
+export interface PublishTarget {
+  portfolioItemId: string;
+  itemKey: string;
+  /** The Feature's OWN Release — a Feature column, so identical on every row that names it. */
+  releaseId: string | null;
+  /** At least one allocation of this Feature names a team, so there is a plan to inherit. */
+  hasTeam: boolean;
+}
+
+/**
+ * The unique FEATURES a publish acts on, in first-appearance order.
+ *
+ * `P5-CP-035`: a Feature split across two teams has two allocation rows and exactly one publish
+ * decision — the same window, the same Release answer, the same advisory. Iterating the rows wrote it
+ * twice (harmless but for the `updated_at` churn) and REPORTED it twice, which is what the BA saw.
+ *
+ * `hasTeam` is an OR across the rows rather than a per-row test, because a Feature holding one team row
+ * and one parked row is assigned: the old per-row loop updated it AND told the planner it had no team.
+ */
+export function publishTargets(
+  rows: ReadonlyArray<{
+    portfolioItemId: string;
+    itemKey: string;
+    itemReleaseId: string | null;
+    teamId: string | null;
+  }>,
+): PublishTarget[] {
+  const byFeature = new Map<string, PublishTarget>();
+  for (const row of rows) {
+    const seen = byFeature.get(row.portfolioItemId);
+    if (seen === undefined) {
+      byFeature.set(row.portfolioItemId, {
+        portfolioItemId: row.portfolioItemId,
+        itemKey: row.itemKey,
+        releaseId: row.itemReleaseId,
+        hasTeam: row.teamId !== null,
+      });
+      continue;
+    }
+    if (row.teamId !== null) seen.hasTeam = true;
+  }
+  return [...byFeature.values()];
+}
+
 /**
  * Length of a plan's window in whole days, both endpoints counted, or 0 when either date is
  * missing.
@@ -1957,7 +2025,21 @@ function planWindow(plan: {
 }
 
 /**
- * Does the plan's window MATCH the release's own window, exactly?
+ * A calendar DAY, whatever shape the value arrived in.
+ *
+ * Both sides of the comparison below come from Postgres `date` columns, so they are already
+ * `YYYY-MM-DD`. This exists so the comparison cannot silently become a TIMESTAMP one: a seed, a raw
+ * SQL write or a future `timestamptz` column would hand over `2026-08-07T00:00:00.000Z`, which is not
+ * `=== '2026-08-07'` — and a plan that exactly matches its release would then report a mismatch, with
+ * timezone as the invisible variable. Truncating at the `T` is enough because an ISO date-time always
+ * begins with the date, and it never rewrites the day (no `Date` parsing, so no UTC shift).
+ */
+function dateOnly(value: string): string {
+  return value.slice(0, 10);
+}
+
+/**
+ * Does the plan's window MATCH the release's own window, EXACTLY?
  *
  * AC-019 is explicit, and says so three times (SRS §3.12, AC-019, `BUSINESS_FLOW:205`): the
  * Release field is written "only when the Plan planned start/end dates MATCH the selected Release
@@ -1965,6 +2047,11 @@ function planWindow(plan: {
  * Broadcom's "do not span releases" wording — defensible for Rally, but it is a deviation from the
  * BA's own acceptance criterion that no ruling covered, so a two-week plan inside a quarter-long
  * release wrote the Release field where the BA expects a reported skip. Ruled in favour of the BA.
+ *
+ * So EQUALITY, both ends, and never containment: `P5-CP-035` re-confirms it. The consequence to keep in
+ * mind when reading the advisory copy — a plan that ENDS EARLIER than its release does not reach
+ * outside it and still fails this check, so the message must say "does not exactly match" rather than
+ * anything about spanning or overflowing.
  *
  * Unknown dates on either side mean the question cannot be answered, and an unanswerable check
  * must not authorise the write — a plan or release with no dates skips the Release field and says
@@ -1979,9 +2066,9 @@ function windowsMatch(
   const { start: ps, end: pe } = window;
   const { startDate: rs, endDate: re } = release;
   if (rs === null || re === null) return false;
-  // ISO `YYYY-MM-DD` compares correctly as a string, so no parsing (and no timezone) is
-  // involved.
-  return ps === rs && pe === re;
+  // Date-only on both sides, then plain string equality: ISO `YYYY-MM-DD` compares correctly as a
+  // string, so no parsing — and therefore no timezone — is involved.
+  return dateOnly(ps) === dateOnly(rs) && dateOnly(pe) === dateOnly(re);
 }
 
 /**

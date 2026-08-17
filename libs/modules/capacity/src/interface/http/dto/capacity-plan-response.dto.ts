@@ -17,8 +17,9 @@ const PORTFOLIO_ITEM_STATES = portfolioItemStateEnum.enumValues;
  * ACCEPTED_SCHEDULE_STATES — the deliberate D1 distinction. `capacity` is null on a Feature
  * row (it has none of its own) and on a team that has not entered one.
  *
- * Rollup/Complete follow Rally: a child story counts only when its project AND release match
- * the plan, attributed to a team by the story's own team.
+ * Rollup/Complete follow `P5-CAP-AC-016`: EVERY linked Story/Defect counts, with no Project or
+ * Release qualifier (the BA reversed Rally's qualifier on 2026-08-17 — see `capacity-metrics.sql.ts`).
+ * A team row's numbers are the SUM of its own allocation rows, so the tabs reconcile by construction.
  */
 /**
  * Every warning code, in one place: the team metrics and the Features tab's item rows report from the
@@ -270,6 +271,9 @@ export class CapacityForecastResponseDto extends createZodDto(ForecastSchema) {}
  * `skipped` is the whole reason this is not just the plan: a publish that wrote 3 of 5
  * Features succeeded, and the planner still has to know which two did not take the Release
  * field and why. Throwing would roll back a publish that is otherwise correct.
+ *
+ * At most ONE entry per `portfolioItemId`, and `featuresUpdated` counts unique Features too: a Feature
+ * split across two teams has two allocation rows and one publish decision (`P5-CP-035`).
  */
 const PublishResultSchema = z.object({
   plan: CapacityPlanSchema,
@@ -282,7 +286,7 @@ const PublishResultSchema = z.object({
       reason: z
         .enum(['unallocated', 'no_window', 'release_span_mismatch', 'archived', 'other_release'])
         .describe(
-          'unallocated: no team, so no plan to inherit. no_window: the plan states no planned start/end, so nothing was written — a publish does not write emptiness, and with no window AC-019 refuses the Release field too. release_span_mismatch: the plan window reaches outside its release, so the dates are written but not the Release. archived: the Feature is not actionable demand. other_release: the Feature already belongs to a different release (§226 allows the allocation; publish must not move it).',
+          'unallocated: no team, so no plan to inherit. no_window: the plan states no planned start/end, so nothing was written — a publish does not write emptiness, and with no window AC-019 refuses the Release field too. release_span_mismatch: the plan window does not EXACTLY match the release start and end dates, so the dates are written but not the Release (equality, not containment — a plan narrower than its release also lands here). archived: the Feature is not actionable demand. other_release: the Feature already belongs to a different release (§226 allows the allocation; publish must not move it).',
         ),
     }),
   ),
