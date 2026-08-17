@@ -2,7 +2,6 @@ import { and, eq } from 'drizzle-orm';
 import type { DbExecutor } from '@platform';
 import { SYSTEM_ROLE } from '@shared-kernel';
 import { systemRoles, userRoleAssignments } from '../../../../../../db/schema/access';
-import { users } from '../../../../../../db/schema/identity';
 import { workspaceMembers } from '../../../../../../db/schema/workspace';
 
 /**
@@ -60,57 +59,4 @@ export async function selectWorkspaceAdminUserIds(
     );
   // A user can hold the role through more than one assignment row; the callers want a set.
   return [...new Set(rows.map((r) => r.userId))];
-}
-
-/**
- * The same population as {@link selectWorkspaceAdminUserIds}, with the profile fields an OWNER PICKER
- * needs.
- *
- * `GAP-P1-CREATE-006` / `GAP-P1-WID-007` (DEV Handoff 2026-08-14, both "BA confirmed"): "BA requires
- * Workspace Admin to remain selectable/default Owner without Project/Team membership." A WA holds no
- * `project_members` row (§2.1, migration 0118) and no team roster row, so they cannot be *un-filtered*
- * into the owner feed — they have to be unioned in, which is why this exists rather than a flag on the
- * query above.
- *
- * Deliberately NOT used by the roster, `memberCount` or `grantProjectAccess`: §2.1 still says a WA is
- * not a Project user, and this is only about who may be NAMED as an Owner.
- */
-export async function selectWorkspaceAdminOptions(
-  db: DbExecutor,
-  workspaceId: string,
-): Promise<
-  Array<{
-    userId: string;
-    displayName: string | null;
-    email: string | null;
-    avatarUrl: string | null;
-  }>
-> {
-  const rows = await db
-    .select({
-      userId: userRoleAssignments.userId,
-      displayName: users.displayName,
-      email: users.email,
-      avatarUrl: users.avatarUrl,
-    })
-    .from(userRoleAssignments)
-    .innerJoin(systemRoles, eq(systemRoles.id, userRoleAssignments.roleId))
-    .innerJoin(
-      workspaceMembers,
-      and(
-        eq(workspaceMembers.workspaceId, userRoleAssignments.workspaceId),
-        eq(workspaceMembers.userId, userRoleAssignments.userId),
-        eq(workspaceMembers.status, 'active'),
-      ),
-    )
-    .innerJoin(users, eq(users.id, userRoleAssignments.userId))
-    .where(
-      and(
-        eq(userRoleAssignments.workspaceId, workspaceId),
-        eq(userRoleAssignments.scopeType, 'workspace'),
-        eq(systemRoles.slug, SYSTEM_ROLE.WORKSPACE_ADMIN),
-      ),
-    );
-  const seen = new Set<string>();
-  return rows.filter((r) => !seen.has(r.userId) && seen.add(r.userId));
 }

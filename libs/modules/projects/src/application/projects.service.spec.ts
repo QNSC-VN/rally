@@ -121,7 +121,6 @@ const makeProjectMemberRepo = () => ({
   listByProject: vi.fn().mockResolvedValue([]),
   // §2.1 — no Workspace Admin by default; the RBE-03 tests set this.
   listWorkspaceAdminUserIds: vi.fn().mockResolvedValue([]),
-  listWorkspaceAdminOptions: vi.fn().mockResolvedValue([]),
   findMember: vi.fn().mockResolvedValue(null),
   findMemberById: vi.fn().mockResolvedValue(null),
   updateMember: vi.fn().mockResolvedValue(undefined),
@@ -768,14 +767,14 @@ describe('ProjectsService', () => {
     it('carries the picker fields and NONE of the administrative ones', async () => {
       const options = await service.listProjectMemberOptions('ws-1', 'proj-1');
 
-      // A Workspace Admin is an owner option now (GAP-P1-CREATE-006), so this asserts the SHAPE of the
-      // ordinary member row rather than the whole array.
-      expect(options).toContainEqual({
-        userId: 'user-2',
-        displayName: 'Dev Two',
-        email: 'dev2@qnsc.dev',
-        avatarUrl: null,
-      });
+      expect(options).toEqual([
+        {
+          userId: 'user-2',
+          displayName: 'Dev Two',
+          email: 'dev2@qnsc.dev',
+          avatarUrl: null,
+        },
+      ]);
       // The fields §3.1 restricts the roster FOR must not ride along on the feed every participant
       // reads — asserted by key, so a field added to the roster shape later cannot join it silently.
       expect(Object.keys(options[0])).not.toContain('accessLevel');
@@ -783,44 +782,16 @@ describe('ProjectsService', () => {
       expect(Object.keys(options[0])).not.toContain('teamCount');
     });
 
-    it('drops inactive rows', async () => {
+    it('excludes Workspace Admins and inactive rows', async () => {
       const options = await service.listProjectMemberOptions('ws-1', 'proj-1');
 
-      // `user-3` is `removed`; `wa-1` stays because a Workspace Admin is a valid Owner.
-      expect(options.map((o) => o.userId)).not.toContain('user-3');
-      expect(options.map((o) => o.userId)).toContain('user-2');
-    });
-
-    /**
-     * INVERTED by `GAP-P1-CREATE-006` / `GAP-P1-WID-007` (DEV Handoff 2026-08-14, "BA confirmed"):
-     * "BA requires Workspace Admin to remain selectable/default Owner without Project/Team membership."
-     * This case used to assert the opposite. A WA holds no roster row, so they are unioned in rather
-     * than un-filtered.
-     */
-    it('INCLUDES Workspace Admins, who hold no roster row', async () => {
-      projectMemberRepo.listWorkspaceAdminOptions.mockResolvedValue([
-        { userId: 'wa-1', displayName: 'Admin One', email: 'wa@x.dev', avatarUrl: null },
-      ]);
-
-      const options = await service.listProjectMemberOptions('ws-1', 'proj-1');
-
-      expect(options.map((o) => o.userId)).toContain('wa-1');
-    });
-
-    it('does not list a Workspace Admin twice when they also hold a roster row', async () => {
-      projectMemberRepo.listWorkspaceAdminOptions.mockResolvedValue([
-        { userId: 'user-2', displayName: 'Dup', email: 'dup@x.dev', avatarUrl: null },
-      ]);
-
-      const options = await service.listProjectMemberOptions('ws-1', 'proj-1');
-
-      expect(options.filter((o) => o.userId === 'user-2')).toHaveLength(1);
+      expect(options.map((o) => o.userId)).toEqual(['user-2']);
     });
 
     it('takes NO actor and applies no roster gate — the route carries project:view', async () => {
       // The roster refuses an Editor by design. If this method grew the same check, the defect would
       // simply move here, so its signature deliberately has nowhere to put an actor.
-      await expect(service.listProjectMemberOptions('ws-1', 'proj-1')).resolves.not.toHaveLength(0);
+      await expect(service.listProjectMemberOptions('ws-1', 'proj-1')).resolves.toHaveLength(1);
       expect(access.getProjectAccessLevel).not.toHaveBeenCalled();
     });
 
@@ -857,14 +828,14 @@ describe('ProjectsService', () => {
       it('offers the TEAM roster, not the project roster', async () => {
         const options = await service.listProjectMemberOptions('ws-1', 'proj-1', 'team-1');
 
-        // `toContainEqual`, not `toEqual`: a Workspace Admin is appended to every scope now
-        // (GAP-P1-CREATE-006), so this asserts the narrowed population rather than the whole array.
-        expect(options).toContainEqual({
-          userId: 'user-9',
-          displayName: 'Team Nine',
-          email: 'nine@qnsc.dev',
-          avatarUrl: null,
-        });
+        expect(options).toEqual([
+          {
+            userId: 'user-9',
+            displayName: 'Team Nine',
+            email: 'nine@qnsc.dev',
+            avatarUrl: null,
+          },
+        ]);
         // `user-2` is an active PROJECT member and is deliberately absent: the narrowed population is
         // `team_members`, not `project_members` filtered by team — RBE-06 grants `editor` FROM a team
         // roster row, so intersecting the two would withhold exactly the team-derived participants.
@@ -877,22 +848,8 @@ describe('ProjectsService', () => {
 
         // The project-wide feed is what resolves an owner's NAME on a grid whose row owner may have
         // left the team, so it must not narrow itself.
-        expect(options.map((o) => o.userId)).toContain('user-2');
+        expect(options.map((o) => o.userId)).toEqual(['user-2']);
         expect(teamService.listTeamMembers).not.toHaveBeenCalled();
-      });
-
-      /**
-       * The BA's sentence is "without Project/Team membership" (GAP-P1-CREATE-006, BA confirmed), so a
-       * selected Team narrows the ORDINARY population and does not exclude the admin.
-       */
-      it('includes a Workspace Admin under a selected TEAM too', async () => {
-        projectMemberRepo.listWorkspaceAdminOptions.mockResolvedValue([
-          { userId: 'wa-9', displayName: 'Admin Nine', email: 'wa9@qnsc.dev', avatarUrl: null },
-        ]);
-
-        const options = await service.listProjectMemberOptions('ws-1', 'proj-1', 'team-1');
-
-        expect(options.map((o) => o.userId)).toContain('wa-9');
       });
 
       it('refuses a team that is not actively linked to the project', async () => {
