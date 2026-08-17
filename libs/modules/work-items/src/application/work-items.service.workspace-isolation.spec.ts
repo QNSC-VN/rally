@@ -319,7 +319,7 @@ describe('WorkItemsService — workspace isolation', () => {
           provide: AccessService,
           useValue: {
             assertProjectPermission: vi.fn().mockResolvedValue(undefined),
-            assertTeamScoped: vi.fn().mockResolvedValue(undefined),
+            assertTeamInScope: vi.fn().mockResolvedValue(undefined),
             getProjectPermissions: vi.fn().mockResolvedValue(['work_item:*']),
             getWorkspacePermissions: vi.fn().mockResolvedValue([]),
             getProjectAccessLevel: vi.fn().mockResolvedValue(null),

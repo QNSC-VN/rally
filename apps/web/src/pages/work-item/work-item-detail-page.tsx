@@ -62,6 +62,8 @@ import { TasksTab } from './ui/tasks-tab'
 import { HistoryTab } from './ui/detail-tabs'
 import { ConnectionsTab } from './ui/connections-tab'
 import { DetailSidebar } from './ui/detail-sidebar'
+import { WorkItemUnavailable } from './ui/work-item-unavailable'
+import { workItemUnavailableReason } from './model/unavailable-reason'
 import { BRAND } from '@/shared/config/brand'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { RichTextEditor } from '@/shared/ui/rich-text-editor'
@@ -181,7 +183,8 @@ export function WorkItemDetailPage() {
     })
   }, [])
 
-  const { data: itemByKey, isLoading: loadingKey } = useWorkItemByKey(itemKey)
+  const byKeyQuery = useWorkItemByKey(itemKey)
+  const { data: itemByKey, isLoading: loadingKey } = byKeyQuery
 
   // WID-FR-003: collapse back to the Backlog's summary panel, item still selected (AC 7).
   const collapseToSummary = useCollapseToSummary(itemKey)
@@ -264,19 +267,20 @@ export function WorkItemDetailPage() {
     )
   }
 
+  // Three different sentences, not one (GAP-P4-RBAC-003 AC6). `by-key` resolves the row and THEN
+  // asserts `work_item:view` on its project, so a reader with no access gets a 403 here — and this
+  // page is the only place that refusal can be rendered, because the route carries no
+  // `@RequirePermission` for it and `RequirePermission` renders children when its own permission read
+  // fails. Before this, every one of the three rendered as "not found" at best, and a blank page in
+  // the case the BA retested. See `ui/work-item-unavailable.tsx`.
   if (!itemByKey) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3">
-        <p className="text-ui-xl font-medium text-muted-foreground">
-          {t('notFound', { key: itemKey })}
-        </p>
-        <button
-          onClick={() => void navigate({ to: '/backlog' })}
-          className="text-ui-md font-medium text-primary-light"
-        >
-          {t('backToBacklog')}
-        </button>
-      </div>
+      <WorkItemUnavailable
+        reason={workItemUnavailableReason(byKeyQuery.isError, byKeyQuery.error)}
+        itemKey={itemKey}
+        error={byKeyQuery.error}
+        onBack={() => void navigate({ to: '/backlog' })}
+      />
     )
   }
 
@@ -393,7 +397,12 @@ export function WorkItemDetailPage() {
             <DetailsTab item={item} onFieldChange={setField} readOnly={readOnly} />
           )}
           {activeTabId === 'tasks' && !isTask && (
-            <TasksTab workItemId={item.id} projectId={item.projectId} readOnly={readOnly} />
+            <TasksTab
+              workItemId={item.id}
+              projectId={item.projectId}
+              parentTeamId={item.teamId}
+              readOnly={readOnly}
+            />
           )}
           {activeTabId === 'connections' && <ConnectionsTab workItemId={item.id} />}
           {activeTabId === 'history' && <HistoryTab workItemId={item.id} />}

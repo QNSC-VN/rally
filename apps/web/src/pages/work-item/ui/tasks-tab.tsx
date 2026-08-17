@@ -76,10 +76,20 @@ const TASK_COLUMNS: ColumnSpec<WorkItem, unknown, TaskColKey>[] = [
 export function TasksTab({
   workItemId,
   projectId,
+  parentTeamId,
   readOnly,
 }: {
   workItemId: string
   projectId: string
+  /**
+   * The PARENT Story/Defect's Team — the Owner rule's fallback, not a display value.
+   *
+   * `TASK-FR-017` scopes a Task's Owner options to its "inherited parent Team", and a Task's own
+   * `teamId` only DEFAULTS to that (SRS P1-04) and is nullable, so a Task with no team of its own
+   * under a Story that has one must still offer that Story's roster. Reading `task.teamId` alone made
+   * those rows offer `Unassigned` and nothing else.
+   */
+  parentTeamId: string | null
   readOnly: boolean
 }) {
   const { t } = useTranslation('work-items')
@@ -387,6 +397,7 @@ export function TasksTab({
             projectName={projectName}
             teamOf={teamOf}
             members={members}
+            parentTeamId={parentTeamId}
             onOpen={openTask}
           />
         )}
@@ -418,6 +429,7 @@ function TaskRow({
   projectName,
   teamOf,
   members,
+  parentTeamId,
   onOpen,
   selected,
   onToggleSelect,
@@ -432,6 +444,7 @@ function TaskRow({
   projectName: string | null
   teamOf: (id?: string | null) => { id: string; name: string; key?: string | null } | undefined
   members: { userId: string; displayName?: string | null; email?: string | null }[]
+  parentTeamId: string | null
   onOpen: (task: WorkItem) => void
   selected: boolean
   onToggleSelect: () => void
@@ -459,9 +472,6 @@ function TaskRow({
     if (next !== current) void update.mutateAsync({ [field]: next })
   }
 
-  const owner = members.find((m) => m.userId === task.assigneeId)
-  const ownerName = owner ? (owner.displayName ?? owner.email ?? null) : null
-
   /**
    * Owner OPTIONS come from THIS row's Team, not from the project (GAP-P1-WID-007: "Selected Team
    * offers Unassigned plus its ACTIVE MEMBERS; No Team offers only Unassigned").
@@ -472,12 +482,19 @@ function TaskRow({
    * React Query dedupes by key, so N rows sharing one team is still ONE request, and a row with no
    * team never fetches at all.
    *
-   * `ownerName` above still comes from the project-wide feed and is handed to `OwnerSelectCell`
-   * separately, so an owner who has since left the team is still NAMED rather than reprinted as
-   * `Unassigned` (`ownerSelectOptions` takes the current label as its third argument for exactly this).
+   * `ownerName` below is resolved from the project-wide feed FIRST and from these options second, so
+   * an owner who has since left the team is still NAMED rather than reprinted as `Unassigned`
+   * (`ownerSelectOptions` takes the current label as its third argument for exactly this) — and an
+   * owner the project-wide feed does not carry, which a Workspace Admin on the team roster now is,
+   * is named from the team roster that DOES carry them.
    */
-  const ownerOptionsQuery = useTeamOwnerOptions(projectId, task.teamId)
+  const ownerOptionsQuery = useTeamOwnerOptions(projectId, task.teamId ?? parentTeamId)
   const ownerOptions = listResource(ownerOptionsQuery).rows
+
+  const owner =
+    members.find((m) => m.userId === task.assigneeId) ??
+    ownerOptions.find((m) => m.userId === task.assigneeId)
+  const ownerName = owner ? (owner.displayName ?? owner.email ?? null) : null
 
   const numInput =
     'w-16 rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-md focus:outline-none'

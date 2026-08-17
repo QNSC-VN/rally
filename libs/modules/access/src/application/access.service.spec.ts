@@ -178,6 +178,92 @@ describe('AccessService — scope-aware permission resolution', () => {
     ] as never);
   });
 
+  /**
+   * `GAP-P4-RBAC-003` AC1/AC3, reinstating the Editor Team scope on the BA's 2026-08-17 ruling.
+   *
+   * The DECISION is what is asserted here, with `listScopedTeamIds` stubbed: which principals the rule
+   * applies to, and what it does with an empty scope versus a foreign team. The SQL half — an active
+   * roster row on a team still actively linked to the project — and the route reach are covered over
+   * real HTTP in `test/e2e/editor-team-scope.e2e.spec.ts`, because a spec that calls a service
+   * directly cannot see whether the ROUTES arrive at the rule.
+   */
+  describe('assertTeamInScope — an Editor works only inside their own Teams', () => {
+    const asEditor = () => {
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([] as never);
+      accessLevelRows = [{ projectId: 'proj-1', accessLevel: 'editor' }];
+    };
+    const scoped = (teamIds: string[]) =>
+      vi.spyOn(service, 'listScopedTeamIds').mockResolvedValue(teamIds);
+
+    it('refuses EVERYTHING when the Editor has no active Team (AC1)', async () => {
+      asEditor();
+      scoped([]);
+
+      // Including a team-agnostic record. This is what makes the zero-team case a boundary rather
+      // than a filter a nullable column walks past.
+      await expect(service.assertTeamInScope('ws-1', 'u-1', 'proj-1', null)).rejects.toMatchObject({
+        code: 'EDITOR_NO_TEAM_SCOPE',
+      });
+    });
+
+    it('refuses a record owned by another Team (AC3)', async () => {
+      asEditor();
+      scoped(['team-mine']);
+
+      await expect(
+        service.assertTeamInScope('ws-1', 'u-1', 'proj-1', 'team-theirs'),
+      ).rejects.toMatchObject({ code: 'TEAM_NOT_IN_SCOPE' });
+    });
+
+    it('admits their own Team, and a team-agnostic record once they have any Team', async () => {
+      asEditor();
+      scoped(['team-mine']);
+
+      await expect(
+        service.assertTeamInScope('ws-1', 'u-1', 'proj-1', 'team-mine'),
+      ).resolves.toBeUndefined();
+      // Stated, not hidden: `work_items.team_id` is nullable and mostly unset, so refusing these
+      // would make the ordinary case unreachable. See the method's own docblock.
+      await expect(
+        service.assertTeamInScope('ws-1', 'u-1', 'proj-1', null),
+      ).resolves.toBeUndefined();
+    });
+
+    it('does not apply to a per-project Admin — All Teams, §3.1', async () => {
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([] as never);
+      accessLevelRows = [{ projectId: 'proj-1', accessLevel: 'admin' }];
+      const spy = scoped([]);
+
+      await expect(
+        service.assertTeamInScope('ws-1', 'u-1', 'proj-1', 'team-theirs'),
+      ).resolves.toBeUndefined();
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('does not apply to a Workspace Admin, whose authority is the workspace grant', async () => {
+      projectAccessRepo.listWorkspaceAdminUserIds.mockResolvedValue(['u-1']);
+      const spy = scoped([]);
+
+      await expect(
+        service.assertTeamInScope('ws-1', 'u-1', 'proj-1', 'team-theirs'),
+      ).resolves.toBeUndefined();
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('leaves a principal with NO level to assertProjectPermission', async () => {
+      assignmentRepo.listEffectiveForUser.mockResolvedValue([] as never);
+      accessLevelRows = [];
+      const spy = scoped([]);
+
+      // No Access is not this rule's refusal to make: answering `EDITOR_NO_TEAM_SCOPE` here would
+      // describe the wrong reason, and the permission check refuses them first anyway.
+      await expect(
+        service.assertTeamInScope('ws-1', 'u-1', 'proj-1', 'team-theirs'),
+      ).resolves.toBeUndefined();
+      expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('listReadableProjectIds — the boundary behind every cross-project list', () => {
     // Mirrors Rally, where access to an artifact follows from permission on its PROJECT
     // rather than any per-artifact grant. Getting this wrong leaks another project's data,

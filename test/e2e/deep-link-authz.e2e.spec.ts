@@ -118,11 +118,16 @@ describe('deep-link authorization (e2e)', () => {
 
     it('ALLOWS it once the caller is granted access to that project', async () => {
       const { token, userId } = await newPrincipal();
-      // `work_item:view` really is in the level, so the 403 above can only be the missing GRANT and
+      // `work_item:view` really is in both levels, so the 403 above can only be the missing GRANT and
       // the 200 below can only be the grant arriving.
       expect(ACCESS_LEVEL_PERMISSIONS.editor).toContain('work_item:view');
+      expect(ACCESS_LEVEL_PERMISSIONS.admin).toContain('work_item:view');
 
-      await grantProjectAccess(app, userId, SEEDED.pay.projectId, 'editor');
+      // `admin` and not `editor`, since the 2026-08-17 ruling (`GAP-P4-RBAC-003` AC1): an Editor holds
+      // no delivery scope until they are on a Team, so an editor grant alone no longer opens a record
+      // — which is the next test, not a regression of this one. A per-project Admin has All Teams
+      // (§3.1), so this case still isolates the GRANT as the only thing that changed.
+      await grantProjectAccess(app, userId, SEEDED.pay.projectId, 'admin');
       const response = await get(`/work-items/by-key?itemKey=${PAY_ITEM_KEY}`, token);
 
       expect(response.statusCode, response.body).toBe(200);
@@ -130,6 +135,24 @@ describe('deep-link authorization (e2e)', () => {
       // rather than in whichever one the recipient had selected. Without this field on the response
       // the SPA fix would have nothing to resolve against.
       expect(JSON.parse(response.body)['projectId']).toBe(SEEDED.pay.projectId);
+    });
+
+    /**
+     * `GAP-P4-RBAC-003` AC1 through the deep-link route, which is where the BA found it: §2.2 requires
+     * an Editor to hold at least one active Team, and "if pre-existing data violates that, the runtime
+     * must treat the user as having no delivery scope". `grantProjectAccess` is the raw grant writer
+     * used by fixtures, so it can still produce that shape — exactly like the legacy rows this rule
+     * exists for. The Users & Permissions journey refuses it up front
+     * (`PROJECT_EDITOR_REQUIRES_TEAM`, `project-access-team-rule.e2e.spec.ts`).
+     */
+    it('still REFUSES an Editor who is on no Team, grant or no grant (AC1)', async () => {
+      const { token, userId } = await newPrincipal();
+
+      await grantProjectAccess(app, userId, SEEDED.pay.projectId, 'editor');
+      const response = await get(`/work-items/by-key?itemKey=${PAY_ITEM_KEY}`, token);
+
+      expect(response.statusCode, response.body).toBe(403);
+      expect(JSON.parse(response.body)['error']['code']).toBe('EDITOR_NO_TEAM_SCOPE');
     });
 
     it('answers 404 for a key that does not exist, even for an admin', async () => {

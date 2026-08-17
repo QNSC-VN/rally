@@ -202,14 +202,54 @@ export class WorkItemsService {
     return this.workItemRepo.listByProject(projectId, actor.workspaceId, filters, args);
   }
 
-  /** Home "My Work" widget — top-N items assigned to the actor, workspace-wide. */
-  async listMyWork(actor: JwtPayload, limit: number): Promise<MyWorkItem[]> {
-    return this.workItemRepo.listMyWork(actor.workspaceId, actor.sub, { limit });
+  /**
+   * The project scope BOTH Home aggregates are measured in.
+   *
+   * `project:view` and not `work_item:view`, matching `ProjectsService.listProjectHealth` — this is
+   * the code that answers "may this user see this project at all" (nav.ts states that reading), and
+   * the strip counts projects and iterations as well as work items, so one code has to cover the
+   * whole tile row. Every current access level that holds one holds the other, and the principal the
+   * scope exists for is the one holding NEITHER: with no active `project_members` row, No Access is
+   * implicit (SRS §1) and the answer is an empty array, not `null`.
+   *
+   * It rides `AccessService`'s 5-minute assignment cache, so a revocation lands on the reader's next
+   * request after `invalidateUser` — the same latency every other authorization read on this surface
+   * has. SRS §8 puts effect at next sign-in, so that is well inside contract.
+   */
+  private async readableProjectScope(actor: JwtPayload): Promise<string[] | null> {
+    return this.accessService.listReadableProjectIds(
+      actor.workspaceId,
+      actor.sub,
+      PERMISSION.PROJECT_VIEW,
+    );
   }
 
-  /** Home summary strip — exact workspace-wide counts (one batched query set). */
+  /**
+   * Home "My Work" widget — top-N items assigned to the actor, within the projects they may read.
+   *
+   * `@SelfScoped` on the route is TRUE and was never sufficient: "assigned to me" bounds WHOSE items
+   * these are, not which projects they may be read from, and the two are independent. An item stays
+   * assigned to a user after their access to its project is removed, so the widget kept naming that
+   * project, its key and the item's title on the reader's Home page.
+   */
+  async listMyWork(actor: JwtPayload, limit: number): Promise<MyWorkItem[]> {
+    const readable = await this.readableProjectScope(actor);
+    return this.workItemRepo.listMyWork(actor.workspaceId, actor.sub, { limit }, readable);
+  }
+
+  /**
+   * Home summary strip — exact counts over the projects the caller may read (one batched query set).
+   *
+   * The route's `@AuthorizedInService` decorator has always CLAIMED this ("scoped by
+   * listReadableProjectIds") and it was not true: the counts were workspace-wide, so a reader whose
+   * access to a project had just been removed still read that project's active-sprint, open-work-item,
+   * blocked and open-defect totals — the "Unassigned metadata leak" of GAP-P4-RBAC-003 (AC4). Exactly
+   * the same false citation that `listProjectHealth` carried until `project-authz.e2e.spec.ts` was
+   * written; a decorator is a note, not a check.
+   */
   async getWorkspaceSummary(actor: JwtPayload): Promise<WorkspaceSummary> {
-    return this.workItemRepo.getWorkspaceSummary(actor.workspaceId, actor.sub);
+    const readable = await this.readableProjectScope(actor);
+    return this.workItemRepo.getWorkspaceSummary(actor.workspaceId, actor.sub, readable);
   }
 
   /** Backlog list — story + defect only, server-side filter/search/pagination. */
@@ -250,6 +290,10 @@ export class WorkItemsService {
     opts: CreateWorkItemOpts = {},
   ): Promise<WorkItem> {
     await this.assertProjectWritable(actor.workspaceId, projectId);
+    // An Editor creates only inside their own Teams (`GAP-P4-RBAC-003` AC1/AC3). The zero-team case is
+    // refused whatever team is asked for, which is what makes an Editor with no delivery scope unable
+    // to create a team-less item either.
+    await this.assertTeamScope(actor, { projectId, teamId: opts.teamId ?? null });
 
     // P1-15: parentId must belong to the same project
     if (opts.parentId) {
@@ -578,6 +622,76 @@ export class WorkItemsService {
   }
 
   /**
+   * An EDITOR reaches only their own Teams' records (`GAP-P4-RBAC-003` AC1/AC3, §2.2/§3.2).
+   *
+   * One line here rather than the rule itself: `AccessService.assertTeamInScope` is its single home
+   * and documents exactly what it does and does not fence. A Workspace Admin and a per-project
+   * `admin` are unaffected (All Teams, §3.1), and an Editor with no active Team in the project is
+   * refused outright rather than per row.
+   *
+   * A Task's own `team_id` is what is checked, not its parent's: the column only DEFAULTS to the
+   * parent's (SRS P1-04) and stays settable, so the row's own value is the claim about which team
+   * owns it. A null stays admitted — see the boundary's own docblock for why that is stated rather
+   * than quietly closed.
+   */
+  private async assertTeamScope(
+    actor: JwtPayload,
+    item: { projectId: string; teamId: string | null },
+  ): Promise<void> {
+    await this.accessService.assertTeamInScope(
+      actor.workspaceId,
+      actor.sub,
+      item.projectId,
+      item.teamId ?? null,
+    );
+  }
+
+  /**
+   * A Team move takes a named Owner with it, or drops them (`GAP-P1-WID-007` AC5/AC6).
+   *
+   * "If the Work Item moves to another Team and the old Owner does not belong to the new Team, the
+   * system must return Owner to `Unassigned` rather than keep an invalid Owner", and "`No Team` means
+   * the Owner returns to `Unassigned` and the dropdown offers only `Unassigned`".
+   *
+   * IN THE SAME PATCH, and on the SERVER, for two reasons. The rule has to hold on every surface that
+   * can move a Team — the detail sidebar, the Backlog cell, a bulk edit, a machine client — and a
+   * client that cleared the field itself would be deciding it from a roster it may not have fetched
+   * yet. Leaving the stale Owner would also survive as data that no picker on any screen would offer.
+   *
+   * Conditional, not unconditional: an Owner who is on BOTH teams is a legitimate Owner of the moved
+   * item, and clearing them would discard a true value. Membership is asked of
+   * `listProjectMemberOptions` — the picker's OWN feed — so the server cannot count a different
+   * population than the screen offers, the rule `projectTeamContext` already states.
+   *
+   * A patch that names an Owner AND a Team at once is judged on what it asks for: the incoming
+   * `assigneeId` is the one checked, so setting both in one request works if they agree and clears
+   * only when they do not.
+   */
+  private async resetOwnerOutsideTeam(
+    actor: JwtPayload,
+    item: WorkItem,
+    input: UpdateWorkItemInput,
+  ): Promise<void> {
+    const nextOwner = input.assigneeId !== undefined ? input.assigneeId : item.assigneeId;
+    if (!nextOwner) return;
+
+    const nextTeam = input.teamId ?? null;
+    if (nextTeam === null) {
+      input.assigneeId = null;
+      return;
+    }
+
+    const options = await this.projectsService.listProjectMemberOptions(
+      actor.workspaceId,
+      item.projectId,
+      nextTeam,
+    );
+    if (!options.some((o) => o.userId === nextOwner)) {
+      input.assigneeId = null;
+    }
+  }
+
+  /**
    * Load a work item for a READ and authorize the actor against the item's OWN
    * project via `work_item:view`. Now that the PolicyGuard authorizes the route
    * id up-front, this remains only for SECONDARY targets a route-scoped guard
@@ -591,6 +705,7 @@ export class WorkItemsService {
       item.projectId,
       PERMISSION.WORK_ITEM_VIEW,
     );
+    await this.assertTeamScope(actor, item);
     return item;
   }
 
@@ -612,6 +727,8 @@ export class WorkItemsService {
       item.projectId,
       PERMISSION.WORK_ITEM_VIEW,
     );
+    // The BA's own repro: an Editor with no Team opened `/item/US-17`, a Pegasus Story, in full.
+    await this.assertTeamScope(actor, item);
     return item;
   }
 
@@ -650,6 +767,16 @@ export class WorkItemsService {
   ): Promise<WorkItem> {
     const item = await this.getWorkItem(actor.workspaceId, id);
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
+    // The record as it stands, BEFORE the patch: an Editor may not edit another Team's item, and may
+    // not move one INTO their scope either, so the destination team is checked below as well.
+    await this.assertTeamScope(actor, item);
+    if (input.teamId !== undefined && input.teamId !== item.teamId) {
+      await this.assertTeamScope(actor, {
+        projectId: item.projectId,
+        teamId: input.teamId ?? null,
+      });
+      await this.resetOwnerOutsideTeam(actor, item, input);
+    }
 
     // BL §8:294 — an Editor "cannot assign Release". Field-level, because the route is gated on
     // `work_item:edit`, which an Editor holds for every other field in the same body. Only when the
@@ -1117,6 +1244,7 @@ export class WorkItemsService {
   @Span('work-items.delete')
   async deleteWorkItem(actor: JwtPayload, id: string): Promise<void> {
     const item = await this.getWorkItem(actor.workspaceId, id);
+    await this.assertTeamScope(actor, item);
     // BA rule (P3.4): defects are never deleted — they are resolved by moving to
     // the 'closed' / 'closed_declined' defect state so the audit trail survives.
     if (item.type === 'defect') {

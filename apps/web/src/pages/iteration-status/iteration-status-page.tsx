@@ -33,6 +33,7 @@ import {
 } from '@/features/iterations/api'
 import { useUpdateAnyWorkItem, useRankAnyWorkItem } from '@/features/work-items/api'
 import { useProjectMemberOptions } from '@/features/teams/api'
+import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { useMilestoneOptions } from '@/features/milestones/api'
 import { defaultIterationId } from '@/features/iterations/default-iteration'
 import { StatusRow } from './ui/status-row'
@@ -54,7 +55,7 @@ const EMPTY_ITEMS: IterationStatusItem[] = []
 export function IterationStatusPage() {
   const { t } = useTranslation('iteration-status')
   const navigate = useNavigate()
-  const { project } = useAppContext()
+  const { project, workspace } = useAppContext()
   const projectId = project?.projectId
   const { can } = useProjectPermissions(projectId)
   const canEdit = can('work_item:edit')
@@ -69,8 +70,23 @@ export function IterationStatusPage() {
   // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
   const { data: members = [] } = useProjectMemberOptions(projectId)
   const { data: milestoneOptions = [] } = useMilestoneOptions(projectId)
+  /**
+   * The DIRECTORY, for naming an owner that is already set (`GAP-P2-IS-004`).
+   *
+   * The project feed above is the OFFER list and excludes anyone with no active `project_members`
+   * row — a Workspace Admin among them. Resolving names from it alone made a Dev Owner that had
+   * saved successfully read `No Entry` again after a reload: the value was in the database and on the
+   * feed, and only its NAME was missing, which on screen is indistinguishable from an unset field.
+   * `member-options` returns inactive members too, for exactly this reason.
+   */
+  const { data: directory = [] } = useWorkspaceMemberOptions(workspace?.workspaceId)
 
-  const memberMap = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
+  const memberMap = useMemo(
+    // Project rows LAST so they win on a duplicate: same person, same fields, but that feed is the
+    // one whose shape the pickers are typed against.
+    () => new Map([...directory, ...members].map((m) => [m.userId, m])),
+    [directory, members],
+  )
 
   const [chosenId, setChosenId] = useState<string | null>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
@@ -156,9 +172,10 @@ export function IterationStatusPage() {
   )
   const selected = iterations[selectedIndex]
 
-  // Iteration picker feed for inline REASSIGNMENT — the ELIGIBILITY feed
-  // (`planning | committed`), scoped to the current iteration's team so every option is genuinely
-  // assignable (the backend enforces the same team-scope rule via assertIterationAssignable).
+  // Iteration picker feed for inline REASSIGNMENT — the ELIGIBILITY feed, scoped to the current
+  // iteration's team so every option is genuinely assignable (the backend enforces the same
+  // team-scope rule via assertIterationAssignable). Every STATE is offered, including a closed
+  // sprint: P6-VEL-004: the same assignment has to be reachable from all three surfaces.
   const { data: iterationOptions = [] } = useAssignableIterations(projectId, selected?.teamId)
 
   const items = status?.items ?? EMPTY_ITEMS
@@ -590,6 +607,7 @@ export function IterationStatusPage() {
               item={item}
               rank={(currentPage - 1) * pageSize + localItems.indexOf(item) + 1}
               memberMap={memberMap}
+              memberOptions={members}
               milestoneOptions={milestoneOptions}
               iterationOptions={iterationOptions}
               selectedIterationId={selectedId!}

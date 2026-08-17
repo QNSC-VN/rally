@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
@@ -57,6 +57,7 @@ export function StatusRow({
   item,
   rank,
   memberMap,
+  memberOptions,
   milestoneOptions,
   iterationOptions,
   selectedIterationId,
@@ -70,8 +71,18 @@ export function StatusRow({
 }: {
   item: IterationStatusItem
   rank: number
-  /** Keyed assignee feed — the shared picker shape (`OwnerSelectMember`), which permits null. */
+  /**
+   * NAME resolution for an owner already set — the workspace directory, keyed by user id.
+   *
+   * Wider than what may be offered on purpose (`GAP-P2-IS-004`): the project feed excludes anyone
+   * without an active `project_members` row, including a Workspace Admin, so a Dev Owner who had
+   * just been saved successfully resolved to nothing and the cell reprinted `No Entry` after a
+   * reload. A name that fails to resolve is indistinguishable from an unset field, which is why this
+   * feed and {@link memberOptions} are two props and not one.
+   */
   memberMap: Map<string, OwnerSelectMember>
+  /** What an Owner / Dev Owner picker may OFFER — the project's own active members. */
+  memberOptions: OwnerSelectMember[]
   milestoneOptions: readonly { id: string; name: string; milestoneKey?: string | null }[]
   iterationOptions: readonly { id: string; name: string; iterationKey?: string | null }[]
   selectedIterationId: string
@@ -113,7 +124,14 @@ export function StatusRow({
   const childTasks = taskFeed.rows
   const isLoadingTasks = taskFeed.isLoading
 
-  const membersList = useMemo(() => Array.from(memberMap.values()), [memberMap])
+  /**
+   * What the pickers OFFER, which is narrower than what `memberMap` NAMES (`GAP-P2-IS-004`).
+   *
+   * `memberMap` carries the workspace directory so a persisted Owner or Dev Owner always resolves to
+   * a name; offering that whole set here would put every workspace user in an Owner dropdown, which
+   * `WID-FR-016` forbids. So the offers come from the project feed and the names from the map.
+   */
+  const membersList = memberOptions
 
   const {
     setNodeRef,
@@ -556,6 +574,7 @@ export function StatusRow({
                   task={task}
                   taskOwner={taskOwner}
                   membersList={membersList}
+                  memberMap={memberMap}
                   canEdit={canEdit}
                   colStyles={colStyles}
                   onOpen={() =>
@@ -576,14 +595,17 @@ function ChildTaskRow({
   task,
   taskOwner,
   membersList,
+  memberMap,
   canEdit,
   colStyles,
   onOpen,
 }: {
   task: WorkItem
   taskOwner: string
-  /** The assignee feed as a list — the shared picker shape, which permits null. */
+  /** The assignee feed as a list — the shared picker shape, which permits null. What may be OFFERED. */
   membersList: OwnerSelectMember[]
+  /** The directory, for NAMING an owner already set — see the parent's own prop (`GAP-P2-IS-004`). */
+  memberMap: Map<string, OwnerSelectMember>
   canEdit: boolean
   colStyles: Record<string, CSSProperties>
   onOpen: () => void
@@ -612,9 +634,7 @@ function ChildTaskRow({
   const handleDevOwnerChange = (userId: string | null) =>
     save({ devOwnerId: userId }, t('row.devOwnerUpdated'))
 
-  const devOwnerMember = task.devOwnerId
-    ? membersList.find((m) => m.userId === task.devOwnerId)
-    : undefined
+  const devOwnerMember = task.devOwnerId ? memberMap.get(task.devOwnerId) : undefined
   const taskDevOwnerName = devOwnerMember?.displayName ?? devOwnerMember?.email ?? null
 
   return (

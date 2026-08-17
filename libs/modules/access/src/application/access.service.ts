@@ -21,7 +21,7 @@ import {
 import type { JwtPayload, DrizzleDB, DbExecutor, DrizzleTx } from '@platform';
 import { InjectDrizzle } from '@platform';
 import { and, eq } from 'drizzle-orm';
-import { projectMembers } from '../../../../../db/schema/work';
+import { projectMembers, projectTeams, teamMembers } from '../../../../../db/schema/work';
 import { workspaceMembers } from '../../../../../db/schema/workspace';
 import type { ScopeType } from '../domain/access.types';
 import { IRoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository';
@@ -519,7 +519,101 @@ export class AccessService {
   }
 
   /**
-   * TEAM SCOPE IS NOT AN AUTHORIZATION BOUNDARY HERE. DELETED BY RULING, 2026-08-14.
+   * The Teams an EDITOR may work inside, in one project — their active rosters among that project's
+   * active team links.
+   *
+   * REINSTATED BY BA RULING, 2026-08-17 (`GAP-P4-RBAC-003`, Confirmed Fail, P0), which supersedes the
+   * 2026-08-14 removal recorded below. §2.2 requires an Editor to hold at least one active Team and to
+   * work only inside their assigned Teams; the retest found an Editor with NO team reading another
+   * team's Work Item in full and being offered `All Teams`, Pegasus and RTCAP in the selector.
+   *
+   * The 2026-08-14 objection is still true and is answered rather than ignored — see
+   * {@link assertTeamInScope}. Two facts, one query: the roster row must be active AND the team must
+   * still be linked to the project, or an unlinked team's roster would keep granting scope inside a
+   * project it left (`project_teams` is a soft status flip, so the link row survives).
+   */
+  async listScopedTeamIds(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+  ): Promise<string[]> {
+    const rows = await this.db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .innerJoin(
+        projectTeams,
+        and(
+          eq(projectTeams.teamId, teamMembers.teamId),
+          eq(projectTeams.projectId, projectId),
+          eq(projectTeams.status, 'active'),
+        ),
+      )
+      .where(
+        and(
+          eq(teamMembers.workspaceId, workspaceId),
+          eq(teamMembers.userId, userId),
+          eq(teamMembers.status, 'active'),
+        ),
+      );
+    return [...new Set(rows.map((r) => r.teamId))];
+  }
+
+  /**
+   * Refuse a delivery record an EDITOR's Teams do not cover (`GAP-P4-RBAC-003` AC1/AC3).
+   *
+   * Applies to a per-project `editor` ONLY. A Workspace Admin and a per-project `admin` both hold
+   * All Teams by §3.1, so they pass; a caller with no level at all is not this method's business —
+   * `assertProjectPermission` is what refuses them, and calling this first would answer the wrong
+   * question with the wrong error.
+   *
+   * WHY THIS IS A REAL BOUNDARY THIS TIME, AND WHERE IT STILL IS NOT
+   * ---------------------------------------------------------------
+   * The 2026-08-14 removal note below is kept in full because its reasoning was correct: a scope that
+   * can only restrict rows CARRYING a team admits the ordinary case, because `work_items.team_id` is
+   * nullable and mostly unset. That is answered by making the ZERO-TEAM case total rather than
+   * per-row:
+   *
+   *   • an Editor with NO active Team in the project has NO delivery scope and is refused
+   *     EVERYTHING here (`EDITOR_NO_TEAM_SCOPE`) — no nullable column can leak past that, and it is
+   *     AC1's "runtime must treat pre-existing violating data as no delivery scope";
+   *   • an Editor WITH Teams is refused a record belonging to another Team
+   *     (`TEAM_NOT_IN_SCOPE`), and a team-agnostic record (`teamId === null`) still passes.
+   *
+   * So the honest description is: the zero-team case is a boundary, and the per-row case is a
+   * narrowing over rows that carry a team. The remaining gap is the same one as before and is NOT
+   * closed by this change — closing it needs `team_id` to be mandatory on every Editor-writable row,
+   * which is a data-model decision, not an optimisation. Do not describe this as complete team
+   * isolation in a review; describe it as these two rules.
+   */
+  async assertTeamInScope(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+    teamId: string | null,
+  ): Promise<void> {
+    if (await this.isWorkspaceAdmin(workspaceId, userId)) return;
+    const level = await this.getProjectAccessLevel(workspaceId, userId, projectId);
+    if (level !== 'editor') return;
+
+    const scoped = await this.listScopedTeamIds(workspaceId, userId, projectId);
+    if (scoped.length === 0) {
+      throw new PermissionDeniedException(
+        'EDITOR_NO_TEAM_SCOPE',
+        'An Editor must belong to at least one active Team in this project',
+      );
+    }
+    if (teamId !== null && !scoped.includes(teamId)) {
+      throw new PermissionDeniedException(
+        'TEAM_NOT_IN_SCOPE',
+        'This record belongs to a Team you are not assigned to',
+      );
+    }
+  }
+
+  /**
+   * TEAM SCOPE WAS NOT AN AUTHORIZATION BOUNDARY HERE. DELETED BY RULING, 2026-08-14 — AND
+   * REINSTATED, IN THE NARROWER FORM ABOVE, BY THE BA ON 2026-08-17. Kept because its reasoning is
+   * what shaped the replacement, and because the next person to widen that scope needs to read it.
    *
    * `assertTeamScoped(actor, projectId, teamId)` used to live at this spot and threw
    * `TEAM_NOT_IN_SCOPE` when an `editor` wrote a work item belonging to a Team they held no

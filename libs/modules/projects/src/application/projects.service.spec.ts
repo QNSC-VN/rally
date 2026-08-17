@@ -818,10 +818,12 @@ describe('ProjectsService', () => {
           },
           // On the roster but no longer an active member — offered by neither branch.
           { userId: 'user-8', status: 'inactive', displayName: 'Team Eight' },
-          // A Workspace Admin who IS on the team roster. See the DECLARED CONFLICT in the service's
-          // docblock: AC-16 ("Workspace Admin are not assignable owners") wins over WID-007's "its
-          // active members", and this assertion is what a BA reversal would have to flip.
-          { userId: 'wa-1', status: 'active', displayName: 'Admin' },
+          // A Workspace Admin who IS on the team roster. The BA reversed the old reading on
+          // 2026-08-17 (`GAP-P1-WID-007` Confirmed Fail): the retest ACs name only "outside the Team"
+          // and "inactive" as exclusions, and AC1 requires every active member of that Team. This
+          // assertion is INVERTED from what it was — an active roster row is offered whatever else
+          // its holder is.
+          { userId: 'wa-1', status: 'active', displayName: 'Admin', email: 'wa@qnsc.dev' },
         ]);
       });
 
@@ -835,12 +837,33 @@ describe('ProjectsService', () => {
             email: 'nine@qnsc.dev',
             avatarUrl: null,
           },
+          {
+            userId: 'wa-1',
+            displayName: 'Admin',
+            email: 'wa@qnsc.dev',
+            avatarUrl: null,
+          },
         ]);
         // `user-2` is an active PROJECT member and is deliberately absent: the narrowed population is
         // `team_members`, not `project_members` filtered by team — RBE-06 grants `editor` FROM a team
         // roster row, so intersecting the two would withhold exactly the team-derived participants.
         expect(teamService.listTeamMembers).toHaveBeenCalledWith('team-1', 'ws-1');
         expect(projectMemberRepo.listByProject).not.toHaveBeenCalled();
+      });
+
+      /**
+       * The 2026-08-17 retest failure itself: the selected team's only active member held the
+       * workspace grant, so the Owner dropdown for a Story that HAS a team offered nothing but
+       * `Unassigned` and the item could not be assigned to anyone at all.
+       */
+      it('offers an active Team member who is also a Workspace Admin (retest 2026-08-17)', async () => {
+        teamService.listTeamMembers.mockResolvedValue([
+          { userId: 'wa-1', status: 'active', displayName: 'Admin', email: 'wa@qnsc.dev' },
+        ]);
+
+        const options = await service.listProjectMemberOptions('ws-1', 'proj-1', 'team-1');
+
+        expect(options.map((o) => o.userId)).toEqual(['wa-1']);
       });
 
       it('still offers the whole project when NO teamId is given', async () => {
