@@ -607,12 +607,26 @@ changes the **global Project context** first.
   (`updateItem` authorises a move in both directions). That was a correct reading of a wrong
   question: the BA's answer is that there is no picker. `portfolio-page.test.tsx` used to assert the
   narrowed option list and now asserts the absence of the control — a test inverted, not deleted.
-- **The API still implements the move.** `PATCH /v1/portfolio-items/{id}` accepts `projectId` and
-  `applyProjectMove` still resets the Team and drops a Release or parent Epic belonging to the old
-  project; `PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION` still refuses it for an allocated Feature. This
-  is a **display rule, not a contract change** — the same shape as Release detail's `taskRollup`. Do
-  not delete the service path on the strength of this note alone; it needs its own ruling, and the
-  capacity guard above is the reason to be careful.
+- **The SERVER refuses it too, and this note used to say the opposite.** It first shipped as a display
+  rule, on the reading that the report scoped itself to "FE và business behavior". That reading was
+  wrong by one word: a server refusal is not a schema or DB change, it is business behavior, which
+  that same sentence includes — and rule 4 of the report says the move "is not supported" flatly.
+  `UpdatePortfolioItemSchema` no longer carries `projectId`, so the contract does not advertise what
+  is refused, and `updateItem` answers `PORTFOLIO_ITEM_PROJECT_IMMUTABLE` for a different project
+  while treating the SAME project as a no-op (a client echoing the record back is not refused for
+  agreeing). `applyProjectMove` is DELETED with it: the destination-team reset, the Release clear, the
+  cross-project Epic unlink and the surviving-Milestone filter existed only for that write, and the
+  spec's `innerJoin` + `selectDistinct` mock chains went with them rather than standing as scaffolding
+  for a call nobody makes.
+
+  **`PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION` did NOT go with it** — that rule also guards the
+  allocate side, and it now lives only where the capacity module enforces it.
+
+  Real Rally DOES offer this move (Broadcom's project-hierarchy guide: "Rally recommends you update
+  the project field to reflect which team is handling the work"), so this is a **declared divergence**,
+  recorded on `UpdatePortfolioItemSchema` as well. If the BA reverses it, the field, the guard and
+  `applyProjectMove` all come back together — a picker without the reconciliation would leave a Team
+  and a Release pointing into the old project.
 - **The ONE Project picker that stays is on Iteration create**, and it is the Iterations SRS's own
   rule, not drift: §92-93 auto-fill Project from context and then say a Workspace Admin "vẫn có
   quyền đổi Project/Team trong quick create/detail nếu cần" (P2-IT-FR-001C/D). An Iteration is a

@@ -102,6 +102,8 @@ export const ErrorCodes = {
   PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION: 'PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION',
   /** Restoring a Feature is refused while its Epic is still archived. */
   PORTFOLIO_PARENT_ARCHIVED: 'PORTFOLIO_PARENT_ARCHIVED',
+  /** A Project is set at creation and never changes (`P5-PI-003`, WID-FR-017, §3.1 AC5). */
+  PORTFOLIO_ITEM_PROJECT_IMMUTABLE: 'PORTFOLIO_ITEM_PROJECT_IMMUTABLE',
   /** Every write except Restore is refused on an archived item — it is not actionable work. */
   PORTFOLIO_ITEM_ARCHIVED: 'PORTFOLIO_ITEM_ARCHIVED',
   PORTFOLIO_ITEM_TEAM_MISMATCH: 'PORTFOLIO_ITEM_TEAM_MISMATCH',

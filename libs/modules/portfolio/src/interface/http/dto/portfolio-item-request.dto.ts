@@ -125,15 +125,19 @@ export class CreatePortfolioItemDto extends createZodDto(CreatePortfolioItemSche
  * `type` is absent deliberately: changing it would have to re-key the item, move its
  * child links and re-rank it into the other scope. Rally does not offer that.
  *
- * `projectId` IS writable, and used to be excluded on the incorrect grounds that "Rally
- * offers neither". Rally offers this one — Broadcom's project-hierarchy guide says
- * "Rally recommends you update the project field to reflect which team is handling the
- * work", since a portfolio item starts in a strategy project and moves to an execution
- * project once a team picks it up. The BA spec requires it too (SRS §3.1 `Project | Yes`,
- * FR-004: Project is inline-editable for both Epic and Feature).
+ * `projectId` IS ABSENT — a record's Project is chosen once, at creation, and never again
+ * (`P5-PI-003`, BA DEV Handoff retest 2026-08-17, Confirmed Fail). `WID-FR-017` and the
+ * report's own rule 4 say the move "is not supported"; §3.1's inline-edit line says
+ * "Project is read-only for both types", and AC5 forbids changing it from detail or inline
+ * edit. So the contract no longer advertises what the service refuses, the same shape as
+ * `CreateTaskSchema` dropping `iterationId` for `TASK_ITERATION_DERIVED`.
  *
- * The move is not a plain field write — see `applyProjectMove` in the service for the
- * three cross-project references it has to reconcile.
+ * This field was writable on the opposite reading, and the note here argued for it from
+ * Broadcom's project-hierarchy guide ("Rally recommends you update the project field to
+ * reflect which team is handling the work"). Recorded rather than deleted: real Rally DOES
+ * offer the move, so this is a declared divergence and the next person to read those docs
+ * will reach for it again. `applyProjectMove` and the three cross-project references it
+ * reconciled (Team reset, Release clear, cross-project Epic unlink) are gone with it.
  */
 export const UpdatePortfolioItemSchema = z
   .object({
@@ -142,8 +146,6 @@ export const UpdatePortfolioItemSchema = z
     notes: portfolioWritableFields.notes.optional(),
     releaseNotes: portfolioWritableFields.releaseNotes.optional(),
     whatSuccessLooksLike: portfolioWritableFields.whatSuccessLooksLike.optional(),
-    /** Move the item to another project. Never nullable — an item always has a project. */
-    projectId: z.string().uuid().optional(),
     state: portfolioWritableFields.state.optional(),
     preliminaryEstimate: portfolioWritableFields.preliminaryEstimate.optional(),
     refinedEstimate: portfolioWritableFields.refinedEstimate.optional(),

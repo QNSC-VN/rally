@@ -4294,8 +4294,6 @@ export interface components {
       notes?: string | null
       releaseNotes?: string | null
       whatSuccessLooksLike?: string | null
-      /** Format: uuid */
-      projectId?: string
       /** @enum {string} */
       state?:
         | 'no_entry'
