@@ -590,17 +590,13 @@ function TaskRow({
           ariaLabel={`Task ${task.itemKey} actual hours`}
         />
       </div>
-      {/* Estimate — independent planned value, inline editable (real Rally) */}
-      <div className="shrink-0 px-2 text-right" style={colStyles.estimate}>
-        <InlineEditableCell
-          value={task.estimateHours != null ? String(task.estimateHours) : ''}
-          canEdit={canEdit}
-          onCommit={(v) => commitHours('estimateHours', v)}
-          displayValue={task.estimateHours ?? '--'}
-          className="font-mono text-muted-foreground tabular-nums hover:underline"
-          inputClassName={numInput}
-          ariaLabel={`Task ${task.itemKey} estimate hours`}
-        />
+      {/* Estimate — READ-ONLY, derived as To Do + Actual (`P6-TC-008`). Not an inline editor: the
+          server discards a supplied value, so an editable cell would silently revert on save. */}
+      <div
+        className="shrink-0 px-2 text-right font-mono text-muted-foreground tabular-nums"
+        style={colStyles.estimate}
+      >
+        {task.estimateHours ?? EMPTY_VALUE}
       </div>
     </div>
   )

@@ -458,21 +458,14 @@ export function DetailSidebar({
             </FormField>
           ))}
 
-        {/* Task time (real Rally): Estimate = independent planned hours (editable);
-            To Do = remaining (auto-zeroes on Complete, backend); Actuals = manual. */}
+        {/* Task time: `Estimate` is READ-ONLY and always `To Do + Actual` (`P6-TC-008`) — the server
+            recomputes it on every task write and discards a supplied value, so this field must not be
+            an input. `To Do` is the planned number a planner enters; it auto-zeroes on completion,
+            which is what pulls Estimate down to the Actual. `Actuals` is manual. */}
         {isTask && (
           <>
-            <FormField label={t('sidebar.estimateH')}>
-              <Input
-                type="number"
-                min={0}
-                step={0.5}
-                value={item.estimateHours ?? ''}
-                onChange={(e) =>
-                  onUpdate({ estimateHours: e.target.value ? Number(e.target.value) : null })
-                }
-                disabled={disabled}
-              />
+            <FormField label={t('sidebar.estimateH')} hint={t('sidebar.estimateDerived')}>
+              <Input type="number" value={item.estimateHours ?? ''} readOnly disabled />
             </FormField>
             <FormField label={t('sidebar.todoH')}>
               <Input
