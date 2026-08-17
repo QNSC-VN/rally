@@ -223,7 +223,22 @@ module "stack" {
   // running all night. If deploys routinely land between 03:00 and 08:00, add a pass
   // rather than moving this one — 08:00 is now the wake, so a stop after it would fight
   // `wake_schedule` below.
-  idle_schedule = "cron(0 0,3 * * ? *)"
+  // THREE passes now, and the first one is the change: 19:00 ends the working day,
+  // 22:00 catches an evening deploy, 02:00 catches a late one. Was `0,3`.
+  //
+  // 19:00 is what moves the money. Develop was up 08:00-00:00, so five of those sixteen
+  // hours were after everyone had stopped. Measured across both develop environments
+  // (rally and qnsc-kb), the 19:00-00:00 tail is ~$8.13/mo of RDS and Fargate.
+  //
+  // THE LATE PASSES ARE NOT OPTIONAL, and dropping to a single 19:00 stop is the obvious
+  // "simplification" that breaks this. A deploy at 20:00 wakes develop; with nothing after
+  // 19:00 it would then stay up until the NEXT working day's stop — 23 hours, which is
+  // worse than the schedule this replaces. Each pass is a no-op when develop is already
+  // down (InvalidDBInstanceState, deliberately not retried).
+  //
+  // A pass between 02:00 and 08:00 would be pointless: nothing wakes develop in that
+  // window except a deploy, and 02:00 already caught the previous evening's.
+  idle_schedule = "cron(0 2,19,22 * * ? *)"
 
   // 08:00 local, EVERY DAY. This was MON-FRI first, on the argument that a 7-day wake
   // "would pay for two days a week nobody works". Two weekends in, that argument had
@@ -241,14 +256,29 @@ module "stack" {
   // API tasks then need to pass a readiness check, so the environment is serving by
   // roughly 08:10 — before the working day rather than during its first minutes.
   //
-  // This does NOT conflict with the 03:00 stop above. 03:00 fires while develop is
+  // This does NOT conflict with the 02:00 stop above. 02:00 fires while develop is
   // already down (a no-op, InvalidDBInstanceState, deliberately not retried) and 08:00
-  // brings it up five hours later. The 00:00 stop then ends the day. A deploy landing at
-  // any hour still wakes it independently — that path is unchanged.
+  // brings it up six hours later. The 19:00 stop then ends the day. A deploy landing at
+  // any hour still wakes it independently — that path is unchanged, and it is what makes
+  // the weekday-only wake safe.
   //
-  // Expected effect: develop is up ~16h/day, every day, so this BUYS availability rather
-  // than saving money. The 00:00-08:00 window is now the entire saving; weekends no
-  // longer contribute one.
+  // WEEKENDS REMOVED AGAIN (was `* * ?`, daily). This reverses #408, and the reversal is
+  // about arithmetic rather than a change of mind.
+  //
+  // #408 bought weekend availability for "about $2.50/mo". That number was too low: it
+  // priced RDS alone, at a rate taken from memory, for one product. Measured from Cost
+  // Explorer across BOTH develop environments — unblended cost divided by usage quantity,
+  // 2026-08-01..16 — the weekend share of develop's RDS and Fargate is ~$10.42/mo. The
+  // decision was sound at $2.50 and does not survive at four times that, against a target
+  // of $100/mo for the whole account.
+  //
+  // What it costs: develop is DOWN on Saturday and Sunday unless someone deploys. That
+  // path is unchanged and automatic — the `wake` job in qnsc-ci's backend-deploy reusable
+  // starts RDS and both services before the deploy proceeds, so weekend work costs a wait
+  // of a few minutes, not a manual step or a support request. It is the same mechanism
+  // that already covers a 07:00 start on a weekday.
+  //
+  // Expected effect: develop is up 08:00-19:00 on weekdays, 55h/week rather than 112.
   //
   // VERIFIED FIRING, so a future failure is a regression and not "it never worked":
   // CloudTrail 2026-08-07 (the first weekday after it was created) shows all three
@@ -256,7 +286,7 @@ module "stack" {
   //   01:00:09Z  ecs:UpdateService  api    desiredCount=1
   //   01:00:29Z  rds:StartDBInstance
   //   01:00:47Z  ecs:UpdateService  worker desiredCount=1
-  wake_schedule = "cron(0 8 * * ? *)"
+  wake_schedule = "cron(0 8 ? * MON-FRI *)"
 
   // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
   // credential can be injected. This is a FIX, not hardening: the primary token
