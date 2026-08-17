@@ -1,5 +1,13 @@
 /**
- * Release Detail opened by DEEP LINK — the record's own project decides everything (`P01-06`).
+ * Release Detail — the right panel's SCOPE contract, and deep linking (`P01-06`).
+ *
+ * Scope: P3-REL-FR-023 forbids a Task Roll-up, Burndown or any other release progress widget here,
+ * FR-024 puts accepted/progress totals in `Portfolio > Release Tracking` alone, FR-037 keeps a
+ * progress column/widget off the Phase 3 list/detail, and AC #10 lists the panel's fields
+ * exhaustively: Start Date, Release Date, Project, State, Planned Velocity, Plan Estimate, Version.
+ * The API still serves `taskRollup` (its Estimate hours are the list's `taskEstimate` column), so
+ * the fixture below deliberately KEEPS the field — a page that renders nothing from a payload that
+ * still carries it is the property under test.
  *
  * `/releases/$releaseId` addresses a workspace-unique uuid, so a forwarded or bookmarked link opens
  * any release the caller can read — including one in a project they do not have selected. This page
@@ -14,7 +22,7 @@
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
 vi.mock('@/shared/api/http-client', () => ({
@@ -73,13 +81,15 @@ const RELEASE = {
   state: 'planning',
   startDate: '2026-08-01',
   releaseDate: '2026-09-01',
-  plannedVelocity: null,
-  planEstimate: null,
-  taskEstimate: 0,
+  plannedVelocity: 42,
+  planEstimate: 24,
+  taskEstimate: 18.5,
   releasedAt: null,
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-01T00:00:00.000Z',
-  taskRollup: { estimateHours: 0, toDoHours: 0, actualHours: 0, acceptedItems: 0 },
+  // Non-zero on purpose. The BA's retest saw `Estimate 0h / To Do 0h / Actual 0h / Accepted 0`,
+  // and zeroes would let a still-rendered panel pass every assertion below by coincidence.
+  taskRollup: { estimateHours: 18.5, toDoHours: 6, actualHours: 12.5, acceptedItems: 3 },
 }
 
 const PAY = { id: 'p-pay', key: 'PAY', name: 'Payments Platform' }
@@ -139,5 +149,84 @@ describe('a release deep-linked from another project', () => {
     await waitFor(() =>
       expect(screen.getByRole('textbox', { name: 'common:name' })).toBeInTheDocument(),
     )
+  })
+})
+
+describe('the right panel is METADATA ONLY (P3-REL-FR-023/024/037, AC #10)', () => {
+  async function renderDetails() {
+    render(<ReleaseDetailPage />, { wrapper: wrapper() })
+    await waitFor(() => expect(screen.getByText('detailPage.metadataTitle')).toBeInTheDocument())
+  }
+
+  it('renders no Task Roll-up section, and none of its hour values', async () => {
+    await renderDetails()
+
+    expect(screen.queryByText(/task roll-?up/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('detailPage.rollup.title')).not.toBeInTheDocument()
+    for (const hours of ['18.5h', '6h', '12.5h']) {
+      expect(screen.queryByText(hours)).not.toBeInTheDocument()
+    }
+  })
+
+  it('renders no Accepted total and no progress widget (FR-024, FR-037)', async () => {
+    const { container } = render(<ReleaseDetailPage />, { wrapper: wrapper() })
+    await waitFor(() => expect(screen.getByText('detailPage.metadataTitle')).toBeInTheDocument())
+
+    expect(screen.queryByText(/accepted/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('detailPage.rollup.accepted')).not.toBeInTheDocument()
+    // The Accepted count itself — `3` from the fixture — must appear nowhere on the panel.
+    expect(screen.queryByText('3')).not.toBeInTheDocument()
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument()
+    expect(container.querySelector('[role="progressbar"]')).toBeNull()
+  })
+
+  it('renders no Burndown series or table — release progress is Phase 6, not Phase 3.2', async () => {
+    await renderDetails()
+
+    expect(screen.queryByText(/burndown/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    // FR-023's own reader: nothing on this page may fetch a release progress series.
+    const fetched = mockGET.mock.calls.map((c: unknown[]) => c[0] as string)
+    expect(fetched.some((p) => p.includes('burndown'))).toBe(false)
+    expect(fetched.some((p) => p.includes('snapshot'))).toBe(false)
+  })
+
+  it('still renders every AC #10 metadata field', async () => {
+    await renderDetails()
+
+    // Project and State. `PAY` arrives with its own `/v1/projects/{id}` response.
+    await waitFor(() => expect(screen.getByText('PAY')).toBeInTheDocument())
+    expect(screen.getByLabelText('detailPage.lifecycleState')).toBeInTheDocument()
+    // Start Date / Release Date. `DateField` is a popover trigger, not an <input>, so the value
+    // is the trigger's TEXT.
+    expect(screen.getByText('2026-08-01')).toBeInTheDocument()
+    expect(screen.getByText('2026-09-01')).toBeInTheDocument()
+    // Planned Velocity / Plan Estimate.
+    expect(screen.getByDisplayValue('42')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('24')).toBeInTheDocument()
+    // Their labels, and Version's.
+    for (const label of [
+      'detail.startDateLabel',
+      'detail.releaseDateLabel',
+      'detail.plannedVelocityLabel',
+      'detail.planEstimateLabel',
+      'detailPage.versionTag',
+      'detailPage.projectScope',
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('still opens Details / Artifacts / Revision History', async () => {
+    await renderDetails()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'detailPage.tabs.artifacts' }))
+    expect(screen.queryByText('detailPage.metadataTitle')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Revision History' }))
+    expect(screen.queryByText('detailPage.metadataTitle')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'detailPage.tabs.details' }))
+    expect(screen.getByText('detailPage.metadataTitle')).toBeInTheDocument()
   })
 })

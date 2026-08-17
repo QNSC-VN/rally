@@ -77,13 +77,6 @@
     "projectScope": "Project Scope",
     "lifecycleState": "Lifecycle State",
     "versionTag": "Version Release Tag",
-    "rollup": {
-      "title": "Task Roll-up",
-      "estimate": "Estimate",
-      "toDo": "To Do",
-      "actual": "Actual",
-      "accepted": "Accepted"
-    },
     "artifacts": {
       "itemCount": "{{total}} items",
       "addButton": "Add Artifact",
