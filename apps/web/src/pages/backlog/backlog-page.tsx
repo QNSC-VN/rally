@@ -118,9 +118,11 @@ export function BacklogPage() {
   // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
   const { data: members = [] } = useProjectMemberOptions(projectId)
   const { data: releases = [] } = useReleases(projectId)
-  // ELIGIBILITY — `planning | committed`. Populates the inline-edit <option> list, the filter
-  // dropdown and Bulk Assign Iteration: every one of those WRITES, so the population must be the
-  // one the server accepts.
+  // ELIGIBILITY. Populates the inline-edit <option> list, the filter dropdown and Bulk Assign
+  // Iteration: every one of those WRITES, so the population must be the one the server accepts —
+  // which INCLUDES a closed (accepted) sprint since P6-VEL-004. The BA's repro is here: US-2 could be
+  // moved out of the finished Carryover Sprint and Velocity dropped 8 → 3, and then this dropdown
+  // offered only `--` and the empty sprint, so the original assignment could not be restored.
   const { data: iterationOptions = [] } = useAssignableIterations(projectId, team?.teamId)
   // REFERENCE — every state. Resolves an already-set iterationId to its name. Reusing
   // `iterationOptions` here silently rendered a dash for any item whose iteration had since become
@@ -131,7 +133,7 @@ export function BacklogPage() {
 
   // Bulk Assign Release/Iteration choices — same composite "KEY: name" labels as
   // the inline row pickers, so the bulk bar and per-row selects stay consistent.
-  // Only assignable iterations (planning/committed) are offered for bulk assign.
+  // The eligibility feed backs both, so the bulk bar offers exactly what a single row does.
   const releaseChoices = useMemo(
     () =>
       releases.map((r) => ({

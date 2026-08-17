@@ -88,8 +88,10 @@ const ITERATION_ROOTS: readonly QueryKey[] = [
   ['iterations'], // list + committed-count
   ['iteration'], // detail + activity (singular)
   ['iteration-options'], // REFERENCE feed, every state (was the forgotten root)
-  ['iteration-assignable'], // ELIGIBILITY feed, planning|committed — a SECOND root, because
-  // committing or accepting an iteration changes which feed it appears in, not just its own row.
+  ['iteration-assignable'], // ELIGIBILITY feed — a SECOND root, because it is a separate endpoint
+  // with its own cache key: a created, renamed or re-dated iteration has to reach the assignment
+  // pickers as well as the label/filter feed. (It no longer filters by STATE — P6-VEL-004 — so a
+  // commit or accept changes the label a picker shows, not whether the row is in it.)
   ['iteration-status'], // status read-model
 ]
 // `reports` is here because Release Tracking classifies from `Release.id` on Features and their

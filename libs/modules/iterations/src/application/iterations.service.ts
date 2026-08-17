@@ -223,12 +223,20 @@ export class IterationsService {
   // ── The two compact feeds (P2-IT-10) ────────────────────────────────────────
   //
   // TWO QUESTIONS, TWO ROUTES, and that is the design rather than an accident:
-  //   • ELIGIBILITY — "which iterations may I assign work INTO?" → `planning | committed`
-  //   • REFERENCE   — "what is this iteration called, and when was it?" → EVERY state
+  //   • ELIGIBILITY — "which iterations may I assign work INTO?" → every iteration the write path
+  //     accepts: same project, team-or-shared timebox. NOT narrowed by state — see P6-VEL-004 and
+  //     `IterationDrizzleRepository.listAssignmentOptions`.
+  //   • REFERENCE   — "what is this iteration called, and when was it?" → the same rows plus
+  //     `team_id`, the projection every filter, label and scope picker needs.
   // One endpoint with a boolean would let a caller measure one population while a sibling caller
   // enumerates another; that conflation is exactly what produced the zero-point Velocity bars.
 
-  /** ELIGIBILITY. Feeds the bulk-assign bar and the inline/sidebar assignment pickers. */
+  /**
+   * ELIGIBILITY. Feeds the bulk-assign bar and the inline/sidebar assignment pickers.
+   *
+   * Includes ACCEPTED iterations since P6-VEL-004: Velocity attributes points by an item's CURRENT
+   * iteration, so a closed sprint has to be selectable or that rule only works in one direction.
+   */
   async getAssignmentOptions(
     actor: JwtPayload,
     projectId: string,

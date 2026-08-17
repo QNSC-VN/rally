@@ -170,6 +170,35 @@ export class IterationDrizzleRepository implements IIterationRepository {
     return or(isNull(iterations.teamId), eq(iterations.teamId, teamId))!;
   }
 
+  /**
+   * ELIGIBILITY, and eligibility does NOT depend on STATE (P6-VEL-004, BA retest 2026-08-17).
+   *
+   * This query used to carry `inArray(state, ['planning', 'committed'])`, so an ACCEPTED — closed —
+   * iteration was absent from every assignment picker. That made one direction of a documented
+   * Velocity behaviour unreachable through the UI: Velocity attributes points by the item's CURRENT
+   * iteration (Phase 6/03_Velocity_Chart/SRS.md §4, PHASE6_REPORTS_BUSINESS_AND_DATA_CONTRACT §5.2),
+   * so moving US-2 OUT of a finished sprint correctly dropped its bar from 8 to 3 — and nothing could
+   * put it back, because the selector no longer offered the sprint it came from. A frozen bar is not
+   * what the SRS describes; a one-way move is worse than either.
+   *
+   * The predicate is now exactly what `WorkItemsService.assertIterationAssignable` enforces on the
+   * WRITE: same project, and a team-scoped timebox only for that team (`findIterationScope` selects
+   * `project_id` and `team_id` and no state, so the write path is state-blind BY CONSTRUCTION). The
+   * feed's contract — "a picker can never be offered a target the server would refuse" — now also
+   * holds in the other direction: it no longer withholds a target the server accepts.
+   *
+   * A closed timebox is a legal destination in the domain too: `autoAcceptIterationIfComplete` only
+   * ever moves `planning|committed → accepted` and never reverses (BUSINESS_BASELINE:12), so joining
+   * an accepted iteration cannot flip anything, and the item's own Schedule State, Flow State and
+   * `accepted_date` are untouched by an iteration change.
+   *
+   * WHAT REMAINS of the split: the two feeds now share a POPULATION and differ only in PROJECTION —
+   * `listReferences` also returns `team_id`, which `iterationsInScope` needs. Kept as two routes
+   * rather than collapsed: the eligibility question is still a distinct question (the write rule may
+   * narrow again, e.g. if the BA ever refuses assigning into an archived timebox), and the SPA's
+   * generated client is committed, so deleting a route is a codegen change. Do NOT re-add a state
+   * predicate here without a BA ruling that reverses P6-VEL-004.
+   */
   async listAssignmentOptions(
     projectId: string,
     workspaceId: string,
@@ -178,9 +207,6 @@ export class IterationDrizzleRepository implements IIterationRepository {
     const conditions: SQL[] = [
       eq(iterations.projectId, projectId),
       eq(iterations.workspaceId, workspaceId),
-      // ELIGIBILITY. An accepted iteration is not assignable, so it is absent here BY DESIGN —
-      // `listReferences` below is what names one. Do not turn this into a flag over one query.
-      inArray(iterations.state, ['planning', 'committed']),
     ];
     if (teamId) conditions.push(this.teamOrSharedTimebox(teamId));
 

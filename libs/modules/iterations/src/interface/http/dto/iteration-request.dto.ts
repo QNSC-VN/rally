@@ -80,9 +80,10 @@ export class RolloverIterationDto extends createZodDto(RolloverIterationSchema) 
 // ── Compact-feed query (P2-IT-10) ────────────────────────────────────────
 //
 // Shared by BOTH compact feeds — `GET /iterations/options` (reference) and
-// `GET /iterations/assignable` (eligibility). The two differ in POPULATION, not in what the caller
-// asks for, so one query shape is honest here; what must never be shared is the RESPONSE
-// projection, and it is not (see IterationReferenceSchema).
+// `GET /iterations/assignable` (eligibility). The two answer different QUESTIONS, not different
+// requests, so one query shape is honest here; what must never be shared is the RESPONSE projection,
+// and it is not (see IterationReferenceSchema). Since P6-VEL-004 they also cover the same rows —
+// eligibility no longer excludes an ACCEPTED iteration, because the write path never did.
 //
 // `teamId` means "the team's own timeboxes PLUS the project's shared ones" on both, never a strict
 // `team_id = ?`: most iterations name no team, and SQL equality never matches NULL.

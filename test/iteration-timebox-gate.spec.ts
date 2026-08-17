@@ -28,7 +28,8 @@
  * it was those four surfaces' only feed — so the SURFACE was split and the FEED was not, and the
  * Editor went on reading `goal`, `theme`, `notes` and `plannedVelocity` from it. The fix is two
  * compact feeds, split by the QUESTION each answers rather than by a flag: `GET /iterations/options`
- * (REFERENCE, every state) and `GET /iterations/assignable` (ELIGIBILITY, `planning | committed`).
+ * (REFERENCE, every state plus `teamId`) and `GET /iterations/assignable` (ELIGIBILITY — every state
+ * too since P6-VEL-004, because the write path never refused a closed timebox).
  * The record list then moved to `timebox:view` with nothing left depending on it but the grid.
  */
 import 'reflect-metadata';
@@ -74,7 +75,8 @@ describe('the Timeboxes surface and Iteration Status are separately gated', () =
      * The two compact feeds below are what those four surfaces read now, which is what let the
      * record move to `timebox:view`:
      *   • `listIterationReferences` (`GET /iterations/options`)    REFERENCE, every state
-     *   • `getAssignmentOptions`    (`GET /iterations/assignable`) ELIGIBILITY, planning|committed
+     *   • `getAssignmentOptions`    (`GET /iterations/assignable`) ELIGIBILITY, every state too
+     *     since P6-VEL-004 — the difference is the projection (`teamId`), not the population
      * BOTH are asserted, in both directions, because the failure mode of over-restricting is an
      * empty picker — indistinguishable from never having split anything.
      */

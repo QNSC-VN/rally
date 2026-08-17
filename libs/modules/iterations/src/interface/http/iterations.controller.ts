@@ -120,7 +120,7 @@ function toIterationActivityDto(a: IterationActivityLog): IterationActivityRespo
 //   route                        question it answers                     population         code
 //   ───────────────────────────  ──────────────────────────────────────  ─────────────────  ──────────────
 //   GET /iterations/options      REFERENCE: what is it called, and when?  every state        iteration:view
-//   GET /iterations/assignable   ELIGIBILITY: what may I assign into?     planning|committed iteration:view
+//   GET /iterations/assignable   ELIGIBILITY: what may I assign into?     every state        iteration:view
 //   GET /iterations              the RECORD: goal/theme/notes/velocity    every state        timebox:view
 //   GET /iterations/:id{,/activity}  the RECORD + its revision history    —                 timebox:view
 //   GET /iterations/:id/status   Iteration Status read-model              —                  iteration:view
@@ -133,11 +133,19 @@ function toIterationActivityDto(a: IterationActivityLog): IterationActivityRespo
 // Editor. That is what this second split closes.
 //
 // TWO ROUTES AND NOT A `?includeAllStates` FLAG, deliberately. REFERENCE and ELIGIBILITY are two
-// different questions over two different populations, and a flag that silently changes a population
-// is the shape that produced the zero-point Velocity bars (CLAUDE.md: "Eligibility must be counted
-// in the SAME scope as the measurement"). `/options` keeps the REFERENCE meaning because that word
-// already means "reference feed" for releases, milestones, portfolio items and member options —
-// consistency across the seam beats avoiding a rename.
+// different questions, and a flag that silently changes a population is the shape that produced the
+// zero-point Velocity bars (CLAUDE.md: "Eligibility must be counted in the SAME scope as the
+// measurement"). `/options` keeps the REFERENCE meaning because that word already means "reference
+// feed" for releases, milestones, portfolio items and member options — consistency across the seam
+// beats avoiding a rename.
+//
+// Since P6-VEL-004 (BA retest 2026-08-17) the two answers cover the SAME rows and differ only in
+// projection (`/options` also returns `team_id`). Eligibility stopped excluding ACCEPTED iterations
+// because the write path never refused one: Velocity attributes points by an item's CURRENT
+// iteration, so a closed sprint must be selectable or the rule holds only on the way out. The two
+// routes stay separate — the eligibility question can narrow again, `/assignable` deliberately does
+// NOT expose `team_id`, and the SPA's generated client is committed, so removing a route is a codegen
+// change rather than a cleanup.
 //
 // Do not "simplify" any of these back into one: whichever code won, one of the two §3.2 rows would
 // be wrong again. See the TIMEBOX_VIEW docblock in db/permissions.catalog.ts.
@@ -217,9 +225,10 @@ export class IterationsController {
    * team, and the record's narrative and forecast fields are structurally absent (a separate zod
    * schema, not a `.pick()`).
    *
-   * ACCEPTED iterations are INCLUDED, and that is the difference from `/assignable`. An item's
-   * iteration keeps resolving to its name after the sprint closes; without it, a Backlog cell for a
-   * genuinely scheduled item rendered `--` — see RELATION_DATA_TRACEABILITY.md.
+   * ACCEPTED iterations are INCLUDED: an item's iteration keeps resolving to its name after the
+   * sprint closes; without it, a Backlog cell for a genuinely scheduled item rendered `--` — see
+   * RELATION_DATA_TRACEABILITY.md. That used to be the difference from `/assignable`; since
+   * P6-VEL-004 the difference is the PROJECTION (`team_id`, which `iterationsInScope` needs).
    */
   @RequirePermission('iteration:view', { from: 'query', field: 'projectId' })
   @ApiOperation({
@@ -241,9 +250,14 @@ export class IterationsController {
 
   @Get('assignable')
   /**
-   * ELIGIBILITY. `planning | committed` only, `iteration:view` — the population `PATCH
-   * /work-items/bulk-iteration` and the inline/sidebar assignment pickers may write into, so a
-   * caller can never be offered a target the server would refuse.
+   * ELIGIBILITY, `iteration:view` — the population `PATCH /work-items/bulk-iteration` and the
+   * inline/sidebar assignment pickers may write into, so a caller is never offered a target the
+   * server would refuse AND never denied one it accepts.
+   *
+   * State is NOT a predicate here (P6-VEL-004, BA retest 2026-08-17): a closed sprint is a legal
+   * destination, and excluding it made the move-IN half of Velocity's current-assignment rule
+   * impossible from the UI. The rule this mirrors is `assertIterationAssignable` — project, plus
+   * team for a team-scoped timebox.
    *
    * This route is `GET /iterations/options` renamed. `/options` took over the reference meaning it
    * carries everywhere else in this API, and the eligibility question moved here rather than

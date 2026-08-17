@@ -168,6 +168,27 @@ describe('IterationsService', () => {
       await service.getAssignmentOptions(actor, 'proj-1');
       expect(repo.listAssignmentOptions).toHaveBeenCalledWith('proj-1', 'ws-1', undefined);
     });
+
+    /**
+     * P6-VEL-004: a CLOSED (accepted) iteration is an assignment option.
+     *
+     * The service must not re-filter what the query returns. It never did — the row predicate lives in
+     * `listAssignmentOptions` and is pinned in
+     * `infrastructure/persistence/iteration.drizzle-repository.predicates.spec.ts` — and this test is
+     * here so a "helpful" state filter added at this layer fails loudly. Velocity attributes points by
+     * an item's CURRENT iteration, so a closed sprint has to stay selectable in both directions.
+     */
+    it('passes an ACCEPTED iteration through to the picker', async () => {
+      const accepted = mockIteration({ id: 'it-past', state: 'accepted' });
+      repo.listAssignmentOptions.mockResolvedValue([
+        accepted,
+        mockIteration({ id: 'it-now', state: 'committed' }),
+      ]);
+
+      const result = await service.getAssignmentOptions(actor, 'proj-1');
+
+      expect(result.map((i) => i.id)).toEqual(['it-past', 'it-now']);
+    });
   });
 
   /**

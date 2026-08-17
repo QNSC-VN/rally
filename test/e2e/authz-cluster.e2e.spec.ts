@@ -165,8 +165,9 @@ describe('authorization cluster (e2e)', () => {
     }
 
     for (const url of [
-      // REFERENCE (every state) and ELIGIBILITY (planning|committed). Two routes, not one route
-      // with a flag: the populations differ, and the four §3.2 Editor surfaces read the first.
+      // REFERENCE (every state, plus `teamId`) and ELIGIBILITY (what may be written into — every
+      // state as well since P6-VEL-004). Two routes, not one route with a flag: they answer different
+      // questions, and the four §3.2 Editor surfaces read the first.
       `/iterations/options?projectId=${NXP}`,
       `/iterations/assignable?projectId=${NXP}`,
       `/iterations/${NXP_ITER_CURRENT_ID}/status`,
