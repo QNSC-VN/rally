@@ -111,6 +111,16 @@ export interface WorkspaceInvitation {
   lastSentAt: Date;
   acceptedBy: string | null;
   acceptedAt: Date | null;
+  /**
+   * The invitee's Entra guest object id in OUR tenant, written by the guest-invite relay from Graph's
+   * `invitedUser.id`. NULL for an invitee who is already a directory member (a member needs no guest
+   * object), and for any invitation created before the column existed or while
+   * `ENTRA_GUEST_INVITE_ENABLED` was off.
+   *
+   * Read by `acceptInvitation` as the STRONGER of its two recipient bindings: unlike the `email`
+   * claim, a guest cannot edit it. See the binding block there for why the email fallback remains.
+   */
+  entraGuestObjectId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

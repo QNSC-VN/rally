@@ -819,22 +819,87 @@ export class WorkspaceService {
     }
 
     /**
-     * The invitation is bound to the ADDRESS it was sent to.
+     * The invitation is bound to its RECIPIENT — by directory object where we have one, and by
+     * address otherwise.
      *
-     * Without this, acceptance validated only `pending` + not-expired, so the token was a bearer
-     * capability: anyone who obtained the link — a forwarded mail, a shared inbox, a copied URL —
-     * joined the workspace at the invited role. An invitation is an identity binding, and §5.2 step 4
-     * says so ("Existing/new user accept đúng email").
+     * Without any binding, acceptance validated only `pending` + not-expired, so the token was a
+     * bearer capability: anyone who obtained the link — a forwarded mail, a shared inbox, a copied
+     * URL — joined the workspace at the invited role. An invitation is an identity binding, and §5.2
+     * step 4 says so ("Existing/new user accept đúng email").
      *
-     * Case-insensitive, because an IdP may return a differently-cased local part than the address the
-     * admin typed, and the two are the same mailbox.
+     * WHY THE OID IS PREFERRED, AND WHY THE EMAIL ALONE IS NOT ENOUGH. The email we compare against
+     * arrives in the Entra token's `email` claim, and Microsoft states outright that "apps should
+     * never use the email claim for authorization purposes". Entra normally strips an email claim
+     * whose domain owner is unverified — but that mitigation EXEMPTS SINGLE-TENANT APPS, which this
+     * is. So a guest homed in a tenant they control can set their own `mail` attribute to any string
+     * and have it arrive here as fact. An invitation naming a valuable role (say a Project Admin for
+     * a partner's lead) could then be redeemed by a different guest who simply renamed themselves.
+     *
+     * `entra_guest_object_id` is the guest's object id IN OUR TENANT, returned by Graph as
+     * `invitedUser.id` when the relay provisions them, and it is not settable by the guest. We
+     * compare it against `sso_identities.provider_sub`, which is written from the token's `oid` claim
+     * at provisioning — the same unspoofable value, recorded on our side.
+     *
+     * WHY THIS IS A FALLBACK AND NOT A REPLACEMENT. `entra_guest_object_id` is NULL for two ordinary
+     * cases, and refusing them would break both: an invitation to a colleague who is already a
+     * DIRECTORY MEMBER (the relay records that collision as "nothing to do" and writes no oid,
+     * because a member needs no guest object), and any invitation created before this column existed
+     * or while `ENTRA_GUEST_INVITE_ENABLED` was off. Those keep the address comparison, which is
+     * exactly as strong as it ever was — and note the population the weaker check now covers is
+     * staff, whose email claim comes from our own directory rather than a tenant someone else runs.
+     *
+     * Both refusals share `INVITATION_EMAIL_MISMATCH`. The reader-facing meaning is identical — you
+     * are signed in as somebody else — and the accept page already offers sign-out-and-retry for it;
+     * a second code would add a state with no distinct action behind it.
+     *
+     * The address comparison is case-insensitive, because an IdP may return a differently-cased local
+     * part than the address the admin typed, and the two are the same mailbox.
      */
-    const acceptingEmail = await this.memberRepo.findUserEmail(acceptingUserId);
-    if (!acceptingEmail || acceptingEmail.toLowerCase() !== invitation.email.toLowerCase()) {
-      throw new PreconditionFailedException(
-        'INVITATION_EMAIL_MISMATCH',
-        'This invitation was sent to a different email address',
-      );
+    if (invitation.entraGuestObjectId) {
+      const subjects = await this.memberRepo.findSsoSubjects(acceptingUserId, 'entra');
+      /**
+       * Compared case-INSENSITIVELY, for the same reason the address is. The two sides come from
+       * differently-typed columns: `entra_guest_object_id` is `uuid`, which Postgres always renders in
+       * canonical lower case, while `sso_identities.provider_sub` is a varchar holding the `oid` claim
+       * verbatim. A provider that ever emitted an upper-case GUID would otherwise lock a legitimate
+       * invitee out of their own invitation — the failure would look like the spoofing refusal and be
+       * indistinguishable from it in the log.
+       */
+      const expected = invitation.entraGuestObjectId.toLowerCase();
+      if (!subjects.some((s) => s.toLowerCase() === expected)) {
+        /**
+         * Logged, and logged with BOTH ids, because this refusal has two very different causes and
+         * they are otherwise indistinguishable: someone redeeming an invitation that is not theirs,
+         * or our own assumption being wrong. The binding rests on Graph's `invitedUser.id` being the
+         * same value as the `oid` claim that tenant issues for the guest — true per Microsoft's
+         * documentation (both are the object id IN THE INVITING TENANT), but if it ever is not, every
+         * guest-provisioned invitation would refuse here and look exactly like an attack.
+         *
+         * Object ids are not secrets — they are directory identifiers, already visible to the guest in
+         * their own token — so this discloses nothing a log reader should not see, and it turns a
+         * silent lockout into a one-line diagnosis. `subjectCount` distinguishes "wrong object" from
+         * "this user has no Entra identity at all", which is a different fault again.
+         */
+        this.logger.warn({
+          msg: 'Invitation refused: guest object id does not match the accepting user',
+          invitationId: invitation.id,
+          expectedGuestObjectId: expected,
+          acceptingUserSubjects: subjects,
+          subjectCount: subjects.length,
+        });
+        throw new PreconditionFailedException(
+          'INVITATION_EMAIL_MISMATCH',
+          'This invitation was sent to a different email address',
+        );
+      }
+    } else {
+      const acceptingEmail = await this.memberRepo.findUserEmail(acceptingUserId);
+      if (!acceptingEmail || acceptingEmail.toLowerCase() !== invitation.email.toLowerCase()) {
+        throw new PreconditionFailedException(
+          'INVITATION_EMAIL_MISMATCH',
+          'This invitation was sent to a different email address',
+        );
+      }
     }
 
     const existing = await this.memberRepo.findMember(invitation.workspaceId, acceptingUserId);
