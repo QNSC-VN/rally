@@ -1,12 +1,22 @@
 import { KeyChip } from '@/shared/ui/key-chip'
-import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 
 /**
  * The project a record belongs to, rendered one way everywhere.
  *
- * Counterpart to {@link TeamCell} and {@link OwnerSelectCell}: the same shape the app settled on
- * for an assignable reference — a `KeyChip` glyph plus the name, through the shared
- * `SearchableSelect` in its `cell` variant when editable, and the same glyph as flat text when not.
+ * Counterpart to {@link TeamCell} and {@link OwnerSelectCell} — a `KeyChip` glyph plus the name —
+ * except that unlike a Team or an Owner, a project is **never editable**, so this file offers only
+ * the read-only form. A record's Project is chosen once, by the Project context active at creation,
+ * and is read-only from then on for every type: Work Items (`WIC-FR-004` AC #11, `WID-FR-017`
+ * AC #9), Tasks (Task Management AC #14, where it is derived from the parent) and Portfolio Items
+ * (P5 §45 "read-only afterward for both Feature and Epic", §3.1 "Project is read-only for both
+ * types", §339 for an Epic).
+ *
+ * There used to be a `ProjectSelectCell` beside this, a `SearchableSelect` over workspace projects
+ * that PATCHed `projectId` — a cross-project MOVE, offered inline on the Portfolio grid's Project
+ * column and on its disclosed child Features. It is deleted rather than merely gated off: a
+ * `canEdit={false}` prop is one prop away from being passed `true` again, and there is no role or
+ * surface for which the move is legal. `moving between Projects unsupported` (`WID-FR-017`) is a
+ * property of the field, so it belongs in the component's shape.
  *
  * This lived in `pages/portfolio/ui/attribute-cells.tsx`, so only the Portfolio grid could use it.
  * Seven other surfaces rendered a project as a bare `{projectName ?? '--'}` span — no chip, no key,
@@ -14,19 +24,13 @@ import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-sele
  * fix (`shared/ui/team-cell.tsx`, used by seven pages); projects did not.
  */
 
-/** The minimum a project must expose to be offered as an option. */
-export interface ProjectOption {
-  id: string
-  key: string
-  name: string
-}
-
 /**
- * Read-only project display — chip + name.
+ * Project display — chip + name. The only form there is.
  *
- * Use where a project is shown but cannot be changed here: detail sidebars, release rows, the
- * Tasks tab (a task inherits its parent's project). The chip is what makes it recognisably the
- * same field as the Portfolio grid's Project column.
+ * Use anywhere a project is shown: detail sidebars, release rows, grid columns, the Tasks tab (a
+ * task inherits its parent's project), and the create modals, where it renders the fixed Project
+ * context inside a `ReadOnlyFieldValue`. The chip is what makes every one of those recognisably
+ * the same field.
  */
 export function ProjectCell({
   projectKey,
@@ -47,75 +51,13 @@ export function ProjectCell({
           {projectKey}
         </KeyChip>
       )}
-      {/* `text-ui-sm`, the size its own editable variant (`SearchableSelect variant="cell"`) renders at.
-          It inherited the row's 12px, so a read-only project cell was a size larger than the identical
-          value in a picker — the same drift `TeamCell` and `OwnerCell` carried. */}
+      {/* `text-ui-sm`, the size `SearchableSelect variant="cell"` renders at — so a Project sits on
+          the same type scale as the Release and Team pickers beside it in a grid row, and as the
+          Team/Owner fields beside it in a form. It inherited the row's 12px, which made it a size
+          larger than every neighbouring value — the same drift `TeamCell` and `OwnerCell` carried. */}
       <span className="min-w-0 text-ui-sm break-words whitespace-normal text-muted-foreground">
         {projectName ?? projectKey}
       </span>
     </span>
-  )
-}
-
-/**
- * Editable project cell — a MOVE, not a plain field write.
- *
- * The server resets the Team to one linked to the destination and drops a Release or parent Epic
- * belonging to the old project (`applyProjectMove`), so a caller's toast should say "moved" rather
- * than "updated" and expect the row's other cells to change with it.
- *
- * No clear option: a record ALWAYS belongs to a project, unlike every other reference.
- */
-export function ProjectSelectCell({
-  projectId,
-  projectName,
-  projects,
-  canEdit,
-  ariaLabel,
-  onChange,
-}: {
-  projectId: string
-  projectName?: string | null
-  projects: ProjectOption[]
-  canEdit: boolean
-  ariaLabel: string
-  onChange: (projectId: string) => void
-}) {
-  if (!canEdit) {
-    return (
-      <span className="px-2 break-words whitespace-normal text-muted-foreground">
-        {projectName ?? '--'}
-      </span>
-    )
-  }
-
-  const options: SelectOption[] = projects.map((p) => ({
-    value: p.id,
-    label: p.name,
-    searchText: `${p.key} ${p.name}`,
-    icon: (
-      <KeyChip size="sm" tone="project">
-        {p.key}
-      </KeyChip>
-    ),
-  }))
-
-  // The current project may sit outside the offered list (archived, or not visible to this
-  // caller). Prepend it so the cell shows what the record actually holds instead of blank.
-  if (!projects.some((p) => p.id === projectId)) {
-    options.unshift({ value: projectId, label: projectName ?? projectId })
-  }
-
-  return (
-    <SearchableSelect
-      variant="cell"
-      value={projectId}
-      // A project name is long enough to matter, and Rally wraps this column.
-      wrapLabel
-      ariaLabel={ariaLabel}
-      searchPlaceholder="Search"
-      options={options}
-      onChange={onChange}
-    />
   )
 }

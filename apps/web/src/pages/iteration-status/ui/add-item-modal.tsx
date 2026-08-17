@@ -12,7 +12,7 @@ import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { ProjectCell } from '@/shared/ui/project-cell'
 import { TeamCell } from '@/shared/ui/team-cell'
 import { Button } from '@/shared/ui/button'
-import { FormField } from '@/shared/ui/form-field'
+import { FormField, ReadOnlyFieldValue } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { ownerSelectOptions } from '@/shared/ui/owner-cell'
@@ -44,8 +44,6 @@ export function AddItemModal({
   const iterationTeam = teams.find((tm) => tm.id === iteration.teamId)
   const teamName = iterationTeam?.name ?? t('toolbar.noTeam', 'No team')
   const teamKey = iterationTeam?.key ?? null
-  const roBox =
-    'flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground'
   const [type, setType] = useState<'story' | 'defect'>('story')
   const [title, setTitle] = useState('')
   const [planEstimate, setPlanEstimate] = useState('')
@@ -128,22 +126,22 @@ export function AddItemModal({
               a `KeyChip` for the project and a square `TeamAvatar` for the team — so an
               inherited value looks like the value it was inherited from. */}
           <FormField label={t('create.projectLabel', 'Project')}>
-            <div className={roBox}>
+            <ReadOnlyFieldValue>
               <ProjectCell projectKey={project?.projectKey} projectName={project?.projectName} />
-            </div>
+            </ReadOnlyFieldValue>
           </FormField>
           <FormField label={t('create.teamLabel', 'Team')}>
-            <div className={roBox}>
+            <ReadOnlyFieldValue>
               {iteration.teamId ? (
                 <TeamCell teamKey={teamKey} name={teamName} />
               ) : (
                 <span>{teamName}</span>
               )}
-            </div>
+            </ReadOnlyFieldValue>
           </FormField>
         </div>
         <FormField label={t('create.iterationLabel', 'Iteration')}>
-          <div className={roBox}>{`${iteration.name} · ${fmtRange(iteration)}`}</div>
+          <ReadOnlyFieldValue>{`${iteration.name} · ${fmtRange(iteration)}`}</ReadOnlyFieldValue>
         </FormField>
 
         <FormField label={t('create.titleLabel')} required error={error ?? undefined}>

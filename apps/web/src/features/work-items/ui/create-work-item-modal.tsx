@@ -10,22 +10,30 @@ import { Loader2 } from 'lucide-react'
 import { useCreateWorkItem, useBacklog, type WorkItem } from '@/features/work-items/api'
 import { useProjectTeams } from '@/features/teams/api'
 import { useTeamOwnerOptions } from '@/features/teams/api'
-import { useProjects } from '@/features/projects/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useRecordProject } from '@/shared/lib/deep-link-project'
 import { BRAND } from '@/shared/config/brand'
 import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { FormField } from '@/shared/ui/form-field'
+import { FormField, ReadOnlyFieldValue } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { OwnerSelectField, TeamSelectField } from '@/shared/ui/entity-select-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
-import { KeyChip } from '@/shared/ui/key-chip'
+import { ProjectCell } from '@/shared/ui/project-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 
 type CreatableType = 'story' | 'defect'
 
 interface Props {
+  /**
+   * The project the item is created INTO, and the only one this modal can create into.
+   *
+   * There is deliberately no `projects` option list and no `onProjectChange`: WIC-FR-004 makes
+   * Project auto-filled from the active Project context and READ-ONLY in every Work Item create
+   * flow, so the component has no shape in which a caller could re-enable a picker. To create
+   * somewhere else the user changes the global Project context first (AC #11).
+   */
   projectId: string
   onClose: () => void
   onCreated?: (item: WorkItem) => void
@@ -45,14 +53,20 @@ export function CreateWorkItemModal({
   onCreatedWithDetails,
 }: Props) {
   const { t } = useTranslation('work-items')
-  const { workspace, team } = useAppContext()
-  const workspaceId = workspace?.workspaceId ?? ''
+  const { team } = useAppContext()
   const [type, setType] = useState<CreatableType>('story')
   const [title, setTitle] = useState('')
-  // Project defaults to the backlog's current project (WIC-FR-004) but can be
-  // switched to any project the user can access; Team/Owner/Parent then filter
-  // by the SELECTED project so an item can't be seeded with cross-project refs.
-  const [selectedProjectId, setSelectedProjectId] = useState(projectId)
+  /**
+   * Project is FIXED for the life of this modal (WIC-FR-004, AC #11).
+   *
+   * It used to be `useState(projectId)` behind a searchable dropdown over every project the
+   * caller could read, so `Add New` on a Feature's Children tab offered to file the new Story
+   * under a different project than the Feature it was being linked to — the state P5-PI-003
+   * reproduced, and one the server then had to refuse or silently split. `projectId` is now read
+   * straight from the prop, which also means Team, Owner, Parent Story, Release and Iteration
+   * options cannot be scoped to anything else.
+   */
+  const projectDisplay = useRecordProject(projectId)
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
   const [teamId, setTeamId] = useState(team?.teamId ?? '')
   /**
@@ -76,13 +90,12 @@ export function CreateWorkItemModal({
   const [submitting, setSubmitting] = useState(false)
 
   const createMutation = useCreateWorkItem()
-  const { data: projects = [] } = useProjects(workspaceId || undefined)
-  const { data: teams = [] } = useProjectTeams(selectedProjectId)
+  const { data: teams = [] } = useProjectTeams(projectId)
   // Fetch stories for the parent dropdown (only used when type=defect)
-  const { data: backlogData } = useBacklog(selectedProjectId, { type: 'story' })
+  const { data: backlogData } = useBacklog(projectId, { type: 'story' })
   const stories = backlogData?.data ?? []
 
-  // A pre-filled/inherited team that isn't linked to the selected project is
+  // A pre-filled/inherited team that isn't linked to the fixed project is
   // treated as unset so the backend can't reject the create with
   // PROJECT_TEAM_LINK_NOT_FOUND (DEV-007). Derived — no effect needed.
   const validTeamId = teams.some((t) => t.id === teamId) ? teamId : ''
@@ -93,20 +106,10 @@ export function CreateWorkItemModal({
    * or unrelated Workspace users to Owner options").
    *
    * Keyed on `validTeamId` rather than the raw `teamId`, so an inherited team that is not linked to
-   * the selected project asks for nothing instead of 422-ing the feed — the same value the create
+   * the fixed project asks for nothing instead of 422-ing the feed — the same value the create
    * itself will send.
    */
-  const { data: members = [] } = useTeamOwnerOptions(selectedProjectId, validTeamId || null)
-
-  // When the project changes, reset project-scoped selections so no stale
-  // cross-project team/owner/parent can be submitted.
-  function handleProjectChange(nextProjectId: string) {
-    if (nextProjectId === selectedProjectId) return
-    setSelectedProjectId(nextProjectId)
-    setTeamId('')
-    setAssigneeId('')
-    setParentStoryId('')
-  }
+  const { data: members = [] } = useTeamOwnerOptions(projectId, validTeamId || null)
 
   const titleRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef(submit)
@@ -145,7 +148,7 @@ export function CreateWorkItemModal({
     setSubmitting(true)
     try {
       const item = await createMutation.mutateAsync({
-        projectId: selectedProjectId,
+        projectId,
         type,
         title: title.trim(),
         priority: 'none',
@@ -240,28 +243,23 @@ export function CreateWorkItemModal({
           />
         </FormField>
 
-        {/* Project — required, default current project (WIC-FR-004) */}
-        {/* The `KeyChip` glyph `ProjectSelectCell` puts on every Project column, so the field
-            and the column are recognisably the same thing. Was a bare `NativeSelect` listing
-            names only — searchable too, since a workspace can hold a long project list. */}
+        {/* Project — auto-filled from the active Project context and READ-ONLY (WIC-FR-004,
+            AC #11: "Project cannot be changed in Quick Create, Create with details, or any
+            reused modal"). WID-FR-017 keeps it read-only after creation too, so a picker here
+            would have been the ONE moment a Project could be chosen for an item — and this modal
+            is reused by the Feature Children tab, where the Feature has already fixed it.
+
+            The same `KeyChip` glyph the grids' Project column carries, through the shared
+            read-only `ProjectCell`, so the fixed field is recognisably the same field.
+            `useRecordProject` resolves key + name from the id and returns `undefined` until the
+            row is known — `ProjectCell` renders `--` for that rather than guessing. */}
         <FormField label={t('create.projectLabel')} required>
-          <SearchableSelect
-            variant="field"
-            value={selectedProjectId}
-            ariaLabel={t('create.projectLabel')}
-            searchPlaceholder="Search"
-            options={projects.map((p) => ({
-              value: p.id,
-              label: p.name,
-              searchText: `${p.key} ${p.name}`,
-              icon: (
-                <KeyChip size="sm" tone="project">
-                  {p.key}
-                </KeyChip>
-              ),
-            }))}
-            onChange={(v) => handleProjectChange(v ?? selectedProjectId)}
-          />
+          <ReadOnlyFieldValue>
+            <ProjectCell
+              projectKey={projectDisplay?.projectKey}
+              projectName={projectDisplay?.projectName}
+            />
+          </ReadOnlyFieldValue>
         </FormField>
 
         {/* Parent Story — Defect only. Carries the story `TypeBadge`, the same glyph the ID

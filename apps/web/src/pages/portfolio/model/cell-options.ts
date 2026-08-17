@@ -5,11 +5,13 @@ export interface PortfolioCellOptions {
 }
 
 /**
- * Projects the caller may move an item INTO — workspace-wide, not per-row, because the
- * destination is by definition a different project from the row's own.
+ * There is no `ProjectOption` here any more.
+ *
+ * It was "projects the caller may move an item INTO — workspace-wide, because the destination is by
+ * definition a different project from the row's own". §3.1 makes Project read-only for both types,
+ * so there is no move and no destination list; the grid needs only a `projectId → key` lookup for
+ * the chip, which the page supplies as `projectKeyFor`.
  */
-// The project option shape lives with the shared cell that consumes it, so the two cannot drift.
-export type { ProjectOption } from '@/shared/ui/project-cell'
 
 /**
  * The lists a row gets when its project has resolved nothing yet. A frozen shared

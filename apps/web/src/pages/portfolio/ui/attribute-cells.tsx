@@ -1,23 +1,26 @@
 /**
- * The related-entity cells for the Portfolio grid: Release, Team, Project.
+ * The EDITABLE related-entity cells for the Portfolio grid: Release and Team.
  *
- * All three follow the shape the rest of the app settled on for an assignable
- * reference — the shared `SearchableSelect` in its `cell` variant, each option carrying
- * the entity's own glyph (release badge, epic badge, square team chip) — so the Backlog,
- * Capacity Planning and this grid render the same reference the same way. When the
- * caller cannot edit the row they fall back to the read-only display component for that
- * attribute type, which is what keeps a viewer's grid looking like an editor's.
+ * Both follow the shape the rest of the app settled on for an assignable reference — the shared
+ * `SearchableSelect` in its `cell` variant, each option carrying the entity's own glyph (release
+ * badge, square team chip) — so the Backlog, Capacity Planning and this grid render the same
+ * reference the same way. When the caller cannot edit the row they fall back to the read-only
+ * display component for that attribute type, which is what keeps a viewer's grid looking like an
+ * editor's.
  *
- * One module rather than three because the parent rows and the disclosed child Feature
- * rows both need all three, and a column that renders differently at two nesting levels
- * of the SAME grid is the exact drift this page was cleaned up to remove.
+ * One module rather than two because the parent rows and the disclosed child Feature rows both need
+ * both, and a column that renders differently at two nesting levels of the SAME grid is the exact
+ * drift this page was cleaned up to remove.
+ *
+ * **Project is not here**, and that is the point of the paragraph below: it is the one reference on
+ * this grid that is never assignable, so it has no editable cell to keep in step with these two.
  *
  * ── Why Release and Team options are per-project ─────────────────────────────
  * A Feature's Release and Team must belong to the Feature's OWN project, and this list can
  * be opened up to every project. So the row is handed the option lists for ITS project
  * (see `usePortfolioCellOptions`) rather than a workspace-wide union, which would offer
- * targets the API rejects. Project is the exception: a MOVE targets a different project by
- * definition, so its options are workspace-wide.
+ * targets the API rejects. Project used to be the exception — a move targets a different project by
+ * definition, so its options were workspace-wide — until §3.1 removed the move.
  */
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
@@ -116,9 +119,10 @@ export function ReleaseSelectCell({
   )
 }
 
-// `ProjectSelectCell` now lives in `shared/ui/project-cell.tsx` — it is re-exported below so
-// this module stays the single import site for the grid's related-entity cells.
-export { ProjectSelectCell, type ProjectOption } from '@/shared/ui/project-cell'
+// There is deliberately NO project cell re-exported here. A project is read-only everywhere (§3.1:
+// "Project is read-only for both types"), so the grid renders the read-only `ProjectCell` from
+// `shared/ui/project-cell.tsx` directly and there is no editable counterpart to place beside
+// `ReleaseSelectCell` / `TeamSelectCell`. The `ProjectOption` shape went with the picker.
 
 /**
  * Team column — square key-chip + name (circle = person, square = team).

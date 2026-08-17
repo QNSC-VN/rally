@@ -206,6 +206,25 @@ describe('Feature Children tab — Add Item', () => {
     expect(screen.getByText('with-details wired: yes')).toBeInTheDocument()
   })
 
+  /**
+   * P5-PI-FR-013 / P5-PI-003: `Add Item` inherits the FEATURE's Project, and the reused modal has
+   * no way to change it.
+   *
+   * The stub above receives `projectId` and posts with it, which is the half this page owns — the
+   * absence of a picker inside the modal is pinned by
+   * `features/work-items/ui/create-work-item-modal.test.tsx`. Both halves matter: the page could
+   * pass the right project into a modal that then offered to move it, which is exactly the state
+   * the BA reproduced.
+   */
+  it("creates the child in the FEATURE's project", async () => {
+    const user = await openCreateModal()
+
+    await user.click(screen.getByRole('button', { name: 'stub create' }))
+
+    await waitFor(() => expect(mockPOST).toHaveBeenCalledTimes(1))
+    expect(mockPOST.mock.calls[0][1].body.projectId).toBe(FEATURE.projectId)
+  })
+
   it('Create with details creates ONE item, links it to this Feature, then opens it', async () => {
     const user = await openCreateModal()
 

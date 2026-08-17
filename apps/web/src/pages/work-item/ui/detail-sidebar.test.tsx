@@ -186,10 +186,65 @@ describe("DetailSidebar — the Project field is the RECORD's project (P6-E2E-00
   })
 })
 
-describe('DetailSidebar — the Iteration label comes from the reference feed', () => {
-  it('names an iteration that is no longer assignable, and keeps it selected', () => {
+describe('DetailSidebar — the Iteration selector offers a CLOSED sprint (P6-VEL-004)', () => {
+  /**
+   * The BA's repro, on the Work Item Detail half: US-2 must be assignable back INTO the finished
+   * `Carryover Sprint` it was moved out of, because Velocity attributes points by an item's CURRENT
+   * iteration and the move-out already changed the bar.
+   *
+   * The eligibility feed stopped filtering by state server-side; the property this test adds is that
+   * this select does not re-filter it here, and that choosing a closed sprint goes through the
+   * ORDINARY update path — one `{ iterationId }` patch, so Schedule State, Flow State and the
+   * acceptance stamp are untouched by construction.
+   */
+  it('offers an ACCEPTED iteration and persists it through the ordinary update', () => {
     setup()
-    // Accepted iterations are absent from the ELIGIBILITY feed by design.
+    const onUpdate = vi.fn()
+    assignableIterations.mockReturnValue({
+      data: [
+        { id: 'it-open', name: 'Empty Sprint', iterationKey: 'IT-2', state: 'planning' },
+        { id: 'it-done', name: 'Carryover Sprint', iterationKey: 'IT-1', state: 'accepted' },
+      ],
+    })
+    render(
+      <DetailSidebar
+        item={item({ iterationId: null })}
+        onUpdate={onUpdate}
+        updating={false}
+        readOnly={false}
+      />,
+    )
+
+    const options = openOptions('Iteration')
+    // `--` / no iteration stays the un-assign choice, and the closed sprint is offered beside it.
+    expect(has(options, 'No iteration')).toBe(true)
+    expect(has(options, 'IT-1')).toBe(true)
+    expect(has(options, 'IT-2')).toBe(true)
+
+    const list = screen.getByRole('dialog')
+    fireEvent.click(
+      within(list)
+        .getAllByRole('button')
+        .find((b) => (b.textContent ?? '').includes('IT-1'))!,
+    )
+
+    // ONE field. Nothing about state, flow or acceptance rides along with an iteration change.
+    expect(onUpdate).toHaveBeenCalledWith({ iterationId: 'it-done' })
+  })
+
+  it('keeps the eligibility feed scoped to the item, not to the selected project or team', () => {
+    setup()
+    renderSidebar({ projectId: 'proj-record', teamId: 'team-1' })
+
+    expect(assignableIterations).toHaveBeenCalledWith('proj-record', 'team-1')
+  })
+})
+
+describe('DetailSidebar — the Iteration label comes from the reference feed', () => {
+  it('names an iteration that is outside the eligibility feed, and keeps it selected', () => {
+    setup()
+    // An iteration the eligibility feed does not carry — since P6-VEL-004 that is a TEAM-scope
+    // difference rather than a state one (the item's team changed, say), not a closed sprint.
     assignableIterations.mockReturnValue({
       data: [{ id: 'it-open', name: 'Sprint 26.2', iterationKey: 'IT-2' }],
     })
@@ -220,8 +275,9 @@ describe('DetailSidebar — the Iteration label comes from the reference feed', 
         { id: 'it-done', name: 'Sprint 26.1', iterationKey: 'IT-1' },
       ],
     })
-    // No iteration set, so there is nothing to keep NAMED — the accepted one must stay out of a list
-    // this select WRITES from, or the server would refuse the assignment.
+    // No iteration set, so there is nothing to keep NAMED. The reference feed is a LABEL source, and
+    // unioning it into the options would offer rows the eligibility feed deliberately left out —
+    // out-of-team timeboxes now that state is no longer a predicate.
     renderSidebar({ iterationId: null })
 
     const options = openOptions('Iteration')

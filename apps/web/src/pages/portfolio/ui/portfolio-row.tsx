@@ -25,8 +25,9 @@ import { type ColKey } from '../model/columns'
 import { PORTFOLIO_STATES } from '../model/portfolio-states'
 import { hasChildren } from '../model/children'
 import { PortfolioChildRows } from './portfolio-child-rows'
-import { ProjectSelectCell, ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
-import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-options'
+import { ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
+import { ProjectCell } from '@/shared/ui/project-cell'
+import { type PortfolioCellOptions } from '../model/cell-options'
 
 /**
  * One Portfolio grid row.
@@ -38,9 +39,13 @@ import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-opt
  * hide actions the user has elsewhere or offer ones they do not.
  *
  * What is NOT editable, and why — both are constraints, not omissions:
- *   • **Project** — `PATCH /v1/portfolio-items/{id}` carries no `projectId`, and moving
- *     an item would also have to clear its Epic, Release and Team, which all belong to
- *     the old project. That is an operation, not a field edit; no endpoint offers it.
+ *   • **Project** — read-only for every row and every role. §3.1's field table: "Inherited from
+ *     the current Project context at creation and read-only afterward for both Feature and Epic";
+ *     its inline-edit line: "Project is read-only for both types". The PATCH still accepts
+ *     `projectId` and the service still implements the move (`applyProjectMove` resets the Team
+ *     and drops a Release or parent Epic belonging to the old project), but nothing in the SPA
+ *     reaches it — see `shared/ui/project-cell.tsx` for why the editable cell was deleted rather
+ *     than gated.
  *   • **Percent Done ×2** — derived server-side from child rollups. There is nothing to
  *     write; you change them by accepting child work.
  *
@@ -67,7 +72,7 @@ export function PortfolioRow({
   canEditProject,
   options,
   optionsFor,
-  projects,
+  projectKeyFor,
   revealed = false,
   colStyleFor,
   gutterProps,
@@ -93,8 +98,16 @@ export function PortfolioRow({
   canEditProject: (projectId: string) => boolean
   /** Epic/Release/Team options for THIS row's project. */
   options: PortfolioCellOptions
-  /** Move destinations — workspace-wide, since a move targets a DIFFERENT project. */
-  projects: ProjectOption[]
+  /**
+   * The `KeyChip` glyph for a project id, for the read-only Project column here and on the
+   * disclosed child rows.
+   *
+   * A LOOKUP, not an option list. It replaced `projects: ProjectOption[]`, which was described as
+   * "move destinations — workspace-wide, since a move targets a DIFFERENT project" and fed a
+   * `ProjectSelectCell` that no longer exists (§3.1: "Project is read-only for both types"). The
+   * item DTO carries `projectName` but no key, so the page resolves it once for every row.
+   */
+  projectKeyFor: (projectId: string) => string | null
   /** The same lookup by project, for the disclosed child rows. */
   optionsFor: (projectId: string) => PortfolioCellOptions
   colStyleFor: (key: ColKey, base?: CSSProperties) => CSSProperties
@@ -270,21 +283,16 @@ export function PortfolioRow({
           <PercentDoneBar metric="count" health={item.health} progress={progress} rollup={rollup} />
         </div>
 
-        {/* Project — a MOVE, not a field edit: the server resets Team and drops a Release
-          or Epic belonging to the old project. SRS §3.1 requires it editable. */}
-        <div
-          style={colStyleFor('project', { flexShrink: 0 })}
-          className="flex min-w-0 items-center overflow-hidden px-0"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <ProjectSelectCell
-            projectId={item.projectId}
-            projectName={item.projectName}
-            projects={projects}
-            canEdit={canEdit}
-            ariaLabel={t('detail.fields.project')}
-            onChange={(v) => save({ projectId: v }, t('row.projectMoved'))}
-          />
+        {/* Project — READ-ONLY, for every row and every role.
+          §3.1's field table says "Inherited from the current Project context at creation and
+          read-only afterward for both Feature and Epic", and its inline-edit line repeats it:
+          "Project is read-only for both types". This cell used to be a `SearchableSelect` that
+          PATCHed `projectId` — a cross-project MOVE that also reset the row's Team and dropped a
+          Release or parent Epic belonging to the old project — under a comment claiming §3.1
+          required it editable. It required the opposite. No `stopPropagation` wrapper any more
+          either: with nothing to click, the cell should open the row like the rest of it. */}
+        <div style={colStyleFor('project', { flexShrink: 0 })} className="min-w-0 px-2">
+          <ProjectCell projectKey={projectKeyFor(item.projectId)} projectName={item.projectName} />
         </div>
 
         {/* Team — square key-chip + name (circle = person, square = team). Picker over the
@@ -353,7 +361,7 @@ export function PortfolioRow({
           members={members}
           canEditProject={canEditProject}
           optionsFor={optionsFor}
-          projects={projects}
+          projectKeyFor={projectKeyFor}
         />
       )}
     </>

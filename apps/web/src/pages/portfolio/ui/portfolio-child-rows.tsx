@@ -54,8 +54,8 @@ import { OwnerCell, OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/
 import { ProjectCell } from '@/shared/ui/project-cell'
 import { TeamCell } from '@/shared/ui/team-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
-import { ProjectSelectCell, ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
-import { type PortfolioCellOptions, type ProjectOption } from '../model/cell-options'
+import { ReleaseSelectCell, TeamSelectCell } from './attribute-cells'
+import { type PortfolioCellOptions } from '../model/cell-options'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { Spinner } from '@/shared/ui/spinner'
 import { NESTED_ROW_INDENT } from '@/shared/config/layout'
@@ -109,7 +109,7 @@ function ChildFeatureRow({
   members,
   canEdit,
   options,
-  projects,
+  projectKeyFor,
   onOpen,
 }: {
   feature: PortfolioItem
@@ -118,8 +118,8 @@ function ChildFeatureRow({
   canEdit: boolean
   /** Release/Team options for THIS child's project, which may differ from its Epic's. */
   options: PortfolioCellOptions
-  /** Move destinations, workspace-wide. */
-  projects: ProjectOption[]
+  /** The `KeyChip` glyph for a project id — a lookup for the READ-ONLY Project cell. */
+  projectKeyFor: (projectId: string) => string | null
   onOpen: (id: string) => void
 }) {
   const { t } = useTranslation('portfolio')
@@ -219,18 +219,13 @@ function ChildFeatureRow({
         />
       </div>
 
-      <div
-        className="flex min-w-0 items-center overflow-hidden px-0"
-        style={colStyleFor('project')}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <ProjectSelectCell
-          projectId={feature.projectId}
+      {/* Project — READ-ONLY, exactly as on the root row above it (§3.1: "Project is read-only
+          for both types"). This was a `ProjectSelectCell` PATCHing `projectId`, i.e. a
+          cross-project MOVE offered on a row the SRS describes as an inline PREVIEW. */}
+      <div className="min-w-0 px-2" style={colStyleFor('project')}>
+        <ProjectCell
+          projectKey={projectKeyFor(feature.projectId)}
           projectName={feature.projectName}
-          projects={projects}
-          canEdit={canEdit}
-          ariaLabel={t('detail.fields.project')}
-          onChange={(v) => save({ projectId: v }, t('row.projectMoved'))}
         />
       </div>
       <div
@@ -290,7 +285,7 @@ function ChildWorkItemRow({
   child,
   colStyleFor,
   options,
-  projects,
+  projectKeyFor,
 }: {
   child: PortfolioChild
   colStyleFor: ColStyleFor
@@ -303,11 +298,11 @@ function ChildWorkItemRow({
    * the page has already fetched it for the parent row's picker.
    */
   options: PortfolioCellOptions
-  /** Workspace projects, for the project KEY — same reason as the team key. */
-  projects: ProjectOption[]
+  /** The project KEY for a project id — same reason as the team key. */
+  projectKeyFor: (projectId: string) => string | null
 }) {
   const teamKey = options.teams.find((tm) => tm.id === child.teamId)?.key ?? null
-  const projectKey = projects.find((pr) => pr.id === child.projectId)?.key ?? null
+  const projectKey = projectKeyFor(child.projectId)
   /** A plain text cell, for the columns that have no entity component of their own. */
   const cell = (col: ColKey, value: string | null) => (
     <div className="min-w-0 px-2 break-words whitespace-normal" style={colStyleFor(col)}>
@@ -384,7 +379,7 @@ export function PortfolioChildRows({
   members,
   canEditProject,
   optionsFor,
-  projects,
+  projectKeyFor,
 }: {
   item: PortfolioItem
   /** The parent grid's resolved per-column style, so child cells track column layout. */
@@ -399,8 +394,8 @@ export function PortfolioChildRows({
   canEditProject: (projectId: string) => boolean
   /** Release/Team options by project, resolved per child for the same reason. */
   optionsFor: (projectId: string) => PortfolioCellOptions
-  /** Move destinations, workspace-wide. */
-  projects: ProjectOption[]
+  /** The `KeyChip` glyph for a project id — a lookup for the READ-ONLY Project cells. */
+  projectKeyFor: (projectId: string) => string | null
 }) {
   const { t } = useTranslation('portfolio')
   const navigate = useNavigate()
@@ -423,7 +418,7 @@ export function PortfolioChildRows({
           members={members}
           canEdit={canEditProject(f.projectId)}
           options={optionsFor(f.projectId)}
-          projects={projects}
+          projectKeyFor={projectKeyFor}
           onOpen={openPortfolioItem}
         />
       ))
@@ -435,7 +430,7 @@ export function PortfolioChildRows({
             child={c}
             colStyleFor={colStyleFor}
             options={optionsFor(c.projectId)}
-            projects={projects}
+            projectKeyFor={projectKeyFor}
           />
         ))
 

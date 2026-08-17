@@ -27,6 +27,15 @@ vi.mock('@/features/work-items/api', () => ({
 vi.mock('@/features/teams/api', () => ({
   useTeamOwnerOptions: (...args: unknown[]) => teamOwnerOptions(...args),
 }))
+// The PARENT's project, resolved from its id for display. Note there is no `useProjects` mock and no
+// `useAppContext` one: a Task's Project is derived from the parent (Task Management AC #14), so
+// neither an option list nor the app shell's selection may reach this modal.
+vi.mock('@/shared/lib/deep-link-project', () => ({
+  useRecordProject: (projectId: string | undefined) =>
+    projectId === 'proj-parent'
+      ? { projectId: 'proj-parent', projectKey: 'PAY', projectName: 'Payments' }
+      : undefined,
+}))
 
 import '@/shared/i18n/i18n'
 import { AddTaskModal } from './add-task-modal'
@@ -87,5 +96,40 @@ describe('AddTaskModal — Owner defaults to Unassigned', () => {
     // Asserted over the whole tree rather than inside the popover, because the modal is itself a
     // `dialog`: her name must appear NOWHERE, which is the stronger claim anyway.
     expect(screen.queryByText('Alice Smith')).toBeNull()
+  })
+})
+
+/**
+ * Task Management AC #14: "a Task's Project always equals its parent's, read-only."
+ *
+ * The Project is DERIVED — `createTask` resolves it from `workItemId` and the service refuses a
+ * supplied one (`TASK_ITERATION_DERIVED` is the sibling rule for the Iteration) — so the test is
+ * that the modal NAMES the parent's project and offers no way to state a different one.
+ */
+describe("AddTaskModal — Project is the parent's, read-only (Task AC #14)", () => {
+  it("names the parent's project", () => {
+    open()
+    expect(screen.getByText('PAY')).toBeInTheDocument()
+    expect(screen.getByText('Payments')).toBeInTheDocument()
+  })
+
+  it('offers no Project control', () => {
+    open()
+    // Owner is a picker on this modal and answers to its label, so asking the same question of
+    // Project is a real question rather than a vacuous one.
+    expect(screen.getByRole('button', { name: 'Owner' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Project' })).toBeNull()
+    expect(screen.queryByRole('combobox', { name: 'Project' })).toBeNull()
+  })
+
+  it('sends no projectId — the server derives it from the parent', async () => {
+    open()
+    fireEvent.change(screen.getByPlaceholderText('Enter task name'), {
+      target: { value: 'DEV - derived project' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create Task' }))
+
+    await waitFor(() => expect(createTask).toHaveBeenCalled())
+    expect(createTask.mock.calls[0][0]).not.toHaveProperty('projectId')
   })
 })
