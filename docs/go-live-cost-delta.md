@@ -1,7 +1,7 @@
 # Go-live cost delta — what launch does to the AWS bill
 
-**Bottom line: go-live adds $66.74/mo to production, taking rally prod from ~$6/mo idle
-to ~$73/mo running.** None of it is waste — it is the price of a database that is
+**Bottom line: go-live adds $70.90/mo to production, taking rally prod from ~$6/mo idle
+to ~$77/mo running.** None of it is waste — it is the price of a database that is
 awake, two tasks that answer requests, a cache that makes two security controls fail
 closed, and one alarm that notices when none of that is true.
 
@@ -50,12 +50,19 @@ with a defined end date.
 | Fargate worker | 0 tasks | 1× 512/1024 Spot | **+$6.95** |
 | ElastiCache | none | cache.t4g.micro | **+$15.45** |
 | Route 53 ingress health check | off | 30s HTTPS check | **+$2.70** |
+| NAT egress (`runtime-prod`) | `nat_type = "none"` | fck-nat t4g.nano | **+$4.16** |
 | CloudWatch alarms | 12 | 21 (autoscaling ×8, ingress ×1) | **+$0.90** |
-| **total** | | | **+$66.74/mo** |
+| **total** | | | **+$70.90/mo** |
 
-Rally production then runs at roughly **$73/mo** all-in (the delta plus the $4.14 storage
-and ~$1.20 of secrets it already bills), excluding the shared platform layer and data
-transfer.
+Rally production then runs at roughly **$77/mo** all-in (the delta plus the $4.14 storage
+and ~$1.20 of secrets it already bills), excluding the rest of the shared platform layer
+and data transfer.
+
+The NAT line is the one item that is **not** in this repository. It lives in
+`qnsc-infra/live/runtime-prod`, and it is not optional: with `nat_type = "none"` a Fargate
+task cannot pull from ECR, read a secret, or let cloudflared dial out — so production has
+no ingress either. It fails at task start with `ResourceInitializationError`, long after
+a clean apply. See QNSC-VN/qnsc-infra#68, which must land **before** the floors go to 1.
 
 ### Three checklist items were declined on cost
 
@@ -69,7 +76,7 @@ written next to the setting in `infra/live/prod/main.tf`, not only here.
 | `monitoring_interval = 60` | ~+$2.10/mo | investigating a specific incident — then turn it back off |
 | `multi_az = true` | **+$22.39/mo** on micro ($18.25 doubled instance + $4.14 mirrored volume) | see the section below; this is the one that trades availability |
 
-Together they are **$43.47/mo**, which is why this document says ~$73 rather than ~$117.
+Together they are **$43.47/mo**, which is why this document says ~$77 rather than ~$121.
 Both burstable-instance signals are free native CloudWatch metrics, so watching for the
 moment the first decision expires costs nothing.
 
@@ -199,6 +206,28 @@ no ECS `healthCheck` can probe it. It was off pre-launch because zero tasks mean
 reported DOWN continuously — paying $2.70/mo to be paged every minute about the intended
 state — and that premise ends when the floors go to 1.
 
+### NAT egress: +$4.16 — and it is a hard dependency, not a cost line
+
+`runtime-prod` ran with `nat_type = "none"` while both services sat at zero. Correct then:
+no tasks to route, and a fck-nat t4g.nano is pure waste in an environment with none.
+
+It is a **blocker** for go-live, not a nice-to-have. With no default route on the private
+route tables, a Fargate task cannot pull its image from ECR, cannot read Secrets Manager,
+cannot reach R2, and — the part that surprises — **the cloudflared sidecar cannot dial out
+to Cloudflare**. The tunnel is an outbound connection, so `"none"` costs production its
+*ingress* as well. The failure appears at task start as `ResourceInitializationError`;
+the Terraform apply is clean and the deploy reports a rollout.
+
+fck-nat t4g.nano is the cheap answer at **$4.16/mo**. A NAT gateway is ~$33/mo for the
+same job and interface endpoints ~$85/mo across three AZs.
+
+Single-AZ, and `multi_az_nat` is **inert** in instance mode — the module always creates
+one instance in `azs[0]`. An AZ failure therefore takes egress from every private subnet,
+not just that AZ's. Tasks already running keep serving; nothing new can start. Accepted on
+the same reasoning as the database: it is single-AZ too.
+
+Tracked in QNSC-VN/qnsc-infra#68.
+
 ### CloudWatch alarms: +$0.90
 
 Autoscaling returns (4 alarms per service × 2 = 8 at $0.10) plus the ingress alarm.
@@ -240,13 +269,13 @@ Worth stating, because it is where the money already is:
 |---|---|---|
 | 2× ALB + 6 public IPv4 | 62 | shared platform layer; 3-AZ is load-bearing |
 | dev environment | ~44 | unchanged by prod launch |
-| 2× fck-nat instance | 8 | already the cheap option ($3 vs $33 NAT gateway) |
+| 1× fck-nat instance (dev) | 4 | already the cheap option ($4 vs $33 NAT gateway); prod's is in the delta above |
 | secrets | 0.80 | post-bundling |
 | Config, KMS, ECR, S3 | ~12 | already minimised |
-| **subtotal** | **~127** | |
+| **subtotal** | **~123** | |
 
-**So the account lands near $200/mo with rally live** — ~$127 of shared platform and dev
-plus ~$73 of production. Against a $150/mo target, the $50 gap is not in this document:
+**So the account lands near $200/mo with rally live** — ~$123 of shared platform and dev
+plus ~$77 of production. Against a $150/mo target, the $50 gap is not in this document:
 every configurational item here has already been declined or is load-bearing. It is in
 the $62 of ALB and public IPv4 and the ~$44 dev environment, both of which are
 architectural questions about running two full environments across three AZs.
@@ -257,13 +286,13 @@ opshub#85. That is documented in `runtime-dev/main.tf`.
 
 ## Recommendations
 
-**1. Set the budget expectation at ~$73/mo for rally prod,** on top of whatever dev and
+**1. Set the budget expectation at ~$77/mo for rally prod,** on top of whatever dev and
 the shared platform layer cost. A production environment with one task per service, a
 running database and a cache has a floor, and after declining $43.47/mo of checklist
 items this is close to it. The remaining items are load-bearing, not padding.
 
 **2. Do not pre-provision.** Every item above flips **at** go-live, not before. The idle
-posture saved $66.74/mo for the fifteen days it was held.
+posture saved $70.90/mo for the fifteen days it was held.
 
 **3. Watch these four after launch,** in order of how wrong the estimate could be:
 
@@ -276,9 +305,10 @@ posture saved $66.74/mo for the fifteen days it was held.
   instance replaced (`docs/runbooks/rds-storage-shrink.md`).
 
 **4. The configuration levers are spent.** Multi-AZ (+$22.39), t4g.small (+$18.98) and
-Enhanced Monitoring (+$2.10) are all declined, which is why this says ~$73 rather than
-~$117. What remains — the running database ($18.25), the api task ($22.49), the cache
-node ($15.45), the Spot worker ($6.95) — is the environment itself.
+Enhanced Monitoring (+$2.10) are all declined, which is why this says ~$77 rather than
+~$121. What remains — the running database ($18.25), the api task ($22.49), the cache
+node ($15.45), the Spot worker ($6.95), the NAT instance ($4.16) — is the environment
+itself.
 
 If the number still has to come down, the honest options are architectural rather than
 configurational: collapse dev into an ephemeral environment, or delay restoring the api
