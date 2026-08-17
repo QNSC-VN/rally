@@ -15,10 +15,16 @@ mirrored volume, so 100 GB allocated is 200 GB paid), plus Enhanced Monitoring. 
 dollar buys durability and observability for a database with no users. Pre-launch it is
 ~$22/mo, a **$79/mo** difference — the largest single line on the account.
 
-**This is explicitly reversible and explicitly temporary.** The go-live checklist in
-`infra/live/prod/main.tf` above the `rds` block flips all of it back before the first
-real user. Instance class, Multi-AZ and monitoring can be turned on in place at any
-time. **Storage cannot** — which is why the shrink happens now.
+**This is explicitly reversible and explicitly temporary.** Instance class, Multi-AZ and
+Enhanced Monitoring can be turned on in place at any time. **Storage cannot** — which is
+why the shrink happens now.
+
+Note what go-live actually did with those three: it kept all of them. `t4g.micro`,
+single-AZ and `monitoring_interval = 0` each survived being costed against measured rates
+and each carries a named signal that revokes it — see `docs/go-live-cost-delta.md` and
+the note above the `rds` block in `infra/live/prod/main.tf`. So "flips back before the
+first real user" was the earlier plan, not what happened; storage is the only item here
+whose timing was ever forced.
 
 ---
 
