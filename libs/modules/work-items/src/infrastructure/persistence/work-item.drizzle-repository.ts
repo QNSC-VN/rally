@@ -713,7 +713,12 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     workspaceId: string,
     userId: string,
     { limit }: { limit: number },
+    readableProjectIds: string[] | null,
   ): Promise<MyWorkItem[]> {
+    // `null` = UNRESTRICTED; an array restricts, and the EMPTY one short-circuits because
+    // `inArray(col, [])` is not portable as "match nothing". See the port for why this widget needs
+    // the scope at all: "assigned to me" says whose the item is, not which project it may be read in.
+    if (readableProjectIds !== null && readableProjectIds.length === 0) return [];
     const rows = await this.db
       .select({
         id: workItems.id,
@@ -733,6 +738,9 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           eq(workItems.workspaceId, workspaceId),
           eq(workItems.assigneeId, userId),
           isNull(workItems.deletedAt),
+          ...(readableProjectIds === null
+            ? []
+            : [inArray(workItems.projectId, readableProjectIds)]),
         ),
       )
       .orderBy(
@@ -746,9 +754,38 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return rows;
   }
 
-  /** Exact workspace-wide counts for the Home summary strip. "Open" = the work
-   *  item's workflow-status category is not `done`. */
-  async getWorkspaceSummary(workspaceId: string, userId: string): Promise<WorkspaceSummary> {
+  /**
+   * Exact counts for the Home summary strip, over the projects the caller may READ. "Open" = the work
+   * item's workflow-status category is not `done`.
+   *
+   * All three queries take the same scope, and they have to: the strip is one row of tiles about one
+   * population, so scoping the work-item counts while leaving `activeProjects` or `activeSprints`
+   * workspace-wide would put a project count next to item counts drawn from a different set — the
+   * mismatch CLAUDE.md records for Velocity's zero-point bars ("eligibility must be counted in the
+   * SAME scope as the measurement").
+   *
+   * An EMPTY scope returns zeros, and zero is a MEASUREMENT here, not an absence: the reader has no
+   * readable project, so nothing is genuinely in scope. The SPA renders `--` only for a value it never
+   * received (`EMPTY_VALUE`), which keeps the two distinguishable on screen.
+   */
+  async getWorkspaceSummary(
+    workspaceId: string,
+    userId: string,
+    readableProjectIds: string[] | null,
+  ): Promise<WorkspaceSummary> {
+    const EMPTY: WorkspaceSummary = {
+      activeProjects: 0,
+      activeSprints: 0,
+      openWorkItems: 0,
+      blockedItems: 0,
+      openDefects: 0,
+      assignedToMe: 0,
+    };
+    // `inArray(col, [])` is not portable as "match nothing", so the empty scope short-circuits.
+    if (readableProjectIds !== null && readableProjectIds.length === 0) return EMPTY;
+    const inScope = (column: AnyColumn) =>
+      readableProjectIds === null ? [] : [inArray(column, readableProjectIds)];
+
     const [projRow] = await this.db
       .select({ c: sql<number>`count(*)::int` })
       .from(projects)
@@ -757,12 +794,19 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           eq(projects.workspaceId, workspaceId),
           eq(projects.status, 'active'),
           isNull(projects.deletedAt),
+          ...inScope(projects.id),
         ),
       );
     const [iterRow] = await this.db
       .select({ c: sql<number>`count(*)::int` })
       .from(iterations)
-      .where(and(eq(iterations.workspaceId, workspaceId), eq(iterations.state, 'committed')));
+      .where(
+        and(
+          eq(iterations.workspaceId, workspaceId),
+          eq(iterations.state, 'committed'),
+          ...inScope(iterations.projectId),
+        ),
+      );
     const [wiRow] = await this.db
       .select({
         open: sql<number>`sum(case when ${workflowStatuses.category} <> 'done' then 1 else 0 end)::int`,
@@ -772,7 +816,13 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       })
       .from(workItems)
       .innerJoin(workflowStatuses, eq(workflowStatuses.id, workItems.statusId))
-      .where(and(eq(workItems.workspaceId, workspaceId), isNull(workItems.deletedAt)));
+      .where(
+        and(
+          eq(workItems.workspaceId, workspaceId),
+          isNull(workItems.deletedAt),
+          ...inScope(workItems.projectId),
+        ),
+      );
     return {
       activeProjects: projRow?.c ?? 0,
       activeSprints: iterRow?.c ?? 0,

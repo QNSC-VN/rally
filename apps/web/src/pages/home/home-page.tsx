@@ -222,6 +222,18 @@ export function HomePage() {
       />
 
       {/* Summary strip */}
+      {/*
+        The strip stays MOUNTED in every phase — the BA's structure-preserving rule, and the reason
+        the six values cannot be coerced: `?? 0` here would read as "this workspace has no active
+        projects" for a request that never answered. `metric()` renders `--` instead. On a FAILURE the
+        strip and a stated error go together (the `ReportSurface` rule in CLAUDE.md), because six
+        silent `--` is indistinguishable from a workspace that genuinely holds nothing.
+
+        What the numbers COUNT is now the caller's readable scope, not the workspace:
+        `GET /v1/work-items/summary` is scoped by `AccessService.listReadableProjectIds`. It was not,
+        which is the "Unassigned metadata leak" half of GAP-P4-RBAC-003 (AC4) — a user whose access to
+        a project had been removed still read that project's aggregate counts here.
+      */}
       {loadingSummary ? (
         <div className="flex shrink-0 border-b border-border-subtle bg-card">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -255,6 +267,14 @@ export function HomePage() {
           ))}
         </div>
       )}
+      {summaryResource.isError ? (
+        <p
+          role="alert"
+          className="shrink-0 border-b border-border-subtle bg-card px-5 py-1.5 text-ui-xs text-destructive"
+        >
+          {t('common:loadFailed')}
+        </p>
+      ) : null}
 
       {/* Body grid */}
       <div className="grid flex-1 grid-cols-3 gap-4 p-4">

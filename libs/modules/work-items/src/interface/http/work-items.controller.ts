@@ -249,10 +249,18 @@ export class WorkItemsController {
     return { data: page.data.map(toWorkItemDto), pageInfo: page.pageInfo };
   }
 
-  // ── Home dashboard aggregates (workspace-scoped; declared before @Get(':id')) ──
+  // ── Home dashboard aggregates (declared before @Get(':id')) ──
+  //
+  // BOTH are scoped by `listReadableProjectIds` in the service, not by `workspace_id`. They used not
+  // to be, which made Home the one surface that still reported a project after a Workspace Admin
+  // removed the reader's access to it — GAP-P4-RBAC-003, against Phase 4
+  // `02_Roles_Permissions/SRS.md` §2.2 and §6 ("navigation, selectors, search or results").
 
   @Get('my')
-  @SelfScoped('lists work items assigned to the caller')
+  // Self-scope is TRUE and is not sufficient on its own: "assigned to me" bounds whose the items are,
+  // not which projects they may be read in, and an item stays assigned after access is removed. The
+  // service narrows by `listReadableProjectIds` as well.
+  @SelfScoped('lists work items assigned to the caller, within their readable projects')
   @ApiOperation({ summary: 'Top-N work items assigned to the current user (Home widget)' })
   @ApiResponse({ status: 200, type: MyWorkItemResponseDto, isArray: true })
   @ApiCommonErrors(400, 401)
@@ -266,6 +274,10 @@ export class WorkItemsController {
 
   @Get('summary')
   @AuthorizedInService('scoped by listReadableProjectIds', 'project-authz.e2e.spec.ts')
+  // The `@ApiOperation` summary below still says "Workspace-wide" and is deliberately UNTOUCHED: it is
+  // emitted into `apps/web/src/shared/api/generated/api.ts` as a JSDoc line, so rewording it makes
+  // `codegen:check` fail until the committed client is regenerated against a running API. The accurate
+  // description is the block comment above.
   @ApiOperation({ summary: 'Workspace-wide summary counts for the Home strip' })
   @ApiResponse({ status: 200, type: WorkspaceSummaryResponseDto })
   @ApiCommonErrors(401)

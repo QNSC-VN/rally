@@ -95,8 +95,29 @@ export interface IWorkItemRepository {
   ): Promise<string | null>;
   /** Server-side aggregated totals for a parent's tasks (totals row). */
   getTaskTotals(parentId: string, workspaceId: string): Promise<TaskTotals>;
-  listMyWork(workspaceId: string, userId: string, args: { limit: number }): Promise<MyWorkItem[]>;
-  getWorkspaceSummary(workspaceId: string, userId: string): Promise<WorkspaceSummary>;
+  /**
+   * The two Home aggregates, and the ONE sentinel both share with every other cross-project read:
+   * `readableProjectIds` is `null` for UNRESTRICTED and an array — possibly EMPTY — for restricted.
+   * The distinction is the whole point: a caller that flattens `null` to `[]` fails closed, and one
+   * that flattens `[]` to "all" leaks the workspace. See `AccessService.listReadableProjectIds`.
+   *
+   * Both were scoped by `workspace_id` alone, which is what made Home the one surface that still
+   * reported a project after a Workspace Admin removed the reader's access to it (GAP-P4-RBAC-003,
+   * AC4) — against Phase 4 `02_Roles_Permissions/SRS.md` §2.2 and §6, which put an unassigned
+   * project out of navigation, selectors, search AND results. `listHealthByWorkspace` in the projects
+   * module already took the sentinel for exactly this reason and is the model.
+   */
+  listMyWork(
+    workspaceId: string,
+    userId: string,
+    args: { limit: number },
+    readableProjectIds: string[] | null,
+  ): Promise<MyWorkItem[]>;
+  getWorkspaceSummary(
+    workspaceId: string,
+    userId: string,
+    readableProjectIds: string[] | null,
+  ): Promise<WorkspaceSummary>;
   /**
    * Check whether ALL non-deleted child tasks of a parent are in 'completed' state.
    * Returns true if the parent has zero tasks (nothing to block completion).

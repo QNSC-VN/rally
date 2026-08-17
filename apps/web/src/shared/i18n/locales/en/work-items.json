@@ -47,6 +47,7 @@
     "close": "Close summary panel"
   },
   "notFound": "Work item \"{{key}}\" not found.",
+  "notFoundHint": "Check the ID, or open it from the Backlog.",
   "backToBacklog": "← Back to Backlog",
   "watch": {
     "watch": "Watch",
