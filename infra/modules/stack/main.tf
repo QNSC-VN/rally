@@ -553,6 +553,8 @@ locals {
 module "api" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.1.1"
 
+  cpu_architecture = var.cpu_architecture
+
   service_name = "api"
   cluster_name = module.ecs_cluster.cluster_name
   cluster_arn  = module.ecs_cluster.cluster_arn
@@ -792,6 +794,8 @@ module "api" {
 module "worker" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.1.1"
 
+  cpu_architecture = var.cpu_architecture
+
   service_name = "worker"
   cluster_name = module.ecs_cluster.cluster_name
   cluster_arn  = module.ecs_cluster.cluster_arn
@@ -950,6 +954,11 @@ module "worker" {
 # pipelines trigger it with: aws ecs run-task ...
 module "migrator" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v2.0.0"
+
+  # Same architecture as the api and worker, and not independently settable: the migrator
+  # runs the SAME image family, so a mismatch here is a task that cannot start during a
+  # deploy — after the schema change has already been attempted or skipped.
+  cpu_architecture = var.cpu_architecture
 
   name               = "${local.name}-migrator"
   container_name     = "migrator"
