@@ -204,10 +204,14 @@ module "stack" {
   // go first, Celery's queue is never a candidate. Setting `allkeys-lru` to make rally's
   // cache behave better under pressure would silently start dropping qnsc-kb's tasks.
   //
-  // APPLYING THIS DESTROYS rally-develop-cache and issues a different endpoint, so it is
-  // a task-definition revision and a rolling deploy, not an in-place edit. Harmless here:
-  // the cache holds rate-limit counters, denylist entries and SSE fan-out, all of which
-  // rebuild on demand. PRODUCTION KEEPS ITS OWN NODE and is untouched by this.
+  // APPLIED 2026-08-17. rally-develop-cache was destroyed and the endpoint changed, so the
+  // cutover was a task-definition revision plus a rolling deploy. Verified afterwards:
+  // /v1/readyz reported postgres up AND valkey up, and the worker's NotificationPubSub
+  // logged no lookup failures on the new revision. The old revision briefly did — it still
+  // named the deleted node — which is worth knowing for any future endpoint change: the
+  // apply registers a task definition, the DEPLOY is what puts it in service.
+  //
+  // PRODUCTION KEEPS ITS OWN NODE and was untouched by this.
   cache = {
     shared   = true
     db_index = 0
