@@ -1,74 +1,119 @@
 # Go-live cost delta — what launch does to the AWS bill
 
-**Bottom line: the bill roughly doubles at go-live, from ~$140/mo to ~$253/mo, and none
-of that increase is waste.** It is the price of the durability and observability that
-production is deliberately running without while it has no users.
+**Bottom line: go-live adds $66.74/mo to production, taking rally prod from ~$6/mo idle
+to ~$73/mo running.** None of it is waste — it is the price of a database that is
+awake, two tasks that answer requests, a cache that makes two security controls fail
+closed, and one alarm that notices when none of that is true.
 
-This exists because the go-live checklist in `infra/live/prod/main.tf` has never been
-costed. Every item in it is correct; the total was simply never added up. A CEO
-optimising a $140 bill should know it is about to become $253+ regardless of what is
-trimmed today.
+This exists because the go-live checklist in `infra/live/prod/main.tf` had never been
+costed. Every item in it was defensible; the total was never added up, and three of the
+items turned out not to survive being costed.
 
-Prices are ap-southeast-1 (Singapore), on-demand, as of 2026-08. Monthly figures assume
-730 hours.
+## Rates are MEASURED, not quoted
+
+Every figure below comes from **Cost Explorer unblended cost ÷ usage quantity on the
+July 2026 bill**, in this account, in ap-southeast-1. Monthly figures assume 730 hours.
+
+That matters, because the first version of this document used list prices typed from
+memory and **every one of them was wrong** — RDS t4g.micro by +32%, the cache node by
+−20%. A costing document sourced from recollection is worse than none: it reads as
+evidence. If a rate below needs updating, re-derive it the same way:
+
+```bash
+aws ce get-cost-and-usage --time-period Start=2026-07-01,End=2026-08-01 \
+  --granularity MONTHLY --metrics UnblendedCost UsageQuantity \
+  --group-by Type=DIMENSION,Key=USAGE_TYPE \
+  --filter '{"Dimensions":{"Key":"SERVICE","Values":["Amazon ElastiCache"]}}'
+```
+
+| resource | measured rate | $/mo at 730 h |
+|---|---|---|
+| Fargate on-demand | $0.050560/vCPU-h + $0.005530/GB-h | — |
+| Fargate Spot | $0.015634/vCPU-h + $0.001710/GB-h | — |
+| RDS db.t4g.micro, single-AZ, PostgreSQL | $0.0250/h | 18.25 |
+| RDS gp3 storage | $0.138/GB-mo | 4.14 at 30 GB |
+| ElastiCache cache.t4g.micro | $0.021165/h | 15.45 |
+| CloudWatch alarm | $0.10/alarm-mo | — |
 
 ## The two postures
 
-Production today is **pre-launch idle**: zero tasks, RDS stopped, no cache node, several
-alarms off. That is not a degraded state — it is a deliberate, documented posture with a
-defined end date, and `infra/live/prod/main.tf` names every flag that flips.
+Production was **pre-launch idle** from 2026-08-02 until go-live: zero tasks, RDS
+stopped, no cache node, several alarms off. Not a degraded state — a deliberate posture
+with a defined end date.
 
-| | today (idle) | at go-live | delta |
+| | idle | at go-live | delta |
 |---|---|---|---|
-| RDS instance | t4g.micro, **stopped** (bills $0) | t4g.small single-AZ | **+$48.18** |
-| RDS storage | 30 GB gp3 | 30 GB gp3 (unchanged) | **$0** |
-| RDS Enhanced Monitoring | off | 60s interval | **+$2.10** |
-| Fargate api | 0 tasks | 1× 1024/2048 on-demand | **+$41.45** |
-| Fargate worker | 0 tasks | 1× 512/1024 Spot | **+$6.22** |
-| ElastiCache | none | cache.t4g.micro | **+$12.41** |
-| CloudWatch alarms | 12 | 21 (autoscaling + target health) | **+$0.90** |
-| **total** | | | **+$112/mo** |
+| RDS instance | t4g.micro, **stopped** (bills $0) | t4g.micro **running**, single-AZ | **+$18.25** |
+| RDS storage | 30 GB gp3 | 30 GB gp3 (unchanged) | $0 |
+| RDS Enhanced Monitoring | off | **still off** — declined below | $0 |
+| Fargate api | 0 tasks | 1× 512/1024 on-demand | **+$22.49** |
+| Fargate worker | 0 tasks | 1× 512/1024 Spot | **+$6.95** |
+| ElastiCache | none | cache.t4g.micro | **+$15.45** |
+| Route 53 ingress health check | off | 30s HTTPS check | **+$2.70** |
+| CloudWatch alarms | 12 | 21 (autoscaling ×8, ingress ×1) | **+$0.90** |
+| **total** | | | **+$66.74/mo** |
 
-Add the dev environment and shared platform layer, which do not change at go-live:
+Rally production then runs at roughly **$73/mo** all-in (the delta plus the $4.14 storage
+and ~$1.20 of secrets it already bills), excluding the shared platform layer and data
+transfer.
 
-| | $/mo |
-|---|---|
-| current run-rate (both environments bundled, 2026-08-02) | ~140 |
-| go-live delta | +112 |
-| **projected at launch (1 task per service)** | **~253** |
-| with realistic autoscaling headroom (see below) | **~294** |
+### Three checklist items were declined on cost
 
-The ~$140 baseline is a projection from the last complete billing day, not a settled
-month. July's actual bill was $264.72, but most of that was costs that no longer exist
-(interface VPC endpoints, Multi-AZ RDS, AWS Config at CONTINUOUS recording, Container
-Insights). August is the first clean read.
+They were in the checklist, they were costed, and they did not survive it. Each is one
+line and an apply to reverse, and each has a **named signal** that revokes the decision —
+written next to the setting in `infra/live/prod/main.tf`, not only here.
+
+| declined | would cost | revoke when |
+|---|---|---|
+| `instance_class = "db.t4g.small"` | **+$18.98/mo** ($37.23 vs $18.25) | `CPUCreditBalance` trending to zero, or `FreeableMemory` under ~100 MB |
+| `monitoring_interval = 60` | ~+$2.10/mo | investigating a specific incident — then turn it back off |
+| `multi_az = true` | **+$22.39/mo** on micro ($18.25 doubled instance + $4.14 mirrored volume) | see the section below; this is the one that trades availability |
+
+Together they are **$43.47/mo**, which is why this document says ~$73 rather than ~$117.
+Both burstable-instance signals are free native CloudWatch metrics, so watching for the
+moment the first decision expires costs nothing.
+
+The earlier version of this document recommended flipping all three. It reached that
+conclusion honestly and with bad arithmetic: it priced t4g.small at $48.18/mo against a
+**stopped** micro, making the upgrade look like a rounding error inside a $112 delta. At
+measured rates the small is a 104% increase on the instance line for RAM nothing has
+asked for.
 
 ## Line by line
 
-### RDS: +$50.28 — still the single biggest item
+### RDS: +$18.25 — the instance simply wakes up
 
-The checklist flips two things:
+The class does **not** change. The instance was stopped, billing storage only, so the
+delta is the whole running rate rather than the difference between two sizes:
 
-```hcl
-instance_class      = "db.t4g.small"   # 2 GB rather than 1 GB
-monitoring_interval = 60               # per-process and per-device visibility
-```
-
-| | rate | $/mo |
+| | measured rate | $/mo |
 |---|---|---|
-| t4g.micro single-AZ (today, stopped) | $0.033/hr | 24.09 |
-| **t4g.small single-AZ (go-live)** | **$0.066/hr** | **48.18** |
-| t4g.small Multi-AZ (declined) | $0.132/hr | 96.36 |
+| **t4g.micro single-AZ (idle and live)** | **$0.0250/hr** | **18.25** |
+| t4g.small single-AZ (declined) | $0.0510/hr | 37.23 |
+| t4g.micro Multi-AZ (declined) | $0.0500/hr | 36.50 |
+| t4g.small Multi-AZ (declined) | $0.1020/hr | 74.46 |
 
-The instance is **stopped today**, billing storage only — so the delta is the full
-$48.18, not the difference between two running instances. Plus Enhanced Monitoring at
-60s ≈ **+$2.10/mo**.
+t4g is **burstable**, which is what makes holding at micro a measured risk rather than a
+gamble: the instance earns 12 CPU credits/hour at a 10% baseline and spends them on
+spikes. Exhausting them throttles gradually; it does not fall over. `CPUCreditBalance`
+trending to zero is the signal, and the fix is one line and a ~2-minute reboot — no
+snapshot, no endpoint change.
 
-#### Multi-AZ was considered and declined (2026-08-02)
+Enhanced Monitoring stays at `0`. It streams OS-level metrics to CloudWatch Logs to
+answer "which process", a question a single-application database rarely raises;
+Performance Insights' free 7-day tier and the native CPU/memory/IOPS metrics cover what
+actually gets asked. It takes effect without a reboot, so it is a debugging tool to
+switch on during an incident, not a posture to carry.
 
-It would have added **$52.32/mo** ($48.18 doubled instance rate + $4.14 mirrored
-volume), a third of the original delta and more than every other line combined. That is
-what makes the go-live number ~$253 rather than ~$305.
+#### Multi-AZ was considered and declined (2026-08-02, re-costed 2026-08-17)
+
+On the micro it is **+$22.39/mo** ($18.25 doubled instance rate + $4.14 mirrored volume)
+— the largest single item declined here, and the only one that trades **availability**
+rather than deferring spend.
+
+The original decision was taken against a $52.32/mo figure derived from t4g.small. The
+number was wrong; the decision was not, and it stands at the corrected price for the same
+reasons below.
 
 This is the one decision here that trades **availability**, not deferred spend:
 
@@ -83,37 +128,48 @@ Those two settings are now coupled: **do not lower retention while single-AZ.**
 
 Revisit when the product carries paying users, an availability commitment (SLA,
 contract, SOC 2 CC7.x continuity), or a workload where hours of downtime costs more than
-$52/mo. **Not a one-way door** — RDS converts single-AZ to Multi-AZ in place: one flag,
+$22/mo. **Not a one-way door** — RDS converts single-AZ to Multi-AZ in place: one flag,
 one apply, a brief failover, no data migration and no endpoint change.
 
 `prod/main.tf` already argues the general case correctly: every dollar currently buys
 durability for a database with no users. That reverses the moment there are users.
 
-### Fargate: +$47.67
+### Fargate: +$29.44
 
-Both services sit at `min_count = 0` today. Production has **never served a real user** —
-the ALB logged 4, 1, 0, 1 requests on four consecutive days, and the non-zero days since
-are SCM webhooks and synthetic probes.
+Both services sat at `min_count = 0`. Production had **never served a real user** — the
+ALB logged 4, 1, 0, 1 requests on four consecutive days, and the non-zero days since were
+SCM webhooks and synthetic probes.
 
-At go-live both floors return to 1:
+At go-live both floors return to 1, at **512 CPU / 1024 MB each**:
 
-- **api**, 1024 CPU / 2048 MB, on-demand: (1 × $0.04656 + 2 × $0.00511) × 730 =
-  **$41.45/mo**
-- **worker**, 512 CPU / 1024 MB, on-demand would be $20.72; at ~70% Spot discount →
-  **$6.22/mo**
+- **api**, on-demand: (0.5 × $0.050560 + 1 × $0.005530) × 730 = **$22.49/mo**
+- **worker**, Spot: (0.5 × $0.015634 + 1 × $0.001710) × 730 = **$6.95/mo**
 
-The worker being Spot is worth $15.60/mo and is already justified in the code: the relay
-claims rows `FOR UPDATE SKIP LOCKED` and every write is an idempotent upsert, so an
-interruption loses no work. The api stays on-demand because an interruption there is a
-dropped request and a broken SSE stream.
+The api was 1024/2048 when this document was first written — $44.98/mo at measured
+rates, 38% of everything rally cost across both environments, for an API serving single-
+digit daily requests. It was right-sized to 512/1024 before launch, and `max_count = 10`
+with a 60% CPU target is where the headroom actually lives: production absorbs a spike by
+**adding** tasks, from a cheaper unit. Two 512 tasks cost the same as one 1024 and
+survive an AZ event; one 1024 task does not.
 
-### ElastiCache: +$12.41
+Spot on the worker is worth **$15.54/mo** ($22.49 on-demand vs $6.95) and is justified in
+the code: the relay claims rows `FOR UPDATE SKIP LOCKED` and every write is an idempotent
+upsert, so an interruption loses no work. The api stays on-demand because an interruption
+there is a dropped request and a broken SSE stream.
 
-`cache.enabled = false` today. ElastiCache has no stopped state — only delete — so the
-node is the one component of an idled environment that keeps billing, which is why it
+A floor of 1 is **not** a high-availability posture and nothing claims it is: one api
+task means a task replacement or an AZ event is a brief outage. Raising the floor to 2 is
+$22.49/mo and is a traffic decision, not a launch-day one.
+
+### ElastiCache: +$15.45
+
+`cache.enabled = false` while idle. ElastiCache has no stopped state — only delete — so
+the node is the one component of an idled environment that keeps billing, which is why it
 was removed.
 
-cache.t4g.micro: $0.017/hr = **$12.41/mo**.
+cache.t4g.micro: $0.021165/hr = **$15.45/mo**, the second-largest line in the delta. It
+is not optional at any price, and the reason is a security property rather than a
+performance one:
 
 A `check` block in the stack module enforces that `cache.enabled = false` and
 `min_count = 0` move together, because a task that cannot reach its cache does not fail
@@ -124,23 +180,37 @@ the floors.
 Recreating the node issues a **new endpoint** and takes ~10 minutes. Harmless now
 (no sessions to lose); not harmless later.
 
+### Ingress monitoring: +$2.70, and it is not the alarm the checklist named
+
+The checklist said to restore `monitor_target_health`. **That flag is inert here.** It
+creates a target-group UnHealthyHostCount alarm, and a tunnelled task has no target
+group — the stack module passes `target_group_arns = {}` whenever `tunnel_enabled` is
+true, so setting it would have produced a flag that reads as coverage and creates
+nothing. It stays `false`, and the file now says why.
+
+What actually comes on is `monitor_ingress`: a Route 53 health check probing
+`rally-api.qnsc.vn/v1/healthz` from outside AWS every 30 s, ~**$2.70/mo** ($0.75 base
+plus HTTPS and fast-interval options). It exercises the whole user path — Cloudflare
+edge, tunnel, connector, app — instead of any one component's opinion of itself.
+
+It is production's **only** ingress alarm while tunnelled. ECS reports a task RUNNING
+whether or not cloudflared holds edge connections, and the sidecar image is distroless so
+no ECS `healthCheck` can probe it. It was off pre-launch because zero tasks meant it
+reported DOWN continuously — paying $2.70/mo to be paged every minute about the intended
+state — and that premise ends when the floors go to 1.
+
 ### CloudWatch alarms: +$0.90
 
-Autoscaling returns (4 alarms per service × 2 = 8 at $0.10) and
-`monitor_target_health` comes back on (1 alarm). 12 alarms today → 21.
-
-`monitor_target_health` is the only alarm that catches an outage producing no load to
-move CPU, latency or 5xx. It is off today precisely because zero tasks is the intended
-state and the alarm treats missing data as breaching.
+Autoscaling returns (4 alarms per service × 2 = 8 at $0.10) plus the ingress alarm.
+12 alarms → 21.
 
 ## What the table does not include
 
-**Autoscaling headroom.** The figures above price *one* task per service — the floor,
-not the steady state. `max_count = 10` for the api. Real traffic at
-`cpu_target_pct = 60` will hold more than one task during business hours. A realistic
-2-task average on the api adds **~$41/mo**, which is where the ~$294 figure comes from.
-This is the number most likely to be wrong, in either direction, and only real traffic
-will settle it.
+**Autoscaling headroom.** The figures above price *one* task per service — the floor, not
+the steady state. `max_count = 10` for the api, and real traffic at `cpu_target_pct = 60`
+will hold more than one task during business hours. A 2-task average on the api adds
+**+$22.49/mo**. This is the number most likely to be wrong, in either direction, and only
+real traffic settles it.
 
 **Data transfer.** Currently $0 because of the 100 GB/month free allowance, ~15%
 consumed pre-launch — and **99% of that was ECR image pulls**, which scale with deploy
@@ -173,6 +243,13 @@ Worth stating, because it is where the money already is:
 | 2× fck-nat instance | 8 | already the cheap option ($3 vs $33 NAT gateway) |
 | secrets | 0.80 | post-bundling |
 | Config, KMS, ECR, S3 | ~12 | already minimised |
+| **subtotal** | **~127** | |
+
+**So the account lands near $200/mo with rally live** — ~$127 of shared platform and dev
+plus ~$73 of production. Against a $150/mo target, the $50 gap is not in this document:
+every configurational item here has already been declined or is load-bearing. It is in
+the $62 of ALB and public IPv4 and the ~$44 dev environment, both of which are
+architectural questions about running two full environments across three AZs.
 
 The 3-AZ ALB is not padding: a 2-AZ ALB cannot reach targets in the third AZ, which
 caused roughly one task placement in three to fail health checks and rolled back
@@ -180,30 +257,33 @@ opshub#85. That is documented in `runtime-dev/main.tf`.
 
 ## Recommendations
 
-**1. Set the budget expectation at ~$253–294/mo, not $100.** The current <$100 target is
-unreachable while both environments exist, and it does not survive launch under any
-configuration. A production environment with one task per service and a running database
-has a floor, and this is close to it — even with Multi-AZ declined.
+**1. Set the budget expectation at ~$73/mo for rally prod,** on top of whatever dev and
+the shared platform layer cost. A production environment with one task per service, a
+running database and a cache has a floor, and after declining $43.47/mo of checklist
+items this is close to it. The remaining items are load-bearing, not padding.
 
-**2. Do not pre-provision.** Every item above should flip **at** go-live, not before.
-The current idle posture is correct and is saving roughly $112/mo right now.
+**2. Do not pre-provision.** Every item above flips **at** go-live, not before. The idle
+posture saved $66.74/mo for the fifteen days it was held.
 
-**3. Watch these three after launch,** in order of how wrong the estimate could be:
+**3. Watch these four after launch,** in order of how wrong the estimate could be:
 
-- api task count under real traffic (the ±$40 line)
+- api task count under real traffic (the ±$22 line)
+- `CPUCreditBalance` and `FreeableMemory` on the micro — the two signals that revoke the
+  instance-class decision, both free native metrics
 - data transfer out, once past the 100 GB free tier
 - RDS storage growth — `max_allocated_storage_gb = 500` autoscales, and **RDS refuses to
   shrink a volume**. Treat any increase as permanent; coming back down needs the
   instance replaced (`docs/runbooks/rds-storage-shrink.md`).
 
-**4. Multi-AZ is already declined — that lever is spent.** It was the one item large
-enough to matter ($52.32/mo) and it is why this document says ~$253 rather than ~$305.
-There is no comparable saving left in the go-live delta: the next largest items are the
-api task ($41.45) and the cache node ($12.41), and both are load-bearing.
+**4. The configuration levers are spent.** Multi-AZ (+$22.39), t4g.small (+$18.98) and
+Enhanced Monitoring (+$2.10) are all declined, which is why this says ~$73 rather than
+~$117. What remains — the running database ($18.25), the api task ($22.49), the cache
+node ($15.45), the Spot worker ($6.95) — is the environment itself.
 
 If the number still has to come down, the honest options are architectural rather than
-configurational — collapse dev into an ephemeral environment, or delay restoring the
-api floor until there is real traffic. Neither is a settings change.
+configurational: collapse dev into an ephemeral environment, or delay restoring the api
+floor until there is real traffic. Neither is a settings change, and the second means
+production is not actually live.
 
 Because Multi-AZ is off, **the recovery path is load-bearing** — so it was rehearsed
 rather than assumed.
@@ -239,30 +319,30 @@ verifying data before reopening. Budget for the human path, not the AWS one.
   and 3-day rather than 30-day retention. Restore time scales with volume size, so
   production will be somewhat slower.
 
-**5. Revisit Fargate Spot for the api only if the budget forces it.** It saves ~$29/mo
-and costs dropped requests and broken SSE streams on interruption. The worker is already
-Spot for sound reasons; the api is not, for equally sound ones.
+**5. Revisit Fargate Spot for the api only if the budget forces it.** It saves $15.54/mo
+and costs dropped requests and broken SSE streams on interruption — and interruptions are
+real here, not hypothetical: `SpotInterruption` already appears in develop's stopped-task
+reasons. The worker is Spot for sound reasons; the api is not, for equally sound ones.
 
-## The go-live checklist itself
+## The go-live change itself
 
-For completeness, what flips (all in `infra/live/prod/main.tf`):
+What actually shipped, in `infra/live/prod/main.tf`:
 
 ```hcl
-monitor_target_health = true            # restore the outage alarm
+monitor_ingress = true                  # NOT monitor_target_health — inert under tunnel
 
-# remove entirely — a schedule that stops production every Sunday
-idle_schedule = "cron(0 1 ? * SUN *)"
+# idle_schedule removed entirely — a schedule that stops production nightly
 
 cache = { enabled = true }              # ~10 min, issues a NEW endpoint
 
-rds = {
-  instance_class      = "db.t4g.small"
-  multi_az            = true
-  monitoring_interval = 60
-}
-
 api    = { min_count = 1, enable_autoscaling = true }
 worker = { min_count = 1, enable_autoscaling = true }
+
+rds = {                                 # DELIBERATELY UNCHANGED
+  instance_class      = "db.t4g.micro"  # not small — raise on CPUCreditBalance
+  multi_az            = false           # declined 2026-08-02
+  monitoring_interval = 0               # a debugging tool, not a posture
+}
 ```
 
 A `validation` block on the stack module's `api` and `worker` variables enforces the

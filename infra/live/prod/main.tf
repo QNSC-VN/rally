@@ -6,9 +6,10 @@
 // 30-day backups, 90-day retention, a pinned image tag — while develop takes the
 // shared, cheap ones.
 //
-// RDS is deliberately PRE-LAUNCH sized right now (single-AZ, t4g.micro, Enhanced
-// Monitoring off). See the go-live checklist above the `rds` block: those settings flip
-// back to the Multi-AZ posture before the first real user, not after.
+// LIVE as of this change: service floors of 1, autoscaling on, cache node up, no idle
+// schedule, ingress health check on. RDS stays single-AZ on t4g.micro with Enhanced
+// Monitoring off — each of those is a costed decision with a named signal that revokes
+// it, written above the `rds` block, not deferred maintenance.
 //
 // Security posture is NOT a per-environment value: the cache module always
 // enables KMS at rest and TLS in transit, so develop cannot be the weaker one.
@@ -110,9 +111,9 @@ module "stack" {
   // Develop completed the same migration on 2026-08-01 (#313, #314); the sequence and
   // the populate/verify script are in docs/runbooks/secrets-bundle-migration.md.
   //
-  // HOW THIS WAS VERIFIED WITHOUT A RUNNING TASK. Production is idle pre-launch
-  // (min_count = 0 on both services, RDS stopped, no cache node), so unlike develop
-  // nothing boots to prove the cutover. Two checks stood in for that, and both must be
+  // HOW THIS WAS VERIFIED WITHOUT A RUNNING TASK. Production was idle when the bundle
+  // was cut over (min_count = 0 on both services, RDS stopped, no cache node), so unlike
+  // develop nothing booted to prove it. Two checks stood in for that, and both must be
   // repeated if this is ever redone:
   //   1. sha256 per key, bundle vs standalone — all 12 identical (bundle-secrets.sh
   //      --verify).
@@ -151,9 +152,9 @@ module "stack" {
   // load. It probes rally-api.qnsc.vn/v1/healthz from outside AWS, so it exercises the
   // whole user path rather than any one component's opinion of itself.
   //
-  // THAT CHECK IS CURRENTLY OFF — see `monitor_ingress` below. Production therefore has
-  // NO ingress alarm at all today, which is correct while it serves nothing and wrong
-  // the moment it does.
+  // THAT CHECK IS ON as of go-live — see `monitor_ingress` below. It was off while
+  // production served nothing, which was correct then and wrong the moment it served
+  // anything.
   //
   // ROLLBACK is not instant: set tunnel_enabled = false, apply, redeploy. That
   // recreates the ALB attachment, but the runtime layer's ALB must exist first
@@ -176,68 +177,62 @@ module "stack" {
   // incident, and it is inside the 3-per-account free tier.
   create_dashboard = true
 
-  // OFF while production is IDLE (see the idle posture on api/worker below). This alarm
-  // treats missing data as breaching, because a target group with no registered targets
-  // publishes nothing at all and that is normally the outage worth paging on — which is
-  // exactly why it cannot stay on while zero tasks is the intended state. Leaving it
-  // enabled during the idle turned the deliberate shutdown into a page.
+  // STAYS OFF, and this is not the pre-launch idle setting left behind — it is the only
+  // correct value while `tunnel_enabled = true`. This alarm watches a target group's
+  // UnHealthyHostCount, and a tunnelled task has no target group: the stack module passes
+  // `target_group_arns = {}` when the tunnel is on, so setting this true creates no alarm
+  // at all. It would be a flag that reads as coverage and produces none.
   //
-  // TURN THIS BACK ON at go-live, in the same change that restores min_count. It is the
-  // only alarm that catches an outage producing no load to move CPU, latency or 5xx.
+  // What replaces it is `monitor_ingress` below. The two are not a pair to flip together
+  // — they are alternatives selected by `tunnel_enabled`, and earlier revisions of this
+  // file said otherwise. If the tunnel is ever rolled back to the ALB, this is the flag
+  // that has to come on in the same change.
   monitor_target_health = false
 
-  // OFF for the same reason, and it is the TUNNELLED half of the pair above. The Route 53
-  // health check probes rally-api.qnsc.vn from outside AWS; production runs zero tasks, so
-  // it reported DOWN continuously from creation — $2.70/mo ($0.75 base + $2.00 options) to
-  // be paged every minute about the state this environment is deliberately in. An alarm
-  // that is always red is worse than no alarm: it is the one signal that replaces every
-  // ALB target-group alarm, and a reader who has learned to ignore it will ignore the
-  // real outage too.
+  // ON at go-live. The Route 53 health check probes rally-api.qnsc.vn/v1/healthz from
+  // outside AWS every 30s, so it exercises the whole path a user takes — Cloudflare edge,
+  // tunnel, connector, app — rather than any single component's opinion of itself.
   //
-  // TURN THIS BACK ON at go-live, in the same change as monitor_target_health and
-  // min_count. While tunnel_enabled = true this is production's ONLY ingress alarm —
-  // ECS reports a task RUNNING whether or not cloudflared holds edge connections, so
-  // without it an ingress outage is visible only when a user reports it.
-  monitor_ingress = false
+  // It was off pre-launch for a reason worth keeping in view: production ran zero tasks,
+  // so the check reported DOWN continuously from creation, $2.70/mo to be paged every
+  // minute about the state the environment was deliberately in. That premise ends here —
+  // the floors below are 1, so DOWN now means DOWN.
+  //
+  // This is production's ONLY ingress alarm while tunnelled. ECS reports a task RUNNING
+  // whether or not cloudflared holds edge connections, and the sidecar's image is
+  // distroless so no ECS healthCheck can probe it. Without this an ingress outage is
+  // visible only when a user reports it.
+  monitor_ingress = true
 
-  // Weekly re-stop, because AWS force-starts a stopped instance after 7 days. Sunday
-  // 01:00 local sits well inside that window, so the instance is never up for more than
-  // a few hours of a week it is not being used.
+  // ON at go-live, with the service floors below, because the pairing is enforced.
   //
-  // REMOVE THIS AT GO-LIVE, in the same change that restores min_count and
-  // monitor_target_health. A schedule that stops production every Sunday is precisely
-  // the kind of leftover that becomes an outage nobody can explain.
-  // No cache node while idled. ElastiCache has no stopped state — only delete — so the
-  // node is the one part of an idled environment that keeps billing (~$10/mo).
+  // The `check` block in the stack module refuses a plan with running tasks and no cache:
+  // a task that cannot reach its cache does not fail, it falls back to localhost and runs
+  // with the token denylist and the rate limiter FAILED OPEN. So "cache" and "tasks" move
+  // together in one change, and Terraform rejects any plan where they do not.
   //
-  // Safe ONLY because both service floors are 0 above, and the `check` block in the
-  // stack module enforces that pairing: a task that cannot reach its cache does not
-  // fail, it falls back to localhost and runs with the token denylist and rate limiter
-  // failed open. So "no cache" and "no tasks" have to move together, and Terraform now
-  // refuses any plan where they do not.
+  // Recreating the node takes ~10 minutes and issues a NEW endpoint. Harmless here — no
+  // sessions exist to lose — but mind the id-namespace collision documented in CLAUDE.md
+  // if this name is reused while an old node is still deleting.
   //
-  // RE-ENABLE AT GO-LIVE in the same change that restores the floors. Recreating the
-  // node takes ~10 minutes and issues a NEW endpoint, which is fine here only because
-  // production has no sessions to lose. Mind the id-namespace collision documented in
-  // CLAUDE.md if the replacement reuses this name while the old one is still deleting.
+  // ~$10/mo for cache.t4g.micro, the single largest line in the go-live delta after the
+  // Fargate floors. It is not optional at any price: it is what makes two security
+  // controls fail CLOSED.
   cache = {
-    enabled = false
+    enabled = true
   }
 
-  // DAILY, not weekly. The note above `api` explains why this exists: RDS run-state is
-  // not a Terraform concept, so the instance is stopped out of band, and AWS FORCE-STARTS
-  // a stopped instance after 7 days. A WEEKLY re-stop bounds that at seven days, not one
-  // — a force-start landing on a Monday runs until the following Sunday.
+  // NO `idle_schedule`, deliberately, and its absence is the go-live change.
   //
-  // Measured before this change: 59 of 168 hours in a week published CloudWatch
-  // datapoints. A pre-launch database with no users, no tasks and no cache was running
-  // 35% of the time, roughly $4/mo. The saving had partly evaporated in exactly the way
-  // that note warns about, just on a longer timescale than the weekly pass could catch.
+  // It stopped RDS and scaled both services to zero nightly at 01:00 — correct for an
+  // environment with no users, an outage for one with them. A schedule that stops
+  // production every night is precisely the leftover that becomes an incident nobody can
+  // explain, so it is removed rather than commented out.
   //
-  // Daily costs nothing extra: the ECS half of this schedule scales services that are
-  // already at a zero floor, so the only behaviour that changes is how quickly a
-  // force-started database is put back to sleep.
-  idle_schedule = "cron(0 1 * * ? *)"
+  // The 7-day force-start it existed to bound is now irrelevant: the instance runs
+  // continuously. Nothing else depended on the schedule — qnsc-ci's `ensure_rds` starts a
+  // stopped instance before every deploy either way, so it stays a no-op on a running
+  // database.
 
   // Both halves of rally/production/r2-public-* are populated, so the public-bucket
   // credential can be injected. Same fix as develop: `rally-production-r2-app` is scoped
@@ -275,13 +270,35 @@ module "stack" {
   // and the app holds no state tied to the role it connected as.
   db_least_privilege = true
 
-  // PRE-LAUNCH sizing. Every dollar here currently buys durability for a database with
-  // no users, so the instance is stopped and single-AZ until launch.
+  // SIZED FOR LAUNCH TRAFFIC, NOT FOR A CHECKLIST. This file's own rule for storage —
+  // "raise on evidence, never speculatively" — is applied to the instance class and to
+  // Enhanced Monitoring as well, so two items that earlier revisions listed as go-live
+  // flips are deliberately NOT being flipped:
   //
-  // GO-LIVE CHECKLIST — flip these together, before the first real user:
-  //     instance_class      = "db.t4g.small"  # 2 GB rather than 1 GB
-  //     monitoring_interval = 60              # per-process and per-device visibility
-  //                                           # CloudWatch metrics alone do not give
+  //   instance_class = "db.t4g.micro", not small.  $13.14/mo, and small is $26.28.
+  //     1 GB of RAM against an application whose measured load to date is 4, 1, 0, 1
+  //     requests a day. t4g is BURSTABLE, so the failure mode is not a wall: the
+  //     instance earns 12 CPU credits/hour at a 10% baseline and spends them on spikes,
+  //     and running out degrades gradually into throttling rather than falling over.
+  //     RAISE IT ON THIS SIGNAL, and it is the first thing to raise: CPUCreditBalance
+  //     trending to zero, or FreeableMemory under ~100 MB, in the AWS/RDS namespace on
+  //     the dashboard. Both are on the free native metrics, so no extra spend is needed
+  //     to watch for the moment this decision expires. The change is one line and a
+  //     ~2-minute reboot — no snapshot, no endpoint change, reversible.
+  //
+  //   monitoring_interval = 0, not 60.  Enhanced Monitoring bills the OS-level metric
+  //     stream to CloudWatch Logs; on a 1 GB instance the per-process and per-device
+  //     detail it buys answers a question ("which process") that a single-application
+  //     database rarely raises. Performance Insights' free 7-day tier and the native
+  //     CPU/memory/IOPS metrics cover the questions that actually get asked. Turn it on
+  //     WHEN INVESTIGATING a specific incident, then turn it back off — it takes effect
+  //     without a reboot, so it is a debugging tool rather than a posture.
+  //
+  // Both are cost decisions taken with the size of this workload in evidence, not
+  // deferred maintenance. Neither is one-way.
+  //
+  // Still SINGLE-AZ, and that is the separate, larger decision below.
+  //
   //     allocated_storage_gb: raise on evidence, never speculatively (see below)
   //
   // MULTI-AZ IS DELIBERATELY NOT ON THAT LIST — decided 2026-08-02, and it is the one
@@ -331,42 +348,36 @@ module "stack" {
 
   // On-demand, not Spot: an interruption here is user-visible. Tighter autoscale
   // targets and more headroom than develop.
-  // ── IDLE UNTIL GO-LIVE ──────────────────────────────────────────────────────
-  // `min_count = 0` on both services, so production runs no tasks. Production has
-  // never served a user — the ALB logged 4, 1, 0, 1 requests on four consecutive days,
-  // and the only non-zero days since are SCM webhooks and synthetic probes — while
-  // costing ~$52/mo in on-demand Fargate alone, a third of the account.
+  // ── LIVE ────────────────────────────────────────────────────────────────────
+  // `min_count = 1` on both services, ending the pre-launch idle. Production ran zero
+  // tasks from 2026-08-02 to go-live because it had never served a user — the ALB logged
+  // 4, 1, 0, 1 requests on four consecutive days — while costing ~$52/mo in on-demand
+  // Fargate, a third of the account.
   //
-  // The floor is what makes it hold. `desired_count` is under `ignore_changes`, so
-  // scaling to zero by hand is expected and non-drifting, but Application Auto Scaling
-  // restores the service to `min_count` within minutes, so a scale-to-zero against a
-  // floor of 1 silently undoes itself.
+  // A FLOOR OF 1 IS NOT A HIGH-AVAILABILITY POSTURE, and nothing here claims it is. One
+  // api task means an AZ event or a task replacement is a brief outage; autoscaling adds
+  // the second task under load, not for redundancy. Raising the floor to 2 is $22.46/mo
+  // for the api and the right change once there are users who notice a 30-second gap —
+  // which is a traffic decision, not a launch-day one.
   //
-  // AUTOSCALING IS THEREFORE OFF TOO, not just floored at zero — because with a floor of
-  // 0 the scalable target cannot do anything. Target tracking scales proportionally, so it
-  // never computes zero from a running task, and a service at zero tasks publishes no CPU
-  // or memory metric for it to scale out from. Measured on this account: production sat at
-  // 0/0 tasks for days with a registered target, and develop ran at 0.07-1.0% average CPU
-  // against a floor of 0 — Application Auto Scaling logged ZERO scaling activities for
-  // either, across its full six-week retention.
+  // AUTOSCALING IS ON, and it only works because of the floor. With a floor of 0 the
+  // scalable target could do nothing: target tracking scales proportionally so it never
+  // computes zero from a running task, and a service at zero tasks publishes no CPU or
+  // memory metric to scale out from. Measured on this account during the idle: production
+  // sat at 0/0 tasks for days with a registered target, and Application Auto Scaling
+  // logged ZERO scaling activities across its full six-week retention. A `validation`
+  // block on the stack module's `api` and `worker` variables enforces the pairing, so
+  // this combination cannot drift apart in one direction without the plan failing.
   //
-  // So this is not a bug being fixed; it is a config that claimed to scale and could not.
-  // Removing it drops four CloudWatch alarms per service (16 across both environments,
-  // ~$1.60/mo) and stops the plan describing capacity behaviour that does not exist.
+  // `desired_count` is under `ignore_changes`, so the deploy pipeline setting it is
+  // expected and non-drifting. Note the consequence now that the floor is 1: scaling a
+  // service to zero by hand no longer sticks — Application Auto Scaling restores it
+  // within minutes. Stopping production means changing this file.
   //
-  // TO RESTORE AT GO-LIVE: set both min_count back to 1, set both enable_autoscaling back
-  // to true, set monitor_target_health back to true above, and deploy. A `validation` block
-  // on the stack module's `api` and `worker` variables enforces that min_count/
-  // enable_autoscaling pairing, because the combination it forbids — autoscaling on with a
-  // floor of 0 — is a LIVE environment that cannot self-heal: nothing publishes a metric at
-  // zero tasks, so whatever scaled it down is permanent. The deploy
-  // pipeline sets desired_count, and qnsc-ci's `ensure_rds` starts the stopped instance,
-  // so no manual step is needed beyond this file. Nothing else about the environment
-  // changed — same task definitions, same secrets, same database, same cache.
+  // RDS runs continuously too. Run-state is not a Terraform concept, so the instance was
+  // stopped out of band during the idle and `idle_schedule` re-stopped it against the
+  // 7-day force-start; that schedule is now removed above.
   //
-  // RDS run-state is not a Terraform concept, so the instance is stopped out of band —
-  // but AWS FORCE-STARTS a stopped instance after 7 days, so `idle_schedule` below
-  // re-stops it weekly. Without that the saving silently evaporates.
   // SIZED FOR THE TRAFFIC, NOT FOR THE IMAGINATION. Was 1024/2048, which at
   // ap-southeast-1 on-demand rates is $44.92/mo — 38% of everything rally costs across
   // both environments, for an API the note above records as having served "4, 1, 0, 1
@@ -385,21 +396,20 @@ module "stack" {
   // Still ON-DEMAND. Spot would be $13.49 and is the wrong trade for the API: the note
   // below explains why the worker can take an interruption and this cannot.
   api = {
-    cpu       = 512
-    memory    = 1024
-    max_count = 10
-    min_count = 0
-    // Restore to true at go-live together with min_count — see the note above.
-    enable_autoscaling = false
+    cpu                = 512
+    memory             = 1024
+    max_count          = 10
+    min_count          = 1
+    enable_autoscaling = true
     use_spot           = false
-    // Inert while enable_autoscaling is false, kept because go-live wants these targets
-    // and not the module defaults (65/75). Tighter than develop: production absorbs a
-    // spike by adding tasks earlier.
+    // Tighter than the module defaults (65/75) and tighter than develop: production
+    // absorbs a spike by adding tasks earlier, because the cost of a spare task is
+    // $11.23/mo and the cost of being late is a queue.
     cpu_target_pct    = 60
     memory_target_pct = 70
   }
 
-  // Idled with the api — see the note above.
+  // Floored and autoscaled with the api — see the note above.
   //
   // SPOT, unlike the api. The worker is a relay: AbstractOutboxRelay claims rows with
   // FOR UPDATE SKIP LOCKED, retries with exponential backoff, and every write is an
@@ -417,8 +427,8 @@ module "stack" {
     cpu                = 512
     memory             = 1024
     max_count          = 6
-    min_count          = 0
-    enable_autoscaling = false
+    min_count          = 1
+    enable_autoscaling = true
     use_spot           = true
   }
 
