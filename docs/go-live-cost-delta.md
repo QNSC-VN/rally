@@ -1,7 +1,7 @@
 # Go-live cost delta — what launch does to the AWS bill
 
-**Bottom line: go-live adds $61.55/mo to production, taking rally prod from ~$6/mo idle
-to ~$67/mo running.** None of it is waste — it is the price of a database that is
+**Bottom line: go-live adds $58.87/mo to production, taking rally prod from ~$6/mo idle
+to ~$64/mo running.** None of it is waste — it is the price of a database that is
 awake, two tasks that answer requests, a cache that makes two security controls fail
 closed, and one alarm that notices when none of that is true.
 
@@ -46,16 +46,16 @@ with a defined end date.
 | RDS instance | t4g.micro, **stopped** (bills $0) | t4g.micro **running**, single-AZ | **+$18.25** |
 | RDS storage | 30 GB gp3 | 30 GB gp3 (unchanged) | $0 |
 | RDS Enhanced Monitoring | off | **still off** — declined below | $0 |
-| Fargate api | 0 tasks | 1× **256**/1024 on-demand | **+$13.26** |
-| Fargate worker | 0 tasks | 1× **256/512** Spot | **+$3.48** |
+| Fargate api | 0 tasks | 1× **256**/1024 on-demand, **ARM64** | **+$10.61** |
+| Fargate worker | 0 tasks | 1× **256/512** Spot, **ARM64** | **+$2.78** |
 | ElastiCache | none | cache.t4g.micro | **+$15.45** |
 | Route 53 ingress health check | off | 30s HTTPS check | **+$2.70** |
 | NAT egress (`runtime-prod`) | `nat_type = "none"` | fck-nat t4g.nano | **+$3.86** |
 | Public IPv4 for the NAT | none | 1 address | **+$3.65** |
 | CloudWatch alarms | 12 | 21 (autoscaling ×8, ingress ×1) | **+$0.90** |
-| **total** | | | **+$61.55/mo** |
+| **total** | | | **+$58.87/mo** |
 
-Rally production then runs at roughly **$67/mo** all-in (the delta plus the $4.14 storage
+Rally production then runs at roughly **$64/mo** all-in (the delta plus the $4.14 storage
 and ~$1.20 of secrets it already bills), excluding the rest of the shared platform layer
 and data transfer.
 
@@ -142,7 +142,7 @@ one apply, a brief failover, no data migration and no endpoint change.
 `prod/main.tf` already argues the general case correctly: every dollar currently buys
 durability for a database with no users. That reverses the moment there are users.
 
-### Fargate: +$16.74 — sized from measurement, not judgement
+### Fargate: +$13.39 — sized from measurement, and on Graviton
 
 Both services sat at `min_count = 0`. Production had **never served a real user** — the
 ALB logged 4, 1, 0, 1 requests on four consecutive days, and the non-zero days since were
@@ -178,6 +178,11 @@ proven number rather than guessing a smaller one.
 **What this costs is a slower cold start** — a deploy-duration cost rather than an
 availability one, since the rolling deployment starts the replacement before draining the
 old task. It does lengthen the gap when a single task is replaced unexpectedly. Watch it.
+
+**Both run on Graviton (ARM64)**, which is ~20% less per vCPU-hour and GB-hour at
+identical sizing: the api is $10.61 rather than $13.26 and the worker $2.78 rather than
+$3.48. Proven in develop first (#447), and set before launch rather than after — production
+has never served a request, so it starts on ARM instead of being migrated to it.
 
 `max_count = 10` at a 60% CPU target is where headroom actually lives: production absorbs
 a spike by **adding** tasks, now from a $13.26/mo unit. Four 256-CPU tasks cost less than

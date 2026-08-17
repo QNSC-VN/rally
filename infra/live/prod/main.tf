@@ -171,6 +171,26 @@ module "stack" {
   // Turn it to "enhanced" temporarily when you need per-task or per-container drilldown
   // during an incident, then turn it back. For right-sizing, AWS/ECS CPUUtilization as a
   // percentage of a known task size is the same arithmetic.
+  // ── Graviton ─────────────────────────────────────────────────────────────────
+  // ARM64 Fargate bills ~20% less per vCPU-hour and GB-hour at identical sizing — same
+  // platform, same networking, same limits. On the sizes below that is $2.68/mo: the api
+  // goes $13.26 -> $10.61 and the worker $3.48 -> $2.78.
+  //
+  // PROVEN IN DEVELOP FIRST (#447), which is the only reason this is safe to set before
+  // production has ever run. An x86 image on an ARM64 task does not fail the apply — it
+  // fails at TASK START with "image Manifest does not contain descriptor matching
+  // platform", after a deploy that reports a rollout.
+  //
+  // SET BEFORE LAUNCH, NOT AFTER, and that timing is the point. Production has never
+  // served a request, so it starts on ARM instead of being migrated to it later — no
+  // cutover, no mixed-architecture window, no rollback plan needed for a live service.
+  // This is the last moment that is true.
+  //
+  // The build side already moved with #447: .github/workflows/backend-deploy.yml sets
+  // `build_runner: ubuntu-24.04-arm` and `image_platforms: linux/arm64` for BOTH
+  // environments, so the release image production pins is already arm64.
+  cpu_architecture = "ARM64"
+
   container_insights = "disabled"
 
   // Kept here and dropped in develop. This is the one someone opens during an
