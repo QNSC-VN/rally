@@ -378,33 +378,50 @@ module "stack" {
   // stopped out of band during the idle and `idle_schedule` re-stopped it against the
   // 7-day force-start; that schedule is now removed above.
   //
-  // SIZED FOR THE TRAFFIC, NOT FOR THE IMAGINATION. Was 1024/2048, which at
-  // ap-southeast-1 on-demand rates is $44.92/mo — 38% of everything rally costs across
-  // both environments, for an API the note above records as having served "4, 1, 0, 1
-  // requests on four consecutive days". 512/1024 is $22.46.
+  // SIZED FROM MEASUREMENT. 1024/2048 originally, then 512/1024, now 256/1024 — and
+  // this last step is the only one of the three taken with data rather than judgement.
   //
-  // Half the CPU is not half the headroom, because `max_count = 10` and the autoscale
-  // targets below are the real headroom: production absorbs a spike by ADDING tasks, and
-  // it now adds them from a cheaper unit. Two 512-CPU tasks cost the same as one 1024
-  // and survive an AZ event; one 1024 task does not.
+  // THE DATA, AWS/ECS on rally-develop, 14 days to 2026-08-17, same image and same
+  // workload as production will run:
   //
-  // REVISIT WITH DATA, not with a guess: watch AWS/ECS CPUUtilization and
-  // MemoryUtilization for a fortnight after go-live. If either sits above the targets
-  // below with a single task, raise this — that is the number arriving from measurement
-  // rather than from provisioning for traffic nobody has seen yet.
+  //     api  512/1024   CPU avg 0.8%, peak 100%   Memory avg 14.2%, PEAK 25.9%
   //
-  // Still ON-DEMAND. Spot would be $13.49 and is the wrong trade for the API: the note
+  // Peak memory of 25.9% on a 1024 MB task is 265 MB. The CPU peaks are real but they
+  // are BOOT AND MIGRATION bursts a minute long against a 0.8% average — not load.
+  // Provisioning 0.5 vCPU to make those bursts finish faster is paying $9.23/mo for a
+  // shorter cold start.
+  //
+  // MEMORY DELIBERATELY NOT HALVED. 256/512 is available and $2.02/mo cheaper, and it is
+  // declined: 265 MB against 512 MB is 52% before production adds anything develop does
+  // not have — real sessions, held-open SSE streams, a warmer connection pool. Two
+  // dollars is not the right price for that margin. CPU is where the waste was.
+  //
+  // WHAT THIS COSTS: a slower cold start. That is a DEPLOY-duration cost, not an
+  // availability one — the rolling deployment starts the replacement before draining the
+  // old task — but it also lengthens the gap when a single task is replaced unexpectedly.
+  // Watch it after go-live.
+  //
+  // HEADROOM IS max_count = 10, not task size. Production absorbs a spike by ADDING
+  // tasks at a 60% CPU target, and it now adds them from a unit costing $13.26/mo. Four
+  // 256-CPU tasks cost less than one 1024 and survive an AZ event.
+  //
+  // RAISE IT ON THIS SIGNAL: CPUUtilization sustained above 60% or MemoryUtilization
+  // above 70% with a single task, over hours rather than minutes. Both are free native
+  // metrics on the dashboard.
+  //
+  // Still ON-DEMAND. Spot would be $4.15 and is the wrong trade for the API: the note
   // below explains why the worker can take an interruption and this cannot.
   api = {
-    cpu                = 512
+    cpu                = 256
     memory             = 1024
     max_count          = 10
     min_count          = 1
     enable_autoscaling = true
     use_spot           = false
     // Tighter than the module defaults (65/75) and tighter than develop: production
-    // absorbs a spike by adding tasks earlier, because the cost of a spare task is
-    // $11.23/mo and the cost of being late is a queue.
+    // absorbs a spike by adding tasks earlier, because a spare task now costs $13.26/mo
+    // and the cost of being late is a queue. Cheaper tasks are what make an early
+    // scale-out affordable — the two settings are one decision.
     cpu_target_pct    = 60
     memory_target_pct = 70
   }
@@ -421,11 +438,26 @@ module "stack" {
   // is a request nobody retries and an SSE stream that drops. Interruptions are real, not
   // hypothetical — `SpotInterruption` already appears in develop's stopped-task reasons.
   //
-  // Saves ~$15.60/mo at this sizing once production runs continuously ($22.49 on-demand
-  // versus $6.90 on Spot).
+  // SIZED FROM MEASUREMENT, at 256/512 — the size develop has run all along, so this is
+  // production adopting a proven number rather than guessing a smaller one.
+  //
+  //     worker  256/512   CPU avg 1.5%, peak 100%   Memory avg 20.7%, PEAK 35.8%
+  //
+  // AWS/ECS on rally-develop, 14 days to 2026-08-17. Peak memory of 35.8% on 512 MB is
+  // 183 MB. As with the api, the CPU peaks are relay-tick and boot bursts against a 1.5%
+  // average, not sustained load.
+  //
+  // Production's outbox carries the SAME work develop's does per unit of traffic, and
+  // production currently has less of it. `max_count = 6` is the headroom, and the relay
+  // is horizontally scalable by construction — FOR UPDATE SKIP LOCKED means a second
+  // task claims different rows rather than contending for the same ones.
+  //
+  // Saves $3.48/mo against 512/1024, on top of Spot below.
+  //
+  // SPOT saves a further $7.77/mo at this size ($11.25 on-demand versus $3.48 on Spot).
   worker = {
-    cpu                = 512
-    memory             = 1024
+    cpu                = 256
+    memory             = 512
     max_count          = 6
     min_count          = 1
     enable_autoscaling = true

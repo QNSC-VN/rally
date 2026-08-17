@@ -1,7 +1,7 @@
 # Go-live cost delta — what launch does to the AWS bill
 
-**Bottom line: go-live adds $70.90/mo to production, taking rally prod from ~$6/mo idle
-to ~$77/mo running.** None of it is waste — it is the price of a database that is
+**Bottom line: go-live adds $61.55/mo to production, taking rally prod from ~$6/mo idle
+to ~$67/mo running.** None of it is waste — it is the price of a database that is
 awake, two tasks that answer requests, a cache that makes two security controls fail
 closed, and one alarm that notices when none of that is true.
 
@@ -46,15 +46,16 @@ with a defined end date.
 | RDS instance | t4g.micro, **stopped** (bills $0) | t4g.micro **running**, single-AZ | **+$18.25** |
 | RDS storage | 30 GB gp3 | 30 GB gp3 (unchanged) | $0 |
 | RDS Enhanced Monitoring | off | **still off** — declined below | $0 |
-| Fargate api | 0 tasks | 1× 512/1024 on-demand | **+$22.49** |
-| Fargate worker | 0 tasks | 1× 512/1024 Spot | **+$6.95** |
+| Fargate api | 0 tasks | 1× **256**/1024 on-demand | **+$13.26** |
+| Fargate worker | 0 tasks | 1× **256/512** Spot | **+$3.48** |
 | ElastiCache | none | cache.t4g.micro | **+$15.45** |
 | Route 53 ingress health check | off | 30s HTTPS check | **+$2.70** |
-| NAT egress (`runtime-prod`) | `nat_type = "none"` | fck-nat t4g.nano | **+$4.16** |
+| NAT egress (`runtime-prod`) | `nat_type = "none"` | fck-nat t4g.nano | **+$3.86** |
+| Public IPv4 for the NAT | none | 1 address | **+$3.65** |
 | CloudWatch alarms | 12 | 21 (autoscaling ×8, ingress ×1) | **+$0.90** |
-| **total** | | | **+$70.90/mo** |
+| **total** | | | **+$61.55/mo** |
 
-Rally production then runs at roughly **$77/mo** all-in (the delta plus the $4.14 storage
+Rally production then runs at roughly **$67/mo** all-in (the delta plus the $4.14 storage
 and ~$1.20 of secrets it already bills), excluding the rest of the shared platform layer
 and data transfer.
 
@@ -76,7 +77,7 @@ written next to the setting in `infra/live/prod/main.tf`, not only here.
 | `monitoring_interval = 60` | ~+$2.10/mo | investigating a specific incident — then turn it back off |
 | `multi_az = true` | **+$22.39/mo** on micro ($18.25 doubled instance + $4.14 mirrored volume) | see the section below; this is the one that trades availability |
 
-Together they are **$43.47/mo**, which is why this document says ~$77 rather than ~$121.
+Together they are **$43.47/mo**, which is why this document says ~$67 rather than ~$111.
 Both burstable-instance signals are free native CloudWatch metrics, so watching for the
 moment the first decision expires costs nothing.
 
@@ -141,32 +142,55 @@ one apply, a brief failover, no data migration and no endpoint change.
 `prod/main.tf` already argues the general case correctly: every dollar currently buys
 durability for a database with no users. That reverses the moment there are users.
 
-### Fargate: +$29.44
+### Fargate: +$16.74 — sized from measurement, not judgement
 
 Both services sat at `min_count = 0`. Production had **never served a real user** — the
 ALB logged 4, 1, 0, 1 requests on four consecutive days, and the non-zero days since were
 SCM webhooks and synthetic probes.
 
-At go-live both floors return to 1, at **512 CPU / 1024 MB each**:
+At go-live both floors return to 1:
 
-- **api**, on-demand: (0.5 × $0.050560 + 1 × $0.005530) × 730 = **$22.49/mo**
-- **worker**, Spot: (0.5 × $0.015634 + 1 × $0.001710) × 730 = **$6.95/mo**
+- **api**, 256/1024 on-demand: (0.25 × $0.050560 + 1 × $0.005530) × 730 = **$13.26/mo**
+- **worker**, 256/512 Spot: (0.25 × $0.015634 + 0.5 × $0.001710) × 730 = **$3.48/mo**
 
-The api was 1024/2048 when this document was first written — $44.98/mo at measured
-rates, 38% of everything rally cost across both environments, for an API serving single-
-digit daily requests. It was right-sized to 512/1024 before launch, and `max_count = 10`
-with a 60% CPU target is where the headroom actually lives: production absorbs a spike by
-**adding** tasks, from a cheaper unit. Two 512 tasks cost the same as one 1024 and
-survive an AZ event; one 1024 task does not.
+The api went 1024/2048 → 512/1024 → 256/1024. Only the last step was taken with **data**.
 
-Spot on the worker is worth **$15.54/mo** ($22.49 on-demand vs $6.95) and is justified in
-the code: the relay claims rows `FOR UPDATE SKIP LOCKED` and every write is an idempotent
+Measured on `rally-develop` from AWS/ECS, 14 days to 2026-08-17 — same image, same
+workload production will run:
+
+| service | size | CPU avg / peak | memory avg / **peak** |
+|---|---|---|---|
+| api | 512/1024 | 0.8% / 100% | 14.2% / **25.9% = 265 MB** |
+| worker | 256/512 | 1.5% / 100% | 20.7% / **35.8% = 183 MB** |
+
+The api never exceeded **265 MB of 1024**. The CPU peaks are one-minute boot and
+migration bursts against a 0.8% average — not load. Provisioning 0.5 vCPU to make those
+bursts finish faster was $9.23/mo for a shorter cold start.
+
+**Memory was deliberately not halved.** 256/512 is available and $2.02/mo cheaper, and it
+is declined: 265 MB against 512 MB is 52% *before* production adds what develop lacks —
+real sessions, held-open SSE streams, a warmer pool. Two dollars is the wrong price for
+that margin. CPU is where the waste was.
+
+The worker simply adopts the size develop has run all along, so production is taking a
+proven number rather than guessing a smaller one.
+
+**What this costs is a slower cold start** — a deploy-duration cost rather than an
+availability one, since the rolling deployment starts the replacement before draining the
+old task. It does lengthen the gap when a single task is replaced unexpectedly. Watch it.
+
+`max_count = 10` at a 60% CPU target is where headroom actually lives: production absorbs
+a spike by **adding** tasks, now from a $13.26/mo unit. Four 256-CPU tasks cost less than
+one 1024 and survive an AZ event.
+
+Spot on the worker is worth **$7.77/mo** at this size ($11.25 on-demand vs $3.48) and is
+justified in the code: the relay claims rows `FOR UPDATE SKIP LOCKED` and every write is an idempotent
 upsert, so an interruption loses no work. The api stays on-demand because an interruption
 there is a dropped request and a broken SSE stream.
 
 A floor of 1 is **not** a high-availability posture and nothing claims it is: one api
 task means a task replacement or an AZ event is a brief outage. Raising the floor to 2 is
-$22.49/mo and is a traffic decision, not a launch-day one.
+$13.26/mo and is a traffic decision, not a launch-day one.
 
 ### ElastiCache: +$15.45
 
@@ -238,7 +262,7 @@ Autoscaling returns (4 alarms per service × 2 = 8 at $0.10) plus the ingress al
 **Autoscaling headroom.** The figures above price *one* task per service — the floor, not
 the steady state. `max_count = 10` for the api, and real traffic at `cpu_target_pct = 60`
 will hold more than one task during business hours. A 2-task average on the api adds
-**+$22.49/mo**. This is the number most likely to be wrong, in either direction, and only
+**+$13.26/mo**. This is the number most likely to be wrong, in either direction, and only
 real traffic settles it.
 
 **Data transfer.** Currently $0 because of the 100 GB/month free allowance, ~15%
@@ -275,7 +299,7 @@ Worth stating, because it is where the money already is:
 | **subtotal** | **~123** | |
 
 **So the account lands near $200/mo with rally live** — ~$123 of shared platform and dev
-plus ~$77 of production. Against a $150/mo target, the $50 gap is not in this document:
+plus ~$67 of production. Against a $150/mo target, the $50 gap is not in this document:
 every configurational item here has already been declined or is load-bearing. It is in
 the $62 of ALB and public IPv4 and the ~$44 dev environment, both of which are
 architectural questions about running two full environments across three AZs.
@@ -286,17 +310,17 @@ opshub#85. That is documented in `runtime-dev/main.tf`.
 
 ## Recommendations
 
-**1. Set the budget expectation at ~$77/mo for rally prod,** on top of whatever dev and
+**1. Set the budget expectation at ~$67/mo for rally prod,** on top of whatever dev and
 the shared platform layer cost. A production environment with one task per service, a
 running database and a cache has a floor, and after declining $43.47/mo of checklist
 items this is close to it. The remaining items are load-bearing, not padding.
 
 **2. Do not pre-provision.** Every item above flips **at** go-live, not before. The idle
-posture saved $70.90/mo for the fifteen days it was held.
+posture saved $61.55/mo for the fifteen days it was held.
 
 **3. Watch these four after launch,** in order of how wrong the estimate could be:
 
-- api task count under real traffic (the ±$22 line)
+- api task count under real traffic (the ±$13 line)
 - `CPUCreditBalance` and `FreeableMemory` on the micro — the two signals that revoke the
   instance-class decision, both free native metrics
 - data transfer out, once past the 100 GB free tier
@@ -305,10 +329,11 @@ posture saved $70.90/mo for the fifteen days it was held.
   instance replaced (`docs/runbooks/rds-storage-shrink.md`).
 
 **4. The configuration levers are spent.** Multi-AZ (+$22.39), t4g.small (+$18.98) and
-Enhanced Monitoring (+$2.10) are all declined, which is why this says ~$77 rather than
-~$121. What remains — the running database ($18.25), the api task ($22.49), the cache
-node ($15.45), the Spot worker ($6.95), the NAT instance ($4.16) — is the environment
-itself.
+Enhanced Monitoring (+$2.10) are all declined, and the api and worker are sized from
+measured utilisation rather than judgement, which is why this says ~$67 rather than
+~$111. What remains — the running database ($18.25), the api task ($13.26), the cache
+node ($15.45), the Spot worker ($3.48), the NAT and its address ($7.51) — is the
+environment itself.
 
 If the number still has to come down, the honest options are architectural rather than
 configurational: collapse dev into an ephemeral environment, or delay restoring the api
@@ -349,7 +374,7 @@ verifying data before reopening. Budget for the human path, not the AWS one.
   and 3-day rather than 30-day retention. Restore time scales with volume size, so
   production will be somewhat slower.
 
-**5. Revisit Fargate Spot for the api only if the budget forces it.** It saves $15.54/mo
+**5. Revisit Fargate Spot for the api only if the budget forces it.** It saves $9.78/mo
 and costs dropped requests and broken SSE streams on interruption — and interruptions are
 real here, not hypothetical: `SpotInterruption` already appears in develop's stopped-task
 reasons. The worker is Spot for sound reasons; the api is not, for equally sound ones.
@@ -365,8 +390,8 @@ monitor_ingress = true                  # NOT monitor_target_health — inert un
 
 cache = { enabled = true }              # ~10 min, issues a NEW endpoint
 
-api    = { min_count = 1, enable_autoscaling = true }
-worker = { min_count = 1, enable_autoscaling = true }
+api    = { cpu = 256, memory = 1024, min_count = 1, enable_autoscaling = true }
+worker = { cpu = 256, memory =  512, min_count = 1, enable_autoscaling = true }
 
 rds = {                                 # DELIBERATELY UNCHANGED
   instance_class      = "db.t4g.micro"  # not small — raise on CPUCreditBalance
