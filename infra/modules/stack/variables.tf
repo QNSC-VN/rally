@@ -100,6 +100,32 @@ variable "cache" {
     enabled   = optional(bool, true)
     mode      = optional(string, "node")
     node_type = optional(string, "cache.t4g.micro")
+
+    # Use the SHARED node in the runtime layer instead of creating one for this product.
+    #
+    # ElastiCache has no stopped state, so a per-product dev cache bills 730 h/month no
+    # matter how little the environment runs — two products meant two nodes at $15.45
+    # each while the services they serve were idle two-thirds of the week. The runtime
+    # layer already owned the security group and the subnets; only the node was
+    # duplicated. See qnsc-infra live/runtime-dev, module.shared_cache.
+    #
+    # DEVELOP ONLY. Production keeps its own node: a shared cache is a shared blast
+    # radius, and prod does not trade isolation for $15/mo.
+    shared = optional(bool, false)
+
+    # Which Valkey database this product uses on the shared node. IGNORED when
+    # `shared = false` — a dedicated node has no one to collide with.
+    #
+    # NOT A KEY PREFIX, deliberately. A prefix convention has to be honoured by every
+    # library that touches the connection; a database index is enforced by the server.
+    # Cluster mode is disabled on the shared node (num_cache_clusters = 1), so all 16
+    # databases exist and SELECT works.
+    #
+    # ALLOCATE CENTRALLY, because two products silently sharing an index is exactly the
+    # collision this exists to prevent, and nothing detects it at plan time:
+    #     0  rally
+    #     1  qnsc-kb   (Celery broker AND result backend — see below)
+    db_index = optional(number, 0)
   })
   default = {}
 
@@ -115,6 +141,19 @@ variable "cache" {
     # running", which degrades two security controls while health checks still answer 200.
     condition     = var.cache.enabled || (var.api.min_count == 0 && var.worker.min_count == 0)
     error_message = "cache.enabled = false requires min_count = 0 on BOTH services. Without a cache, tasks do not fail loudly — REDIS_URL falls back to localhost and the token denylist and rate limiter fail open. Set both floors to 0, or re-enable the cache."
+  }
+
+  validation {
+    # `shared` without `enabled` reads as "use the shared cache" and silently produces the
+    # cache-disabled URL, which is the fail-open state the validation above exists to
+    # prevent — reached by a different route.
+    condition     = !var.cache.shared || var.cache.enabled
+    error_message = "cache.shared = true requires cache.enabled = true. `shared` selects WHERE the cache is, not WHETHER there is one."
+  }
+
+  validation {
+    condition     = var.cache.db_index >= 0 && var.cache.db_index <= 15
+    error_message = "cache.db_index must be 0-15: Valkey exposes 16 databases when cluster mode is disabled, which is what the shared node runs."
   }
 }
 
@@ -777,4 +816,38 @@ variable "monitor_ingress" {
   EOT
   type        = bool
   default     = true
+}
+
+variable "cpu_architecture" {
+  type    = string
+  default = "X86_64"
+  validation {
+    condition     = contains(["X86_64", "ARM64"], var.cpu_architecture)
+    error_message = "cpu_architecture must be X86_64 or ARM64."
+  }
+  description = <<-EOT
+    Fargate CPU architecture for the api, worker and migrator: "X86_64" or "ARM64".
+
+    ARM64 (Graviton) bills ~20% less per vCPU-hour and GB-hour for identical sizing, with
+    no capability difference — same Fargate platform, same networking, same limits.
+
+    IT IS NOT A FREE FLAG. The image must be built for linux/arm64, or the container fails
+    at start with "image Manifest does not contain descriptor matching platform" — a
+    failure that appears at TASK START, after a clean apply and a deploy that reports a
+    rollout. So this moves together with `build_runner` and `image_platforms` in the
+    caller's deploy workflow, in one change, and the three task definitions here move
+    together with each other: the migrator runs the same image family as the api.
+
+    Build NATIVELY on an ARM runner (`ubuntu-24.04-arm`), not under QEMU emulation. The
+    qnsc-ci reusable's own note is explicit that emulating an arm64 pnpm + Nest compile on
+    an x86 runner multiplies build minutes by enough to outweigh the Fargate saving.
+
+    NOT EVERY PRODUCT CAN TAKE THIS. It depends on every image in the task having an
+    arm64 build — including sidecars. rally qualifies: the app is `node:alpine`
+    (multi-arch), and both sidecars publish arm64 (`cloudflare/cloudflared` and
+    `amazon/aws-otel-collector`, checked 2026-08-17). qnsc-kb does NOT: `clamav/clamav`
+    is amd64-only on every published tag.
+
+    Defaults to X86_64 so a caller that has not moved its build keeps working.
+  EOT
 }

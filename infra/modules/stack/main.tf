@@ -37,7 +37,30 @@ locals {
   # `.invalid` is reserved by RFC 2606 and can never resolve, so the failure is a loud
   # DNS error naming the cause. The real guard is still the `check` block at the bottom
   # of this file: with the cache off, no task may run at all.
-  redis_url = var.cache.enabled ? "rediss://${module.cache[0].endpoint}:${module.cache[0].port}" : "rediss://cache-disabled.invalid:6379"
+  # THREE cases, and the middle one is the shared node in the runtime layer.
+  #
+  # The DATABASE INDEX is only appended when sharing. A dedicated node has nobody to
+  # collide with, and appending `/0` there would rewrite REDIS_URL on every existing
+  # environment for no behaviour change — a task-definition revision and a rolling deploy
+  # to say the same thing.
+  #
+  # `try()` on the runtime output is load-bearing rather than defensive: runtime-prod has
+  # no shared cache and therefore no `cache_endpoint` output at all, and a bare reference
+  # to a missing output fails the plan for EVERY environment, not just the one sharing.
+  # When sharing is on and the output is missing, the URL lands on `.invalid` and fails
+  # loudly at boot rather than silently pointing somewhere wrong.
+  shared_cache_endpoint = try(data.terraform_remote_state.runtime.outputs.cache_endpoint, null)
+  shared_cache_port     = try(data.terraform_remote_state.runtime.outputs.cache_port, 6379)
+
+  redis_url = (
+    !var.cache.enabled ? "rediss://cache-disabled.invalid:6379" :
+    var.cache.shared ? (
+      local.shared_cache_endpoint == null
+      ? "rediss://shared-cache-missing.invalid:6379"
+      : "rediss://${local.shared_cache_endpoint}:${local.shared_cache_port}/${var.cache.db_index}"
+    ) :
+    "rediss://${module.cache[0].endpoint}:${module.cache[0].port}"
+  )
 
   # Computed, not read from `module.api.log_group_name`, to break a dependency
   # cycle: the agent needs a log group, the api needs the agent's container
@@ -267,7 +290,11 @@ module "rds" {
 # ioredis turns TLS on from that scheme alone (verified: `rediss://` yields
 # `options.tls === true`), so no client-side configuration is needed.
 module "cache" {
-  count  = var.cache.enabled ? 1 : 0
+  # NOT created when this product uses the shared node in the runtime layer. Switching a
+  # live environment to `shared` therefore DESTROYS its dedicated node, which is the point
+  # — that is where the saving is — and issues a different endpoint, so the change is a
+  # task-definition revision and a rolling deploy, not an in-place edit.
+  count  = var.cache.enabled && !var.cache.shared ? 1 : 0
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
 
   name              = "${local.name}-cache"
@@ -553,6 +580,8 @@ locals {
 module "api" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.1.1"
 
+  cpu_architecture = var.cpu_architecture
+
   service_name = "api"
   cluster_name = module.ecs_cluster.cluster_name
   cluster_arn  = module.ecs_cluster.cluster_arn
@@ -792,6 +821,8 @@ module "api" {
 module "worker" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.1.1"
 
+  cpu_architecture = var.cpu_architecture
+
   service_name = "worker"
   cluster_name = module.ecs_cluster.cluster_name
   cluster_arn  = module.ecs_cluster.cluster_arn
@@ -950,6 +981,11 @@ module "worker" {
 # pipelines trigger it with: aws ecs run-task ...
 module "migrator" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v2.0.0"
+
+  # Same architecture as the api and worker, and not independently settable: the migrator
+  # runs the SAME image family, so a mismatch here is a task that cannot start during a
+  # deploy — after the schema change has already been attempted or skipped.
+  cpu_architecture = var.cpu_architecture
 
   name               = "${local.name}-migrator"
   container_name     = "migrator"

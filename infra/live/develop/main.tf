@@ -155,7 +155,67 @@ module "stack" {
   // OFF here and in production alike — see ../prod/main.tf for the audit. Per-task
   // metrics are billed as custom CloudWatch metrics at $0.07 each and no alarm,
   // dashboard or autoscaling target in this stack reads that namespace.
+  // ── Graviton ─────────────────────────────────────────────────────────────────
+  // ARM64 Fargate bills ~20% less per vCPU-hour and GB-hour at identical sizing. Nothing
+  // is given up: same platform, same networking, same limits.
+  //
+  // DEVELOP FIRST, and that is the point of having it. An x86 image on an ARM64 task does
+  // not fail the apply — it fails at TASK START with "image Manifest does not contain
+  // descriptor matching platform", after a deploy that reports a rollout. Proving it here
+  // costs a broken develop; discovering it in production costs an outage on launch day.
+  //
+  // MOVES WITH THE BUILD. `.github/workflows/backend-deploy.yml` sets
+  // `build_runner: ubuntu-24.04-arm` and `image_platforms: linux/arm64` in the same
+  // change. Native ARM runner, not QEMU — the qnsc-ci reusable notes that emulating an
+  // arm64 pnpm + Nest compile on x86 costs more build minutes than the Fargate saving is
+  // worth.
+  //
+  // rally qualifies on every image in the task: the app is node:alpine (multi-arch), and
+  // both sidecars publish arm64 — cloudflare/cloudflared and amazon/aws-otel-collector,
+  // checked 2026-08-17. qnsc-kb does not, and cannot follow: clamav/clamav is amd64-only
+  // on every published tag.
+  //
+  // ROLLBACK is this line plus the two workflow inputs, reverted together and redeployed.
+  cpu_architecture = "ARM64"
+
   container_insights = "disabled"
+
+  // ── Shared develop cache ─────────────────────────────────────────────────────
+  // Uses the ONE Valkey node in the runtime layer rather than a node of rally's own.
+  //
+  // ElastiCache cannot be stopped, only deleted, so a per-product dev cache billed all
+  // 730 hours of the month regardless of the idle schedule above — which now runs this
+  // environment only 55 hours a week. rally and qnsc-kb were paying $15.45 each for two
+  // nodes holding a few thousand keys between them. The runtime layer already owned the
+  // security group and the data subnets; only the node was duplicated.
+  //
+  // Saves $15.45/mo across the account. Created in QNSC-VN/qnsc-infra#69.
+  //
+  // DATABASE 0. qnsc-kb takes database 1. The index is enforced by the server rather than
+  // by a key-prefix convention every library has to honour — cluster mode is disabled on
+  // the shared node, so all 16 databases exist and SELECT works. Indexes are allocated in
+  // the `db_index` note in ../../modules/stack/variables.tf; a second product silently
+  // reusing 0 is the collision that note exists to prevent, and nothing catches it at
+  // plan time.
+  //
+  // MIND THE EVICTION POLICY IF YOU EVER TUNE IT. qnsc-kb runs Celery on this node, and
+  // its broker keys carry no TTL. The default parameter group is `volatile-lru`, which
+  // evicts only keys that HAVE a TTL — rally's rate-limit counters and denylist entries
+  // go first, Celery's queue is never a candidate. Setting `allkeys-lru` to make rally's
+  // cache behave better under pressure would silently start dropping qnsc-kb's tasks.
+  //
+  // APPLIED 2026-08-17. rally-develop-cache was destroyed and the endpoint changed, so the
+  // cutover was a task-definition revision plus a rolling deploy. Verified afterwards:
+  // /v1/readyz reported postgres up AND valkey up, and the worker's NotificationPubSub
+  // logged no lookup failures on the new revision. The old revision briefly did — it still
+  // named the deleted node — which is worth knowing for any future endpoint change: the
+  // apply registers a task definition, the DEPLOY is what puts it in service.
+  //
+  // PRODUCTION KEEPS ITS OWN NODE and was untouched by this.
+  cache = {
+    shared   = true
+    db_index = 0
+  }
 
   // Three dashboards are free per ACCOUNT; four environments across two products
   // means one is billable. Develop is the one to drop — its alarms still fire.
@@ -223,7 +283,22 @@ module "stack" {
   // running all night. If deploys routinely land between 03:00 and 08:00, add a pass
   // rather than moving this one — 08:00 is now the wake, so a stop after it would fight
   // `wake_schedule` below.
-  idle_schedule = "cron(0 0,3 * * ? *)"
+  // THREE passes now, and the first one is the change: 19:00 ends the working day,
+  // 22:00 catches an evening deploy, 02:00 catches a late one. Was `0,3`.
+  //
+  // 19:00 is what moves the money. Develop was up 08:00-00:00, so five of those sixteen
+  // hours were after everyone had stopped. Measured across both develop environments
+  // (rally and qnsc-kb), the 19:00-00:00 tail is ~$8.13/mo of RDS and Fargate.
+  //
+  // THE LATE PASSES ARE NOT OPTIONAL, and dropping to a single 19:00 stop is the obvious
+  // "simplification" that breaks this. A deploy at 20:00 wakes develop; with nothing after
+  // 19:00 it would then stay up until the NEXT working day's stop — 23 hours, which is
+  // worse than the schedule this replaces. Each pass is a no-op when develop is already
+  // down (InvalidDBInstanceState, deliberately not retried).
+  //
+  // A pass between 02:00 and 08:00 would be pointless: nothing wakes develop in that
+  // window except a deploy, and 02:00 already caught the previous evening's.
+  idle_schedule = "cron(0 2,19,22 * * ? *)"
 
   // 08:00 local, EVERY DAY. This was MON-FRI first, on the argument that a 7-day wake
   // "would pay for two days a week nobody works". Two weekends in, that argument had
@@ -241,14 +316,29 @@ module "stack" {
   // API tasks then need to pass a readiness check, so the environment is serving by
   // roughly 08:10 — before the working day rather than during its first minutes.
   //
-  // This does NOT conflict with the 03:00 stop above. 03:00 fires while develop is
+  // This does NOT conflict with the 02:00 stop above. 02:00 fires while develop is
   // already down (a no-op, InvalidDBInstanceState, deliberately not retried) and 08:00
-  // brings it up five hours later. The 00:00 stop then ends the day. A deploy landing at
-  // any hour still wakes it independently — that path is unchanged.
+  // brings it up six hours later. The 19:00 stop then ends the day. A deploy landing at
+  // any hour still wakes it independently — that path is unchanged, and it is what makes
+  // the weekday-only wake safe.
   //
-  // Expected effect: develop is up ~16h/day, every day, so this BUYS availability rather
-  // than saving money. The 00:00-08:00 window is now the entire saving; weekends no
-  // longer contribute one.
+  // WEEKENDS REMOVED AGAIN (was `* * ?`, daily). This reverses #408, and the reversal is
+  // about arithmetic rather than a change of mind.
+  //
+  // #408 bought weekend availability for "about $2.50/mo". That number was too low: it
+  // priced RDS alone, at a rate taken from memory, for one product. Measured from Cost
+  // Explorer across BOTH develop environments — unblended cost divided by usage quantity,
+  // 2026-08-01..16 — the weekend share of develop's RDS and Fargate is ~$10.42/mo. The
+  // decision was sound at $2.50 and does not survive at four times that, against a target
+  // of $100/mo for the whole account.
+  //
+  // What it costs: develop is DOWN on Saturday and Sunday unless someone deploys. That
+  // path is unchanged and automatic — the `wake` job in qnsc-ci's backend-deploy reusable
+  // starts RDS and both services before the deploy proceeds, so weekend work costs a wait
+  // of a few minutes, not a manual step or a support request. It is the same mechanism
+  // that already covers a 07:00 start on a weekday.
+  //
+  // Expected effect: develop is up 08:00-19:00 on weekdays, 55h/week rather than 112.
   //
   // VERIFIED FIRING, so a future failure is a regression and not "it never worked":
   // CloudTrail 2026-08-07 (the first weekday after it was created) shows all three
@@ -256,7 +346,7 @@ module "stack" {
   //   01:00:09Z  ecs:UpdateService  api    desiredCount=1
   //   01:00:29Z  rds:StartDBInstance
   //   01:00:47Z  ecs:UpdateService  worker desiredCount=1
-  wake_schedule = "cron(0 8 * * ? *)"
+  wake_schedule = "cron(0 8 ? * MON-FRI *)"
 
   // Both halves of rally/develop/r2-public-* are populated, so the public-bucket
   // credential can be injected. This is a FIX, not hardening: the primary token
