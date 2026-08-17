@@ -180,6 +180,39 @@ module "stack" {
 
   container_insights = "disabled"
 
+  // ── Shared develop cache ─────────────────────────────────────────────────────
+  // Uses the ONE Valkey node in the runtime layer rather than a node of rally's own.
+  //
+  // ElastiCache cannot be stopped, only deleted, so a per-product dev cache billed all
+  // 730 hours of the month regardless of the idle schedule above — which now runs this
+  // environment only 55 hours a week. rally and qnsc-kb were paying $15.45 each for two
+  // nodes holding a few thousand keys between them. The runtime layer already owned the
+  // security group and the data subnets; only the node was duplicated.
+  //
+  // Saves $15.45/mo across the account. Created in QNSC-VN/qnsc-infra#69.
+  //
+  // DATABASE 0. qnsc-kb takes database 1. The index is enforced by the server rather than
+  // by a key-prefix convention every library has to honour — cluster mode is disabled on
+  // the shared node, so all 16 databases exist and SELECT works. Indexes are allocated in
+  // the `db_index` note in ../../modules/stack/variables.tf; a second product silently
+  // reusing 0 is the collision that note exists to prevent, and nothing catches it at
+  // plan time.
+  //
+  // MIND THE EVICTION POLICY IF YOU EVER TUNE IT. qnsc-kb runs Celery on this node, and
+  // its broker keys carry no TTL. The default parameter group is `volatile-lru`, which
+  // evicts only keys that HAVE a TTL — rally's rate-limit counters and denylist entries
+  // go first, Celery's queue is never a candidate. Setting `allkeys-lru` to make rally's
+  // cache behave better under pressure would silently start dropping qnsc-kb's tasks.
+  //
+  // APPLYING THIS DESTROYS rally-develop-cache and issues a different endpoint, so it is
+  // a task-definition revision and a rolling deploy, not an in-place edit. Harmless here:
+  // the cache holds rate-limit counters, denylist entries and SSE fan-out, all of which
+  // rebuild on demand. PRODUCTION KEEPS ITS OWN NODE and is untouched by this.
+  cache = {
+    shared   = true
+    db_index = 0
+  }
+
   // Three dashboards are free per ACCOUNT; four environments across two products
   // means one is billable. Develop is the one to drop — its alarms still fire.
   create_dashboard = false

@@ -100,6 +100,32 @@ variable "cache" {
     enabled   = optional(bool, true)
     mode      = optional(string, "node")
     node_type = optional(string, "cache.t4g.micro")
+
+    # Use the SHARED node in the runtime layer instead of creating one for this product.
+    #
+    # ElastiCache has no stopped state, so a per-product dev cache bills 730 h/month no
+    # matter how little the environment runs — two products meant two nodes at $15.45
+    # each while the services they serve were idle two-thirds of the week. The runtime
+    # layer already owned the security group and the subnets; only the node was
+    # duplicated. See qnsc-infra live/runtime-dev, module.shared_cache.
+    #
+    # DEVELOP ONLY. Production keeps its own node: a shared cache is a shared blast
+    # radius, and prod does not trade isolation for $15/mo.
+    shared = optional(bool, false)
+
+    # Which Valkey database this product uses on the shared node. IGNORED when
+    # `shared = false` — a dedicated node has no one to collide with.
+    #
+    # NOT A KEY PREFIX, deliberately. A prefix convention has to be honoured by every
+    # library that touches the connection; a database index is enforced by the server.
+    # Cluster mode is disabled on the shared node (num_cache_clusters = 1), so all 16
+    # databases exist and SELECT works.
+    #
+    # ALLOCATE CENTRALLY, because two products silently sharing an index is exactly the
+    # collision this exists to prevent, and nothing detects it at plan time:
+    #     0  rally
+    #     1  qnsc-kb   (Celery broker AND result backend — see below)
+    db_index = optional(number, 0)
   })
   default = {}
 
@@ -115,6 +141,19 @@ variable "cache" {
     # running", which degrades two security controls while health checks still answer 200.
     condition     = var.cache.enabled || (var.api.min_count == 0 && var.worker.min_count == 0)
     error_message = "cache.enabled = false requires min_count = 0 on BOTH services. Without a cache, tasks do not fail loudly — REDIS_URL falls back to localhost and the token denylist and rate limiter fail open. Set both floors to 0, or re-enable the cache."
+  }
+
+  validation {
+    # `shared` without `enabled` reads as "use the shared cache" and silently produces the
+    # cache-disabled URL, which is the fail-open state the validation above exists to
+    # prevent — reached by a different route.
+    condition     = !var.cache.shared || var.cache.enabled
+    error_message = "cache.shared = true requires cache.enabled = true. `shared` selects WHERE the cache is, not WHETHER there is one."
+  }
+
+  validation {
+    condition     = var.cache.db_index >= 0 && var.cache.db_index <= 15
+    error_message = "cache.db_index must be 0-15: Valkey exposes 16 databases when cluster mode is disabled, which is what the shared node runs."
   }
 }
 
