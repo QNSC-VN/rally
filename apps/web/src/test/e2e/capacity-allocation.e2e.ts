@@ -323,7 +323,15 @@ test.describe('Capacity allocation', () => {
     const dialog = page.getByRole('dialog', { name: /Publish this plan/i })
     // The three things a planner has to know BEFORE the write: what lands, when the Release
     // lands, and that reverting will not undo it.
-    await expect(dialog.getByText(/planned start and end dates/)).toBeVisible()
+    //
+    // Each matched SPECIFICALLY. `/planned start and end dates/` alone used to identify the first
+    // line only because the Release rule said "falls inside its release"; `P5-CAP-AC-019` (retest
+    // 2026-08-17) replaced that with the equality wording, which names the same dates — so the loose
+    // pattern matched two elements and the assertion could no longer tell the two facts apart.
+    await expect(dialog.getByText(/takes this plan.s planned start and end dates/)).toBeVisible()
+    await expect(
+      dialog.getByText(/exactly match the selected Release start and end dates/),
+    ).toBeVisible()
     await expect(dialog.getByText(/does NOT undo these field values/)).toBeVisible()
     // Rally's second option is offered alongside, not hidden behind a checkbox.
     await expect(
