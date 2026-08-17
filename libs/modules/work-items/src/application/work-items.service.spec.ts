@@ -632,40 +632,53 @@ describe('WorkItemsService', () => {
       );
     });
 
-    /**
-     * A TASK's Estimate is DERIVED and READ-ONLY: `To Do + Actual` (`P6-TC-008`, DEV Handoff
-     * 2026-08-14 — "Estimate is read-only and always equals To Do + Actuals").
-     *
-     * These two cases previously asserted the opposite (an independent, client-set Estimate) and are
-     * inverted here with the rest of the rule.
-     */
-    it('DERIVES the Estimate from To Do + Actual on create, ignoring a supplied Estimate', async () => {
-      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'parent-1', type: 'story' }));
+    // ── Real Rally: Estimate is an independent planned value (client-set), not
+    //    derived. To Do / Actuals are independent too. ──
+    it('persists the client-supplied Estimate independently of To Do / Actual', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),
+      );
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-p', status: 'active' }]);
       workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task' }));
 
       await service.createTask(mockActor, 'parent-1', 'My task', {
-        estimateHours: '99',
-        todoHours: '6',
+        estimateHours: '8',
+        todoHours: '3',
         actualHours: '2',
       });
 
       expect(workItemRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ estimateHours: '8.00', todoHours: '6', actualHours: '2' }),
+        expect.objectContaining({ estimateHours: '8', todoHours: '3', actualHours: '2' }),
         expect.anything(),
       );
     });
 
-    it('lets a planner enter To Do alone, and the Estimate follows it', async () => {
-      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'parent-1', type: 'story' }));
+    // ── Real Rally: To Do defaults to the Estimate on create when not given ──
+    it('defaults To Do to the Estimate when To Do is not provided', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'parent-1', projectId: 'proj-1', teamId: 'team-p' }),
+      );
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-p', status: 'active' }]);
       workItemRepo.create.mockResolvedValue(mockWorkItem({ type: 'task' }));
 
-      await service.createTask(mockActor, 'parent-1', 'My task', { todoHours: '6' });
+      await service.createTask(mockActor, 'parent-1', 'My task', { estimateHours: '8' });
 
       expect(workItemRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ estimateHours: '6.00', todoHours: '6' }),
+        expect.objectContaining({ estimateHours: '8', todoHours: '8' }),
         expect.anything(),
       );
     });
+
+    it.each(['task'] as const)(
+      'rejects creating a task under a %s (parent must be a story or defect)',
+      async (parentType) => {
+        workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'p-1', type: parentType }));
+        await expect(service.createTask(mockActor, 'p-1', 'T')).rejects.toThrow(
+          /user story or defect/i,
+        );
+        expect(workItemRepo.create).not.toHaveBeenCalled();
+      },
+    );
 
     it('allows creating a task under a defect', async () => {
       workItemRepo.findById.mockResolvedValue(
@@ -974,32 +987,84 @@ describe('WorkItemsService', () => {
     });
 
     // ── Real Rally: Estimate is independent — never derived/overwritten on update ──
-    /**
-     * The update half of `P6-TC-008`. The five cases that stood here asserted the previous model —
-     * three independent fields, a once-only first-Estimate copy, and completion leaving Estimate
-     * untouched. The BA's approved rule replaces all of it: Estimate is read-only and recomputed from
-     * To Do + Actual on every task write.
-     */
-    it('recomputes the Estimate from To Do + Actual, and ignores a supplied Estimate', async () => {
-      const task = mockWorkItem({ id: 'task-1', type: 'task', todoHours: '3', actualHours: '1' });
+    it('does NOT derive or overwrite the Estimate on update', async () => {
+      const task = mockWorkItem({
+        id: 'task-1',
+        type: 'task',
+        todoHours: '1',
+        actualHours: '1',
+        estimateHours: '8',
+      });
       workItemRepo.findById.mockResolvedValue(task);
-      workItemRepo.update.mockResolvedValue(task);
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
 
-      await service.updateWorkItem(mockActor, 'task-1', { estimateHours: '99', actualHours: '2' });
+      await service.updateWorkItem(mockActor, 'task-1', { todoHours: '4' });
 
       const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
-      expect(call?.[1]).toMatchObject({ actualHours: '2', estimateHours: '5.00' });
+      // Only To Do changes; Estimate is left entirely to the client.
+      expect(call?.[1]).not.toHaveProperty('estimateHours');
+      expect(call?.[1]).toMatchObject({ todoHours: '4' });
     });
 
-    /** The BA's exact case: completing a task takes To Do to 0h, so Estimate becomes the Actual. */
-    it('completing a task zeroes To Do and pulls the Estimate down to the Actual (6h -> 2h)', async () => {
+    /**
+     * The BA's first clause, on the UPDATE path: "If the Owner enters `Estimate` first, the system
+     * copies the same number of hours to `To Do` once" (Portfolio SRS:143).
+     *
+     * The create path did this and the update path did not, so estimating a task that already existed
+     * left To Do empty and the planner typed the same number twice.
+     */
+    it('copies a FIRST Estimate into To Do, once', async () => {
+      const task = mockWorkItem({ id: 'task-1', type: 'task', todoHours: null });
+      workItemRepo.findById.mockResolvedValue(task);
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
+
+      await service.updateWorkItem(mockActor, 'task-1', { estimateHours: '6' });
+
+      const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
+      expect(call?.[1]).toMatchObject({ estimateHours: '6', todoHours: '6' });
+    });
+
+    it('does NOT re-copy once To Do has a value — including a deliberate 0', async () => {
+      // "After that first copy, `Estimate`, `To Do` and `Actual` do not auto-recalculate each other"
+      // (SRS:144). `0` is the case worth pinning: a completed task has exactly that, so treating it as
+      // "unset" would undo the auto-zero, or overwrite a planner who typed 0 on purpose.
+      for (const existingTodo of ['4', '0']) {
+        workItemRepo.update.mockClear();
+        workItemRepo.findById.mockResolvedValue(
+          mockWorkItem({ id: 'task-1', type: 'task', todoHours: existingTodo }),
+        );
+        workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
+
+        await service.updateWorkItem(mockActor, 'task-1', { estimateHours: '9' });
+
+        const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
+        expect(call?.[1]).toMatchObject({ estimateHours: '9' });
+        expect(call?.[1]).not.toHaveProperty('todoHours');
+      }
+    });
+
+    it('lets the same patch set BOTH, without the copy interfering', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ id: 'task-1', type: 'task', todoHours: null }),
+      );
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
+
+      await service.updateWorkItem(mockActor, 'task-1', { estimateHours: '8', todoHours: '3' });
+
+      const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
+      // An explicit To Do wins: the copy is a convenience for the field being LEFT OUT.
+      expect(call?.[1]).toMatchObject({ estimateHours: '8', todoHours: '3' });
+    });
+
+    // ── Real Rally: completing a task auto-zeroes To Do; Estimate untouched ──
+    it('auto-zeroes To Do when a task is completed, leaving Estimate untouched', async () => {
       const task = mockWorkItem({
         id: 'task-1',
         type: 'task',
         scheduleState: 'in_progress',
-        todoHours: '4',
+        todoHours: '3',
         actualHours: '2',
-        estimateHours: '6',
+        estimateHours: '8',
         parentId: null,
       });
       workItemRepo.findById.mockResolvedValue(task);
@@ -1008,37 +1073,8 @@ describe('WorkItemsService', () => {
       await service.updateWorkItem(mockActor, 'task-1', { scheduleState: 'completed' });
 
       const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
-      expect(call?.[1]).toMatchObject({ todoHours: '0', estimateHours: '2.00' });
-    });
-
-    it('writes no Estimate when To Do and Actual are unchanged', async () => {
-      // Nothing to recompute means nothing to write — so an unrelated patch does not churn the field
-      // or produce a phantom revision-history entry for it.
-      const task = mockWorkItem({
-        id: 'task-1',
-        type: 'task',
-        todoHours: '3',
-        actualHours: '1',
-        estimateHours: '4.00',
-      });
-      workItemRepo.findById.mockResolvedValue(task);
-      workItemRepo.update.mockResolvedValue(task);
-
-      await service.updateWorkItem(mockActor, 'task-1', { title: 'renamed' });
-
-      const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'task-1');
+      expect(call?.[1]).toMatchObject({ todoHours: '0' });
       expect(call?.[1]).not.toHaveProperty('estimateHours');
-    });
-
-    it('leaves a STORY/DEFECT estimate alone — only the task rule is derived', async () => {
-      const story = mockWorkItem({ id: 'wi-1', type: 'story', estimateHours: '5' });
-      workItemRepo.findById.mockResolvedValue(story);
-      workItemRepo.update.mockResolvedValue(story);
-
-      await service.updateWorkItem(mockActor, 'wi-1', { estimateHours: '13' });
-
-      const call = workItemRepo.update.mock.calls.find((c) => c[0] === 'wi-1');
-      expect(call?.[1]).toMatchObject({ estimateHours: '13' });
     });
 
     // ── Parent reassignment must obey the SAME hierarchy rules as create, so

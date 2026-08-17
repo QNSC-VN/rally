@@ -74,16 +74,6 @@ import { EntityAttachmentsService } from '@modules/attachments';
 import type { AttachmentRef, EntityAttachment } from '@modules/attachments';
 
 /** Walk an error's `.cause` chain looking for a PG unique-violation (code 23505). */
-/**
- * `To Do + Actual`, in the shape the numeric(8,2) columns store.
- *
- * The task `Estimate` is derived from these two and nothing else (`P6-TC-008`). Fixed to two decimals
- * so the value round-trips through the column unchanged and a re-read never looks like a fresh edit.
- */
-function sumHours(todo: string | null, actual: string | null): string {
-  return (Number(todo ?? 0) + Number(actual ?? 0)).toFixed(2);
-}
-
 function isDuplicateKeyError(err: unknown): boolean {
   let current: unknown = err;
 
@@ -407,19 +397,12 @@ export class WorkItemsService {
               iterationId: opts.iterationId,
               releaseId: opts.releaseId,
               storyPoints: opts.storyPoints,
-              /**
-               * A TASK's Estimate is DERIVED: `To Do + Actual`, read-only (`P6-TC-008`).
-               *
-               * So on create it is computed, not taken from the caller. `To Do` still accepts a planned
-               * value — that is the number the planner actually enters — and `Estimate` follows it, so
-               * entering To Do 6h gives Estimate 6h and the two agree from the start.
-               *
-               * A Story/Defect keeps its own independent `estimateHours`; only the task rule is derived.
-               */
-              estimateHours:
-                type === 'task'
-                  ? sumHours(opts.todoHours ?? opts.estimateHours ?? null, opts.actualHours ?? null)
-                  : opts.estimateHours,
+              // Real-Rally task time: Estimate is an independent planned value
+              // (client-set, never derived). To Do defaults to the Estimate on
+              // create until edited (Rally: remaining = planned before work
+              // starts). Actuals is a separate manual input. To Do auto-zeroes
+              // on completion (see updateWorkItem).
+              estimateHours: opts.estimateHours,
               todoHours: type === 'task' ? (opts.todoHours ?? opts.estimateHours) : opts.todoHours,
               actualHours: opts.actualHours,
               acceptanceCriteria: opts.acceptanceCriteria,
@@ -890,22 +873,10 @@ export class WorkItemsService {
       input.scheduleState !== undefined &&
       !isCompletedScheduleState(input.scheduleState);
 
-    /**
-     * TASK TIME: `Estimate` is DERIVED and READ-ONLY — always `To Do + Actual`.
-     *
-     * `P6-TC-008` (DEV Handoff 2026-08-14): "Approved BA rule overrides the stale tracker wording:
-     * Estimate is read-only and always equals To Do + Actuals. When To Do is 0h and Actual is 2h,
-     * Estimate must be 2h." The reported failure was a task completing to To Do 0h / Actual 2h while
-     * Estimate stayed editable at 6h.
-     *
-     * So a client-supplied `estimateHours` is DISCARDED rather than refused — the field is read-only in
-     * every editor, and a stale client that still sends it must not fail the whole patch. The stored
-     * value is recomputed from the post-patch To Do and Actual on every task write.
-     *
-     * Completing a task still zeroes To Do (no remaining work), and reopening does not restore it. With
-     * the rule above, that means completing a task also pulls Estimate down to the Actual — which is
-     * exactly the 6h → 2h transition the BA's case asks for.
-     */
+    // Real-Rally task time: Estimate and Actuals are independent, user-owned
+    // values — never derived/overwritten. A task reaching a done state has no
+    // remaining work, so To Do auto-zeroes (unless the same patch sets it
+    // explicitly). Reopening does NOT restore To Do (Rally parity).
     if (isTask) {
       const completing =
         input.scheduleState !== undefined && isCompletedScheduleState(input.scheduleState);
@@ -913,12 +884,25 @@ export class WorkItemsService {
         input.todoHours = '0';
       }
 
-      delete input.estimateHours;
-      const nextTodo = input.todoHours ?? item.todoHours ?? '0';
-      const nextActual = input.actualHours ?? item.actualHours ?? '0';
-      const derived = sumHours(nextTodo, nextActual);
-      if (derived !== (item.estimateHours ?? null)) {
-        input.estimateHours = derived;
+      /**
+       * The FIRST Estimate copies itself to To Do — once, and only while To Do is unset.
+       *
+       * "If the Owner enters `Estimate` first, the system copies the same number of hours to `To Do`
+       * once. After that first copy, `Estimate`, `To Do` and `Actual` do not auto-recalculate each
+       * other" (Portfolio SRS:143-144). The create path did this (`todoHours ?? estimateHours`) and
+       * the update path did not, so estimating a task that already existed left To Do empty and the
+       * planner had to type the same number twice.
+       *
+       * `null` is the gate, not falsiness: a To Do of `0` is a real answer — a completed task has
+       * exactly that — and re-copying the estimate over it would undo the auto-zero above, or
+       * silently overwrite a planner who deliberately typed 0.
+       */
+      const firstEstimate =
+        input.estimateHours !== undefined &&
+        input.todoHours === undefined &&
+        item.todoHours === null;
+      if (firstEstimate) {
+        input.todoHours = input.estimateHours;
       }
     }
 
