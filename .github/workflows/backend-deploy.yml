@@ -209,6 +209,23 @@ jobs:
       product: rally
       has_worker: true
       has_migrator: true
+      # ── Graviton ───────────────────────────────────────────────────────────
+      # ARM64 Fargate is ~20% cheaper per vCPU-hour and GB-hour at identical sizing.
+      #
+      # These two MOVE WITH `cpu_architecture` in infra/live/*/main.tf, in one change.
+      # Set only one side and the container fails at task start with "image Manifest does
+      # not contain descriptor matching platform" — after a clean apply and a deploy that
+      # reports a rollout, so nothing warns you until tasks refuse to run.
+      #
+      # NATIVE ARM RUNNER, not QEMU emulation on ubuntu-latest. The reusable's own note is
+      # explicit: emulating an arm64 pnpm + Nest compile multiplies build minutes by enough
+      # to outweigh the Fargate saving. `ubuntu-24.04-arm` is free on public repositories.
+      #
+      # Every image in the task has an arm64 build — node:alpine for the app,
+      # cloudflare/cloudflared and amazon/aws-otel-collector for the sidecars (checked
+      # 2026-08-17). qnsc-kb cannot do this: clamav/clamav is amd64-only on every tag.
+      build_runner: ubuntu-24.04-arm
+      image_platforms: linux/arm64
     # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
     secrets:
       AWS_ACCOUNT_ID:       ${{ vars.AWS_ACCOUNT_ID }}

@@ -155,6 +155,29 @@ module "stack" {
   // OFF here and in production alike — see ../prod/main.tf for the audit. Per-task
   // metrics are billed as custom CloudWatch metrics at $0.07 each and no alarm,
   // dashboard or autoscaling target in this stack reads that namespace.
+  // ── Graviton ─────────────────────────────────────────────────────────────────
+  // ARM64 Fargate bills ~20% less per vCPU-hour and GB-hour at identical sizing. Nothing
+  // is given up: same platform, same networking, same limits.
+  //
+  // DEVELOP FIRST, and that is the point of having it. An x86 image on an ARM64 task does
+  // not fail the apply — it fails at TASK START with "image Manifest does not contain
+  // descriptor matching platform", after a deploy that reports a rollout. Proving it here
+  // costs a broken develop; discovering it in production costs an outage on launch day.
+  //
+  // MOVES WITH THE BUILD. `.github/workflows/backend-deploy.yml` sets
+  // `build_runner: ubuntu-24.04-arm` and `image_platforms: linux/arm64` in the same
+  // change. Native ARM runner, not QEMU — the qnsc-ci reusable notes that emulating an
+  // arm64 pnpm + Nest compile on x86 costs more build minutes than the Fargate saving is
+  // worth.
+  //
+  // rally qualifies on every image in the task: the app is node:alpine (multi-arch), and
+  // both sidecars publish arm64 — cloudflare/cloudflared and amazon/aws-otel-collector,
+  // checked 2026-08-17. qnsc-kb does not, and cannot follow: clamav/clamav is amd64-only
+  // on every published tag.
+  //
+  // ROLLBACK is this line plus the two workflow inputs, reverted together and redeployed.
+  cpu_architecture = "ARM64"
+
   container_insights = "disabled"
 
   // Three dashboards are free per ACCOUNT; four environments across two products

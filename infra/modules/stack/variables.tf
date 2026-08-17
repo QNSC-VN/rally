@@ -778,3 +778,37 @@ variable "monitor_ingress" {
   type        = bool
   default     = true
 }
+
+variable "cpu_architecture" {
+  type    = string
+  default = "X86_64"
+  validation {
+    condition     = contains(["X86_64", "ARM64"], var.cpu_architecture)
+    error_message = "cpu_architecture must be X86_64 or ARM64."
+  }
+  description = <<-EOT
+    Fargate CPU architecture for the api, worker and migrator: "X86_64" or "ARM64".
+
+    ARM64 (Graviton) bills ~20% less per vCPU-hour and GB-hour for identical sizing, with
+    no capability difference — same Fargate platform, same networking, same limits.
+
+    IT IS NOT A FREE FLAG. The image must be built for linux/arm64, or the container fails
+    at start with "image Manifest does not contain descriptor matching platform" — a
+    failure that appears at TASK START, after a clean apply and a deploy that reports a
+    rollout. So this moves together with `build_runner` and `image_platforms` in the
+    caller's deploy workflow, in one change, and the three task definitions here move
+    together with each other: the migrator runs the same image family as the api.
+
+    Build NATIVELY on an ARM runner (`ubuntu-24.04-arm`), not under QEMU emulation. The
+    qnsc-ci reusable's own note is explicit that emulating an arm64 pnpm + Nest compile on
+    an x86 runner multiplies build minutes by enough to outweigh the Fargate saving.
+
+    NOT EVERY PRODUCT CAN TAKE THIS. It depends on every image in the task having an
+    arm64 build — including sidecars. rally qualifies: the app is `node:alpine`
+    (multi-arch), and both sidecars publish arm64 (`cloudflare/cloudflared` and
+    `amazon/aws-otel-collector`, checked 2026-08-17). qnsc-kb does NOT: `clamav/clamav`
+    is amd64-only on every published tag.
+
+    Defaults to X86_64 so a caller that has not moved its build keeps working.
+  EOT
+}
