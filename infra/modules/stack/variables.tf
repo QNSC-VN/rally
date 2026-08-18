@@ -782,6 +782,32 @@ variable "tunnel_enabled" {
   default     = false
 }
 
+variable "tunnel_routing_managed" {
+  description = <<-EOT
+    Let Terraform own the tunnel's INGRESS RULES (the public hostname → local service
+    mapping), instead of leaving them to whatever was configured by hand.
+
+    WHY THIS IS OPT-IN RATHER THAN THE DEFAULT. A tunnel with no ingress rule is inert:
+    it connects, reports healthy, and 503s every request — which is exactly how rally
+    production went live. But turning routing on for a tunnel that is ALREADY SERVING is
+    the dangerous direction: Cloudflare's tunnel-configuration API is a whole-document
+    PUT, so a partial rule set silently discards anything the live configuration holds
+    that this file does not reproduce, and `config_src` FORCES REPLACEMENT — a new UUID,
+    a new CNAME target and a new connector token, i.e. an outage plus a secret rotation
+    the running task only picks up on its next deployment.
+
+    So the safe order is: adopt with this false (what develop still does, its rules
+    created out of band on 2026-08-02), and switch it on per environment when that
+    environment can absorb a replacement. Production could, on 2026-08-18, precisely
+    because it was serving nothing yet.
+
+    Requires `api_domain` — the hostname the rule is written for. `app_port` is the local
+    service the connector forwards to, so the two cannot drift from what the task runs.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "monitor_ingress" {
   description = <<-EOT
     Create the Route 53 health check + us-east-1 alarm that probe the public api
