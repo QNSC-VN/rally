@@ -367,18 +367,23 @@ module "tunnel" {
   // whole-document PUT: develop's live rule set has never been compared rule-by-rule, and
   // production's holds nothing but the catch-all 503 this change exists to replace.
   //
-  // `config_src` STAYS UNSET even when routing is managed, and that is deliberate. The
-  // attribute forces replacement (the plan quoted above), and it is not needed: it only
-  // tells the connector where to READ routing from, and both tunnels already read it from
-  // Cloudflare. Writing the ingress rule is the whole job; writing `config_src` alongside
-  // it would destroy and recreate the tunnel — new UUID, new CNAME target, new connector
-  // token — to restate something already true.
+  // `config_src` IS PINNED TO "" — unset — in BOTH environments, and it has to be passed
+  // explicitly, because the module's own DEFAULT is "cloudflare". Omitting the argument is
+  // therefore NOT the same as leaving the attribute alone: a plan on this branch, with the
+  // argument deleted, proposed replacing BOTH tunnels for exactly the reason quoted above.
+  //
+  // It is not needed either. The attribute only tells the connector where to READ routing
+  // from, and both tunnels already read it from Cloudflare; writing the ingress rule is
+  // the whole job. So the two halves are deliberately independent: `tunnel_routing_managed`
+  // decides whether Terraform writes the RULE, and nothing decides to rewrite the TUNNEL.
   //
   // `hostname` is the api domain and `service` is the app port, so the rule cannot drift
   // from the task it forwards to — the module writes a catch-all `http_status:404` after
   // it, which Cloudflare requires as the last rule.
   hostname = var.tunnel_routing_managed ? var.api_domain : ""
   service  = "http://localhost:${local.api_container_port}"
+
+  config_src = "" // NOT omittable: the module defaults it to "cloudflare". See above.
 }
 
 # The connector token, in its own secret rather than as a key in the bundle.
