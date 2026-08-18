@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import { workItems, iterations, releases } from '../../../../../../db/schema/work';
 import {
@@ -24,22 +24,68 @@ import type {
   QualitySortBy,
 } from '../../domain/quality.types';
 import { IQualityRepository } from '../../domain/ports/quality.repository';
+import { scopeIsEmpty, type TeamReadScope } from '../../domain/team-read-scope';
+
+/** What an out-of-scope caller measures: nothing. Never `undefined` — the strip still renders. */
+const NO_METRICS: DefectMetrics = {
+  openDefects: 0,
+  critical: 0,
+  inProgress: 0,
+  verifiedAccepted: 0,
+  reopened: 0,
+  blockers: 0,
+};
 
 @Injectable()
 export class QualityDrizzleRepository implements IQualityRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
+  /**
+   * The team predicate for a defect — a WORK ROW, so `team_id IN (…)` and NO `OR IS NULL`.
+   *
+   * A defect carrying no team belongs to the PROJECT BACKLOG, which the BA ruling of 2026-08-17 makes
+   * readable by a Workspace Admin or Project Admin only, so an absent team EXCLUDES the row. Note this
+   * is the opposite of the rule for a timebox (`teamOrSharedTimebox` in the iterations module): a
+   * team-less ITERATION is a shared sprint and stays visible. Both predicates read a nullable
+   * `team_id`; only the timebox one may treat NULL as "everyone's".
+   *
+   * Its OWN `team_id`, not `coalesce(…)`: the three-tier resolve exists for a TASK, whose team defaults
+   * to its parent's. A defect is a Work Product and carries its own — the same reason
+   * `assertTeamInScope` is handed `workItem.teamId` verbatim on the write side.
+   *
+   * `undefined` for an unrestricted caller, so the condition list is literally unchanged rather than
+   * carrying a tautology. The empty scope is short-circuited by the callers, never rendered as
+   * `IN ()`.
+   */
+  private teamScope(scope: TeamReadScope): SQL | undefined {
+    if (scope.unrestricted) return undefined;
+    return inArray(workItems.teamId, scope.teamIds);
+  }
+
   async listDefects(
     workspaceId: string,
     projectId: string,
     opts: ListDefectsOptions = {},
+    // No default, deliberately: an implicit `{ unrestricted: true }` is a fail-open path that a caller
+    // can reach by forgetting an argument. `opts` keeps its default because omitting a filter is
+    // meaningless, not dangerous.
+    scope: TeamReadScope,
   ): Promise<{ rows: DefectRow[]; total: number }> {
+    // An editor with no active Team in this project reaches no defect at all. Short-circuited rather
+    // than filtered, because `IN ()` is not portable as "match nothing" and flattening `[]` into "no
+    // filter" would hand them the whole project.
+    if (scopeIsEmpty(scope)) return { rows: [], total: 0 };
+
     const conditions = [
       eq(workItems.workspaceId, workspaceId),
       eq(workItems.projectId, projectId),
       eq(workItems.type, 'defect'),
       isNull(workItems.deletedAt),
     ];
+    // Pushed into the SHARED `conditions` array, so the page, the "of N" count below and every column
+    // filter narrow together — the footer total cannot outgrow the rows it counts.
+    const team = this.teamScope(scope);
+    if (team) conditions.push(team);
 
     if (opts.severity && opts.severity !== 'all') {
       conditions.push(eq(workItems.severity, opts.severity as DefectSeverity));
@@ -120,6 +166,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
         resolution: workItems.resolution,
         foundInReleaseId: workItems.foundInReleaseId,
         assigneeId: workItems.assigneeId,
+        teamId: workItems.teamId,
         scheduleState: workItems.scheduleState,
         iterationId: workItems.iterationId,
         releaseId: workItems.releaseId,
@@ -167,6 +214,7 @@ export class QualityDrizzleRepository implements IQualityRepository {
       foundInReleaseId: r.foundInReleaseId,
       foundInReleaseName: r.foundInReleaseName,
       assigneeId: r.assigneeId,
+      teamId: r.teamId,
       assigneeName: r.assigneeName,
       scheduleState: r.scheduleState,
       iterationId: r.iterationId,
@@ -202,7 +250,14 @@ export class QualityDrizzleRepository implements IQualityRepository {
     return { rows: data, total: Number(countRow?.total ?? 0) };
   }
 
-  async computeMetrics(workspaceId: string, projectId: string): Promise<DefectMetrics> {
+  async computeMetrics(
+    workspaceId: string,
+    projectId: string,
+    scope: TeamReadScope,
+  ): Promise<DefectMetrics> {
+    // The same short-circuit as the list: six zeroed cards, not the project's six numbers.
+    if (scopeIsEmpty(scope)) return NO_METRICS;
+
     const rows = await this.db
       .select({
         scheduleState: workItems.scheduleState,
@@ -219,6 +274,11 @@ export class QualityDrizzleRepository implements IQualityRepository {
           eq(workItems.projectId, projectId),
           eq(workItems.type, 'defect'),
           isNull(workItems.deletedAt),
+          // The SAME predicate the page uses, from the one helper. These metrics ignore the caller's
+          // filters by design (they count the project, not the page), which is exactly why the team
+          // predicate must not be forgotten here: the strip would have kept reporting every team's
+          // defects above a correctly narrowed grid.
+          this.teamScope(scope),
         ),
       );
 

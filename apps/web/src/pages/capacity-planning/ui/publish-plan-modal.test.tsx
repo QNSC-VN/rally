@@ -13,13 +13,21 @@ import { PublishPlanModal } from './publish-plan-modal'
 import type { CapacityPlan, PublishResult } from '@/features/capacity-planning/api'
 
 const mockPOST = apiClient.POST as ReturnType<typeof vi.fn>
+const mockGET = apiClient.GET as ReturnType<typeof vi.fn>
 
+/**
+ * The plan ENDS EARLIER than its release (`RE-1` runs to 08-31), which is `P5-CP-035`'s repro: it is
+ * not outside its release and is still a mismatch, because AC-019 compares the two windows for
+ * EQUALITY. The advisory copy has to survive exactly this case.
+ */
 const plan = {
   id: 'plan-1',
+  projectId: 'proj-1',
+  releaseId: 'rel-1',
   name: 'Q3',
   status: 'draft',
-  plannedStartDate: '2026-07-01',
-  plannedEndDate: '2026-07-31',
+  plannedStartDate: '2026-08-07',
+  plannedEndDate: '2026-08-30',
 } as unknown as CapacityPlan
 
 const result = (over: Partial<PublishResult> = {}): PublishResult =>
@@ -49,14 +57,35 @@ describe('PublishPlanModal', () => {
   beforeEach(() => {
     mockPOST.mockReset()
     mockPOST.mockResolvedValue({ data: result(), error: undefined })
+    mockGET.mockReset()
+    // The release REFERENCE feed, which is where the advisory gets the Release's own window.
+    mockGET.mockResolvedValue({
+      data: [
+        {
+          id: 'rel-1',
+          projectId: 'proj-1',
+          releaseKey: 'RE-1',
+          name: 'RE-1',
+          status: 'planning',
+          startDate: '2026-08-07',
+          releaseDate: '2026-08-31',
+        },
+      ],
+      error: undefined,
+      response: { status: 200 },
+    })
   })
 
   it('names what it will write BEFORE writing it', () => {
     // The fields land on Features outside the plan, and reverting does not undo them, so the
     // confirmation has to say both things up front.
     renderModal()
-    expect(screen.getByText(/planned start and end dates/)).toBeTruthy()
-    expect(screen.getByText(/only when the plan’s window falls inside its release/)).toBeTruthy()
+    expect(
+      screen.getByText(/Each Feature assigned to a team takes this plan’s planned start and end/),
+    ).toBeTruthy()
+    // "exactly match", never "falls inside": AC-019 is equality, so a plan narrower than its release
+    // does NOT take the Release field — the old wording promised the opposite (`P5-CP-035`).
+    expect(screen.getByText(/exactly match the selected Release start and end dates/)).toBeTruthy()
     expect(screen.getByText(/does NOT undo these field values/)).toBeTruthy()
   })
 
@@ -128,10 +157,52 @@ describe('PublishPlanModal', () => {
     await waitFor(() => expect(screen.getByText('FE-1')).toBeTruthy())
     expect(screen.getByText(/no team assigned/)).toBeTruthy()
     expect(screen.getByText('FE-2')).toBeTruthy()
-    expect(screen.getByText(/reaches outside its release/)).toBeTruthy()
     // Reports how many DID land, so the planner knows the publish itself worked.
     expect(screen.getByText(/1 Feature\(s\) updated/)).toBeTruthy()
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('names BOTH date pairs on a mismatch, and never claims the plan is outside its release', async () => {
+    /**
+     * `P5-CP-035`. The plan runs 08-07..08-30 inside a release running 08-07..08-31, so it is not
+     * outside its release at all — the old copy said "reaches outside its release", which reads as a
+     * data error the planner cannot find. AC-019 compares the two windows for EQUALITY, so the honest
+     * report is both windows and what was written.
+     */
+    mockPOST.mockResolvedValue({
+      data: result({
+        featuresUpdated: 1,
+        skipped: [{ portfolioItemId: 'fe-2', itemKey: 'FE-2', reason: 'release_span_mismatch' }],
+      }),
+      error: undefined,
+    })
+    renderModal()
+    fireEvent.click(publishButton())
+
+    await waitFor(() => expect(screen.getByText('FE-2')).toBeTruthy())
+    expect(
+      screen.getByText(
+        /Plan dates 2026-08-07 to 2026-08-30 do not exactly match Release dates 2026-08-07 to 2026-08-31\. Planned dates were updated; Release was not changed\./,
+      ),
+    ).toBeTruthy()
+    expect(screen.queryByText(/outside its release/)).toBeNull()
+  })
+
+  it('reports a SPLIT Feature once, because the server reports one entry per Feature', async () => {
+    // AC4: FE-2 is allocated to two teams. The advisory used to be pushed per allocation row, so the
+    // planner read the same sentence twice — and React saw a duplicate key.
+    mockPOST.mockResolvedValue({
+      data: result({
+        featuresUpdated: 1,
+        skipped: [{ portfolioItemId: 'fe-2', itemKey: 'FE-2', reason: 'release_span_mismatch' }],
+      }),
+      error: undefined,
+    })
+    renderModal()
+    fireEvent.click(publishButton())
+
+    await waitFor(() => expect(screen.getAllByText('FE-2')).toHaveLength(1))
+    expect(screen.getAllByText(/do not exactly match Release dates/)).toHaveLength(1)
   })
 
   it('stops offering to publish once it has, so a report cannot be re-submitted', async () => {

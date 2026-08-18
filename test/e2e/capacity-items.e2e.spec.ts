@@ -137,9 +137,15 @@ describe('capacity items + cutline (e2e)', () => {
     expect(detail.allocations).toHaveLength(2);
   });
 
-  it("reports the Feature's OWN rollup, not one team's slice of it", async () => {
-    // The reason `itemRollup` is a separate query: a child belonging to a team that is NOT on
-    // the plan still counts toward the Feature's rollup, and per-team sums would lose it.
+  it("reports the Feature's OWN rollup, and the team slices sum to it", async () => {
+    /**
+     * `itemRollup` is a separate query so the Features tab reports the Feature once rather than once
+     * per team. What it must NOT be is a different POPULATION from the slices: a child belonging to a
+     * team that is not on the plan used to count toward the Feature and toward no team at all, so the
+     * plan header (the sum of the team rows) disagreed with the Features tab beside it — `P5-CP-029`'s
+     * "Team slices must be consistent with the Feature/Plan totals". Such a child now falls to the
+     * Feature's owner on the plan, which is the only team that has agreed to do the work.
+     */
     const { planId, releaseId } = await newPlan();
     await capacity.addTeam(admin, planId, teamAId);
     const feature = await newFeature();
@@ -169,8 +175,10 @@ describe('capacity items + cutline (e2e)', () => {
     const detail = await capacity.getPlanDetail(admin, planId);
     // 3 + 7 across both teams, even though only team A is on the plan.
     expect(detail.items[0].rollup).toBe(10);
-    // The team row sees only its own 3.
-    expect(detail.teams[0].metrics.rollup).toBe(3);
+    // And team A's row carries all 10: it owns the Feature here, and team B holds no allocation of it,
+    // so the 7 has exactly one slice it can belong to. Previously this read 3 and the plan header
+    // reported 3 against a Features tab reading 10.
+    expect(detail.teams[0].metrics.rollup).toBe(10);
   });
 
   it('draws the cutline against the PLAN total, not one team', async () => {

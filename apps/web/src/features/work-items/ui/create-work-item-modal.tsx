@@ -10,22 +10,31 @@ import { Loader2 } from 'lucide-react'
 import { useCreateWorkItem, useBacklog, type WorkItem } from '@/features/work-items/api'
 import { useProjectTeams } from '@/features/teams/api'
 import { useTeamOwnerOptions } from '@/features/teams/api'
-import { useProjects } from '@/features/projects/api'
+import { useProjectTeamScope } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useRecordProject } from '@/shared/lib/deep-link-project'
 import { BRAND } from '@/shared/config/brand'
 import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { FormField } from '@/shared/ui/form-field'
+import { FormField, ReadOnlyFieldValue } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { OwnerSelectField, TeamSelectField } from '@/shared/ui/entity-select-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
-import { KeyChip } from '@/shared/ui/key-chip'
+import { ProjectCell } from '@/shared/ui/project-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 
 type CreatableType = 'story' | 'defect'
 
 interface Props {
+  /**
+   * The project the item is created INTO, and the only one this modal can create into.
+   *
+   * There is deliberately no `projects` option list and no `onProjectChange`: WIC-FR-004 makes
+   * Project auto-filled from the active Project context and READ-ONLY in every Work Item create
+   * flow, so the component has no shape in which a caller could re-enable a picker. To create
+   * somewhere else the user changes the global Project context first (AC #11).
+   */
   projectId: string
   onClose: () => void
   onCreated?: (item: WorkItem) => void
@@ -45,14 +54,20 @@ export function CreateWorkItemModal({
   onCreatedWithDetails,
 }: Props) {
   const { t } = useTranslation('work-items')
-  const { workspace, team } = useAppContext()
-  const workspaceId = workspace?.workspaceId ?? ''
+  const { team } = useAppContext()
   const [type, setType] = useState<CreatableType>('story')
   const [title, setTitle] = useState('')
-  // Project defaults to the backlog's current project (WIC-FR-004) but can be
-  // switched to any project the user can access; Team/Owner/Parent then filter
-  // by the SELECTED project so an item can't be seeded with cross-project refs.
-  const [selectedProjectId, setSelectedProjectId] = useState(projectId)
+  /**
+   * Project is FIXED for the life of this modal (WIC-FR-004, AC #11).
+   *
+   * It used to be `useState(projectId)` behind a searchable dropdown over every project the
+   * caller could read, so `Add New` on a Feature's Children tab offered to file the new Story
+   * under a different project than the Feature it was being linked to — the state P5-PI-003
+   * reproduced, and one the server then had to refuse or silently split. `projectId` is now read
+   * straight from the prop, which also means Team, Owner, Parent Story, Release and Iteration
+   * options cannot be scoped to anything else.
+   */
+  const projectDisplay = useRecordProject(projectId)
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
   const [teamId, setTeamId] = useState(team?.teamId ?? '')
   /**
@@ -76,37 +91,46 @@ export function CreateWorkItemModal({
   const [submitting, setSubmitting] = useState(false)
 
   const createMutation = useCreateWorkItem()
-  const { data: projects = [] } = useProjects(workspaceId || undefined)
-  const { data: teams = [] } = useProjectTeams(selectedProjectId)
+  const { data: teams = [] } = useProjectTeams(projectId)
   // Fetch stories for the parent dropdown (only used when type=defect)
-  const { data: backlogData } = useBacklog(selectedProjectId, { type: 'story' })
+  const { data: backlogData } = useBacklog(projectId, { type: 'story' })
   const stories = backlogData?.data ?? []
 
-  // A pre-filled/inherited team that isn't linked to the selected project is
+  // A pre-filled/inherited team that isn't linked to the fixed project is
   // treated as unset so the backend can't reject the create with
   // PROJECT_TEAM_LINK_NOT_FOUND (DEV-007). Derived — no effect needed.
   const validTeamId = teams.some((t) => t.id === teamId) ? teamId : ''
+  /**
+   * Is Team REQUIRED here? Per CALLER, not per form (BA ruling 2026-08-17): an Editor "must select
+   * one of their assigned Teams when creating a Work Item", while for a Workspace Admin or
+   * per-project Admin blank stays legal and means the Project Backlog (WIC-FR-005).
+   */
+  const { teamRequired } = useProjectTeamScope(projectId)
+  /**
+   * A SINGLE Team is not a choice, so it is not asked for twice.
+   *
+   * `GET /projects/:id/teams` returns only the Editor's own teams, so an Editor on one team gets a
+   * one-option required picker — the shape that makes a form refuse itself. Derived rather than
+   * seeded into state (like `validTeamId` above, and for the same reason): the feed resolves after
+   * the first render, so an effect would have to chase it, and there is no state to chase because
+   * with `allowUnassigned` off there is no way to select back to blank.
+   *
+   * NOT prefilled for an admin — with the Project Backlog available to them, silently picking the
+   * project's only team would file work into a team nobody chose.
+   */
+  const soleTeamId = teamRequired && teams.length === 1 ? teams[0].id : ''
+  const selectedTeamId = validTeamId || soleTeamId
 
   /**
    * Owner OPTIONS follow the TEAM selected in this form, not the project (GAP-P1-WID-007: "Selected
    * Team offers Unassigned plus its ACTIVE MEMBERS; No Team offers only Unassigned. Do not add No Team
    * or unrelated Workspace users to Owner options").
    *
-   * Keyed on `validTeamId` rather than the raw `teamId`, so an inherited team that is not linked to
-   * the selected project asks for nothing instead of 422-ing the feed — the same value the create
-   * itself will send.
+   * Keyed on `selectedTeamId` rather than the raw `teamId`, so an inherited team that is not linked
+   * to the fixed project asks for nothing instead of 422-ing the feed — the same value the create
+   * itself will send, prefilled sole team included.
    */
-  const { data: members = [] } = useTeamOwnerOptions(selectedProjectId, validTeamId || null)
-
-  // When the project changes, reset project-scoped selections so no stale
-  // cross-project team/owner/parent can be submitted.
-  function handleProjectChange(nextProjectId: string) {
-    if (nextProjectId === selectedProjectId) return
-    setSelectedProjectId(nextProjectId)
-    setTeamId('')
-    setAssigneeId('')
-    setParentStoryId('')
-  }
+  const { data: members = [] } = useTeamOwnerOptions(projectId, selectedTeamId || null)
 
   const titleRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef(submit)
@@ -122,8 +146,8 @@ export function CreateWorkItemModal({
       setError(t('create.titleRequired'))
       return
     }
-    // Team is OPTIONAL. Blank means the item belongs to the PROJECT backlog, which is the
-    // documented default state — three sources, no dissent:
+    // Team is optional FOR AN ADMIN. Blank means the item belongs to the PROJECT backlog, which is
+    // the documented default state for a caller who may reach it — three sources, no dissent:
     //   WIC-FR-005: "Team optional; default blank/Project backlog unless current Team context is
     //     explicitly selected and valid for the Project."
     //   GAP-P1-CREATE-003 (P0): "Team is optional: blank = Project backlog, selected Team = Team
@@ -142,14 +166,26 @@ export function CreateWorkItemModal({
     setError(null)
     setTeamError(null)
     setFormError(null)
+    /**
+     * The Editor half of the rule, checked HERE rather than left to the 412.
+     *
+     * `POST /work-items` answers `WORK_ITEM_TEAM_REQUIRED` for exactly this, and that refusal is
+     * correct — but it arrives as a modal-level banner about a request, for a field the form itself
+     * knows is required. The message goes under the Team picker instead, which is the field the
+     * reader has to act on. The server check stays the authority; this one only stops the round trip.
+     */
+    if (teamRequired && !selectedTeamId) {
+      setTeamError(t('create.teamRequired'))
+      return
+    }
     setSubmitting(true)
     try {
       const item = await createMutation.mutateAsync({
-        projectId: selectedProjectId,
+        projectId,
         type,
         title: title.trim(),
         priority: 'none',
-        teamId: validTeamId || undefined,
+        teamId: selectedTeamId || undefined,
         assigneeId: assigneeId || undefined,
         storyPoints: storyPoints ? Number(storyPoints) : undefined,
         parentId: type === 'defect' ? parentStoryId || undefined : undefined,
@@ -240,28 +276,23 @@ export function CreateWorkItemModal({
           />
         </FormField>
 
-        {/* Project — required, default current project (WIC-FR-004) */}
-        {/* The `KeyChip` glyph `ProjectSelectCell` puts on every Project column, so the field
-            and the column are recognisably the same thing. Was a bare `NativeSelect` listing
-            names only — searchable too, since a workspace can hold a long project list. */}
+        {/* Project — auto-filled from the active Project context and READ-ONLY (WIC-FR-004,
+            AC #11: "Project cannot be changed in Quick Create, Create with details, or any
+            reused modal"). WID-FR-017 keeps it read-only after creation too, so a picker here
+            would have been the ONE moment a Project could be chosen for an item — and this modal
+            is reused by the Feature Children tab, where the Feature has already fixed it.
+
+            The same `KeyChip` glyph the grids' Project column carries, through the shared
+            read-only `ProjectCell`, so the fixed field is recognisably the same field.
+            `useRecordProject` resolves key + name from the id and returns `undefined` until the
+            row is known — `ProjectCell` renders `--` for that rather than guessing. */}
         <FormField label={t('create.projectLabel')} required>
-          <SearchableSelect
-            variant="field"
-            value={selectedProjectId}
-            ariaLabel={t('create.projectLabel')}
-            searchPlaceholder="Search"
-            options={projects.map((p) => ({
-              value: p.id,
-              label: p.name,
-              searchText: `${p.key} ${p.name}`,
-              icon: (
-                <KeyChip size="sm" tone="project">
-                  {p.key}
-                </KeyChip>
-              ),
-            }))}
-            onChange={(v) => handleProjectChange(v ?? selectedProjectId)}
-          />
+          <ReadOnlyFieldValue>
+            <ProjectCell
+              projectKey={projectDisplay?.projectKey}
+              projectName={projectDisplay?.projectName}
+            />
+          </ReadOnlyFieldValue>
         </FormField>
 
         {/* Parent Story — Defect only. Carries the story `TypeBadge`, the same glyph the ID
@@ -291,7 +322,7 @@ export function CreateWorkItemModal({
         <div className="grid grid-cols-2 gap-4">
           <TeamSelectField
             id="wi-team"
-            value={validTeamId}
+            value={selectedTeamId}
             onChange={(v) => {
               setTeamId(v)
               setTeamError(null)
@@ -301,9 +332,13 @@ export function CreateWorkItemModal({
               setAssigneeId('')
             }}
             teams={teams}
-            /* Blank is a legal, and the DEFAULT, choice — WIC-FR-005 / GAP-P1-CREATE-003. Without
-               the unassigned option the field could not express "Project backlog" at all. */
-            allowUnassigned
+            /* Blank is a legal, and the DEFAULT, choice FOR AN ADMIN — WIC-FR-005 /
+               GAP-P1-CREATE-003. Without the unassigned option the field could not express "Project
+               backlog" at all. For an Editor the Project Backlog is not theirs to file into (BA
+               ruling 2026-08-17), so the option is not offered and `TeamSelectField` marks the field
+               required from the same flag — one source for both, so the asterisk and the option list
+               cannot disagree. */
+            allowUnassigned={!teamRequired}
             error={teamError ?? undefined}
           />
           <OwnerSelectField

@@ -9,6 +9,11 @@
  * The two cases that matter most here are the ones that say NOTHING: an unresolved list and a failed
  * one both arrive as `undefined`, and deciding on either is the "state frozen before its source
  * arrived" defect this codebase has already paid for once.
+ *
+ * It is also the RECONCILER (GAP-P4-RBAC-003 AC5): the selection is persisted, so it outlives the
+ * grant it was made under, and a resolved list is the server's own answer about what is still
+ * readable. Both directions are asserted — a revoked project must be dropped, and an unresolved list
+ * must drop nothing.
  */
 import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -80,6 +85,44 @@ describe('useInitialProject', () => {
   it('selects NOTHING for a resolved EMPTY list — that is a real No Access principal', () => {
     renderHook(() => useInitialProject([]))
     expect(selected()).toBeNull()
+  })
+
+  /**
+   * GAP-P4-RBAC-003 AC5. This is the case the hook used to `return` early on, and the return is what
+   * shipped the leak: with nothing readable left, the REVOKED project stayed selected, so the shell's
+   * context trigger kept printing `TEST · All Teams` and every project-scoped read kept being issued
+   * for it. SRS §2.2 / §6: an unassigned user sees the project nowhere.
+   */
+  it('CLEARS a stale selection when the resolved list is EMPTY', () => {
+    useAppContext.setState({
+      project: { projectId: 'p-test', projectKey: 'TEST', projectName: 'Test Project' },
+      team: { teamId: 't-1', teamName: 'Team Alpha' },
+    })
+    renderHook(() => useInitialProject([]))
+    expect(selected()).toBeNull()
+    expect(useAppContext.getState().team).toBeNull()
+  })
+
+  it('CLEARS a stale selection when only ARCHIVED projects remain', () => {
+    // Same rule one step over: `active[0]` has no replacement to offer, and an archived project is
+    // not a selectable context (the shell's picker only lists active rows).
+    useAppContext.setState({
+      project: { projectId: 'p-test', projectKey: 'TEST', projectName: 'Test Project' },
+      team: { teamId: 't-1', teamName: 'Team Alpha' },
+    })
+    renderHook(() => useInitialProject([OLD]))
+    expect(selected()).toBeNull()
+    expect(useAppContext.getState().team).toBeNull()
+  })
+
+  it('does not clear on an UNRESOLVED list, even with nothing else to fall back to', () => {
+    // A failed `GET /v1/projects` arrives as `undefined` too, and clearing on it would evict a reader
+    // from their own project because the network blinked — the mirror of inventing a selection.
+    useAppContext.setState({
+      project: { projectId: 'p-test', projectKey: 'TEST', projectName: 'Test Project' },
+    })
+    renderHook(() => useInitialProject(undefined))
+    expect(selected()?.projectKey).toBe('TEST')
   })
 
   it('does not thrash when the list identity changes but the choice is still valid', () => {

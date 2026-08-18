@@ -84,18 +84,9 @@ describe('PortfolioItemsService', () => {
    * check.)
    */
   let referenceRows: Array<{ id: string }>;
-  /** Rows the destination-project team lookup in `applyProjectMove` should return. */
-  let projectTeamRows: Array<{ id: string }>;
-  /**
-   * Capacity plans that BLOCK a project move. Empty by default: a Feature with no allocations is
-   * the ordinary case, and almost every test here is about something else.
-   */
-  let allocationPlanRows: Array<{ planKey: string; name: string }>;
 
   beforeEach(async () => {
     referenceRows = [{ id: 'ref-1' }];
-    projectTeamRows = [];
-    allocationPlanRows = [];
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PortfolioItemsService,
@@ -121,6 +112,7 @@ describe('PortfolioItemsService', () => {
             update: vi.fn(),
             setArchived: vi.fn(),
             countActiveChildFeatures: vi.fn().mockResolvedValue(0),
+            countActiveChildWorkItems: vi.fn().mockResolvedValue(0),
           },
         },
         {
@@ -169,31 +161,15 @@ describe('PortfolioItemsService', () => {
         },
         {
           provide: DRIZZLE,
-          // Three chains run through here: the Release/Team existence check in `assertReferences`
-          // (`select→from→where→limit`), the destination-team lookup in `applyProjectMove`
-          // (`select→from→innerJoin→where→orderBy→limit` — the `innerJoin` distinguishes them), and
-          // that method's capacity-allocation guard, which uses `selectDistinct`.
+          // ONE chain now: the Release/Team existence check in `assertReferences`
+          // (`select→from→where→limit`). The destination-team lookup and the capacity-allocation
+          // guard that also ran through here were `applyProjectMove`'s, and that method is gone with
+          // the project move (`P5-PI-003`) — an `innerJoin` branch and a whole `selectDistinct` entry
+          // point went with them rather than being left as scaffolding for a call nobody makes.
           useValue: {
             select: () => ({
               from: () => ({
                 where: () => ({ limit: () => Promise.resolve(referenceRows) }),
-                innerJoin: () => ({
-                  where: () => ({
-                    orderBy: () => ({ limit: () => Promise.resolve(projectTeamRows) }),
-                  }),
-                }),
-              }),
-            }),
-            // The capacity-allocation guard in `applyProjectMove`. Its OWN entry point rather than
-            // sharing `select`, so a test can make a move blocked without also changing what the
-            // destination-team lookup answers.
-            selectDistinct: () => ({
-              from: () => ({
-                innerJoin: () => ({
-                  where: () => ({
-                    orderBy: () => ({ limit: () => Promise.resolve(allocationPlanRows) }),
-                  }),
-                }),
               }),
             }),
           },
@@ -710,15 +686,20 @@ describe('PortfolioItemsService', () => {
       // The mock deliberately does not define `log`, proving the service never reaches for it.
       expect((activity as unknown as Record<string, unknown>).log).toBeUndefined();
     });
-
     /**
-     * A project move (SRS §3.1 `Project | Yes`, FR-004).
+     * A Project is chosen ONCE, at creation (`P5-PI-003`, BA DEV Handoff retest 2026-08-17).
      *
-     * `project_id` is the scope for `team_id`, `release_id` and `parent_id`, so the risk
-     * here is not the column write — it is leaving those three pointing into the OLD
-     * project, which would render as another project's Release or an unlinked Team.
+     * INVERTED. This block used to assert the MOVE and everything it reconciled — a Team reset to the
+     * destination's first linked team, a cleared Release, a cleared cross-project Epic, surviving
+     * Milestones, and permission on both projects. `WID-FR-017` and the report's rule 4 say the move
+     * "is not supported", §3.1 says "Project is read-only for both types", and AC5 forbids changing it
+     * from detail or inline edit. Real Rally DOES offer the move, so this is a declared divergence —
+     * see the note on `UpdatePortfolioItemSchema` for the Broadcom wording that argued the other way.
+     *
+     * `PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION` did NOT go with it: that rule also guards the
+     * allocate side, and its own tests live with the capacity module.
      */
-    describe('moving to another project', () => {
+    describe('a Project cannot be changed after creation (P5-PI-003)', () => {
       const feature = {
         id: 'pi-1',
         type: 'feature',
@@ -728,126 +709,57 @@ describe('PortfolioItemsService', () => {
         parentId: null,
       };
 
-      it('requires edit permission on the DESTINATION as well as the source', async () => {
-        repo.findById.mockResolvedValue({ ...feature, teamId: null, releaseId: null } as never);
-        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
-        const checked = access.assertProjectPermission.mock.calls.map((c) => c[1]);
-        expect(checked).toContain('proj-a');
-        expect(checked).toContain('proj-b');
-      });
-
-      it('resets Team to a team linked to the new project', async () => {
-        // Not merely cleared: the spec says the change "resets Team to a valid Team in
-        // the new Project".
-        repo.findById.mockResolvedValue(feature as never);
-        projectTeamRows = [{ id: 'team-b' }];
-        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
-        expect(repo.update.mock.calls[0][1]).toHaveProperty('teamId', 'team-b');
-      });
-
-      it('clears Team when the new project has no linked team', async () => {
-        repo.findById.mockResolvedValue(feature as never);
-        projectTeamRows = [];
-        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
-        expect(repo.update.mock.calls[0][1]).toHaveProperty('teamId', null);
-      });
-
-      // Real Rally: "the work item will keep existing milestone(s) only if they exist in the
-      // new project" (TechDocs, Managing Milestones). A conditional keep, not a clear — and the
-      // BA docs are silent, so these two tests are the only statement of the rule we have.
-      it('keeps only the Milestones that exist in the destination project', async () => {
-        repo.findById.mockResolvedValue(feature as never);
-        repo.listMilestones.mockResolvedValue([
-          { id: 'ms-a', name: 'Source only' },
-          { id: 'ms-shared', name: 'In both' },
-        ]);
-        repo.filterMilestonesInProject.mockResolvedValue(['ms-shared']);
-        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
-        expect(repo.setMilestones).toHaveBeenCalledWith('pi-1', ['ms-shared']);
-      });
-
-      it('leaves Milestones untouched when every one survives the move', async () => {
-        repo.findById.mockResolvedValue(feature as never);
-        repo.listMilestones.mockResolvedValue([{ id: 'ms-shared', name: 'In both' }]);
-        repo.filterMilestonesInProject.mockResolvedValue(['ms-shared']);
-        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
-        // No rewrite at all — an unchanged set must not churn the link rows or the audit trail.
-        expect(repo.setMilestones).not.toHaveBeenCalled();
-      });
-
-      it('REFUSES the move while the Feature is allocated on a capacity plan', async () => {
-        /**
-         * A plan belongs to one project, so a Feature that leaves takes nothing with it: the
-         * allocation rows stayed behind and kept feeding that team's Estimated, the plan total and
-         * the cutline for a Feature no longer in the plan's project. Publishing then wrote the OLD
-         * project's Release onto it — the state `assertReferences` itself rejects. Nothing enforced
-         * it: not the service, not the database.
-         *
-         * Refused rather than silently repaired, following `RELEASE_HAS_CAPACITY_PLAN`: deleting the
-         * rows would destroy committed numbers on a plan the person moving the Feature may not even
-         * be able to see.
-         */
-        allocationPlanRows = [{ planKey: 'CP-3', name: 'Q3 capacity' }];
+      it('REFUSES a different project', async () => {
         repo.findById.mockResolvedValue(feature as never);
 
         await expect(
           service.updateItem(actor, 'pi-1', { projectId: 'proj-b' }),
-        ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION' });
-        // Nothing was written — the refusal comes before the patch is reconciled.
+        ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_PROJECT_IMMUTABLE' });
         expect(repo.update).not.toHaveBeenCalled();
       });
 
-      it('names the blocking plan, so the message is actionable', async () => {
-        // "Remove it from the plan first" is only actionable if you know which plan.
-        allocationPlanRows = [{ planKey: 'CP-3', name: 'Q3 capacity' }];
+      it('refuses BEFORE writing anything else in the same patch', async () => {
+        // A move bundled with a legitimate rename must not half-apply.
         repo.findById.mockResolvedValue(feature as never);
 
-        await expect(service.updateItem(actor, 'pi-1', { projectId: 'proj-b' })).rejects.toThrow(
-          /CP-3 \(Q3 capacity\)/,
-        );
+        await expect(
+          service.updateItem(actor, 'pi-1', { projectId: 'proj-b', name: 'Renamed' }),
+        ).rejects.toMatchObject({ code: 'PORTFOLIO_ITEM_PROJECT_IMMUTABLE' });
+        expect(repo.update).not.toHaveBeenCalled();
       });
 
-      it('allows the move for a Feature that is on no plan', async () => {
-        // The ordinary case, asserted so the guard cannot quietly become a blanket refusal.
+      it('accepts the SAME project as a no-op, and never writes the column', async () => {
+        // A client echoing the whole record back is not refused for agreeing, and `project_id` is
+        // stripped so the update cannot rewrite it even to its current value.
         repo.findById.mockResolvedValue(feature as never);
-        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
-        expect(repo.update).toHaveBeenCalled();
-      });
 
-      it('clears the Release, because releases are per-project', async () => {
-        repo.findById.mockResolvedValue(feature as never);
-        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
-        expect(repo.update.mock.calls[0][1]).toHaveProperty('releaseId', null);
-      });
-
-      it('clears a parent Epic that lives in a different project', async () => {
-        repo.findById.mockResolvedValue({ ...feature, parentId: 'ep-1' } as never);
-        repo.findByIds.mockResolvedValue([{ id: 'ep-1', projectId: 'proj-a' }] as never);
-        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
-        expect(repo.update.mock.calls[0][1]).toHaveProperty('parentId', null);
-      });
-
-      it('keeps a parent Epic that already lives in the destination', async () => {
-        repo.findById.mockResolvedValue({ ...feature, parentId: 'ep-1' } as never);
-        repo.findByIds.mockResolvedValue([{ id: 'ep-1', projectId: 'proj-b' }] as never);
-        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b' });
-        expect(repo.update.mock.calls[0][1]).not.toHaveProperty('parentId');
-      });
-
-      it('lets an explicit value in the same request win over the reset', async () => {
-        // Moving a Feature and naming its new Team in one PATCH must honour the caller.
-        repo.findById.mockResolvedValue(feature as never);
-        projectTeamRows = [{ id: 'team-b' }];
-        await service.updateItem(actor, 'pi-1', { projectId: 'proj-b', teamId: 'team-c' });
-        expect(repo.update.mock.calls[0][1]).toHaveProperty('teamId', 'team-c');
-      });
-
-      it('reconciles nothing when the project is unchanged', async () => {
-        repo.findById.mockResolvedValue(feature as never);
         await service.updateItem(actor, 'pi-1', { projectId: 'proj-a', name: 'Renamed' });
+
         const patch = repo.update.mock.calls[0][1];
+        expect(patch).not.toHaveProperty('projectId');
+        expect(patch).toHaveProperty('name', 'Renamed');
+        // Nothing is reconciled, because nothing moved.
         expect(patch).not.toHaveProperty('teamId');
         expect(patch).not.toHaveProperty('releaseId');
+      });
+
+      it('checks references against the item’s OWN project', async () => {
+        repo.findById.mockResolvedValue(feature as never);
+
+        await service.updateItem(actor, 'pi-1', { name: 'Renamed' });
+
+        // There is no destination to distinguish any more, so a second project can never appear in
+        // this write — which is what made the old reconciliation necessary.
+        expect(access.assertProjectPermission).toHaveBeenCalledWith(
+          actor,
+          'proj-a',
+          'portfolio:edit',
+        );
+        expect(access.assertProjectPermission).not.toHaveBeenCalledWith(
+          actor,
+          'proj-b',
+          'portfolio:edit',
+        );
       });
     });
   });
@@ -877,17 +789,53 @@ describe('PortfolioItemsService', () => {
       expect(repo.setArchived).toHaveBeenCalledWith('ep-1', true, WORKSPACE);
     });
 
-    it('does not apply the child guard to a Feature', async () => {
-      // A Feature's children are Stories/Defects, which keep working when it is archived
-      // — only the Epic→Feature link would dangle.
+    /**
+     * INVERTED by `P5-PI-011` (DEV Handoff 2026-08-14). This case used to assert that a Feature took no
+     * child guard, on the reading that "a Feature's children are Stories/Defects, which keep working
+     * when it is archived". The BA calls that a Fail: "DevInt allowed FE-5 to be archived even though
+     * child Work Item US-8 was linked… Archive must enforce the approved child guard."
+     *
+     * The orphaning is the same shape as the Epic case one level up — the children stay in the Backlog
+     * carrying a Feature column that opens nothing, and they keep feeding the archived Feature's rollup.
+     */
+    it('REFUSES to archive a Feature that still has child work items', async () => {
       repo.findById.mockResolvedValue({
         id: 'fe-1',
         type: 'feature',
         projectId: 'proj-a',
       } as never);
+      repo.countActiveChildWorkItems.mockResolvedValue(1);
+
+      await expect(service.setArchived(actor, 'fe-1', true)).rejects.toMatchObject({
+        code: 'PORTFOLIO_FEATURE_HAS_ACTIVE_WORK_ITEMS',
+      });
+      expect(repo.setArchived).not.toHaveBeenCalled();
+    });
+
+    it('archives a Feature once its work items are gone', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'fe-1',
+        type: 'feature',
+        projectId: 'proj-a',
+      } as never);
+      repo.countActiveChildWorkItems.mockResolvedValue(0);
+
       await service.setArchived(actor, 'fe-1', true);
-      expect(repo.countActiveChildFeatures).not.toHaveBeenCalled();
       expect(repo.setArchived).toHaveBeenCalledWith('fe-1', true, WORKSPACE);
+    });
+
+    it('does not apply the WORK-ITEM guard when restoring a Feature', async () => {
+      // Restoring cannot create the orphaned state; the other direction is guarded by
+      // `PORTFOLIO_PARENT_ARCHIVED` (its Epic must not be archived).
+      repo.findById.mockResolvedValue({
+        id: 'fe-1',
+        type: 'feature',
+        projectId: 'proj-a',
+        parentId: null,
+      } as never);
+      await service.setArchived(actor, 'fe-1', false);
+      expect(repo.countActiveChildWorkItems).not.toHaveBeenCalled();
+      expect(repo.setArchived).toHaveBeenCalledWith('fe-1', false, WORKSPACE);
     });
 
     it('never applies the guard when RESTORING, even for an Epic', async () => {

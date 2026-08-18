@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { alias, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, CursorPayload, PagedResult } from '@platform';
 import {
@@ -20,12 +20,51 @@ import {
   IIterationStatusRepository,
   type RawIterationMetrics,
 } from '../../domain/ports/iteration-status.repository';
+import { scopeIsEmpty, type TeamReadScope } from '../../domain/team-read-scope';
+
+/** What an out-of-scope caller measures: nothing. Never `undefined`, so the strip still renders. */
+const NO_METRICS: RawIterationMetrics = {
+  totalPlanEstimate: 0,
+  acceptedPoints: 0,
+  defectCount: 0,
+  taskCount: 0,
+  activeTaskCount: 0,
+};
 
 @Injectable()
 export class IterationStatusDrizzleRepository implements IIterationStatusRepository {
   constructor(@InjectDrizzle() private readonly db: DrizzleDB) {}
 
-  async getMetrics(iterationId: string, workspaceId: string): Promise<RawIterationMetrics> {
+  /**
+   * The team predicate for a WORK ROW: `team_id IN (…)`, with NO `OR IS NULL`.
+   *
+   * A story or defect carrying no team is the PROJECT BACKLOG, which the BA ruling of 2026-08-17
+   * makes readable by a Workspace Admin or Project Admin only — so an absent team EXCLUDES the row
+   * here. That is the exact opposite of `IterationDrizzleRepository.teamOrSharedTimebox`, where a
+   * team-less ITERATION is a SHARED timebox and stays visible: the timebox says which window, the
+   * work says whose it is. Keep the two straight — one admits NULL, one refuses it.
+   *
+   * It takes the COLUMN so one rule covers both places a work row's team is read: the row itself in
+   * `listItems` / the points aggregate, and the aliased PARENT in the task aggregate.
+   *
+   * Returns `undefined` for an unrestricted caller so the condition list stays literally unchanged
+   * (no predicate at all, not a tautology), and never emits `inArray(col, [])`: the empty scope is
+   * short-circuited by the callers below, because `IN ()` is not portable as "match nothing".
+   */
+  private teamScope(scope: TeamReadScope, column: AnyPgColumn): SQL | undefined {
+    if (scope.unrestricted) return undefined;
+    return inArray(column, scope.teamIds);
+  }
+
+  async getMetrics(
+    iterationId: string,
+    workspaceId: string,
+    scope: TeamReadScope,
+  ): Promise<RawIterationMetrics> {
+    // An editor with no active Team in this project has no delivery scope at all. Short-circuited
+    // rather than filtered: `IN ()` is not portable, and flattening `[]` into "no filter" would fail
+    // OPEN — the whole strip would report the project's numbers to a caller who may read no row.
+    if (scopeIsEmpty(scope)) return NO_METRICS;
     // Single pass over the iteration's non-deleted items. story_points is a
     // nullable numeric (fractional points); sums coalesce to 0. "Accepted" is
     // the canonical ACCEPTED_SCHEDULE_STATES set (accepted OR release) — a story
@@ -43,6 +82,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
           eq(workItems.iterationId, iterationId),
           eq(workItems.workspaceId, workspaceId),
           isNull(workItems.deletedAt),
+          this.teamScope(scope, workItems.teamId),
         ),
       );
 
@@ -51,6 +91,16 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
     // Team Status screen uses — so the two screens always agree. A separate
     // aggregate over `tasks` joined to the iteration's items (a correlated
     // subquery cannot live beside the ungrouped work-item aggregate above).
+    //
+    // The team predicate goes on the PARENT, not on the task. `getScopedTaskHours` and Team Status
+    // resolve a TASK's team as `coalesce(task, parent, iteration)` because there a task IS the row;
+    // here it is not — every task rolls up into the parent story/defect shown in the grid below, and
+    // the per-row `taskEstimate` / `toDo` / `taskTotal` subqueries in `listItems` sum ALL of a
+    // visible row's children. Counting tasks by their own resolved team would therefore make this
+    // strip disagree with the very rows it sits above (a task of another team under a visible story
+    // would leave the count while staying inside that row's rollup), and would count tasks whose
+    // parent is a Project Backlog item the caller may not open. So: a task is measured exactly when
+    // its parent row is visible — same population, one predicate.
     const parent = alias(workItems, 'wi_task_parent');
     const [taskAgg] = await this.db
       .select({
@@ -65,6 +115,7 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
           eq(parent.workspaceId, workspaceId),
           isNull(parent.deletedAt),
           isNull(tasks.deletedAt),
+          this.teamScope(scope, parent.teamId),
         ),
       );
 
@@ -83,7 +134,14 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
     workspaceId: string,
     filters: IterationStatusFilters,
     { limit, cursor }: { limit: number; cursor: CursorPayload | null },
+    scope: TeamReadScope,
   ): Promise<PagedResult<IterationStatusItem>> {
+    // No team, no rows — and no query. Same short-circuit as `getMetrics`, so the strip and the grid
+    // cannot answer an out-of-scope caller differently.
+    if (scopeIsEmpty(scope)) {
+      return buildPageResult<IterationStatusItem>([], limit, (i) => [i.rank]);
+    }
+
     // The list shows the backlog-shaped items (story/defect) assigned to the
     // iteration. Tasks roll up into their parent's Task Est / To Do columns.
     const conditions: SQL[] = [
@@ -92,6 +150,11 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       isNull(workItems.deletedAt),
       inArray(workItems.type, ['story', 'defect']),
     ];
+    // The SAME predicate `getMetrics` applies, from the one helper: the strip is a metric over these
+    // rows, and a metric over a wider population than the rows below it is the defect CLAUDE.md
+    // records twice ("Eligibility must be counted in the SAME scope as the measurement").
+    const team = this.teamScope(scope, workItems.teamId);
+    if (team) conditions.push(team);
 
     // Task rollups via correlated subqueries over the dedicated `tasks` table.
     //

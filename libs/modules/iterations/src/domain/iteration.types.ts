@@ -52,7 +52,13 @@ export interface UpdateIterationInput {
 }
 
 /**
- * ELIGIBILITY: the iterations work may be assigned INTO — `planning | committed`.
+ * ELIGIBILITY: the iterations work may be assigned INTO — same project, team-or-shared timebox,
+ * EVERY state.
+ *
+ * State was a predicate here until P6-VEL-004 (BA retest 2026-08-17). It never matched the write
+ * rule: `assertIterationAssignable` refuses only a project or team mismatch, so a closed sprint was
+ * withheld from every picker while the API accepted it — and Velocity attributes points by an item's
+ * CURRENT iteration, which made the move-IN direction unreachable from the UI.
  *
  * Consumers are the bulk-assign bar and the inline/sidebar assignment pickers. Deliberately NOT
  * the same projection as {@link IterationReference}: two questions are being asked, and a flag
@@ -74,8 +80,7 @@ export interface IterationOption {
  * Consumers are filters, id→name labels and the report scope pickers. It exists because
  * `GET /iterations` returns the timebox RECORD (`goal`, `theme`, `notes`, `plannedVelocity`),
  * which §3.2 hides from an Editor behind `timebox:view`, while the four surfaces §3.2 GRANTS an
- * Editor all need to name an iteration — including an accepted one, which the eligibility feed
- * above cannot offer.
+ * Editor all need to name an iteration — including an accepted one.
  *
  * `teamId` is here and the record's narrative fields are not: the client half of
  * `teamOrSharedTimebox` (`iterationsInScope`) needs it to tell a team's own timebox from a shared

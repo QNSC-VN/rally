@@ -53,7 +53,9 @@
     "titleRequired": "Title is required",
     "logging": "Logging...",
     "logged": "Defect \"{{name}}\" logged",
-    "logFailed": "Failed to log defect"
+    "logFailed": "Failed to log defect",
+    "teamLabel": "Team",
+    "teamRequired": "Select one of your Teams. Only a Workspace Admin or Project Admin can file a defect into the Project Backlog."
   },
   "toasts": {
     "stateUpdated": "Defect state updated",

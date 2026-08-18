@@ -8,11 +8,13 @@ import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useCreateTask, useWorkItem } from '@/features/work-items/api'
 import { useTeamOwnerOptions } from '@/features/teams/api'
+import { useRecordProject } from '@/shared/lib/deep-link-project'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { FormField } from '@/shared/ui/form-field'
+import { FormField, ReadOnlyFieldValue } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { OwnerSelectField } from '@/shared/ui/entity-select-field'
+import { ProjectCell } from '@/shared/ui/project-cell'
 
 interface Props {
   workItemId: string
@@ -38,6 +40,17 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
    * No merge of an existing owner is needed here — a task being created has none.
    */
   const { data: members = [] } = useTeamOwnerOptions(parent?.projectId, parent?.teamId)
+  /**
+   * The PARENT's project, shown read-only (Task Management AC #14: "a Task's Project always
+   * equals its parent's, read-only").
+   *
+   * Displayed rather than merely implied: the modal sends no `projectId` at all — `createTask`
+   * derives it from `workItemId` — but a create form that shows Owner and three hour fields and
+   * says nothing about Project leaves the reader to assume it landed in whatever the global
+   * selector names, which for a deep-linked item need not be the parent's project. This is a
+   * DISPLAY of a derived fact, so there is no field, no option list and no handler.
+   */
+  const projectDisplay = useRecordProject(parent?.projectId)
   const navigate = useNavigate()
 
   const [name, setName] = useState('')
@@ -119,6 +132,17 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
             onChange={(e) => setName(e.target.value)}
             placeholder={t('tasks.create.namePlaceholder')}
           />
+        </FormField>
+
+        {/* Project — inherited from the parent Work Item and read-only (Task Management AC #14).
+            Same shared `ProjectCell` glyph the Tasks tab and the detail sidebar render. */}
+        <FormField label={t('create.projectLabel')}>
+          <ReadOnlyFieldValue>
+            <ProjectCell
+              projectKey={projectDisplay?.projectKey}
+              projectName={projectDisplay?.projectName}
+            />
+          </ReadOnlyFieldValue>
         </FormField>
 
         <div className="grid grid-cols-3 gap-4">

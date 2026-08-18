@@ -34,6 +34,7 @@ import type {
   IterationFilters,
   UpdateIterationInput,
 } from '../domain/iteration.types';
+import type { TeamReadScope } from '../domain/team-read-scope';
 
 /** One revision-log action per state change, so the Timeboxes history names what happened. */
 const STATE_CHANGE_ACTION: Record<IterationStateChange, string> = {
@@ -95,6 +96,16 @@ export class IterationsService {
 
   // ── List ──────────────────────────────────────────────────────────────────
 
+  /**
+   * NOT narrowed by team scope, and that is a decision rather than an omission.
+   *
+   * This is the `Plan > Timeboxes` RECORD grid, gated on `timebox:view` — a code no per-project
+   * `editor` holds (`ACCESS_LEVEL_PERMISSIONS` in `db/permissions.catalog.ts` grants it to `admin`
+   * only, because §3.2 marks that surface Hidden for an Editor), so `resolveTeamScope` would answer
+   * `unrestricted` for every caller who can reach this route at all. Its `taskEstimate` rollup reads
+   * task hours across the whole project for the same reason. If `timebox:view` is ever granted to an
+   * Editor, this method and `taskEstimatesByIteration` both need the scope the two compact feeds take.
+   */
   async listIterations(
     actor: JwtPayload,
     projectId: string,
@@ -223,19 +234,55 @@ export class IterationsService {
   // ── The two compact feeds (P2-IT-10) ────────────────────────────────────────
   //
   // TWO QUESTIONS, TWO ROUTES, and that is the design rather than an accident:
-  //   • ELIGIBILITY — "which iterations may I assign work INTO?" → `planning | committed`
-  //   • REFERENCE   — "what is this iteration called, and when was it?" → EVERY state
+  //   • ELIGIBILITY — "which iterations may I assign work INTO?" → every iteration the write path
+  //     accepts: same project, team-or-shared timebox. NOT narrowed by state — see P6-VEL-004 and
+  //     `IterationDrizzleRepository.listAssignmentOptions`.
+  //   • REFERENCE   — "what is this iteration called, and when was it?" → the same rows plus
+  //     `team_id`, the projection every filter, label and scope picker needs.
   // One endpoint with a boolean would let a caller measure one population while a sibling caller
   // enumerates another; that conflation is exactly what produced the zero-point Velocity bars.
 
-  /** ELIGIBILITY. Feeds the bulk-assign bar and the inline/sidebar assignment pickers. */
+  /**
+   * The team scope BOTH compact feeds narrow by — a PICKER is named in the BA ruling of 2026-08-17
+   * ("enforce this consistently in API queries, lists, reports, search, pickers and direct URLs"),
+   * and a picker that offers what the write path refuses is the shape this repo has fixed three times.
+   *
+   * Two halves, because a picker takes an explicit team AND has an All Teams position:
+   *
+   *   • an explicitly REQUESTED team is asserted, not silently ignored. `teamId` here is a real team
+   *     id, so `assertTeamInScope` can never reach its `PROJECT_BACKLOG_ADMIN_ONLY` branch — it
+   *     answers `TEAM_NOT_IN_SCOPE` for another team's timeboxes and `EDITOR_NO_TEAM_SCOPE` for an
+   *     Editor holding none. Narrowing instead of refusing would answer a question about team B with
+   *     team A's rows, which reads as "team B has no sprints".
+   *   • the UNFILTERED (All Teams) call is narrowed, or All Teams would be the way around the first
+   *     half — the same reason CLAUDE.md requires `teamName === null` to mean All Teams *within the
+   *     caller's scope*.
+   */
+  private async resolveTimeboxScope(
+    actor: JwtPayload,
+    projectId: string,
+    teamId?: string,
+  ): Promise<TeamReadScope> {
+    if (teamId) {
+      await this.accessService.assertTeamInScope(actor.workspaceId, actor.sub, projectId, teamId);
+    }
+    return this.accessService.resolveTeamScope(actor.workspaceId, actor.sub, projectId);
+  }
+
+  /**
+   * ELIGIBILITY. Feeds the bulk-assign bar and the inline/sidebar assignment pickers.
+   *
+   * Includes ACCEPTED iterations since P6-VEL-004: Velocity attributes points by an item's CURRENT
+   * iteration, so a closed sprint has to be selectable or that rule only works in one direction.
+   */
   async getAssignmentOptions(
     actor: JwtPayload,
     projectId: string,
     teamId?: string,
   ): Promise<IterationOption[]> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
-    return this.iterationRepo.listAssignmentOptions(projectId, actor.workspaceId, teamId);
+    const scope = await this.resolveTimeboxScope(actor, projectId, teamId);
+    return this.iterationRepo.listAssignmentOptions(projectId, actor.workspaceId, teamId, scope);
   }
 
   /**
@@ -249,7 +296,8 @@ export class IterationsService {
     teamId?: string,
   ): Promise<IterationReference[]> {
     await this.projectsService.getProject(actor.workspaceId, projectId);
-    return this.iterationRepo.listReferences(projectId, actor.workspaceId, teamId);
+    const scope = await this.resolveTimeboxScope(actor, projectId, teamId);
+    return this.iterationRepo.listReferences(projectId, actor.workspaceId, teamId, scope);
   }
 
   // ── Get ───────────────────────────────────────────────────────────────────

@@ -29,8 +29,9 @@ export class IterationResponseDto extends createZodDto(IterationResponseSchema) 
 // ── The two compact feeds (P2-IT-10) ─────────────────────────────────────────
 
 /**
- * ELIGIBILITY — `GET /iterations/assignable`. The iterations work may be assigned INTO
- * (`planning | committed`).
+ * ELIGIBILITY — `GET /iterations/assignable`. The iterations work may be assigned INTO: every state,
+ * since P6-VEL-004 — a closed sprint is a legal target, and `assertIterationAssignable` refuses only
+ * a project or team mismatch. No `teamId`: that is the reference feed's projection.
  */
 export const IterationOptionSchema = z.object({
   id: z.string().uuid(),

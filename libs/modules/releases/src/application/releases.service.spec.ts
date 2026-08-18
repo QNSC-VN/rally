@@ -430,12 +430,16 @@ describe('ReleasesService', () => {
     // resolved from :id — covered by context-isolation-rbac e2e, not here.
 
     /**
-     * P3-REL-FR-023: the Task Roll-up is Estimate / To Do / Actual HOURS from the assigned
-     * tasks. It used to be an item/point roll-up carrying a `progressPercent`, which
-     * P3-REL-FR-037 forbids on a Phase 3 release surface and §7.5 defers to
-     * `Portfolio > Release Tracking`. Asserted on the SERVICE payload, not the SPA: a panel
-     * cannot render a field the API never returns, and hiding the number in the component
-     * would leave it computed and served.
+     * The roll-up is Estimate / To Do / Actual HOURS from the assigned tasks, plus the accepted
+     * count — the BA's own §7.4 Release Detail DTO, which is why the API still serves it. It used
+     * to be an item/point roll-up carrying a `progressPercent`, which P3-REL-FR-037 forbids on a
+     * Phase 3 release surface and §7.5 defers to `Portfolio > Release Tracking`; those fields must
+     * stay uncomputed, because a number nobody measures cannot be re-added by a UI edit.
+     *
+     * The DISPLAY rule is a different contract and lives in the SPA: FR-023/FR-024/AC #10 make the
+     * Release Detail right panel metadata only, so `releases-detail-page.test.tsx` asserts that a
+     * payload carrying these very values renders none of them (`GAP-P3-REL-001`, BA retest
+     * 2026-08-17).
      */
     it('rolls up task HOURS and the accepted total, and computes no progress percentage', async () => {
       repo.findById.mockResolvedValue(mockRelease());

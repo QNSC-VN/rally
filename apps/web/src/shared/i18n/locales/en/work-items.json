@@ -34,7 +34,7 @@
     "estimatePlaceholder": "0",
     "saveHint": "Ctrl+Enter to save",
     "titleRequired": "Title is required.",
-    "teamRequired": "Team is required.",
+    "teamRequired": "Select one of your Teams. Only a Workspace Admin or Project Admin can file an item into the Project Backlog.",
     "createFailed": "Failed to create work item.",
     "creating": "Creating…",
     "createButton": "Create Item",
@@ -47,6 +47,7 @@
     "close": "Close summary panel"
   },
   "notFound": "Work item \"{{key}}\" not found.",
+  "notFoundHint": "Check the ID, or open it from the Backlog.",
   "backToBacklog": "← Back to Backlog",
   "watch": {
     "watch": "Watch",

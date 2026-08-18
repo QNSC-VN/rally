@@ -56,3 +56,41 @@ export function FormField({
     </div>
   )
 }
+
+/**
+ * A field slot that DISPLAYS an inherited value and offers no way to change it.
+ *
+ * For a field the record owns but this form does not: a Work Item's Project (WIC-FR-004 /
+ * WID-FR-017 — auto-filled from the active Project context at creation, read-only everywhere
+ * after), an inherited Iteration, a Task's Project (Task Management AC #14). It is an
+ * input-shaped BOX rather than bare text on purpose — the value sits on the same baseline as
+ * the editable fields around it, so a form reads as one grid of fields where one of them
+ * happens to be fixed, instead of a caption floating beside inputs.
+ *
+ * It is a `<div>`, not a `disabled`/`readOnly` `<input>`: a disabled control still announces
+ * itself as a control the user might enable, and there is no state in which this one becomes
+ * editable. Nothing here takes an `onChange`, which is what makes "read-only" a property of
+ * the component rather than of a prop a caller could pass differently.
+ *
+ * The class string was hand-rolled identically in two places before this — the Iteration Status Add
+ * Item modal's local `roBox` (three fields) and the Work Item detail sidebar's Project field — and
+ * the read-only Project context now needed it in three more, which is why it lives here.
+ */
+export function ReadOnlyFieldValue({
+  children,
+  className,
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div
+      className={cn(
+        'flex h-9 min-w-0 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  )
+}

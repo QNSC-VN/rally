@@ -8,7 +8,8 @@ import { CSS } from '@dnd-kit/utilities'
 import { BRAND } from '@/shared/config/brand'
 import { notify } from '@/shared/lib/toast'
 import { useCreateDefect, type DefectRow } from '@/features/quality/api'
-import { useProjectMemberOptions } from '@/features/teams/api'
+import { useProjectMemberOptions, useProjectTeams } from '@/features/teams/api'
+import { useProjectTeamScope } from '@/features/access/api'
 import { listResource } from '@/shared/lib/query/resource'
 import { useReleases } from '@/features/releases/api'
 import { useIterationOptions } from '@/features/iterations/api'
@@ -21,6 +22,7 @@ import {
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { WorkItemRefCell } from '@/entities/work-item/ui/work-item-ref-cell'
 import { OwnerCell, OwnerSelectCell } from '@/shared/ui/owner-cell'
+import { TeamSelectField } from '@/shared/ui/entity-select-field'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
@@ -570,6 +572,8 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
   const [assigneeId, setAssigneeId] = useState('')
   const [releaseId, setReleaseId] = useState('')
   const [parentId, setParentId] = useState('')
+  const [teamId, setTeamId] = useState('')
+  const [teamError, setTeamError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Server/submit failures aren't tied to one input — shown as a modal-level
   // banner, not under the Title field.
@@ -584,12 +588,30 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
   const { data: backlog } = useBacklog(projectId, { type: 'story' })
   const stories = backlog?.data ?? []
   const createDefect = useCreateDefect()
+  /**
+   * A Defect is a Work Item, so the BA's 2026-08-17 Team rule applies to logging one.
+   *
+   * This form had no Team field at all, which made it an admin-only create by accident: every Editor
+   * got `WORK_ITEM_TEAM_REQUIRED` (412) on a surface §5 gives them (`quality:view` is a
+   * `PROJECT_MEMBER` code precisely so Quality is theirs). The field appears only when it is
+   * REQUIRED — an admin's form keeps its documented shape, where an absent Team means the Project
+   * Backlog.
+   */
+  const { teamRequired } = useProjectTeamScope(projectId)
+  const { data: teams = [] } = useProjectTeams(projectId)
+  // One Team is not a choice — see `CreateWorkItemModal`, which prefills for the same reason.
+  const selectedTeamId = teamId || (teamRequired && teams.length === 1 ? teams[0].id : '')
 
   async function handleSubmit() {
     setError(null)
+    setTeamError(null)
     setFormError(null)
     if (!title.trim()) {
       setError(t('create.titleRequired'))
+      return
+    }
+    if (teamRequired && !selectedTeamId) {
+      setTeamError(t('create.teamRequired'))
       return
     }
     try {
@@ -604,6 +626,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
         assigneeId: assigneeId || undefined,
         releaseId: releaseId || undefined,
         parentId: parentId || undefined,
+        teamId: selectedTeamId || undefined,
       })
       notify.success(t('create.logged', { name: title.trim() }))
       onClose()
@@ -695,6 +718,22 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
               />
             </FormField>
           </div>
+          {/* Team — rendered only for a caller who must choose one, and then with no empty option
+              (BA ruling 2026-08-17). `TeamSelectField` marks it required from the same flag that
+              withholds the blank, so the asterisk and the option list cannot disagree. */}
+          {teamRequired && (
+            <TeamSelectField
+              label={t('create.teamLabel')}
+              value={selectedTeamId}
+              onChange={(v) => {
+                setTeamId(v)
+                setTeamError(null)
+              }}
+              teams={teams}
+              allowUnassigned={false}
+              error={teamError ?? undefined}
+            />
+          )}
           <div className="grid grid-cols-2 gap-3">
             <FormField label={t('create.assigneeLabel')}>
               <SearchableSelect

@@ -16,6 +16,9 @@
  * from a dropdown. Real Rally does have a Viewer level; that divergence is deliberate and explained
  * in `db/permissions.catalog.ts`.
  */
+import { PERMISSION } from './permissions'
+import { grants } from './permission-check'
+
 export const ACCESS_LEVELS = ['admin', 'editor'] as const
 
 export type AccessLevel = (typeof ACCESS_LEVELS)[number]
@@ -107,6 +110,47 @@ export function grantsAllTeams(level: AccessLevel | null | undefined): boolean {
 export const TEAM_MEMBER_ACCESS_LEVELS = ['admin', 'editor'] as const
 
 export type TeamMemberAccessLevel = (typeof TEAM_MEMBER_ACCESS_LEVELS)[number]
+
+/**
+ * The codes that say "this caller is NOT a team-scoped Editor in this project".
+ *
+ * `AccessService.resolveTeamScope` answers that server-side from the LEVEL — unrestricted for a
+ * Workspace Admin or a per-project `admin`, the user's own active Teams for an `editor`. The SPA
+ * cannot read a level: `GET /projects/:id/my-permissions` returns codes and nothing else, and
+ * `GET /projects/:id/members` (which carries `accessLevel`) is administrative and 403s for the very
+ * caller we are asking about. So the client infers it from codes it CAN see, and these three are the
+ * ones §3.2 marks Hidden for an Editor while a per-project Admin holds all three
+ * (`db/permissions.catalog.ts`: `PROJECT_ADMIN` has `timebox:view`, `portfolio:view` and
+ * `capacity:view`; `PROJECT_MEMBER` has none of them — `TIMEBOX_VIEW`'s own catalogue comment calls
+ * it "the code that separates the two").
+ *
+ * A Workspace Admin needs no entry: `grants()` answers `true` for every code under `workspace:*`.
+ */
+const ALL_TEAMS_CODES = [
+  PERMISSION.TIMEBOX_VIEW,
+  PERMISSION.PORTFOLIO_VIEW,
+  PERMISSION.CAPACITY_VIEW,
+] as const
+
+/**
+ * May this caller reach the PROJECT BACKLOG — the work whose `team_id` is null?
+ *
+ * BA ruling 2026-08-17: "Null means Project Backlog, accessible only to Workspace Admin and Project
+ * Admin. Editor must select one of their assigned Teams when creating a Work Item and cannot access
+ * team-less items." So this one predicate answers two client questions that must never disagree:
+ * whether a create form's Team field is REQUIRED, and whether its picker may offer `No team` at all.
+ *
+ * ANY of {@link ALL_TEAMS_CODES} is enough rather than all three, so that a future ruling handing an
+ * Editor one admin surface cannot silently re-open the Project Backlog to them — it would instead
+ * show up as an admin control appearing for an Editor, which is visible. If the BA ever grants an
+ * Editor one of these codes, narrow the set here; there is exactly one place to change.
+ *
+ * Reads a permission ARRAY, not a `can()` closure, so it is assertable without React — the mapping
+ * from codes to a level is the part worth pinning.
+ */
+export function coversAllTeams(permissions: readonly string[]): boolean {
+  return ALL_TEAMS_CODES.some((code) => grants(permissions, code))
+}
 
 export const teamMemberAccessOptions: { value: string; label: string }[] =
   ACCESS_LEVEL_OPTIONS.filter((o) =>

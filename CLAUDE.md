@@ -309,6 +309,18 @@ difference is the whole design. Read this before changing a report or the snapsh
   two surfaces gave one release two numbers. FR-037 puts release progress in
   `Portfolio > Release Tracking`; Phase 3 Release list/detail must not add a progress column or widget.
   Do not re-add a progress reader here.
+
+  **The `Task Roll-up` + `Accepted` panel went with it, on the BA's 2026-08-17 retest.** It had been
+  kept — and at one point re-added on real-Rally grounds, which is where a note here claiming the panel
+  "is back" came from — because FR-018 was once read as putting those numbers in the right panel. The
+  BA re-confirmed `GAP-P3-REL-001` as a **Fail**: FR-018 and AC #10 now list the panel's fields
+  exhaustively (Start Date, Release Date, Project, State, Planned Velocity, Plan Estimate, Version),
+  FR-023 forbids "Task Roll-up, Burndown or another Release progress widget", FR-024 puts
+  accepted/progress totals in `Portfolio > Release Tracking` alone, and `P3-REL-DC-009` is Decided.
+  Real Rally shows a roll-up there; the BA report wins. **The API still SERVES `taskRollup`** — the
+  BA's own §7.4 detail DTO carries it, and its `estimateHours` is the list's `taskEstimate` column
+  (FR-004) — so this is a display rule, not a contract change: the SPA's `Release` mirror does not
+  declare the field, which is what stops a Phase 3 screen rendering it again.
 - **The Phase 6 snapshot tables now have foreign keys.** `iteration_daily_snapshots` and
   `member_capacity` had NONE (verified against `pg_constraint`). Orphan snapshots happened to be
   unreachable through the API — deleting an iteration is blocked unless it is still `planning`, and
@@ -353,6 +365,19 @@ difference is the whole design. Read this before changing a report or the snapsh
   `useIterations` for this: that filter is a strict `team_id = ?` and drops exactly the shared
   iterations the report measures, because SQL equality never matches NULL. `listAssignmentOptions`
   already had the OR-NULL form; the list endpoint does not.
+- **An iteration is assignable by SCOPE, never by LIFECYCLE.** `listAssignmentOptions` filtered on
+  `state IN ('planning','committed')` while the write path — `assertIterationAssignable`, over a
+  `findIterationScope` row that selects `project_id` and `team_id` and no state — accepted a closed
+  timebox happily. So the eligibility feed withheld a target the API allows, and that made HALF of
+  Velocity's own rule unreachable: points follow an item's CURRENT iteration (Velocity SRS §4, the
+  contract's §5.2), so moving a Story out of a finished sprint correctly moved the bar and no
+  selector could ever put it back (P6-VEL-004). The predicate is gone; the team/iteration mismatch
+  rule and `TASK_ITERATION_DERIVED` are untouched. Two consequences worth knowing: the two compact
+  feeds now differ only in PROJECTION (`/iterations/options` also returns `teamId`), kept as two
+  routes because the questions are still two and the SPA client is generated-and-committed; and the
+  Rollover modal's destination picker still hides accepted iterations client-side, which is a
+  deliberate lifecycle choice on `Plan > Timeboxes` ("move unfinished work forward") and NOT the same
+  rule — if the BA rules on it, that filter is the one line to change.
 - **`historyState` describes SNAPSHOTS only.** Both burndown and burnup once folded "no Ideal
   baseline" into that enum, which made a missing baseline discard measured bars that had really
   been recorded — IB §3 scopes the baseline to the Ideal LINE, and §5 makes only missing
@@ -408,6 +433,40 @@ happened on every estimate edit, re-inflating a completed task's auto-zeroed To 
 Iteration Status total, the Tasks-tab total and the next Burndown snapshot with it. The rule lives in
 the service; the other two edit surfaces already did this correctly, and this screen's own UI comment
 described the behaviour it did not have.
+
+## The Owner feed: the TEAM roster decides, and a Team move re-decides it
+
+`GAP-P1-WID-007` was a BA-confirmed P0-adjacent Fail on the 2026-08-17 retest — the Owner dropdown for
+a Story that HAD a Team offered nothing but `Unassigned`, so no active Team member could be assigned.
+Four things are now true, and each was a separate defect:
+
+- **A Workspace Admin on the team roster IS an Owner option.** `listProjectMemberOptions` subtracted
+  Workspace Admins from BOTH branches on the older AC-16 reading; its own docblock flagged that as a
+  declared conflict needing a ruling, and the ruling came. The exclusion now applies only to the
+  PROJECT-WIDE branch, where §2.1 and migration 0118 mean a WA holds no `project_members` row anyway.
+  The retest ACs name exactly two exclusions — outside the selected Team, and inactive.
+- **A Task's options follow its INHERITED parent Team.** `TASK-FR-017` scopes them to "the inherited
+  parent Team", and `work.tasks.team_id` only DEFAULTS to the parent's (SRS P1-04) and is nullable — so
+  reading the Task's own value alone offered `Unassigned` and nothing else on an ordinary row. The Tasks
+  tab now passes `parentTeamId` and resolves `task.teamId ?? parentTeamId`. Note this is NOT the
+  Iteration rule: the Iteration is contractually DERIVED, the Team is merely defaulted.
+- **A NAME that fails to resolve is indistinguishable from an unset field**, which is what made
+  `GAP-P2-IS-004` look like a persistence bug. Dev Owner saved correctly — proven over HTTP in
+  `test/e2e/dev-owner-persistence.e2e.spec.ts`, which is also the first coverage `devOwnerId` ever had
+  — and Iteration Status resolved the name from the project OFFER feed, so anyone absent from it read
+  back as `No Entry` after a reload. Names come from the workspace directory
+  (`GET /workspaces/:id/member-options`, which returns inactive members for exactly this reason) and
+  OFFERS from the project/team feed. Two props, never one: widening the offer list would put every
+  workspace user in an Owner dropdown, which `WID-FR-016` forbids.
+- **A Team move resets an Owner the new Team does not contain**, in the SAME patch and on the SERVER
+  (`resetOwnerOutsideTeam`). Conditional, not unconditional — the same person can be on both teams, and
+  clearing them would discard a true value. Clearing the Team clears the Owner outright (AC6) without
+  reading any roster. Server-side because every surface can move a Team, and a client would be deciding
+  it from a roster it may not have fetched; membership is asked of the picker's own feed so the server
+  cannot count a different population than the screen offers.
+
+**And the Owner is never defaulted to the current user** (AC7). A change that did exactly that was
+reverted on this branch: `Unassigned` is the default the BA states three times.
 
 ## Task hours are THREE independent fields
 
@@ -527,17 +586,85 @@ Feature. That leaves an active Feature under a hidden parent, which is what `ass
 on every other write. The message names the Epic's key, because an archived parent is invisible in
 every list.
 
+## A record's Project is chosen ONCE, by the context, and never again
+
+Settled on the BA's 2026-08-17 retest of **P5-PI-003**, and it applies to every type at once:
+`WIC-FR-004` AC #11 ("Project cannot be changed in Quick Create, Create with details, **or any reused
+modal**"), `WID-FR-017` AC #9 ("moving between Projects unsupported"), Task Management AC #14 (a
+Task's Project equals its parent's), and P5 §4 / §45 / §339 for a Feature and an Epic. So the Project
+field is an auto-filled, read-only display on every create surface, and to create elsewhere the user
+changes the **global Project context** first.
+
+- **There is no editable project cell or field anywhere in the SPA.** `ProjectSelectCell` is
+  DELETED, not gated — `shared/ui/project-cell.tsx` exports only the read-only `ProjectCell`, and
+  the `ProjectOption` shape went with it. A `canEdit={false}` prop is one prop away from `true`, and
+  there is no role or surface for which the move is legal, so "read-only" is a property of the
+  component rather than of a caller's argument. Same reasoning as `createTask`'s iteration field
+  being a compile error rather than a runtime refusal.
+- **This REVERSES the previous answer to the same BA case, which is why it is recorded.** P5-PI-003
+  first read as "selecting AUDIT26 returns an unexpected error", and the fix was to NARROW the
+  Portfolio grid's move picker to unarchived projects the caller held `portfolio:edit` on
+  (`updateItem` authorises a move in both directions). That was a correct reading of a wrong
+  question: the BA's answer is that there is no picker. `portfolio-page.test.tsx` used to assert the
+  narrowed option list and now asserts the absence of the control — a test inverted, not deleted.
+- **The SERVER refuses it too, and this note used to say the opposite.** It first shipped as a display
+  rule, on the reading that the report scoped itself to "FE và business behavior". That reading was
+  wrong by one word: a server refusal is not a schema or DB change, it is business behavior, which
+  that same sentence includes — and rule 4 of the report says the move "is not supported" flatly.
+  `UpdatePortfolioItemSchema` no longer carries `projectId`, so the contract does not advertise what
+  is refused, and `updateItem` answers `PORTFOLIO_ITEM_PROJECT_IMMUTABLE` for a different project
+  while treating the SAME project as a no-op (a client echoing the record back is not refused for
+  agreeing). `applyProjectMove` is DELETED with it: the destination-team reset, the Release clear, the
+  cross-project Epic unlink and the surviving-Milestone filter existed only for that write, and the
+  spec's `innerJoin` + `selectDistinct` mock chains went with them rather than standing as scaffolding
+  for a call nobody makes.
+
+  **`PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION` did NOT go with it** — that rule also guards the
+  allocate side, and it now lives only where the capacity module enforces it.
+
+  Real Rally DOES offer this move (Broadcom's project-hierarchy guide: "Rally recommends you update
+  the project field to reflect which team is handling the work"), so this is a **declared divergence**,
+  recorded on `UpdatePortfolioItemSchema` as well. If the BA reverses it, the field, the guard and
+  `applyProjectMove` all come back together — a picker without the reconciliation would leave a Team
+  and a Release pointing into the old project.
+- **The ONE Project picker that stays is on Iteration create**, and it is the Iterations SRS's own
+  rule, not drift: §92-93 auto-fill Project from context and then say a Workspace Admin "vẫn có
+  quyền đổi Project/Team trong quick create/detail nếu cần" (P2-IT-FR-001C/D). An Iteration is a
+  timebox, not a Work Item or a Portfolio Item. Do not "align" it to the rule above.
+- **`ReadOnlyFieldValue` (`shared/ui/form-field.tsx`) is the box these render in** — an input-shaped
+  `<div>`, deliberately not a `disabled` input, so the fixed value sits on the same baseline as the
+  editable fields beside it without announcing itself as a control that might become enabled. It
+  takes no `onChange` by design. Three surfaces had hand-rolled its class string.
+
 ## Declared divergences from the BA, in Capacity Planning
 
-Both were ruled on. Neither is drift, and neither should be "fixed" on sight.
+Each was ruled on. None is drift, and none should be "fixed" on sight — and note the first one is a
+divergence that has since been REVERSED, kept here because the reasoning will come up again.
 
-- **Rollup and Complete keep Rally's Project+Release child filter.** The BA's Features-tab formula is
-  `SUM(child.planEstimate WHERE child belongs to Feature)` with no qualifier (§314), and the nested
-  per-team one adds only Team (§267). The code filters children by the plan's Project AND Release, which
-  is Rally's documented rule: "If a portfolio item includes allocated points/counts, the Project and
-  Release fields in the story must match the plan for that story to be included in the Rollup
-  calculation." Without it a long-lived Feature inflates every plan that touches it — the plan charges
-  work belonging to another release — so the filter stays and the BA formula is the divergence.
+- **Rollup and Complete no longer filter children by Project+Release — the BA REVERSED that divergence
+  on 2026-08-17** (`P5-CP-029`, retest, Confirmed Fail, P0). It used to be a declared divergence in
+  Rally's favour: "If a portfolio item includes allocated points/counts, the Project and Release fields
+  in the story must match the plan for that story to be included in the Rollup calculation", on the
+  grounds that without it a long-lived Feature inflates every plan that touches it. `P5-CAP-AC-016` and
+  SRS §311/§318 state the formula with NO qualifier — `SUM(child.planEstimate WHERE child belongs to
+  Feature)` — and the release half is what made the BA's repro read zero: an ordinary Story carries no
+  Release of its own, so a Feature with one Completed 3-point child reported `Rollup = 0, Complete = 0`
+  on the plan header, on the Team row and on the Features tab at once. The predicate is now the link
+  plus `deleted_at is null`, in `capacity-metrics.sql.ts`. **Do not re-add the qualifier without a
+  fresh ruling.**
+
+  Two things had to move with it, and they are the part worth remembering:
+
+  - **A team SLICE cannot be a strict `work_items.team_id = ?`.** That was tier 1 of the rule with no
+    tier 2, and SQL equality never matches NULL — `work_items.team_id` is nullable and mostly unset —
+    so every unteamed child fell out of every team slice. `teamSliceChildScope` attributes a child to
+    its own team when that team holds an allocation of the Feature on this plan, and otherwise to the
+    Feature's OWNER (`is_primary`, Rally's Planned Team Assignment). Exactly one slice, and the slices
+    SUM to the Feature's own total, which is `AC-017`'s reconciliation requirement.
+  - **A team row is the SUM OF ITS OWN ALLOCATION ROWS** (SRS §341/§347 say precisely that), not a
+    separate aggregate query. `repo.teamMetrics` and `childWorkPredicate` are gone: two definitions of
+    one number are what let the Team row, the Feature rows under it and the plan header (which sums the
+    team rows in `planTotals`) disagree about one child.
 - **Nested `Dependencies` renders `0`, not `—`.** The BA's catalog suggests a dash (§205); Rally's column
   is a COUNT, dependencies are genuinely unimplemented rather than unknown, and `0` is true where a dash
   would read as "not known". Note this is the one place the app's own absent-value rule (`--` everywhere
@@ -550,16 +677,46 @@ Both were ruled on. Neither is drift, and neither should be "fixed" on sight.
   §189.
 
   Worth knowing that this one was shipped §189's way and reverted: the BA reading went in under a
-  blanket "align to the BA" instruction, and Broadcom's wording was only checked afterwards. `Rollup`,
-  `Complete` and the cutline are now all decided the same way — the product's documented behaviour wins
-  where the SRS restates it differently. If a future ruling reverses that, reverse all three together;
-  half-and-half is how a plan starts disagreeing with itself.
+  blanket "align to the BA" instruction, and Broadcom's wording was only checked afterwards.
+
+  This note used to add that `Rollup`, `Complete` and the cutline were "all decided the same way — the
+  product's documented behaviour wins", and to warn that reversing one meant reversing all three. **The
+  BA reversed the Rollup/Complete child filter on 2026-08-17 and left the cutline alone**, so the trio
+  is deliberately split now: the cutline still follows Broadcom, the child filter follows
+  `P5-CAP-AC-016`. Recorded rather than deleted because the next person to read either bullet will
+  wonder which rule governs — the answer is per-rule, and each one names its own source.
 
   Verified at
   `techdocs.broadcom.com/us/en/ca-enterprise-software/valueops/rally/rally-help/planning/capacity-planning-page/view-capacity-plan-details/capacity-plan-items-tab.html`
   (the same page carries the Project/Release sentence above, for Complete and for estimated points).
   The cutline was removed from Rally and later restored, which is why it may be absent from an older
   screenshot or a different edition.
+
+## Publishing a plan is ONE decision per FEATURE, and the Release rule is EQUALITY
+
+Both halves were `P5-CP-035` (retest 2026-08-17, Confirmed Partial, P1), and both are easy to
+reintroduce because the natural thing to iterate is `listAllocations`.
+
+- **A split Feature has N allocation rows and ONE publish decision.** Same window, same Release answer,
+  same advisory. Looping the rows wrote the Feature N times (churning `updated_at`) and pushed its
+  advisory N times, which reads as N separate problems — and gave the SPA a duplicate React key.
+  `publishTargets` folds the rows to unique Features BEFORE anything is written or reported, and
+  `unallocated` becomes an OR over the Feature's rows, so a Feature holding one team row and one parked
+  row is assigned rather than both updated AND reported as having no team.
+- **`windowsMatch` is EQUALITY on both ends, never containment.** AC-019 says the Release field is
+  written "only when the Plan planned start/end dates MATCH the selected Release start/end dates", and
+  the consequence is the bit that bites the COPY: a plan ending EARLIER than its release fails the check
+  while being nowhere near outside it. The old advisory said "the plan's window reaches outside its
+  release", which is a fault the planner cannot find. It now names both windows —
+  `Plan dates X to Y do not exactly match Release dates A to B. Planned dates were updated; Release was
+not changed.` — and the pre-publish modal says "exactly match" rather than "falls inside".
+  Both sides are normalised to date-only first (`dateOnly`), so the comparison can never silently become
+  a timestamp one with timezone as the invisible variable.
+
+The release dates in that advisory come from the release REFERENCE feed in the SPA
+(`useReleaseOptions`), not from the publish response: the reason code is the server's contract, and a
+second server field for two dates the client already holds would be one more number free to disagree
+with the plan header beside it.
 
 ## An allocation's value is a FIXED SNAPSHOT with a source label
 
@@ -734,6 +891,62 @@ authorization call, pinned by a spec. Note the API still *accepts* a cross-proje
 (`assertFeatureLinkable` permits it, because Rally's rollup matches `feature_id` alone) while the picker
 no longer offers one: 0 such rows exist, and the BA's field scope wins over offering it.
 
+**HOME's two aggregates were the last cross-project reads still scoped by `workspace_id` alone**, and
+`GET /work-items/summary`'s own `@AuthorizedInService('scoped by listReadableProjectIds')` decorator
+said otherwise — the identical false citation `listProjectHealth` carried until an e2e spec was written
+for it. So after a Workspace Admin removed a user's access to a project, Home still reported that
+project's active sprints, open work items, blocked items and open defects, and `My Work` still named its
+items and project (`GAP-P4-RBAC-003`, against Phase 4 §2.2/§6, which put an unassigned project out of
+"navigation, selectors, search **or results**"). `@SelfScoped` on `/work-items/my` was true and never
+sufficient: *assigned to me* bounds whose the item is, not which project it may be read in, and an item
+stays assigned after access is removed. Both now take `project:view` — the same code the projects list
+and Project Health take, so the tile row, the list it links to and the health table cannot be counted in
+three different populations. **A decorator is a note, not a check**; the four cases in
+`work-items.service.spec.ts` are the check, and they assert BOTH sentinel directions, because a test
+that only forwards an array also passes when `null` is flattened to `[]` — which fails closed and shows
+a Workspace Admin all zeros.
+
+## A PERSISTED selection outlives the grant it was made under
+
+`app-context.store`'s `project` and `team` are zustand `persist` state, so a revoked project survives in
+localStorage and every reader trusts it. `useInitialProject` is the ONE reconciler — it already replaced
+a selection missing from `GET /v1/projects` **whenever some other project remained**, and returned early
+when the list was empty, which is precisely the No Access principal the rule is about. So the shell's
+context trigger kept printing `TEST · All Teams`, the breadcrumb kept naming the project, and every
+project-scoped query kept being issued for it, while the nav, the Project list and `/backlog` were all
+correctly empty or denied. Reconcile in that hook and nowhere else; a second copy of the rule is how the
+header and the nav come to disagree.
+
+Three properties of it are load-bearing and none is obvious:
+
+- **The list is the authority.** `GET /v1/projects` is scoped by `listReadableProjectIds`, so a project
+  absent from a **resolved** response is one the server will not serve. Clearing is the server's answer
+  applied to client state, not a guess.
+- **`undefined` decides nothing, in EITHER direction.** It is both "in flight" and "failed", so it must
+  not invent a selection *and* must not clear a good one — a network blink would otherwise evict a
+  reader from their own project.
+- **Clearing the project clears the Team with it.** A Team belongs to the project being left, which is
+  what the shell's own switcher and `adoptRecordProject` already do.
+
+## A RECORD route must own its denied state; its guard cannot
+
+`RequirePermission` resolves the code against the **selected** project, and renders its children when
+that read itself fails ("we could not ask" is not "you may not"). `/item/$itemKey` resolves a
+workspace-unique key, so `GET /work-items/by-key` deliberately carries no `@RequirePermission` and
+asserts `work_item:view` on the row's own project after loading it — meaning the refusal that matters
+arrives at the PAGE, as a 403, on a project the guard never consulted. With the page's only non-record
+branch a "not found" line, `/item/US-17` rendered a BLANK page for a reader with no access: no statement,
+no recovery action, one URL away from a `/backlog` that gets it right (Phase 4 §7).
+
+Two things fell out of fixing it that generalise:
+
+- **A query that throws `new Error(apiErrorMessage(...))` discards the status**, so a page cannot tell a
+  403 from a 500 and `queryClient`'s own `retry` predicate — which reads `error.status` to stop retrying
+  4xx — saw `undefined` and retried refusals. `ApiError` carries it; throw that wherever a surface
+  branches on the outcome.
+- **Three outcomes, three sentences**: `AccessDenied` (403), the key named back (a 404 mapped to
+  `null`), `LoadErrorState` (anything else). A status we cannot read is a load failure, NEVER a refusal.
+
 ## A route's permission code must be one the intended role can hold
 
 `GET /work-items/by-key` carried `workspace:view` — admin-only, since `workspace:*` is
@@ -796,11 +1009,103 @@ sight. The audit and its sourced Rally research are in
   Editor-writable row — a data-model change across portfolio, work items and iterations, plus
   team-scoped read models on every list, report and picker.
 
-  So Teams stay exactly what they already are: **delivery-model data, and a display filter.** Team
+  **THE FRESH RULING ARRIVED: reinstated 2026-08-17.** `GAP-P4-RBAC-003` is a BA-confirmed P0 Fail —
+  an Editor with no assigned Team read another team's Story in full and was offered `All Teams`,
+  Pegasus and RTCAP in the selector — citing §2.2, §3.1–3.2, §7 and AC #3–#5. The paragraph above is
+  kept because its objection was right, and because the BA's follow-up answer is what finally settles
+  it. Asked directly whether `team_id` had to become mandatory, they ruled:
+
+  > "Keep `team_id` nullable. Null means **Project Backlog**, accessible only to Workspace Admin and
+  > Project Admin. Editor must select one of their assigned Teams when creating a Work Item and cannot
+  > access team-less items. Enforce this consistently in API queries, lists, reports, search, pickers
+  > and direct URLs. No DB migration or backfill is required."
+
+  So the nullable column is not a gap to be closed — it is a **THIRD population with its own
+  audience**, which is why no migration was needed. `AccessService` holds both halves and nothing else
+  may re-implement either:
+
+  - **`assertTeamInScope`** — the per-record decision. For an `editor`: no active roster row on any
+    team actively linked to the project → `EDITOR_NO_TEAM_SCOPE` (AC1); another team's record →
+    `TEAM_NOT_IN_SCOPE` (AC3); a record with NO team → `PROJECT_BACKLOG_ADMIN_ONLY`. That third code
+    exists rather than reusing the second because "this is the Project Backlog" and "this is someone
+    else's Team" are different facts and only one is something the reader can act on.
+  - **`resolveTeamScope`** — the SAME decision in the shape a query needs, and every list, report,
+    search and picker narrows through it. `{ unrestricted: true }` for a Workspace Admin, a
+    per-project `admin`, or a principal with no level at all (whose refusal is
+    `assertProjectPermission`'s — narrowing them to zero teams would turn a 403 into an empty grid,
+    which reads as "this project has no work"). Otherwise their own team ids.
+  - **`team_id IN (…)`, NEVER `IN (…) OR IS NULL`.** That OR-NULL form is right for ITERATIONS
+    (`teamOrSharedTimebox` — a timebox with no team is a shared sprint) and wrong for WORK ROWS. The
+    two rules sit in adjacent queries; say which one a predicate is when you write it.
+  - **An empty array is an answer, not a missing filter.** `{ teamIds: [] }` must return nothing;
+    flattening it to "unrestricted" hands that Editor the whole project, the same `null`-versus-`[]`
+    trap `listReadableProjectIds` documents. Short-circuit rather than emitting `inArray(col, [])`.
+  - **Create is a REQUIRED CHOICE, not a refusal to read.** An Editor omitting the Team gets
+    `WORK_ITEM_TEAM_REQUIRED` (412), because `PROJECT_BACKLOG_ADMIN_ONLY` reads as "you may not open
+    that" — true of a read and useless on a form.
+  - **A per-project `admin` keeps All Teams AND the Project Backlog** (§3.1), so
+    `GET /projects/:id/teams` narrows for a reader through `listProjectTeamsForReader` while the
+    unscoped `listProjectTeams` stays internal — it is also the home of the "team must be linked to
+    this project" rule, and a rule that cannot see every link would make an Editor unassignable
+    inside their own team.
+  - Reached from `WorkItemsService` on read-by-id, read-by-key, create, update (BOTH the current team
+    and a moving destination) and delete. Pinned over real HTTP in
+    `test/e2e/editor-team-scope.e2e.spec.ts`; the zero-team half is in `access.service.spec.ts`,
+    because the e2e cannot express it without emptying a seeded principal's rosters, which other files
+    measure.
+
+  **A boundary the READS do not share is a filter with a security-sounding name** — that is the whole
+  lesson of the removal note above, and it is why the ruling's own sentence lists lists, reports,
+  search, pickers and direct URLs. A new read over work rows inherits nothing automatically: it must
+  take the scope. What that cost, in one pass, and what each half is worth knowing for:
+
+  - **`TeamReadScope` is exported from `@modules/access` and nowhere else.** Four modules had derived or
+    re-declared it within a day of the rule landing; four copies of one decision table is the drift the
+    rule exists to prevent. `libs/modules/{work-items,iterations,quality}/src/domain/team-read-scope.ts`
+    re-export it and keep only their own SQL helpers.
+  - **`scope` is a REQUIRED repository parameter**, not an optional one, in every port it reaches. A new
+    call site that forgets the boundary is then a compile error rather than a silent widening.
+  - **Every sub-resource of a work item is a disclosure of that work item.** `:id/activity`,
+    `:id/labels`, `:id/relations`, `:id/milestones`, `:id/time-logs`, `:id/watchers`, `:id/attachments`
+    and both attachment-download routes all loaded the row through the unscoped `getWorkItem`, so the
+    record was refused while its Revision History, links, logged hours, watchers and attachment BYTES
+    were not. `requireReadable` is the one scoped read path; a signed URL outliving the request is why
+    the download pair was the worst of them. Comment threads had the same hole through
+    `CollaborationService`, which is a different module and needed its own fix.
+  - **Writes leak just as well as reads.** `bulk-release`, `bulk-iteration` and both reorder routes
+    authorised the PROJECT in the body and never the rows, so a bulk call was the cheapest way to move
+    another Team's work — or the Project Backlog's — with no UI involved. `loadBulkItems` now checks
+    every row, all-or-nothing.
+  - **A grid must not offer a row its own record endpoint refuses.** The Tasks tab narrows by
+    `coalesce(task, parent, iteration)` while `GET /work-items/:taskId` read the row's own column, so a
+    task under a teamed Story was listed and then refused. `resolveRowTeam` is the shared resolution,
+    and it asks for the third tier only when the first two are null.
+  - **Frozen Burndown history cannot be re-sliced, so a multi-team Editor gets NO series.** The
+    `team_id IS NULL` snapshot row is a MEASURED All Teams row that spans teams they may not see, and
+    summing the team rows is forbidden (this file, above). So `frozenSeriesScope` serves one team's own
+    rows for a one-team reader and reports the series UNAVAILABLE for two or more, with
+    `hasScheduledWork` still live — "work exists, this scope's history is unavailable" rather than
+    "nothing scheduled". Arithmetically a sum would be exact for `iteration_daily_snapshots` alone; the
+    release burnup cannot follow (a team-agnostic child counts inside every team row), and one report
+    aggregating while its neighbour refuses is worse than both refusing.
+  - **`All Teams` is not a lie for an Editor: it is `My Teams`.** Their default report scope returns
+    that label, because `All Teams` would be false twice over — other teams, and the Project Backlog.
+  - **Two REFUSALS on create, and they are not interchangeable.** Another team is `TEAM_NOT_IN_SCOPE`;
+    no team at all is `WORK_ITEM_TEAM_REQUIRED`. On a form the reader needs to know which field to
+    fill, which is also why `CreateIterationItemDto` gained an optional `teamId`: a SHARED iteration
+    (195 of 206 local ones) has no team to inherit, so without it Add Item was closed to exactly the
+    role §3.2 grants it to. A chosen team wins over the inherited one; the refusals still decide.
+  - **What is still NOT narrowed, deliberately.** `activeProjects` / `activeSprints` on the Home strip
+    count CONTAINERS, and `iterations.team_id` is unset on ~195 of 206 rows, so a strict predicate
+    would drop exactly the shared sprints an Editor works in. And a Release Tracking Direct row's
+    `childCount` / `progress` / `mismatches` stay scope-blind per RT-BR-05, so an Editor can infer
+    aggregate counts for children of a Feature their team owns. Both are recorded here rather than
+    quietly narrowed, because narrowing either would give one number two definitions.
+
+  Everything else about Teams is unchanged: **delivery-model data, and a display filter.** Team
   membership, `team_members`, Team Status, Team Capacity and every report's team scoping are untouched
-  — and note `RBE-06` now grants `editor` from a team roster row, which IS Rally's model arrived at from
-  the other direction. **Do not re-add a team authorization scope without a fresh ruling, and if one is
-  ever wanted, mandatory `team_id` is its precondition, not an optimisation.**
+  — and note `RBE-06` grants `editor` from a team roster row, which IS Rally's model arrived at from
+  the other direction.
 - **A per-Project `Admin` has NO structural authority**, following the BA over Rally. §3.1 marks
   every structural row Hidden for Admin — create/edit/archive/restore/delete Project, create/edit/
   deactivate/restore Team, assign Project access and Team membership — and gives it Read-only on

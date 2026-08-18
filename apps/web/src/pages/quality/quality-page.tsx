@@ -179,6 +179,10 @@ export function QualityPage() {
         type: 'defect',
         title: `${src.title} (copy)`,
         priority: (src.priority ?? 'none') as 'none' | 'low' | 'normal' | 'high' | 'urgent',
+        // The SOURCE's Team, which the row now carries. Without it the copy landed in the Project
+        // Backlog — silently for an admin, and as `WORK_ITEM_TEAM_REQUIRED` for an Editor, whose
+        // surface this is (`quality:view` is a Project Member code). BA ruling 2026-08-17.
+        teamId: src.teamId ?? undefined,
       })
       selection.clear()
       toast.success('Defect copied')

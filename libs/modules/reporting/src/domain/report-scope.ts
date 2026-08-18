@@ -18,14 +18,91 @@
  * forgotten parameter, and they behave differently in every report: All Teams fuses
  * per-Team iterations onto one timebox and must de-duplicate work items across Teams,
  * while a selected Team must return that Team ONLY.
+ *
+ * THE THIRD KIND IS THE READER'S OWN CEILING, NOT THEIR CHOICE (BA ruling, 2026-08-17)
+ * ------------------------------------------------------------------------------------
+ * "Null means Project Backlog, accessible only to Workspace Admin and Project Admin. Editor …
+ * cannot access team-less items. Enforce this consistently in API queries, lists, reports, search,
+ * pickers and direct URLs." So a per-project `editor` has no `All Teams` and no Project Backlog:
+ * every report they read is bounded by the Teams they hold, and `AccessService.resolveTeamScope` is
+ * the one place that answer comes from.
+ *
+ * `teams` is a SEPARATE kind rather than a flag on the other two, because the difference is not
+ * cosmetic in either direction:
+ *
+ *   • against `all` it excludes other Teams AND the Project Backlog;
+ *   • against `team` it excludes the Project Backlog — a team-agnostic row counts inside a
+ *     selected Team for an admin (see `inScope` in `release-tracking.ts`, which is shared with the
+ *     FROZEN writer and must keep that rule) and must not for an editor.
+ *
+ * A single-element `teams` scope is therefore NOT the same thing as `{ kind: 'team' }`, and an
+ * empty one is a real answer — "no delivery scope", which must produce NO rows. Never flatten it
+ * to `all`: that is the fail-open shape, and `scope.kind === 'team' ? predicate : undefined` was
+ * exactly it, which is why no such ternary survives in the repository.
  */
 export type TeamScope =
-  { readonly kind: 'team'; readonly teamId: string } | { readonly kind: 'all' };
+  | { readonly kind: 'team'; readonly teamId: string }
+  | { readonly kind: 'all' }
+  | { readonly kind: 'teams'; readonly teamIds: readonly string[] };
 
 export const ALL_TEAMS: TeamScope = { kind: 'all' };
 
 export function teamScope(teamId: string | null | undefined): TeamScope {
   return teamId ? { kind: 'team', teamId } : ALL_TEAMS;
+}
+
+/**
+ * The scope of a reader who may only see their own Teams' work.
+ *
+ * De-duplicated so a doubled roster row cannot turn `IN (…)` into a longer list than the reader
+ * has teams, and frozen as `readonly` so a caller cannot widen a scope it was handed.
+ */
+export function restrictedTeamScope(teamIds: readonly string[]): TeamScope {
+  return { kind: 'teams', teamIds: Object.freeze([...new Set(teamIds)]) };
+}
+
+/**
+ * "This reader holds no Team", which is a report's EMPTY state and never "no filter".
+ *
+ * Callers short-circuit on it rather than emitting `IN ()`, which is not portable as "match
+ * nothing" — the same `null`-versus-`[]` distinction `listReadableProjectIds` documents.
+ */
+export function isEmptyTeamScope(scope: TeamScope): boolean {
+  return scope.kind === 'teams' && scope.teamIds.length === 0;
+}
+
+/**
+ * Which FROZEN series a scope may be served, or `null` when none exists.
+ *
+ * Burndown and the release burnup are recorded history: `iteration_daily_snapshots` and
+ * `release_daily_snapshots` hold one row per (timebox, team, day) plus a `team_id IS NULL` row that
+ * was MEASURED over the whole scope. CLAUDE.md's rule is that a read picks exactly one series,
+ * never both and never a sum — for releases the team rows genuinely overlap (a team-agnostic child
+ * counts inside every team's row, and a Feature spanning two teams sits in both derived buckets),
+ * so a sum double-counts.
+ *
+ * That leaves three answers for a team-restricted reader, and no fourth:
+ *
+ *   • ONE team → that team's own rows. Identical to a selected-Team read, and fully measured.
+ *   • NO team → nothing. There is no scope to serve.
+ *   • TWO OR MORE teams → nothing, reported as unavailable. The `team_id IS NULL` row spans Teams
+ *     the reader may not see (serving it is a disclosure) and summing their team rows is forbidden,
+ *     so the series they asked for was never measured. The reader selects one of their Teams; the
+ *     alternative — inventing an aggregate — is the `buildFallbackSnapshots` mistake IB §5 bans.
+ *
+ * Worth recording for whoever revisits this: for `iteration_daily_snapshots` ALONE a sum would be
+ * arithmetically exact, because `measureIterationDay` resolves each task to exactly one team
+ * (`coalesce(task, parent, iteration)`), so the team rows there do not overlap. It is still not
+ * done, because the release burnup cannot follow suit and one report silently aggregating where its
+ * neighbour refuses is worse than both refusing. A ruling could change this for Burndown only.
+ */
+export function frozenSeriesScope(
+  scope: TeamScope,
+): { readonly kind: 'all' } | { readonly kind: 'team'; readonly teamId: string } | null {
+  if (scope.kind === 'teams') {
+    return scope.teamIds.length === 1 ? { kind: 'team', teamId: scope.teamIds[0] } : null;
+  }
+  return scope;
 }
 
 /** The scope every report query is bounded by. Project is never optional. */

@@ -54,6 +54,18 @@ export const ErrorCodes = {
   PROJECT_KEY_TAKEN: 'PROJECT_KEY_TAKEN',
   PROJECT_ARCHIVED: 'PROJECT_ARCHIVED',
   PROJECT_PERMISSION_DENIED: 'PROJECT_PERMISSION_DENIED',
+  /** An Editor with no active Team in the project has no delivery scope (§2.2, GAP-P4-RBAC-003 AC1). */
+  EDITOR_NO_TEAM_SCOPE: 'EDITOR_NO_TEAM_SCOPE',
+  /** The record belongs to a Team this Editor is not assigned to (§3.2, GAP-P4-RBAC-003 AC3). */
+  TEAM_NOT_IN_SCOPE: 'TEAM_NOT_IN_SCOPE',
+  /**
+   * `team_id IS NULL` is the Project Backlog, and only a Workspace Admin or Project Admin may reach
+   * it (BA ruling 2026-08-17). Distinct from `TEAM_NOT_IN_SCOPE` on purpose: "no Team" and "another
+   * Team" are different facts, and only one of them is something the reader can act on.
+   */
+  PROJECT_BACKLOG_ADMIN_ONLY: 'PROJECT_BACKLOG_ADMIN_ONLY',
+  /** An Editor must choose one of their Teams when creating a Work Item (BA ruling 2026-08-17). */
+  WORK_ITEM_TEAM_REQUIRED: 'WORK_ITEM_TEAM_REQUIRED',
   PROJECT_LEAD_NOT_MEMBER: 'PROJECT_LEAD_NOT_MEMBER',
   PROJECT_INVALID_DATE_RANGE: 'PROJECT_INVALID_DATE_RANGE',
   LABEL_NOT_FOUND: 'LABEL_NOT_FOUND',
@@ -98,12 +110,19 @@ export const ErrorCodes = {
   PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION: 'PORTFOLIO_ITEM_HAS_CAPACITY_ALLOCATION',
   /** Restoring a Feature is refused while its Epic is still archived. */
   PORTFOLIO_PARENT_ARCHIVED: 'PORTFOLIO_PARENT_ARCHIVED',
+  /** A Project is set at creation and never changes (`P5-PI-003`, WID-FR-017, §3.1 AC5). */
+  PORTFOLIO_ITEM_PROJECT_IMMUTABLE: 'PORTFOLIO_ITEM_PROJECT_IMMUTABLE',
   /** Every write except Restore is refused on an archived item — it is not actionable work. */
   PORTFOLIO_ITEM_ARCHIVED: 'PORTFOLIO_ITEM_ARCHIVED',
   PORTFOLIO_ITEM_TEAM_MISMATCH: 'PORTFOLIO_ITEM_TEAM_MISMATCH',
   PORTFOLIO_ITEM_INVALID_PARENT: 'PORTFOLIO_ITEM_INVALID_PARENT',
   /** Archiving an Epic that still has active child Features would orphan them. */
   PORTFOLIO_EPIC_HAS_ACTIVE_FEATURES: 'PORTFOLIO_EPIC_HAS_ACTIVE_FEATURES',
+  /**
+   * Archiving a Feature that still has child work items would orphan them — the same rule as the Epic
+   * guard above, one level down. `P5-PI-011` in the 2026-08-14 DEV Handoff.
+   */
+  PORTFOLIO_FEATURE_HAS_ACTIVE_WORK_ITEMS: 'PORTFOLIO_FEATURE_HAS_ACTIVE_WORK_ITEMS',
   /** Drop neighbours arrived out of order — a stale client view of the rank order. */
   PORTFOLIO_ITEM_RANK_CONFLICT: 'PORTFOLIO_ITEM_RANK_CONFLICT',
 

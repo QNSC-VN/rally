@@ -4,7 +4,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
-import { apiErrorMessage } from '@/shared/api/api-error'
+import { ApiError, apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
 import { withCsrfHeader } from '@/shared/api/csrf'
 
@@ -169,6 +169,16 @@ export function useWorkItem(id: string | undefined) {
  * Exposed as query OPTIONS as well as a hook because the `/item/$itemKey` route loader resolves the
  * item outside React, to learn which project a deep link belongs to before the first paint. Same
  * key, so the loader's fetch warms the cache every hook caller reads: one request, not two.
+ *
+ * IT THROWS `ApiError`, NOT `Error`, and that is load-bearing (GAP-P4-RBAC-003, AC6). This route is
+ * `AuthorizedInService` — it loads the row, resolves its project and then asserts `work_item:view` —
+ * so a reader with no access to the owning project gets a **403**, not a 404. A plain `Error` discards
+ * the status, and the page could then only say "not found" for a refusal, a 500 and a genuinely
+ * absent key alike. Two things depend on the status surviving:
+ *   • `pages/work-item/work-item-detail-page.tsx` renders `AccessDenied` for 403 and `LoadErrorState`
+ *     for anything else, instead of one screen for three different sentences;
+ *   • `queryClient`'s own `retry` predicate reads `error.status` to stop retrying 4xx — with a plain
+ *     `Error` it saw `undefined` and retried a refusal.
  */
 export function workItemByKeyQueryOptions(itemKey: string) {
   return {
@@ -180,7 +190,7 @@ export function workItemByKeyQueryOptions(itemKey: string) {
       })
       if (error) {
         if (response.status === 404) return null
-        throw new Error(apiErrorMessage(error, response.status))
+        throw new ApiError(error, response.status)
       }
       return (data as WorkItem | undefined) ?? null
     },

@@ -63,6 +63,9 @@ const makePortfolioItemsService = () => ({
 
 const makeAccessService = () => ({
   assertProjectPermission: vi.fn().mockResolvedValue(undefined),
+  // The Editor Team scope (BA ruling 2026-08-17): a comment thread is as reachable as its item, and
+  // the route's guard stops at the project. Passes by default; the case about it says otherwise.
+  assertTeamInScope: vi.fn().mockResolvedValue(undefined),
 });
 
 // The ONE home of PRJ-FR-010. Resolves by default; the block about it rejects deliberately.
@@ -233,6 +236,46 @@ describe('CollaborationService — project-scoped comment writes', () => {
 
     it('still LISTS the thread — archived is read-only, not invisible', async () => {
       await expect(service.listComments(mockActor, WORK_ITEM_REF)).resolves.toEqual([]);
+    });
+  });
+
+  /**
+   * The Editor Team scope reaches the DISCUSSION too (BA ruling 2026-08-17: enforce it "consistently
+   * in API queries, lists, reports, search, pickers and direct URLs").
+   *
+   * `@RequirePermission('work_item:view', { resource: 'work_item' })` resolves the PROJECT and nothing
+   * finer, so without this an Editor on one Team could read another Team's thread — or the Project
+   * Backlog's — through a door the record itself refuses. Asserted on the READ as well as the write,
+   * because the read is the disclosure.
+   */
+  describe('a thread is only as reachable as its work item', () => {
+    const denied = Object.assign(new Error('nope'), { code: 'TEAM_NOT_IN_SCOPE' });
+
+    it('refuses to LIST when the item is out of the caller’s Team scope', async () => {
+      accessService.assertTeamInScope.mockRejectedValueOnce(denied);
+
+      await expect(service.listComments(mockActor, WORK_ITEM_REF)).rejects.toMatchObject({
+        code: 'TEAM_NOT_IN_SCOPE',
+      });
+      expect(commentRepo.listByEntity).not.toHaveBeenCalled();
+    });
+
+    it('refuses to WRITE for the same reason', async () => {
+      commentRepo.findById.mockResolvedValue(mockComment());
+      accessService.assertTeamInScope.mockRejectedValueOnce(denied);
+
+      await expect(service.updateComment(mockActor, 'c-1', 'edited')).rejects.toMatchObject({
+        code: 'TEAM_NOT_IN_SCOPE',
+      });
+      expect(commentRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('does NOT team-scope a portfolio comment — that surface is portfolio:view', async () => {
+      // §3.2 withholds Portfolio from an Editor entirely, so the level check is the whole answer
+      // there, and the ruling is about Work Items.
+      await service.listComments(mockActor, PORTFOLIO_REF);
+
+      expect(accessService.assertTeamInScope).not.toHaveBeenCalled();
     });
   });
 });

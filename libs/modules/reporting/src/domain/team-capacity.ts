@@ -175,8 +175,26 @@ export function rollUpTeamCapacity(input: {
     if (seenTasks.has(task.taskId)) continue;
     seenTasks.add(task.taskId);
     const bucket = team(task.teamId, task.teamName ?? NO_TEAM_LABEL, task.teamArchived);
-    const key = task.ownerId ?? UNASSIGNED_LABEL;
-    const row = member(bucket, key, task.ownerId, task.ownerName ?? UNASSIGNED_LABEL);
+    /**
+     * An owner counts as NAMED only when it resolves to a real user.
+     *
+     * `P6-TC-007` (DEV Handoff 2026-08-14): "Task TA-2 keeps Owner = Unassigned, but Team Capacity
+     * attributes 6h Estimate, 4h To Do and 2h Actual to No Team > Hieu Vu Minh Bui instead of an
+     * Unassigned group… an unassigned Task must not be attributed to a named member."
+     *
+     * `ownerName` comes from a LEFT JOIN on `users`, so an owner id that no longer resolves — a removed
+     * account, a stale write — produced a row keyed to that id and LABELLED `Unassigned`, i.e. hours
+     * sitting under a member the reader cannot identify. Requiring both the id and the name means such a
+     * task lands in the real `Unassigned` group instead, with `id: null`, which is what §4 defines.
+     */
+    const named = task.ownerId !== null && task.ownerName !== null;
+    const key = named ? task.ownerId : UNASSIGNED_LABEL;
+    const row = member(
+      bucket,
+      key as string,
+      named ? task.ownerId : null,
+      named ? (task.ownerName as string) : UNASSIGNED_LABEL,
+    );
     row.hours = add(row.hours, {
       estimateHours: task.estimateHours,
       todoHours: task.todoHours,

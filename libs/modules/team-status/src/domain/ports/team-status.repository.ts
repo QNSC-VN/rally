@@ -2,12 +2,27 @@ import type { RawTeamStatusTaskRow, TeamStatusRosterMember } from '../team-statu
 
 export const TEAM_STATUS_REPOSITORY = Symbol('TEAM_STATUS_REPOSITORY');
 
+/**
+ * The caller's Team read scope, derived from the resolver rather than re-declared so the two cannot
+ * drift (BA ruling 2026-08-17). `{ unrestricted: true }` is a Workspace Admin or per-project Admin;
+ * an empty `teamIds` is a real answer — no rows — and must never be read as "no filter".
+ */
+import type { TeamReadScope } from '@modules/access';
+
+export type { TeamReadScope };
+
 export interface ITeamStatusRepository {
-  /** Fetch task-level rows for an iteration, with parent work product and release joins. */
+  /**
+   * Fetch task-level rows for an iteration, with parent work product and release joins.
+   *
+   * `scope` is REQUIRED, so a new call site cannot silently widen the boundary — the mistake the
+   * 2026-08-14 removal note in `AccessService` describes.
+   */
   getTaskRows(
     iterationId: string,
     workspaceId: string,
-    teamId?: string | null,
+    teamId: string | null | undefined,
+    scope: TeamReadScope,
   ): Promise<RawTeamStatusTaskRow[]>;
 
   /**

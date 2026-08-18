@@ -3,16 +3,18 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 
-import { cn } from '@/shared/lib/utils'
+import { cn, EMPTY_VALUE } from '@/shared/lib/utils'
 import { useCreateIterationItem, type IterationReference } from '@/features/iterations/api'
 import { useProjectMemberOptions, useProjectTeams } from '@/features/teams/api'
+import { useProjectTeamScope } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { ProjectCell } from '@/shared/ui/project-cell'
 import { TeamCell } from '@/shared/ui/team-cell'
+import { TeamSelectField } from '@/shared/ui/entity-select-field'
 import { Button } from '@/shared/ui/button'
-import { FormField } from '@/shared/ui/form-field'
+import { FormField, ReadOnlyFieldValue } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { ownerSelectOptions } from '@/shared/ui/owner-cell'
@@ -37,23 +39,52 @@ export function AddItemModal({
   // The assignee feed, NOT the administrative roster: that one is Admin-only (§3.1:71), and
   // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
   const { data: members = [] } = useProjectMemberOptions(projectId)
-  const { data: teams = [] } = useProjectTeams(projectId)
+  const { data: teams = [], isLoading: teamsLoading } = useProjectTeams(projectId)
   const { project } = useAppContext()
   // Project / Team / Iteration are inherited from the iteration context and shown
   // read-only (P2-IS-FR-044/045); the created item picks them up server-side.
   const iterationTeam = teams.find((tm) => tm.id === iteration.teamId)
-  const teamName = iterationTeam?.name ?? t('toolbar.noTeam', 'No team')
+  // `--` when the iteration NAMES a team this reader cannot resolve: `GET /projects/:id/teams`
+  // returns only an Editor's own teams, so a missing row means "another team", and printing
+  // `No team` for it would state the opposite of the truth (`EMPTY_VALUE`, per its own docblock).
+  const teamName = iterationTeam?.name ?? (iteration.teamId ? EMPTY_VALUE : t('toolbar.noTeam'))
   const teamKey = iterationTeam?.key ?? null
-  const roBox =
-    'flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground'
+  /**
+   * TWO different cases, and only one of them is a dead end (BA ruling 2026-08-17).
+   *
+   * A SHARED iteration (`teamId === null`) is the common one — 195 of 206 local iterations name no
+   * team — and inheriting nothing there would file a Project Backlog item, which the server refuses
+   * for an Editor. That is now fixable on the form: `CreateIterationItemDto` carries an optional
+   * `teamId`, so the Editor picks one of their own teams and the item lands there. `useProjectTeams`
+   * already returns only their teams, so the options cannot be wrong.
+   *
+   * ANOTHER team's iteration stays a dead end: whatever this form sent, the item would belong to that
+   * team's sprint, which is `TEAM_NOT_IN_SCOPE`. Stated up front rather than left to the toast — but
+   * only once the feed has resolved, since an empty list mid-flight is not evidence of anything.
+   */
+  const { teamRequired } = useProjectTeamScope(projectId)
+  const sharedIteration = iteration.teamId === null
+  const teamOutOfScope = teamRequired && !teamsLoading && !sharedIteration && !iterationTeam
+  const mustChooseTeam = teamRequired && sharedIteration
   const [type, setType] = useState<'story' | 'defect'>('story')
   const [title, setTitle] = useState('')
   const [planEstimate, setPlanEstimate] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
+  const [teamTouched, setTeamTouched] = useState('')
+  const [teamError, setTeamError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Server/submit failures aren't tied to one input — shown as a modal-level
   // banner, not under the Title field.
   const [formError, setFormError] = useState<string | null>(null)
+
+  /**
+   * DERIVED, not seeded into state: a single-team Editor should not be made to choose from a list of
+   * one, and the teams feed resolves AFTER the first render — a `useState` initialiser would freeze
+   * `''` in and the prefill would never arrive (the "state frozen before its source arrived" trap).
+   * A touched value always wins, so the prefill can be changed or cleared.
+   */
+  const autoTeamId = mustChooseTeam && teams.length === 1 ? teams[0].id : ''
+  const teamId = teamTouched || autoTeamId
 
   async function submit(openDetail = false) {
     setError(null)
@@ -62,12 +93,28 @@ export function AddItemModal({
       setError(t('create.titleRequired'))
       return
     }
+    // Belt as well as braces: the buttons are disabled for this case, but Enter-to-submit and a
+    // stale render both reach here, and the server's refusal would arrive as a toast about a Team
+    // this form never showed as editable.
+    if (teamOutOfScope) {
+      setFormError(t('create.teamOutOfScope'))
+      return
+    }
+    // The server's own rule, said on the form: an Editor must name one of their Teams rather than
+    // learn it from a 412 about a field they were never shown.
+    setTeamError(null)
+    if (mustChooseTeam && !teamId) {
+      setTeamError(t('create.teamRequired'))
+      return
+    }
     try {
       const result = await create.mutateAsync({
         type,
         title: title.trim(),
         planEstimate: planEstimate === '' ? undefined : Number(planEstimate),
         assigneeId: assigneeId || undefined,
+        // Omitted on a team-scoped iteration, where the server inherits the iteration's own team.
+        teamId: teamId || undefined,
       })
       notify.success(
         t('create.added', {
@@ -101,6 +148,13 @@ export function AddItemModal({
             {formError}
           </p>
         )}
+        {/* Stated BEFORE the fields, because it is about the iteration and not about anything the
+            reader is going to type. */}
+        {teamOutOfScope && !formError && (
+          <p role="alert" className="text-ui-sm text-destructive">
+            {t('create.teamOutOfScope')}
+          </p>
+        )}
         {/* Type toggle */}
         <FormField label={t('create.typeLabel')}>
           <div className="flex gap-2">
@@ -128,22 +182,37 @@ export function AddItemModal({
               a `KeyChip` for the project and a square `TeamAvatar` for the team — so an
               inherited value looks like the value it was inherited from. */}
           <FormField label={t('create.projectLabel', 'Project')}>
-            <div className={roBox}>
+            <ReadOnlyFieldValue>
               <ProjectCell projectKey={project?.projectKey} projectName={project?.projectName} />
-            </div>
+            </ReadOnlyFieldValue>
           </FormField>
-          <FormField label={t('create.teamLabel', 'Team')}>
-            <div className={roBox}>
-              {iteration.teamId ? (
-                <TeamCell teamKey={teamKey} name={teamName} />
-              ) : (
-                <span>{teamName}</span>
-              )}
-            </div>
-          </FormField>
+          {/* EDITABLE only where the iteration cannot answer it: a shared sprint carries no team, and
+              an Editor must name one of theirs (BA ruling 2026-08-17). A team-scoped iteration still
+              shows it read-only — inherited, per P2-IS-FR-044/045 — and an admin keeps that behaviour
+              on a shared one too, because filing into the Project Backlog is theirs to do. */}
+          {mustChooseTeam ? (
+            <TeamSelectField
+              value={teamId}
+              onChange={(v) => setTeamTouched(v ?? '')}
+              teams={teams}
+              label={t('create.teamLabel', 'Team')}
+              allowUnassigned={false}
+              error={teamError ?? undefined}
+            />
+          ) : (
+            <FormField label={t('create.teamLabel', 'Team')}>
+              <ReadOnlyFieldValue>
+                {iteration.teamId ? (
+                  <TeamCell teamKey={teamKey} name={teamName} />
+                ) : (
+                  <span>{teamName}</span>
+                )}
+              </ReadOnlyFieldValue>
+            </FormField>
+          )}
         </div>
         <FormField label={t('create.iterationLabel', 'Iteration')}>
-          <div className={roBox}>{`${iteration.name} · ${fmtRange(iteration)}`}</div>
+          <ReadOnlyFieldValue>{`${iteration.name} · ${fmtRange(iteration)}`}</ReadOnlyFieldValue>
         </FormField>
 
         <FormField label={t('create.titleLabel')} required error={error ?? undefined}>
@@ -184,12 +253,16 @@ export function AddItemModal({
         <Button
           variant="secondary"
           type="button"
-          disabled={create.isPending}
+          disabled={create.isPending || teamOutOfScope}
           onClick={() => submit(true)}
         >
           {t('create.withDetails')}
         </Button>
-        <Button type="button" disabled={create.isPending} onClick={() => submit(false)}>
+        <Button
+          type="button"
+          disabled={create.isPending || teamOutOfScope}
+          onClick={() => submit(false)}
+        >
           {create.isPending && <Loader2 size={11} className="animate-spin" />}
           {t('create.createItem')}
         </Button>

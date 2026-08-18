@@ -2,7 +2,12 @@
  * Release Detail Page — P3.2 Release Management
  *
  * Visual layout matching SRS §5 and §6.1 with rich text editing areas (Theme, Notes) on the left
- * and a right sidebar panel for metadata fields, status validation, and task roll-up/acceptance metrics.
+ * and a right sidebar panel of METADATA ONLY — Project, State, Start/Release Date, Planned Velocity,
+ * Plan Estimate, Version (P3-REL-FR-018, AC #10).
+ *
+ * No Task Roll-up, no Accepted total and no Burndown, per P3-REL-FR-023 / FR-024 / FR-037: every
+ * release progress and acceptance number belongs to `Portfolio > Release Tracking`. Do not re-add
+ * one here — see the CLAUDE.md note on `GET /releases/:id/burndown` for the history.
  * P3.3: Added Artifacts tab showing linked US/DE work items.
  */
 import { useState } from 'react'
@@ -23,7 +28,6 @@ import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { ReleaseArtifactsTab } from './ui/release-artifacts-tab'
 import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
 import { listResource } from '@/shared/lib/query/resource'
-import { TaskRollupPanel } from './ui/release-detail-panels'
 import { RELEASE_STATES, RELEASE_STATUS_STYLE } from './model/release-states'
 import { useProjectPermissions } from '@/features/access/api'
 import { useRecordProject } from '@/shared/lib/deep-link-project'
@@ -121,8 +125,6 @@ export function ReleaseDetailPage() {
     )
   }
 
-  const rollup = release.taskRollup
-
   const TABS = [
     { key: 'details', label: t('detailPage.tabs.details'), icon: <FileText size={19} /> },
     { key: 'artifacts', label: t('detailPage.tabs.artifacts'), icon: <Package size={19} /> },
@@ -204,110 +206,107 @@ export function ReleaseDetailPage() {
             </>
           }
           sidebar={
-            <>
-              <div className="space-y-4">
-                <DetailField label={t('detailPage.projectScope')}>
-                  <ProjectCell
-                    projectKey={releaseProject?.projectKey}
-                    projectName={releaseProject?.projectName}
-                  />
-                </DetailField>
+            /*
+              METADATA ONLY (P3-REL-FR-018, AC #10). The Task Roll-up + Accepted panel that used to
+              sit below this — and the Burndown table below that, and the fetch that fed it — are
+              gone: FR-023 forbids a Task Roll-up, Burndown or any other release progress widget
+              here, and FR-024/FR-037 put every accepted/progress total in
+              `Portfolio > Release Tracking`.
+            */
+            <div className="space-y-4">
+              <DetailField label={t('detailPage.projectScope')}>
+                <ProjectCell
+                  projectKey={releaseProject?.projectKey}
+                  projectName={releaseProject?.projectName}
+                />
+              </DetailField>
 
-                <DetailField label={t('detailPage.lifecycleState')}>
-                  <SearchableSelect
+              <DetailField label={t('detailPage.lifecycleState')}>
+                <SearchableSelect
+                  variant="field"
+                  value={(vrel.state ?? vrel.status) as ReleaseStatus}
+                  readOnly={!canManage}
+                  ariaLabel={t('detailPage.lifecycleState')}
+                  options={RELEASE_STATES.map((st) => ({
+                    value: st,
+                    label: RELEASE_STATUS_STYLE[st].label,
+                  }))}
+                  onChange={(v) => setField({ state: v as ReleaseStatus })}
+                />
+              </DetailField>
+
+              <DetailFieldPair>
+                <DetailField label={t('detail.startDateLabel')}>
+                  <DateField
                     variant="field"
-                    value={(vrel.state ?? vrel.status) as ReleaseStatus}
+                    value={vrel.startDate || null}
                     readOnly={!canManage}
-                    ariaLabel={t('detailPage.lifecycleState')}
-                    options={RELEASE_STATES.map((st) => ({
-                      value: st,
-                      label: RELEASE_STATUS_STYLE[st].label,
-                    }))}
-                    onChange={(v) => setField({ state: v as ReleaseStatus })}
+                    ariaLabel={t('detail.startDateLabel')}
+                    onChange={canManage ? (v) => setField({ startDate: v }) : undefined}
                   />
                 </DetailField>
 
-                <DetailFieldPair>
-                  <DetailField label={t('detail.startDateLabel')}>
-                    <DateField
-                      variant="field"
-                      value={vrel.startDate || null}
-                      readOnly={!canManage}
-                      ariaLabel={t('detail.startDateLabel')}
-                      onChange={canManage ? (v) => setField({ startDate: v }) : undefined}
-                    />
-                  </DetailField>
+                <DetailField label={t('detail.releaseDateLabel')}>
+                  <DateField
+                    variant="field"
+                    value={vrel.releaseDate || null}
+                    readOnly={!canManage}
+                    ariaLabel={t('detail.releaseDateLabel')}
+                    onChange={canManage ? (v) => setField({ releaseDate: v }) : undefined}
+                  />
+                </DetailField>
+              </DetailFieldPair>
 
-                  <DetailField label={t('detail.releaseDateLabel')}>
-                    <DateField
-                      variant="field"
-                      value={vrel.releaseDate || null}
-                      readOnly={!canManage}
-                      ariaLabel={t('detail.releaseDateLabel')}
-                      onChange={canManage ? (v) => setField({ releaseDate: v }) : undefined}
-                    />
-                  </DetailField>
-                </DetailFieldPair>
-
-                <DetailFieldPair>
-                  <DetailField label={t('detail.plannedVelocityLabel')}>
-                    {canManage ? (
-                      <Input
-                        type="number"
-                        min={0}
-                        value={vrel.plannedVelocity ?? ''}
-                        onChange={(e) =>
-                          setField({
-                            plannedVelocity: e.target.value === '' ? null : Number(e.target.value),
-                          })
-                        }
-                        placeholder="0"
-                      />
-                    ) : (
-                      <DetailReadonlyValue mono>{vrel.plannedVelocity ?? '--'}</DetailReadonlyValue>
-                    )}
-                  </DetailField>
-
-                  <DetailField label={t('detail.planEstimateLabel')}>
-                    {canManage ? (
-                      <Input
-                        type="number"
-                        min={0}
-                        value={vrel.planEstimate ?? ''}
-                        onChange={(e) =>
-                          setField({
-                            planEstimate: e.target.value === '' ? null : Number(e.target.value),
-                          })
-                        }
-                        placeholder="0"
-                      />
-                    ) : (
-                      <DetailReadonlyValue mono>{vrel.planEstimate ?? '--'}</DetailReadonlyValue>
-                    )}
-                  </DetailField>
-                </DetailFieldPair>
-
-                <DetailField label={t('detailPage.versionTag')}>
+              <DetailFieldPair>
+                <DetailField label={t('detail.plannedVelocityLabel')}>
                   {canManage ? (
                     <Input
-                      value={vrel.version ?? ''}
-                      onChange={(e) => setField({ version: e.target.value || null })}
-                      placeholder="e.g. v2.4.0"
+                      type="number"
+                      min={0}
+                      value={vrel.plannedVelocity ?? ''}
+                      onChange={(e) =>
+                        setField({
+                          plannedVelocity: e.target.value === '' ? null : Number(e.target.value),
+                        })
+                      }
+                      placeholder="0"
                     />
                   ) : (
-                    <DetailReadonlyValue>{vrel.version || '--'}</DetailReadonlyValue>
+                    <DetailReadonlyValue mono>{vrel.plannedVelocity ?? '--'}</DetailReadonlyValue>
                   )}
                 </DetailField>
-              </div>
 
-              {/*
-                Task Roll-up + Accepted (P3-REL-FR-018) and nothing else. The Burndown table that
-                used to sit below this — and the fetch that fed it — are gone: §7.5 keeps release
-                progress out of Phase 3.2 and FR-037 puts tracking in `Portfolio > Release
-                Tracking`.
-              */}
-              {rollup && <TaskRollupPanel rollup={rollup} />}
-            </>
+                <DetailField label={t('detail.planEstimateLabel')}>
+                  {canManage ? (
+                    <Input
+                      type="number"
+                      min={0}
+                      value={vrel.planEstimate ?? ''}
+                      onChange={(e) =>
+                        setField({
+                          planEstimate: e.target.value === '' ? null : Number(e.target.value),
+                        })
+                      }
+                      placeholder="0"
+                    />
+                  ) : (
+                    <DetailReadonlyValue mono>{vrel.planEstimate ?? '--'}</DetailReadonlyValue>
+                  )}
+                </DetailField>
+              </DetailFieldPair>
+
+              <DetailField label={t('detailPage.versionTag')}>
+                {canManage ? (
+                  <Input
+                    value={vrel.version ?? ''}
+                    onChange={(e) => setField({ version: e.target.value || null })}
+                    placeholder="e.g. v2.4.0"
+                  />
+                ) : (
+                  <DetailReadonlyValue>{vrel.version || '--'}</DetailReadonlyValue>
+                )}
+              </DetailField>
+            </div>
           }
         />
       )}

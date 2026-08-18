@@ -171,34 +171,24 @@ export function PortfolioPage() {
   const optionsFor = usePortfolioCellOptions(workspace?.workspaceId, projectIds)
 
   /**
-   * Move destinations for the Project cell — workspace-wide, not the loaded rows' projects.
+   * `projectId` → `KeyChip` glyph, for the READ-ONLY Project column on every row and child row.
    *
-   * A move targets a project the grid may not be showing (that is the point of a move), so
-   * this deliberately does not reuse `projectIds`. Two narrowings, and the API applies both:
+   * This used to be `projectOptions` — move DESTINATIONS for an editable Project cell, narrowed to
+   * unarchived projects the caller held `portfolio:edit` on, because the unnarrowed list produced
+   * the BA's "selecting AUDIT26 returns an unexpected error" (P5-PI-003) for a Project Admin. The
+   * BA's answer to that case is stronger than a narrower list: §3.1 makes the field "read-only
+   * afterward for both Feature and Epic", so there is no destination list at all and no permission
+   * to filter it by. What is left is a name→key lookup for a column that only displays.
    *
-   *   • **Archived projects are dropped** — they cannot take new work (`PROJECT_ARCHIVED`,
-   *     PRJ-FR-010, checked on the DESTINATION by `assertProjectWritable`).
-   *   • **`portfolio:edit` on the DESTINATION**, which `updateItem` requires in BOTH directions
-   *     ("putting work into a project is an edit of that project's portfolio"). The list was built
-   *     from every READABLE project with no permission filter at all, so a Project Admin was
-   *     offered every project in the workspace and got a 403 from the one they picked — almost
-   *     certainly the BA's "selecting AUDIT26 returns an unexpected error" (P5-PI-003). It is
-   *     invisible to a Workspace Admin, whose `workspace:*` grant covers every project.
-   *
-   * `useProjectPermissionsFor` over the whole workspace, exactly as `CreatePortfolioItemModal`
-   * narrows its own Project field by `portfolio:create` — readable is not writable. It shares the
-   * per-project cache with `rowPerms` above, so a project already resolved for a row costs no
-   * second request.
+   * Unfiltered on purpose, unlike the option list it replaced: an ARCHIVED project can still own a
+   * row on this grid, and its chip must render. The rows' own projects would nearly always suffice,
+   * but a disclosed child Feature can sit in a project with no top-level row here, so the lookup is
+   * workspace-wide for the same reason `canEditProject` is.
    */
   const { data: allProjectRows = [] } = useProjects(workspace?.workspaceId)
-  const allProjectIds = useMemo(() => allProjectRows.map((p) => p.id), [allProjectRows])
-  const { can: canEditIn } = useProjectPermissionsFor(allProjectIds)
-  const projectOptions = useMemo(
-    () =>
-      allProjectRows
-        .filter((p) => p.status !== 'archived' && canEditIn(p.id, 'portfolio:edit'))
-        .map((p) => ({ id: p.id, key: p.key, name: p.name })),
-    [allProjectRows, canEditIn],
+  const projectKeyFor = useCallback(
+    (id: string) => allProjectRows.find((p) => p.id === id)?.key ?? null,
+    [allProjectRows],
   )
 
   const openDetail = useCallback(
@@ -506,7 +496,7 @@ export function PortfolioPage() {
             canEditProject={canEditProject}
             options={optionsFor(item.projectId)}
             optionsFor={optionsFor}
-            projects={projectOptions}
+            projectKeyFor={projectKeyFor}
             colStyleFor={colStyleFor}
             gutterProps={gutterProps}
             onOpen={openDetail}

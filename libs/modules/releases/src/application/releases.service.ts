@@ -41,19 +41,21 @@ const RELEASE_TRANSITIONS: Record<ReleaseStatus, ReleaseStatus[]> = {
 };
 
 /**
- * A release's right-panel roll-up, exactly as P3-REL-FR-018 fixes it: `Task Roll-up` and
- * `Accepted`, nothing else.
+ * A release's task roll-up: Estimate / To Do / Actual **HOURS** from the tasks under the release's
+ * assigned Story/Defect items, plus the accepted work total.
  *
- * Task Roll-up is Estimate / To Do / Actual **HOURS** from the tasks under the release's
- * assigned Story/Defect items (P3-REL-FR-023), not an item or point count. `acceptedItems` is
- * FR-024's "accepted work total for the Release".
+ * **SERVED, NEVER DISPLAYED ON A PHASE 3 SURFACE.** The BA's own §7.4 Release Detail DTO carries
+ * `taskRollup` and `accepted`, which is why they are still computed here — but P3-REL-FR-023
+ * ("Release detail must not show Task Roll-up, Burndown or another Release progress widget"),
+ * FR-024 ("Accepted/progress totals are displayed only in `Portfolio > Release Tracking`"), FR-037
+ * and AC #10 ("Release metadata only; no progress roll-up") forbid rendering any of it on the
+ * Phase 3 list or detail. Confirmed again by the BA's 2026-08-17 retest (`GAP-P3-REL-001`). The one
+ * number a Phase 3 surface may show is `estimateHours`, re-exposed as the list's `taskEstimate`
+ * column (FR-004) — do not add a second reader.
  *
  * There is deliberately NO percentage, no point total and no done/remaining count here.
- * P3-REL-FR-037: "Phase 3 Release list/detail must not add a Release Progress column/widget;
- * progress/tracking belongs to `Portfolio > Release Tracking`", and §7.5 defers the progress
- * percentage, its zero-state, its formula and its recalculation out of Phase 3.2 entirely.
- * A field on this object is a field a Phase 3 surface can render, which is why the numbers are
- * not merely hidden in the SPA — they are not computed or served at all.
+ * §7.5 defers the progress percentage, its zero-state, its formula and its recalculation out of
+ * Phase 3.2 entirely; that report is `Portfolio > Release Tracking`, on its own frozen snapshots.
  */
 export interface TaskRollup {
   estimateHours: number;
@@ -167,8 +169,8 @@ export class ReleasesService {
     const ids = page.data.map((r) => r.id);
     // Batched over the whole page. `taskRollup` used to be built only in the detail path, so
     // every list consumer saw `undefined` and read `?? 0` off it. The list's own `taskEstimate`
-    // column (FR-004) is the roll-up's Estimate hours — one number, computed once, so the
-    // column and the detail panel cannot disagree.
+    // column (FR-004) is the roll-up's Estimate hours — one number, computed once, so no two
+    // release surfaces can report different hours.
     const rollups = await this.computeTaskRollups(ids);
     return {
       ...page,
@@ -203,11 +205,14 @@ export class ReleasesService {
   }
 
   /**
-   * The right panel's roll-up per release (FR-018), batched over a page.
+   * The task roll-up per release (BA §7.4's `taskRollup` + `accepted`), batched over a page.
    *
    * Two questions with two different populations, so two grouped queries:
-   *  - Task Roll-up hours come from `work.tasks` through the parent Story/Defect (FR-023);
-   *  - `Accepted` counts the release's own Story/Defect items (FR-024).
+   *  - Task Roll-up hours come from `work.tasks` through the parent Story/Defect;
+   *  - `Accepted` counts the release's own Story/Defect items.
+   *
+   * Neither is rendered by a Phase 3 surface — see {@link TaskRollup}. Only `estimateHours`
+   * reaches a screen, as the list's `taskEstimate` column (FR-004).
    *
    * A release absent from the map has nothing assigned and resolves to `EMPTY_TASK_ROLLUP`.
    */
@@ -236,7 +241,7 @@ export class ReleasesService {
    * `innerJoin` on the parent WITH `parent.deleted_at IS NULL`: a soft-deleted Story does not
    * cascade to `work.tasks` (the FK is `ON DELETE cascade`, which a soft delete never fires),
    * so an orphaned task would otherwise keep charging hours to the release. No team predicate —
-   * a release is not team-scoped, and this panel is the release's own total.
+   * a release is not team-scoped, and this is the release's own total.
    */
   private async computeTaskHours(
     releaseIds: string[],

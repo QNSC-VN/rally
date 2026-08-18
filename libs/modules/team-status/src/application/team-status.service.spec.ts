@@ -102,6 +102,10 @@ const makeWorkItemsService = () => ({
 
 const makeAccessService = () => ({
   assertProjectPermission: vi.fn().mockResolvedValue(undefined),
+  // The Editor Team scope (BA ruling 2026-08-17). Unrestricted by default — an `editor` holds
+  // `team_status:view`, so the cases about the scope say so explicitly.
+  assertTeamInScope: vi.fn().mockResolvedValue(undefined),
+  resolveTeamScope: vi.fn().mockResolvedValue({ unrestricted: true }),
 });
 
 const makeProjectsService = () => ({
@@ -744,6 +748,99 @@ describe('TeamStatusService', () => {
       repo.getTaskRows.mockResolvedValue([makeRawRow()]);
       const board = await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
       expect(board.projectId).toBe('proj-1');
+    });
+  });
+
+  /**
+   * The Editor Team scope on THIS screen (BA ruling 2026-08-17: enforce it "consistently in API
+   * queries, lists, reports, search, pickers and direct URLs").
+   *
+   * `editor` holds `team_status:view`, and this service used to pass the query's `teamId` straight to
+   * the repository — so an Editor could name any team, or omit it for All Teams, and the three-tier
+   * `coalesce(task, parent, iteration)` predicate then admitted other teams' tasks and team-less ones,
+   * which are now the Project Backlog.
+   */
+  describe('an Editor sees only their own Teams (BA ruling 2026-08-17)', () => {
+    const editorScope = { unrestricted: false, teamIds: ['team-a'] };
+
+    it('forwards the resolved scope to the task query', async () => {
+      access.resolveTeamScope.mockResolvedValue(editorScope);
+
+      await service.getTeamStatus(actor, 'proj-1', 'team-a', 'it-1');
+
+      expect(repo.getTaskRows).toHaveBeenCalledWith('it-1', 'ws-1', 'team-a', editorScope);
+    });
+
+    it('narrows All Teams rather than widening it', async () => {
+      // `teamId` omitted is All Teams, which for an Editor means THEIR teams — not every team, and
+      // not the Project Backlog.
+      access.resolveTeamScope.mockResolvedValue(editorScope);
+
+      await service.getTeamStatus(actor, 'proj-1', null, 'it-1');
+
+      expect(repo.getTaskRows).toHaveBeenCalledWith('it-1', 'ws-1', null, editorScope);
+    });
+
+    it('forwards an EMPTY scope as empty, never as unrestricted', async () => {
+      const noScope = { unrestricted: false, teamIds: [] };
+      access.resolveTeamScope.mockResolvedValue(noScope);
+
+      await service.getTeamStatus(actor, 'proj-1', null, 'it-1');
+
+      expect(repo.getTaskRows).toHaveBeenCalledWith('it-1', 'ws-1', null, noScope);
+    });
+
+    it('REFUSES a team the caller does not hold, instead of answering with nothing', async () => {
+      // Serving team B's question with team A's rows would read as "team B logged no hours".
+      access.assertTeamInScope.mockRejectedValueOnce(
+        Object.assign(new Error('nope'), { code: 'TEAM_NOT_IN_SCOPE' }),
+      );
+
+      await expect(
+        service.getTeamStatus(actor, 'proj-1', 'team-theirs', 'it-1'),
+      ).rejects.toMatchObject({ code: 'TEAM_NOT_IN_SCOPE' });
+      expect(repo.getTaskRows).not.toHaveBeenCalled();
+    });
+
+    it('refuses a capacity write for a team the caller does not hold', async () => {
+      access.assertTeamInScope.mockRejectedValueOnce(
+        Object.assign(new Error('nope'), { code: 'TEAM_NOT_IN_SCOPE' }),
+      );
+
+      await expect(
+        service.updateCapacity(actor, {
+          projectId: 'proj-1',
+          teamId: 'team-theirs',
+          iterationId: 'it-1',
+          userId: 'alice',
+          capacityHours: 40,
+        }),
+      ).rejects.toMatchObject({ code: 'TEAM_NOT_IN_SCOPE' });
+      expect(repo.upsertCapacity).not.toHaveBeenCalled();
+    });
+
+    it('checks the capacity team RESOLVED from the iteration, not just the input', async () => {
+      // The hole this closes: leaving `teamId` out let the iteration decide it, so an Editor could
+      // write another team's row by omitting the field.
+      iterations.getIteration.mockResolvedValue({
+        id: 'it-1',
+        projectId: 'proj-1',
+        teamId: 'team-from-iteration',
+      });
+
+      await service.updateCapacity(actor, {
+        projectId: 'proj-1',
+        iterationId: 'it-1',
+        userId: 'alice',
+        capacityHours: 40,
+      });
+
+      expect(access.assertTeamInScope).toHaveBeenCalledWith(
+        'ws-1',
+        actor.sub,
+        'proj-1',
+        'team-from-iteration',
+      );
     });
   });
 });

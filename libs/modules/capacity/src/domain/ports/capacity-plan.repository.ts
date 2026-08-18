@@ -149,9 +149,6 @@ export interface ICapacityPlanRepository {
     executor?: DbExecutor,
   ): Promise<{ id: string } | null>;
 
-  /** Per-team Complete/Rollup, following Rally's project+release+team child filter. */
-  teamMetrics(plan: CapacityPlan, teamId: string): Promise<{ complete: number; rollup: number }>;
-
   /**
    * Allocations currently pointing at a team on this plan.
    *

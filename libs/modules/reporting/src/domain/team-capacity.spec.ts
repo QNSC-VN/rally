@@ -119,6 +119,24 @@ describe('rollUpTeamCapacity (Team Capacity §3, §4)', () => {
     expect(r.totals.estimateHours).toBe(6);
   });
 
+  /**
+   * `P6-TC-007`: an owner id that does not resolve to a user must not produce a named member row.
+   * `ownerName` is a LEFT JOIN, so a removed account or a stale write left hours under a person the
+   * reader cannot identify — the BA saw 6h/4h/2h under "No Team > Hieu Vu Minh Bui" for a task whose
+   * Owner reads Unassigned.
+   */
+  it('treats an owner id with no resolvable user as Unassigned', () => {
+    const r = rollUpTeamCapacity({
+      capacities: [],
+      tasks: [task({ taskId: 't3', ownerId: 'ghost-user', ownerName: null, estimateHours: 6 })],
+    });
+    const rows = r.teams[0].members;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBeNull();
+    expect(rows[0].name).toBe(UNASSIGNED_LABEL);
+    expect(rows[0].hours.estimateHours).toBe(6);
+  });
+
   it('groups an unowned task under Unassigned with 0h capacity (§4)', () => {
     const r = rollUpTeamCapacity({
       capacities: [capacity()],

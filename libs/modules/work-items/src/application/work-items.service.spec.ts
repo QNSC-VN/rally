@@ -126,6 +126,17 @@ const makeWorkItemRepo = () => ({
   setMilestones: vi.fn().mockResolvedValue(undefined),
   areAllTasksComplete: vi.fn().mockResolvedValue(false),
   autoAcceptIterationIfComplete: vi.fn().mockResolvedValue(false),
+  // The two Home aggregates. Both take the `listReadableProjectIds` sentinel as their last argument
+  // — see the `Home aggregates` describe block at the bottom of this file for why that matters.
+  listMyWork: vi.fn().mockResolvedValue([]),
+  getWorkspaceSummary: vi.fn().mockResolvedValue({
+    activeProjects: 0,
+    activeSprints: 0,
+    openWorkItems: 0,
+    blockedItems: 0,
+    openDefects: 0,
+    assignedToMe: 0,
+  }),
 });
 
 const makeRelationRepo = () => ({
@@ -185,6 +196,9 @@ const makeProjectsService = () => {
       .mockResolvedValue([mockStatus('status-todo', true), mockStatus('status-done')]),
     assertTransitionAllowed: vi.fn().mockResolvedValue(undefined),
     generateItemKey: vi.fn().mockResolvedValue('PROJ-42'),
+    // The Owner picker's own feed, which the Team-move Owner reset consults (`GAP-P1-WID-007` AC5).
+    // Defaults to EMPTY, so a test that expects a moved Owner to survive has to name the roster.
+    listProjectMemberOptions: vi.fn().mockResolvedValue([]),
     listProjectTeams,
     // Mirrors the real ProjectsService.assertTeamLinkedToProject so tests keep
     // driving the outcome via the listProjectTeams mock.
@@ -213,10 +227,19 @@ const makeProjectsService = () => {
 // so a test that wants admin authority has to say so.
 const makeAccessService = () => ({
   assertProjectPermission: vi.fn().mockResolvedValue(undefined),
-  assertTeamScoped: vi.fn().mockResolvedValue(undefined),
+  // The Editor Team scope, reinstated by the BA on 2026-08-17 (`GAP-P4-RBAC-003`). Replaces the
+  // `assertTeamScoped` mock that outlived the method it stood for by three months.
+  assertTeamInScope: vi.fn().mockResolvedValue(undefined),
+  // Unrestricted by default: a test about the Editor Team scope says so explicitly.
+  resolveTeamScope: vi.fn().mockResolvedValue({ unrestricted: true }),
   getProjectPermissions: vi.fn().mockResolvedValue(['work_item:*']),
   getWorkspacePermissions: vi.fn().mockResolvedValue([]),
   getProjectAccessLevel: vi.fn().mockResolvedValue(null),
+  // Cross-project scope for the Home aggregates. Defaults to the RESTRICTED-to-nothing answer, not
+  // the `null` sentinel, for the same reason the two above default to the weakest principal: a test
+  // that wants an unrestricted reader has to say so, and a caller that forgot to narrow fails here
+  // rather than in production.
+  listReadableProjectIds: vi.fn().mockResolvedValue([]),
 });
 
 /**
@@ -724,6 +747,75 @@ describe('WorkItemsService', () => {
 
       const result = await service.updateWorkItem(mockActor, 'wi-1', { title: 'Updated' });
       expect(result.title).toBe('Updated');
+    });
+
+    /**
+     * `GAP-P1-WID-007` AC5/AC6 (BA DEV Handoff retest 2026-08-17). "If the Work Item moves to another
+     * Team and the old Owner does not belong to the new Team, the system must return Owner to
+     * `Unassigned`", and a Work Item with no Team may only be `Unassigned`.
+     *
+     * Asserted on the PATCH the repository receives, because that is the only place the reset is
+     * observable — the whole point is that it rides the SAME write rather than a follow-up one.
+     */
+    describe('a Team move takes the Owner with it, or drops them (AC5/AC6)', () => {
+      beforeEach(() => {
+        workItemRepo.findById.mockResolvedValue(
+          mockWorkItem({ teamId: 'team-a', assigneeId: 'u-9' }),
+        );
+        workItemRepo.update.mockResolvedValue(mockWorkItem());
+        projectsService.listProjectTeams.mockResolvedValue([
+          { teamId: 'team-a', status: 'active' },
+          { teamId: 'team-b', status: 'active' },
+        ]);
+      });
+
+      const patchSentFor = () =>
+        (workItemRepo.update as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][1] as {
+          assigneeId?: string | null;
+        };
+
+      it('clears an Owner who is not on the new Team', async () => {
+        projectsService.listProjectMemberOptions.mockResolvedValue([{ userId: 'someone-else' }]);
+
+        await service.updateWorkItem(mockActor, 'wi-1', { teamId: 'team-b' });
+
+        expect(patchSentFor().assigneeId).toBeNull();
+      });
+
+      it('KEEPS an Owner who is on the new Team too', async () => {
+        // Clearing unconditionally would discard a true value: the same person can be on both teams.
+        projectsService.listProjectMemberOptions.mockResolvedValue([
+          { userId: 'u-9' },
+          { userId: 'someone-else' },
+        ]);
+
+        await service.updateWorkItem(mockActor, 'wi-1', { teamId: 'team-b' });
+
+        expect(patchSentFor().assigneeId).toBeUndefined();
+      });
+
+      it('clears the Owner when the Team is cleared, without reading any roster (AC6)', async () => {
+        await service.updateWorkItem(mockActor, 'wi-1', { teamId: null });
+
+        expect(patchSentFor().assigneeId).toBeNull();
+        // There is no roster to consult for "no team" — offering only `Unassigned` is the whole rule.
+        expect(projectsService.listProjectMemberOptions).not.toHaveBeenCalled();
+      });
+
+      it('judges the INCOMING Owner when one patch sets both', async () => {
+        projectsService.listProjectMemberOptions.mockResolvedValue([{ userId: 'u-new' }]);
+
+        await service.updateWorkItem(mockActor, 'wi-1', { teamId: 'team-b', assigneeId: 'u-new' });
+
+        expect(patchSentFor().assigneeId).toBe('u-new');
+      });
+
+      it('leaves the Owner alone when the Team is not part of the patch', async () => {
+        await service.updateWorkItem(mockActor, 'wi-1', { title: 'Renamed' });
+
+        expect(patchSentFor().assigneeId).toBeUndefined();
+        expect(projectsService.listProjectMemberOptions).not.toHaveBeenCalled();
+      });
     });
 
     describe('linking a Story to a Feature', () => {
@@ -1538,6 +1630,67 @@ describe('WorkItemsService', () => {
       expect(res.iterationId).toBe('it-x');
     });
 
+    /**
+     * P6-VEL-004: moving a Story INTO a CLOSED (accepted) iteration, and back out again.
+     *
+     * The scope lookup is `{ projectId, teamId }` — `findIterationScope` selects those two columns and
+     * no `state` — so the write path is state-blind BY CONSTRUCTION and the picker was the only thing
+     * refusing a closed sprint. This asserts it from the service's side: had the guard ever grown a
+     * lifecycle condition, the eligibility feed would be offering a target the API rejects, which is
+     * the same disagreement in the other direction.
+     *
+     * Velocity needs nothing else to change: it reads `work_items.iteration_id` live, so the next query
+     * moves the bar with no snapshot rebuild (Phase 6 §5.2).
+     */
+    it('assigns a CLOSED iteration, and unassigns back to the Backlog', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ storyPoints: '5', scheduleState: 'in_progress' }),
+      );
+      // What the repository can tell the guard about a timebox. No `state` field exists here.
+      workItemRepo.findIterationScope.mockResolvedValue({ projectId: 'proj-1', teamId: null });
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ iterationId: 'it-closed' }));
+
+      const assigned = await service.updateWorkItem(mockActor, 'wi-1', {
+        iterationId: 'it-closed',
+      });
+      expect(assigned.iterationId).toBe('it-closed');
+
+      // And out again — the `--` / Backlog choice, which must not consult a timebox at all.
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ iterationId: 'it-closed', storyPoints: '5' }),
+      );
+      workItemRepo.findIterationScope.mockClear();
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ iterationId: null }));
+
+      const cleared = await service.updateWorkItem(mockActor, 'wi-1', { iterationId: null });
+      expect(cleared.iterationId).toBeNull();
+      expect(workItemRepo.findIterationScope).not.toHaveBeenCalled();
+    });
+
+    /**
+     * P6-VEL-004 AC5: changing the Iteration changes NOTHING else.
+     *
+     * Schedule State, Flow State and `accepted_date` must survive the move. The first two are only
+     * written when the patch names one (the BR-WI-01 mirror), and `work_items.accepted_date` is
+     * maintained by `trg_sync_accepted_date` off a schedule-state change — so the property to assert is
+     * that the persisted patch carries the iteration and the actor and nothing more. A field appearing
+     * in this payload is a field the trigger would then react to.
+     */
+    it('writes ONLY the iteration — no schedule state, flow state or acceptance stamp', async () => {
+      workItemRepo.findById.mockResolvedValue(
+        mockWorkItem({ scheduleState: 'accepted', flowState: 'accepted', storyPoints: '5' }),
+      );
+      workItemRepo.findIterationScope.mockResolvedValue({ projectId: 'proj-1', teamId: null });
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ iterationId: 'it-closed' }));
+
+      await service.updateWorkItem(mockActor, 'wi-1', { iterationId: 'it-closed' });
+
+      expect(workItemRepo.update).toHaveBeenCalledTimes(1);
+      const patch = workItemRepo.update.mock.calls[0][1] as Record<string, unknown>;
+      expect(Object.keys(patch).sort()).toEqual(['iterationId', 'updatedBy']);
+      expect(patch.iterationId).toBe('it-closed');
+    });
+
     it('rejects a release from another project', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem({ projectId: 'proj-1' }));
       workItemRepo.findReleaseProject.mockResolvedValue('proj-2');
@@ -1968,6 +2121,307 @@ describe('WorkItemsService', () => {
         expect.anything(),
         expect.anything(),
         'release:view',
+      );
+    });
+  });
+
+  /**
+   * Home's two aggregates are scoped by `listReadableProjectIds` — GAP-P4-RBAC-003, AC4.
+   *
+   * They were not, and `GET /work-items/summary`'s own `@AuthorizedInService` decorator said they
+   * were, which is the exact false citation `listProjectHealth` carried until an e2e spec was written
+   * for it. A decorator is a note; this is the check. Home was therefore the one surface that still
+   * reported a project after a Workspace Admin removed the reader's access to it: the active-sprint,
+   * open-work-item, blocked and open-defect totals, plus My Work's item titles and project names.
+   * Phase 4 `02_Roles_Permissions/SRS.md` §2.2 and §6 put an unassigned project out of navigation,
+   * selectors, search AND results.
+   *
+   * BOTH sentinel directions are asserted, because either alone passes for the wrong reason: a test
+   * that only proves an array is forwarded also passes when `null` is forwarded as `[]` (which fails
+   * closed — a Workspace Admin's Home would read all zeros), and one that only proves `null` reaches
+   * the repository never observes any narrowing at all.
+   */
+  describe('Home aggregates are scoped to the readable projects (GAP-P4-RBAC-003 AC4)', () => {
+    it('passes the readable project ids to the summary query', async () => {
+      accessService.listReadableProjectIds.mockResolvedValue(['proj-1']);
+
+      await service.getWorkspaceSummary(mockActor);
+
+      expect(accessService.listReadableProjectIds).toHaveBeenCalledWith(
+        'ws-1',
+        'user-1',
+        'project:view',
+      );
+      expect(workItemRepo.getWorkspaceSummary).toHaveBeenCalledWith(
+        'ws-1',
+        'user-1',
+        ['proj-1'],
+        // No project narrowed: `resolveTeamScope` answers unrestricted for this caller.
+        [],
+      );
+    });
+
+    it('passes the readable project ids to My Work', async () => {
+      // `@SelfScoped` bounds WHOSE items these are, not which projects they may be read in — an item
+      // stays assigned to a user after their access to its project is removed.
+      accessService.listReadableProjectIds.mockResolvedValue(['proj-1']);
+
+      await service.listMyWork(mockActor, 10);
+
+      expect(workItemRepo.listMyWork).toHaveBeenCalledWith(
+        'ws-1',
+        'user-1',
+        { limit: 10 },
+        ['proj-1'],
+        [],
+      );
+    });
+
+    it('forwards an EMPTY scope as an empty array, not as unrestricted', async () => {
+      // A No Access principal — no active `project_members` row (SRS §1). Flattening this to `null`
+      // would hand them the whole workspace, which is the leak.
+      accessService.listReadableProjectIds.mockResolvedValue([]);
+
+      await service.getWorkspaceSummary(mockActor);
+
+      expect(workItemRepo.getWorkspaceSummary).toHaveBeenCalledWith('ws-1', 'user-1', [], []);
+    });
+
+    it('forwards the UNRESTRICTED sentinel as `null`, not as an empty array', async () => {
+      // A Workspace Admin. Flattening `null` to `[]` fails closed and would show them all zeros.
+      accessService.listReadableProjectIds.mockResolvedValue(null);
+
+      await service.getWorkspaceSummary(mockActor);
+      await service.listMyWork(mockActor, 10);
+
+      expect(workItemRepo.getWorkspaceSummary).toHaveBeenCalledWith('ws-1', 'user-1', null, []);
+      expect(workItemRepo.listMyWork).toHaveBeenCalledWith(
+        'ws-1',
+        'user-1',
+        { limit: 10 },
+        null,
+        [],
+      );
+    });
+  });
+  /**
+   * THE READ HALF of the Editor Team scope (`GAP-P4-RBAC-003`, BA ruling 2026-08-17): "Null means
+   * Project Backlog, accessible only to Workspace Admin and Project Admin. Editor … cannot access
+   * team-less items. Enforce this consistently in API queries, lists, reports, search, pickers and
+   * direct URLs."
+   *
+   * The three rules a caller must never break are pinned here — no predicate for an unrestricted
+   * reader, the Editor's own ids for a restricted one, and `[]` forwarded AS `[]` so the read returns
+   * nothing instead of everything. What `[]` then does to the SQL, and that `team_id IN (…)` excludes a
+   * team-less row rather than admitting it, is pinned in `../domain/team-read-scope.spec.ts`.
+   */
+  describe('Editor Team scope on the reads (GAP-P4-RBAC-003)', () => {
+    const ALPHA = { unrestricted: false, teamIds: ['team-alpha'] };
+    const NO_TEAM = { unrestricted: false, teamIds: [] };
+    const ARGS = { limit: 20, cursor: null };
+    const EMPTY_PAGE = { data: [], pageInfo: { nextCursor: null, hasNextPage: false, limit: 20 } };
+
+    const relationView = (id: string, itemKey: string) => ({
+      id: `rel-${id}`,
+      relationType: 'relates_to' as const,
+      direction: 'outbound' as const,
+      label: 'Relates to',
+      relatedItem: {
+        id,
+        itemKey,
+        title: `Title of ${itemKey}`,
+        type: 'story',
+        scheduleState: 'defined',
+      },
+      createdAt: now,
+    });
+
+    beforeEach(() => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ teamId: 'team-alpha' }));
+      workItemRepo.listBacklog.mockResolvedValue(EMPTY_PAGE);
+      workItemRepo.listByProject.mockResolvedValue(EMPTY_PAGE);
+      workItemRepo.listTasksByParent.mockResolvedValue([]);
+      workItemRepo.getTaskTotals.mockResolvedValue({
+        taskCount: 0,
+        estimateHours: 0,
+        todoHours: 0,
+        actualHours: 0,
+      });
+      workItemRepo.listLabels.mockResolvedValue([]);
+      watcherRepo.listByWorkItem.mockResolvedValue([]);
+      timeLogRepo.listByWorkItem.mockResolvedValue({ items: [], total: 0 });
+    });
+
+    it('passes the UNRESTRICTED answer to the Backlog query, so no predicate is added', async () => {
+      await service.listBacklog(mockActor, 'proj-1', {}, ARGS);
+
+      expect(accessService.resolveTeamScope).toHaveBeenCalledWith('ws-1', 'user-1', 'proj-1');
+      expect(workItemRepo.listBacklog).toHaveBeenCalledWith('proj-1', 'ws-1', {}, ARGS, {
+        unrestricted: true,
+      });
+    });
+
+    it("narrows the Backlog to the Editor's own Teams", async () => {
+      accessService.resolveTeamScope.mockResolvedValue(ALPHA);
+
+      await service.listBacklog(mockActor, 'proj-1', {}, ARGS);
+
+      expect(workItemRepo.listBacklog).toHaveBeenCalledWith('proj-1', 'ws-1', {}, ARGS, ALPHA);
+    });
+
+    it('forwards an EMPTY team scope as empty — never flattened into unrestricted', async () => {
+      // The `listReadableProjectIds` `null`-versus-`[]` mistake in a second place: an Editor with no
+      // active Team must read NOTHING, and "no ids" is one keystroke from "no filter".
+      accessService.resolveTeamScope.mockResolvedValue(NO_TEAM);
+
+      await service.listBacklog(mockActor, 'proj-1', {}, ARGS);
+
+      const scope = workItemRepo.listBacklog.mock.calls[0][4] as {
+        unrestricted: boolean;
+        teamIds: string[];
+      };
+      expect(scope.unrestricted).toBe(false);
+      expect(scope.teamIds).toEqual([]);
+    });
+
+    it('scopes the project list, which is also the SEARCH query', async () => {
+      // `q` is the work-item search: it is a filter on this same list, so the boundary is the same one.
+      accessService.resolveTeamScope.mockResolvedValue(ALPHA);
+
+      await service.listWorkItems(mockActor, 'proj-1', { q: 'US' }, ARGS);
+
+      expect(workItemRepo.listByProject).toHaveBeenCalledWith(
+        'proj-1',
+        'ws-1',
+        { q: 'US' },
+        ARGS,
+        ALPHA,
+      );
+    });
+
+    it('narrows the Tasks tab and its totals in the SAME scope', async () => {
+      accessService.resolveTeamScope.mockResolvedValue(ALPHA);
+
+      await service.listTasks(mockActor, 'wi-1');
+      await service.getTaskTotals(mockActor, 'wi-1');
+
+      expect(workItemRepo.listTasksByParent).toHaveBeenCalledWith('wi-1', 'ws-1', ALPHA);
+      expect(workItemRepo.getTaskTotals).toHaveBeenCalledWith('wi-1', 'ws-1', ALPHA);
+    });
+
+    /**
+     * Every per-item SUB-RESOURCE read goes through the scope, not just `GET /work-items/:id`.
+     * `PolicyGuard`'s `resource: 'work_item'` resolves the row's PROJECT only, so before this an Editor
+     * refused a Team Beta Story could still read its history, links, hours, watchers and attachments.
+     */
+    const scopedReads: Array<[string, () => Promise<unknown>]> = [
+      ['activity', () => service.getActivity(mockActor, 'wi-1', { limit: 50, offset: 0 })],
+      ['labels', () => service.getWorkItemLabels(mockActor, 'wi-1')],
+      ['relations', () => service.listRelations(mockActor, 'wi-1')],
+      ['milestones', () => service.getWorkItemMilestones(mockActor, 'wi-1')],
+      ['time logs', () => service.listTimeLogs(mockActor, 'wi-1', { page: 1, pageSize: 20 })],
+      ['watchers', () => service.listWatchers(mockActor, 'wi-1')],
+      ['attachments', () => service.listAttachments(mockActor, 'wi-1')],
+      // A signed URL outlives the request that minted it, so this one keeps leaking after the refusal.
+      ['attachment download', () => service.getAttachmentDownloadUrl(mockActor, 'wi-1', 'file-1')],
+      ['tasks', () => service.listTasks(mockActor, 'wi-1')],
+      ['task totals', () => service.getTaskTotals(mockActor, 'wi-1')],
+    ];
+
+    it.each(scopedReads)('refuses %s on a record outside the Editor Teams', async (_name, call) => {
+      accessService.assertTeamInScope.mockRejectedValue(
+        new PermissionDeniedException('TEAM_NOT_IN_SCOPE', 'another Team'),
+      );
+
+      await expect(call()).rejects.toThrow(PermissionDeniedException);
+    });
+
+    it.each(scopedReads)(
+      'asks the boundary about the loaded record for %s',
+      async (_name, call) => {
+        workItemRepo.findById.mockResolvedValue(
+          mockWorkItem({ projectId: 'proj-9', teamId: 'team-beta' }),
+        );
+
+        await call().catch(() => undefined);
+
+        expect(accessService.assertTeamInScope).toHaveBeenCalledWith(
+          'ws-1',
+          'user-1',
+          'proj-9',
+          'team-beta',
+        );
+      },
+    );
+
+    it('drops a relation whose far end belongs to another Team, key and title with it', async () => {
+      accessService.resolveTeamScope.mockResolvedValue(ALPHA);
+      relationRepo.listForItem.mockResolvedValue([
+        relationView('wi-alpha', 'US-2'),
+        relationView('wi-beta', 'US-3'),
+      ]);
+      workItemRepo.findByIds.mockResolvedValue([
+        mockWorkItem({ id: 'wi-alpha', teamId: 'team-alpha' }),
+        mockWorkItem({ id: 'wi-beta', teamId: 'team-beta' }),
+      ]);
+
+      const views = await service.listRelations(mockActor, 'wi-1');
+
+      expect(views.map((v) => v.relatedItem.id)).toEqual(['wi-alpha']);
+      expect(JSON.stringify(views)).not.toContain('US-3');
+    });
+
+    it('drops a relation whose far end is a PROJECT BACKLOG item (no Team)', async () => {
+      accessService.resolveTeamScope.mockResolvedValue(ALPHA);
+      relationRepo.listForItem.mockResolvedValue([relationView('wi-backlog', 'US-4')]);
+      workItemRepo.findByIds.mockResolvedValue([mockWorkItem({ id: 'wi-backlog', teamId: null })]);
+
+      expect(await service.listRelations(mockActor, 'wi-1')).toEqual([]);
+    });
+
+    it('drops a relation whose far end sits in a project the reader cannot view', async () => {
+      // Cross-project links are legal, and the check `linkWorkItem` made at creation does not survive
+      // a later access change.
+      accessService.getProjectPermissions.mockResolvedValue([]);
+      relationRepo.listForItem.mockResolvedValue([relationView('wi-elsewhere', 'PAY-1')]);
+      workItemRepo.findByIds.mockResolvedValue([
+        mockWorkItem({ id: 'wi-elsewhere', projectId: 'proj-2', teamId: 'team-alpha' }),
+      ]);
+
+      expect(await service.listRelations(mockActor, 'wi-1')).toEqual([]);
+    });
+
+    it('resolves the Home aggregates PER PROJECT, keeping an empty scope as an empty one', async () => {
+      // Cross-project reads: the caller may be an admin in one project and an editor in the next, so
+      // one workspace-wide set of team ids would be wrong in both directions.
+      accessService.listReadableProjectIds.mockResolvedValue(['proj-1', 'proj-2', 'proj-3']);
+      accessService.resolveTeamScope.mockImplementation((_ws: string, _u: string, id: string) =>
+        Promise.resolve(
+          id === 'proj-1' ? ALPHA : id === 'proj-2' ? NO_TEAM : { unrestricted: true as const },
+        ),
+      );
+
+      await service.getWorkspaceSummary(mockActor);
+      await service.listMyWork(mockActor, 10);
+
+      // proj-3 is absent because an unrestricted project needs no predicate; proj-2 is PRESENT with an
+      // empty list, which is what tells the query that project contributes no rows.
+      const expected = [
+        { projectId: 'proj-1', teamIds: ['team-alpha'] },
+        { projectId: 'proj-2', teamIds: [] },
+      ];
+      expect(workItemRepo.getWorkspaceSummary).toHaveBeenCalledWith(
+        'ws-1',
+        'user-1',
+        ['proj-1', 'proj-2', 'proj-3'],
+        expected,
+      );
+      expect(workItemRepo.listMyWork).toHaveBeenCalledWith(
+        'ws-1',
+        'user-1',
+        { limit: 10 },
+        ['proj-1', 'proj-2', 'proj-3'],
+        expected,
       );
     });
   });

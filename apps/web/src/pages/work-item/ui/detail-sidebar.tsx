@@ -16,7 +16,7 @@ import {
 } from '@/features/work-items/api'
 import { useProjectTeams, useProjectMemberOptions, useTeamOwnerOptions } from '@/features/teams/api'
 import { useReleases } from '@/features/releases/api'
-import { useProjectPermissions } from '@/features/access/api'
+import { useProjectPermissions, useProjectTeamScope } from '@/features/access/api'
 import { PERMISSION } from '@/shared/config/permissions'
 import { usePortfolioFeatureOptions } from '@/features/portfolio/api'
 import { listResource } from '@/shared/lib/query/resource'
@@ -32,7 +32,7 @@ import {
   WORK_ITEM_PRIORITY_CONFIG,
   type WorkItemType,
 } from '@/entities/work-item/model/types'
-import { FormField } from '@/shared/ui/form-field'
+import { FormField, ReadOnlyFieldValue } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { OwnerSelectField, TeamSelectField } from '@/shared/ui/entity-select-field'
@@ -182,6 +182,9 @@ export function DetailSidebar({
   // server agree on one code rather than the client guessing a weaker one.
   const { can } = useProjectPermissions(item.projectId)
   const canAssignRelease = can(PERMISSION.RELEASE_VIEW)
+  // An Editor cannot reach the Project Backlog (BA ruling 2026-08-17), so they cannot send an item
+  // there either — see the Team field below. Shares `useProjectPermissions`' cache with the line above.
+  const { teamRequired } = useProjectTeamScope(item.projectId)
   const { data: releases = [] } = useReleases(item.projectId)
   // The reference feed, NOT the Portfolio grid's: that one takes `portfolio:view`, which
   // P5-PI-FR-017 withholds from an Editor. Scoped to the ITEM's project per §5.3:133.
@@ -193,8 +196,10 @@ export function DetailSidebar({
   // cannot become an accidental unlink on the next save.
   const featureFeed = listResource(usePortfolioFeatureOptions(item.projectId))
   const features = featureFeed.rows
-  // The ELIGIBILITY feed: this select WRITES `iterationId`, so it must only offer the
-  // `planning | committed` population the server will accept.
+  // The ELIGIBILITY feed: this select WRITES `iterationId`, so it must offer exactly the population
+  // the server accepts — which since P6-VEL-004 includes an ACCEPTED (closed) sprint, because
+  // `assertIterationAssignable` refuses only a project or team mismatch and Velocity attributes
+  // points by the item's CURRENT iteration.
   const { data: iterations = [] } = useAssignableIterations(item.projectId, item.teamId)
   // The REFERENCE feed — every state — and it is a SECOND feed on purpose, exactly as Backlog and
   // Iteration Status take both. `useAssignableIterations` was serving as the label source too, which
@@ -227,13 +232,14 @@ export function DetailSidebar({
   }, [milestoneOptions, itemMilestones, item.releaseId])
   /**
    * The Iteration select's options: the ELIGIBILITY population, plus the item's OWN iteration when
-   * that is no longer assignable.
+   * that population does not contain it.
    *
-   * `SearchableSelect` resolves its label from the options, so offering only `planning | committed`
-   * printed the "No Iteration" placeholder for every item sitting in an accepted or finished sprint —
-   * a relation that is genuinely set, reported as absent. Two feeds, one list: the assignable ones
-   * stay writable and the current one stays NAMED (and re-selectable, so opening the dropdown to read
-   * it cannot lose it).
+   * `SearchableSelect` resolves its label from the options, so an item whose iteration is absent here
+   * printed the "No Iteration" placeholder — a relation that is genuinely set, reported as absent.
+   * P6-VEL-004 removed the state predicate that used to cause that (an accepted sprint), but the merge
+   * stays: the feed is scoped to the item's TEAM, and an item can legitimately sit in a timebox
+   * outside that scope (its team changed, or the row predates the rule). One list, so the assignable
+   * ones stay writable and the current one stays NAMED and re-selectable.
    */
   const iterationChoices = useMemo(() => {
     const rows: { id: string; name: string; iterationKey: string | null }[] = [...iterations]
@@ -348,27 +354,36 @@ export function DetailSidebar({
           disabled={disabled}
         />
 
-        {/* Project — read-only (WID-FR-007). A work item's project is fixed, and it is the ITEM's
-            project, not the one selected in the app shell (P6-E2E-003) — see `recordProject`. */}
+        {/* Project — read-only (WID-FR-007, and WID-FR-017: "moving between Projects
+            unsupported"). A work item's project is fixed, and it is the ITEM's project, not the
+            one selected in the app shell (P6-E2E-003) — see `recordProject`.
+
+            The shared `ReadOnlyFieldValue`, which is the same box the create modals now put the
+            fixed Project context in, so the field looks identical before and after creation. */}
         <FormField label={t('sidebar.project', 'Project')}>
-          <div className="flex h-9 items-center rounded border border-input bg-input-background px-3 text-ui-md text-muted-foreground">
+          <ReadOnlyFieldValue>
             <ProjectCell
               projectKey={recordProject?.projectKey}
               projectName={recordProject?.projectName}
             />
-          </div>
+          </ReadOnlyFieldValue>
         </FormField>
 
-        {/* Team — blank is legal and means the PROJECT backlog.
+        {/* Team — blank is legal FOR AN ADMIN and means the PROJECT backlog.
             GAP-P1-WID-008: "Apply latest Team optional rule: blank Team = Project backlog; selected
             Team must belong to selected Project." Without the unassigned option an item could be
-            given a Team but never returned to the Project backlog, so the move was one-way. */}
+            given a Team but never returned to the Project backlog, so the move was one-way.
+
+            For an Editor the empty option is withdrawn, because clearing the Team is a MOVE INTO the
+            Project Backlog and `updateWorkItem` re-checks the DESTINATION team — an Editor gets
+            `PROJECT_BACKLOG_ADMIN_ONLY` (403) and, worse, would lose the item on success. Same flag,
+            same reason, as the create modal's picker (BA ruling 2026-08-17). */}
         <TeamSelectField
           value={item.teamId}
           onChange={(v) => onUpdate({ teamId: v || null })}
           teams={teams}
           disabled={disabled}
-          allowUnassigned
+          allowUnassigned={!teamRequired}
         />
 
         {/* Priority — Defect only */}

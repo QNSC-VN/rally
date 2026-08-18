@@ -1425,18 +1425,20 @@ describe('server role matrix (e2e)', () => {
   /**
    * §3.2:92 — "Editor results, selectors, search and mutations are limited to assigned Teams."
    *
-   * NOT IMPLEMENTED, BY RULING, AND THAT IS THE DECLARED DIVERGENCE (CLAUDE.md, "Team-scoped Editor
-   * is DROPPED as an authorization scope", 2026-08-14). A team scope can only restrict rows that
-   * CARRY a team, and `work_items.team_id` / `portfolio_items.team_id` are both nullable and mostly
-   * unset — so `assertTeamScoped` admitted every `teamId === null` row by design, which is the
-   * ordinary case. It covered 3 of ~14 Editor-reachable writes and no reads at all: a filter with a
-   * security-sounding name. Making it real needs mandatory `team_id` on every Editor-writable row.
+   * IMPLEMENTED, and this block is INVERTED from what it was. It used to MEASURE a declared divergence
+   * ("there is no team authorization scope", ruling 2026-08-14) and assert only that the request had
+   * been decided either way, because the BA's sentence and the code disagreed on purpose. The BA
+   * closed that on 2026-08-17: "Null means Project Backlog, accessible only to Workspace Admin and
+   * Project Admin. Editor must select one of their assigned Teams when creating a Work Item and cannot
+   * access team-less items."
    *
-   * Measured rather than asserted, because the BA's sentence and the code disagree ON PURPOSE and a
-   * passing assertion in either direction would misrepresent that. The probe writes a team the Editor
-   * is not a member of onto their OWN new story and reports the status; a 2xx is the divergence.
+   * So there are now two refusals to assert, and the difference between them is the whole point of the
+   * ruling: naming ANOTHER team is `TEAM_NOT_IN_SCOPE`, and naming NONE is `WORK_ITEM_TEAM_REQUIRED` —
+   * a missing required choice on a form, not "you may not open that". The per-record and per-list
+   * halves live in `test/e2e/editor-team-scope.e2e.spec.ts`; this file keeps the row so the audit
+   * table still covers the whole Editor surface.
    */
-  it('§3.2:92 — Editor writes are NOT team-scoped (declared divergence, measured not asserted)', async () => {
+  it('§3.2:92 — Editor writes ARE team-scoped, and the Project Backlog is admin-only', async () => {
     const teamsRes = await request('wa', 'GET', `/projects/${NXP}/teams`);
     const teams = JSON.parse(teamsRes.body) as Array<{ id: string }>;
     // A team of this project that the Editor is NOT on. `dev@qnsc.dev` is DEVELOPER_ID.
@@ -1451,33 +1453,41 @@ describe('server role matrix (e2e)', () => {
       }
     }
 
-    const created = await request('editor', 'POST', '/work-items', {
+    // No team at all — the Project Backlog, which only a WA or Project Admin may file into.
+    const untearmed = await request('editor', 'POST', '/work-items', {
       projectId: NXP,
       type: 'story',
-      title: `Role matrix team-scope probe ${Date.now()}`,
-      ...(foreignTeam ? { teamId: foreignTeam } : {}),
+      title: `Role matrix backlog probe ${Date.now()}`,
     });
-    if (created.statusCode < 300) {
-      const { id } = JSON.parse(created.body) as { id: string };
-      await request('editor', 'DELETE', `/work-items/${id}`);
+    expect(untearmed.statusCode).toBe(412);
+    expect(JSON.parse(untearmed.body).error.code).toBe('WORK_ITEM_TEAM_REQUIRED');
+
+    // Another team — refused for a different reason, and the codes must not be interchangeable.
+    let foreignStatus: number | undefined;
+    if (foreignTeam) {
+      const created = await request('editor', 'POST', '/work-items', {
+        projectId: NXP,
+        type: 'story',
+        title: `Role matrix team-scope probe ${Date.now()}`,
+        teamId: foreignTeam,
+      });
+      foreignStatus = created.statusCode;
+      expect(created.statusCode).toBe(403);
+      expect(JSON.parse(created.body).error.code).toBe('TEAM_NOT_IN_SCOPE');
     }
+
     MATRIX.push({
       srs: '§3.2:92',
       surface: 'Editor team scope',
       action: foreignTeam
-        ? 'create in a team the Editor is not on'
-        : 'create (no foreign team available in the fixture)',
-      route: 'POST /work-items (teamId of another team)',
+        ? 'create with no team, and in a team the Editor is not on'
+        : 'create with no team (no foreign team available in the fixture)',
+      route: 'POST /work-items',
       code: 'work_item:create',
       expected: { wa: 'allow', admin: 'allow', editor: 'deny', none: 'deny' },
-      measured: { editor: created.statusCode },
-      mismatches: [
-        'DECLARED DIVERGENCE: §3.2:92 scopes Editor mutations to assigned Teams; there is no team ' +
-          'authorization scope by ruling of 2026-08-14',
-      ],
+      measured: { editor: foreignStatus ?? untearmed.statusCode },
+      mismatches: [],
     });
-    // Only that the request was DECIDED, not which way — the divergence is the finding.
-    expect([201, 403]).toContain(created.statusCode);
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -14,10 +14,10 @@ import {
   workItems,
 } from '../../../../../../db/schema/work';
 import {
-  childWorkPredicate,
   completedMeasureSql,
+  featureChildScope,
   measureSql,
-  metricSubqueries,
+  teamSliceChildScope,
 } from './capacity-metrics.sql';
 import {
   acceptedScheduleStatesSql,
@@ -196,18 +196,12 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
     // repository uses for its rollups — because the architecture doc is explicit that a
     // per-row fetch here would make the page unusable.
     //
-    // The child filter is Rally's: project AND release must match the plan, and the team
-    // narrows it when the row is assigned (Rally attributes by Project, which is its team).
-    // An Unallocated row has no team, so it counts every matching child of the Feature.
-    const childScope = sql`
-      ${workItems.projectId} = ${plan.projectId}
-      and ${workItems.releaseId} = ${plan.releaseId}
-      and ${workItems.deletedAt} is null
-      and ${workItems.featureId} = ${capacityPlanAllocations.portfolioItemId}
-      and (
-        ${capacityPlanAllocations.teamId} is null
-        or ${workItems.teamId} = ${capacityPlanAllocations.teamId}
-      )`;
+    // The child filter is AC-016's: EVERY linked Story/Defect, with no Project or Release
+    // qualifier (see `capacity-metrics.sql.ts` for the reversed divergence). `teamSliceChildScope`
+    // is that same population attributed to exactly one of the Feature's team allocations, so the
+    // slices sum to the Feature's own totals below.
+    const childScope = teamSliceChildScope();
+    const featureScope = featureChildScope();
 
     const rows = await this.db
       .select({
@@ -238,25 +232,18 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
           from ${workItems} where ${childScope}
         )`,
         rank: portfolioItems.rank,
-        // The Feature's OWN totals, across every team — the same child filter WITHOUT the team
-        // narrowing. Rally's Items tab reports a Feature's rollup once, not once per team, and
-        // summing the per-team numbers would miss children whose team is not on the plan (or is
-        // not set at all) while double-counting nothing back.
+        // The Feature's OWN totals, across every team — the same child population WITHOUT the team
+        // attribution. Rally's Items tab reports a Feature's rollup once, not once per team, and
+        // `teamSliceChildScope` partitions exactly this set, so the team slices sum back to it.
         itemRollup: sql<string>`(
           select ${measureSql(plan.unit)}
           from ${workItems}
-          where ${workItems.projectId} = ${plan.projectId}
-            and ${workItems.releaseId} = ${plan.releaseId}
-            and ${workItems.deletedAt} is null
-            and ${workItems.featureId} = ${capacityPlanAllocations.portfolioItemId}
+          where ${featureScope}
         )`,
         itemComplete: sql<string>`(
           select ${completedMeasureSql(plan.unit)}
           from ${workItems}
-          where ${workItems.projectId} = ${plan.projectId}
-            and ${workItems.releaseId} = ${plan.releaseId}
-            and ${workItems.deletedAt} is null
-            and ${workItems.featureId} = ${capacityPlanAllocations.portfolioItemId}
+          where ${featureScope}
         )`,
       })
       .from(capacityPlanAllocations)
@@ -413,25 +400,6 @@ export class CapacityPlanDrizzleRepository implements ICapacityPlanRepository {
   async deleteAllocation(id: string, executor?: DbExecutor): Promise<void> {
     const exec = executor ?? this.db;
     await exec.delete(capacityPlanAllocations).where(eq(capacityPlanAllocations.id, id));
-  }
-
-  async teamMetrics(
-    plan: CapacityPlan,
-    teamId: string,
-  ): Promise<{ complete: number; rollup: number }> {
-    const where = childWorkPredicate({
-      projectId: plan.projectId,
-      releaseId: plan.releaseId,
-      teamId,
-      planId: plan.id,
-    });
-    const m = metricSubqueries(where, plan.unit);
-    const [row] = await this.db
-      .select({ rollup: m.rollup, complete: m.complete })
-      .from(capacityPlans)
-      .where(eq(capacityPlans.id, plan.id))
-      .limit(1);
-    return { rollup: Number(row?.rollup ?? 0), complete: Number(row?.complete ?? 0) };
   }
 
   // ── Primary team assignment ───────────────────────────────────────────────

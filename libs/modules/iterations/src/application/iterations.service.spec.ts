@@ -54,7 +54,11 @@ describe('IterationsService', () => {
     listProjectTeams: ReturnType<typeof vi.fn>;
     assertTeamLinkedToProject: ReturnType<typeof vi.fn>;
   };
-  let access: { assertProjectPermission: ReturnType<typeof vi.fn> };
+  let access: {
+    assertProjectPermission: ReturnType<typeof vi.fn>;
+    assertTeamInScope: ReturnType<typeof vi.fn>;
+    resolveTeamScope: ReturnType<typeof vi.fn>;
+  };
   let workItemsSvc: { updateWorkItem: ReturnType<typeof vi.fn> };
   // Chainable Drizzle mock. Tests set the resolved rows before invoking.
   let dbSelectResult: unknown[];
@@ -114,7 +118,12 @@ describe('IterationsService', () => {
         }
       },
     );
-    access = { assertProjectPermission: vi.fn().mockResolvedValue(undefined) };
+    access = {
+      assertProjectPermission: vi.fn().mockResolvedValue(undefined),
+      assertTeamInScope: vi.fn().mockResolvedValue(undefined),
+      // Default: a Workspace Admin or per-project `admin` — All Teams and the Project Backlog.
+      resolveTeamScope: vi.fn().mockResolvedValue({ unrestricted: true }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -152,7 +161,9 @@ describe('IterationsService', () => {
       const result = await service.getAssignmentOptions(actor, 'proj-1', 'team-1');
 
       expect(projects.getProject).toHaveBeenCalledWith('ws-1', 'proj-1');
-      expect(repo.listAssignmentOptions).toHaveBeenCalledWith('proj-1', 'ws-1', 'team-1');
+      expect(repo.listAssignmentOptions).toHaveBeenCalledWith('proj-1', 'ws-1', 'team-1', {
+        unrestricted: true,
+      });
       expect(result).toEqual(opts);
     });
 
@@ -166,7 +177,30 @@ describe('IterationsService', () => {
 
     it('omits teamId from repo call when not provided', async () => {
       await service.getAssignmentOptions(actor, 'proj-1');
-      expect(repo.listAssignmentOptions).toHaveBeenCalledWith('proj-1', 'ws-1', undefined);
+      expect(repo.listAssignmentOptions).toHaveBeenCalledWith('proj-1', 'ws-1', undefined, {
+        unrestricted: true,
+      });
+    });
+
+    /**
+     * P6-VEL-004: a CLOSED (accepted) iteration is an assignment option.
+     *
+     * The service must not re-filter what the query returns. It never did — the row predicate lives in
+     * `listAssignmentOptions` and is pinned in
+     * `infrastructure/persistence/iteration.drizzle-repository.predicates.spec.ts` — and this test is
+     * here so a "helpful" state filter added at this layer fails loudly. Velocity attributes points by
+     * an item's CURRENT iteration, so a closed sprint has to stay selectable in both directions.
+     */
+    it('passes an ACCEPTED iteration through to the picker', async () => {
+      const accepted = mockIteration({ id: 'it-past', state: 'accepted' });
+      repo.listAssignmentOptions.mockResolvedValue([
+        accepted,
+        mockIteration({ id: 'it-now', state: 'committed' }),
+      ]);
+
+      const result = await service.getAssignmentOptions(actor, 'proj-1');
+
+      expect(result.map((i) => i.id)).toEqual(['it-past', 'it-now']);
     });
   });
 
@@ -183,7 +217,9 @@ describe('IterationsService', () => {
       const result = await service.getIterationReferences(actor, 'proj-1', 'team-1');
 
       expect(projects.getProject).toHaveBeenCalledWith('ws-1', 'proj-1');
-      expect(repo.listReferences).toHaveBeenCalledWith('proj-1', 'ws-1', 'team-1');
+      expect(repo.listReferences).toHaveBeenCalledWith('proj-1', 'ws-1', 'team-1', {
+        unrestricted: true,
+      });
       // And NOT the eligibility query: an accepted iteration must survive this call.
       expect(repo.listAssignmentOptions).not.toHaveBeenCalled();
       expect(result).toEqual(refs);
@@ -199,7 +235,77 @@ describe('IterationsService', () => {
 
     it('omits teamId from repo call when not provided', async () => {
       await service.getIterationReferences(actor, 'proj-1');
-      expect(repo.listReferences).toHaveBeenCalledWith('proj-1', 'ws-1', undefined);
+      expect(repo.listReferences).toHaveBeenCalledWith('proj-1', 'ws-1', undefined, {
+        unrestricted: true,
+      });
+    });
+  });
+
+  /**
+   * THE TEAM SCOPE ON THE TWO PICKER FEEDS (BA ruling 2026-08-17, read half — the ruling names
+   * "pickers" explicitly).
+   *
+   * Two halves, and both are load-bearing:
+   *   • an explicitly requested team is ASSERTED (`assertTeamInScope`), because answering a question
+   *     about team B with team A's rows reads as "team B has no sprints";
+   *   • the All-Teams call is NARROWED, or it would be the way around the first half.
+   *
+   * The predicate itself — `team_id IS NULL OR team_id IN (…)`, so a SHARED timebox survives — lives in
+   * `infrastructure/persistence/iteration.drizzle-repository.predicates.spec.ts`. That NULL rule is the
+   * opposite of the one for a work row, and mixing them up is the mistake worth failing loudly.
+   */
+  describe('the picker feeds under an editor team scope', () => {
+    it('asserts a REQUESTED team is in scope before querying', async () => {
+      await service.getAssignmentOptions(actor, 'proj-1', 'team-1');
+
+      expect(access.assertTeamInScope).toHaveBeenCalledWith('ws-1', 'user-1', 'proj-1', 'team-1');
+    });
+
+    it('refuses a team the caller does not hold, instead of quietly narrowing', async () => {
+      access.assertTeamInScope.mockRejectedValue(new Error('TEAM_NOT_IN_SCOPE'));
+
+      await expect(service.getAssignmentOptions(actor, 'proj-1', 'team-x')).rejects.toThrow(
+        'TEAM_NOT_IN_SCOPE',
+      );
+      await expect(service.getIterationReferences(actor, 'proj-1', 'team-x')).rejects.toThrow(
+        'TEAM_NOT_IN_SCOPE',
+      );
+      expect(repo.listAssignmentOptions).not.toHaveBeenCalled();
+      expect(repo.listReferences).not.toHaveBeenCalled();
+    });
+
+    it('does NOT assert anything for the All Teams call — it narrows instead', async () => {
+      access.resolveTeamScope.mockResolvedValue({ unrestricted: false, teamIds: ['team-a'] });
+
+      await service.getIterationReferences(actor, 'proj-1');
+
+      expect(access.assertTeamInScope).not.toHaveBeenCalled();
+      expect(repo.listReferences).toHaveBeenCalledWith('proj-1', 'ws-1', undefined, {
+        unrestricted: false,
+        teamIds: ['team-a'],
+      });
+    });
+
+    it("hands the editor's scope to BOTH feeds, so a label cannot outlive its picker", async () => {
+      const scope = { unrestricted: false, teamIds: ['team-a'] };
+      access.resolveTeamScope.mockResolvedValue(scope);
+
+      await service.getAssignmentOptions(actor, 'proj-1');
+      await service.getIterationReferences(actor, 'proj-1');
+
+      expect(repo.listAssignmentOptions.mock.calls[0][3]).toBe(scope);
+      expect(repo.listReferences.mock.calls[0][3]).toBe(scope);
+    });
+
+    it('forwards an EMPTY editor scope rather than flattening it to unrestricted', async () => {
+      access.resolveTeamScope.mockResolvedValue({ unrestricted: false, teamIds: [] });
+
+      await service.getAssignmentOptions(actor, 'proj-1');
+
+      expect(repo.listAssignmentOptions.mock.calls[0][3]).toEqual({
+        unrestricted: false,
+        teamIds: [],
+      });
     });
   });
 

@@ -21,7 +21,7 @@ import {
 import type { JwtPayload, DrizzleDB, DbExecutor, DrizzleTx } from '@platform';
 import { InjectDrizzle } from '@platform';
 import { and, eq } from 'drizzle-orm';
-import { projectMembers } from '../../../../../db/schema/work';
+import { projectMembers, projectTeams, teamMembers } from '../../../../../db/schema/work';
 import { workspaceMembers } from '../../../../../db/schema/workspace';
 import type { ScopeType } from '../domain/access.types';
 import { IRoleRepository, ROLE_REPOSITORY } from '../domain/ports/role.repository';
@@ -35,6 +35,19 @@ import {
 } from '../domain/ports/project-access.repository';
 import type { ProjectAccessGrant } from '../domain/project-access';
 import type { SystemRole, UserRoleAssignment } from '../domain/access.types';
+
+/**
+ * WHICH rows a caller may see in one project — the ceiling every list, report, search and picker
+ * narrows by (BA ruling 2026-08-17), produced by {@link AccessService.resolveTeamScope}.
+ *
+ * Exported from here because four modules were each deriving or re-declaring it locally within a day
+ * of the rule landing, and four copies of one decision table is the drift the rule exists to prevent.
+ *
+ * `unrestricted: true` is All Teams AND the Project Backlog. An empty `teamIds` is a REAL answer —
+ * no delivery scope, therefore no rows — and must never be read as "no filter"; that is the same
+ * `null`-versus-`[]` distinction {@link AccessService.listReadableProjectIds} documents.
+ */
+export type TeamReadScope = { unrestricted: true } | { unrestricted: false; teamIds: string[] };
 
 /** The one shape every per-Project grant journey passes to {@link AccessService.grantProjectAccess}. */
 export interface GrantProjectAccessInput {
@@ -519,7 +532,142 @@ export class AccessService {
   }
 
   /**
-   * TEAM SCOPE IS NOT AN AUTHORIZATION BOUNDARY HERE. DELETED BY RULING, 2026-08-14.
+   * The Teams an EDITOR may work inside, in one project — their active rosters among that project's
+   * active team links.
+   *
+   * REINSTATED BY BA RULING, 2026-08-17 (`GAP-P4-RBAC-003`, Confirmed Fail, P0), which supersedes the
+   * 2026-08-14 removal recorded below. §2.2 requires an Editor to hold at least one active Team and to
+   * work only inside their assigned Teams; the retest found an Editor with NO team reading another
+   * team's Work Item in full and being offered `All Teams`, Pegasus and RTCAP in the selector.
+   *
+   * The 2026-08-14 objection is still true and is answered rather than ignored — see
+   * {@link assertTeamInScope}. Two facts, one query: the roster row must be active AND the team must
+   * still be linked to the project, or an unlinked team's roster would keep granting scope inside a
+   * project it left (`project_teams` is a soft status flip, so the link row survives).
+   */
+  async listScopedTeamIds(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+  ): Promise<string[]> {
+    const rows = await this.db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .innerJoin(
+        projectTeams,
+        and(
+          eq(projectTeams.teamId, teamMembers.teamId),
+          eq(projectTeams.projectId, projectId),
+          eq(projectTeams.status, 'active'),
+        ),
+      )
+      .where(
+        and(
+          eq(teamMembers.workspaceId, workspaceId),
+          eq(teamMembers.userId, userId),
+          eq(teamMembers.status, 'active'),
+        ),
+      );
+    return [...new Set(rows.map((r) => r.teamId))];
+  }
+
+  /**
+   * Refuse a delivery record an EDITOR's Teams do not cover (`GAP-P4-RBAC-003` AC1/AC3).
+   *
+   * Applies to a per-project `editor` ONLY. A Workspace Admin and a per-project `admin` both hold
+   * All Teams by §3.1, so they pass; a caller with no level at all is not this method's business —
+   * `assertProjectPermission` is what refuses them, and calling this first would answer the wrong
+   * question with the wrong error.
+   *
+   * `team_id IS NULL` IS THE PROJECT BACKLOG, AND IT IS ADMIN-ONLY (BA ruling, 2026-08-17)
+   * -------------------------------------------------------------------------------------
+   * The 2026-08-14 removal note below is kept in full because its objection was right: a scope that
+   * can only restrict rows CARRYING a team admits the ordinary case, since `work_items.team_id` is
+   * nullable and mostly unset. This first shipped answering that by making only the ZERO-TEAM case
+   * total, and admitting a team-less row — which left exactly the hole that note described, and it was
+   * put to the BA. Their answer closes it without a migration:
+   *
+   *   "Keep `team_id` nullable. Null means Project Backlog, accessible only to Workspace Admin and
+   *    Project Admin. Editor must select one of their assigned Teams when creating a Work Item and
+   *    cannot access team-less items. Enforce this consistently in API queries, lists, reports, search,
+   *    pickers and direct URLs. No DB migration or backfill is required."
+   *
+   * So for an `editor` there are now three refusals and no admitted case:
+   *
+   *   • no active Team in the project at all → `EDITOR_NO_TEAM_SCOPE` (AC1);
+   *   • a record owned by another Team → `TEAM_NOT_IN_SCOPE` (AC3);
+   *   • a record owned by NO Team → `PROJECT_BACKLOG_ADMIN_ONLY`, a named refusal rather than the
+   *     other one, because "this is the Project Backlog" and "this is someone else's Team" are
+   *     different facts and the reader can act on only one of them.
+   *
+   * The nullable column is therefore no longer a gap — it is a THIRD population with its own audience,
+   * which is why no `team_id` had to become mandatory. Enforcement is not only here: every list,
+   * report, search and picker narrows through {@link resolveTeamScope}, because a boundary the reads
+   * do not share is a filter with a security-sounding name, which is what the note below is about.
+   */
+  async assertTeamInScope(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+    teamId: string | null,
+  ): Promise<void> {
+    const scope = await this.resolveTeamScope(workspaceId, userId, projectId);
+    if (scope.unrestricted) return;
+
+    if (scope.teamIds.length === 0) {
+      throw new PermissionDeniedException(
+        'EDITOR_NO_TEAM_SCOPE',
+        'An Editor must belong to at least one active Team in this project',
+      );
+    }
+    if (teamId === null) {
+      throw new PermissionDeniedException(
+        'PROJECT_BACKLOG_ADMIN_ONLY',
+        'Items with no Team belong to the Project Backlog, which only a Workspace Admin or Project Admin can open',
+      );
+    }
+    if (!scope.teamIds.includes(teamId)) {
+      throw new PermissionDeniedException(
+        'TEAM_NOT_IN_SCOPE',
+        'This record belongs to a Team you are not assigned to',
+      );
+    }
+  }
+
+  /**
+   * The team scope every READ must narrow by — the one home of "which rows may this caller see in
+   * this project", so a list, a report, a search and a picker cannot disagree with
+   * {@link assertTeamInScope} or with each other (BA ruling 2026-08-17: "enforce this consistently in
+   * API queries, lists, reports, search, pickers and direct URLs").
+   *
+   * `unrestricted: true` means All Teams AND the Project Backlog — a Workspace Admin, a per-project
+   * `admin`, or a principal with no level at all (whose refusal belongs to
+   * `assertProjectPermission`, not here: answering it with an empty team scope would turn a
+   * permission failure into an empty grid, which reads as "this project has no work").
+   *
+   * For an `editor` the answer is their own active Teams, and a caller MUST read it as
+   * "`team_id IN (…)`", never "`IN (…) OR IS NULL`". An empty array is a real answer — no delivery
+   * scope — and must produce NO rows rather than being flattened into "unrestricted", the same
+   * `null`-versus-`[]` distinction `listReadableProjectIds` documents.
+   */
+  async resolveTeamScope(
+    workspaceId: string,
+    userId: string,
+    projectId: string,
+  ): Promise<TeamReadScope> {
+    if (await this.isWorkspaceAdmin(workspaceId, userId)) return { unrestricted: true };
+    const level = await this.getProjectAccessLevel(workspaceId, userId, projectId);
+    if (level !== 'editor') return { unrestricted: true };
+    return {
+      unrestricted: false,
+      teamIds: await this.listScopedTeamIds(workspaceId, userId, projectId),
+    };
+  }
+
+  /**
+   * TEAM SCOPE WAS NOT AN AUTHORIZATION BOUNDARY HERE. DELETED BY RULING, 2026-08-14 — AND
+   * REINSTATED, IN THE NARROWER FORM ABOVE, BY THE BA ON 2026-08-17. Kept because its reasoning is
+   * what shaped the replacement, and because the next person to widen that scope needs to read it.
    *
    * `assertTeamScoped(actor, projectId, teamId)` used to live at this spot and threw
    * `TEAM_NOT_IN_SCOPE` when an `editor` wrote a work item belonging to a Team they held no

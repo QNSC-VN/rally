@@ -4,9 +4,15 @@ import { z } from 'zod';
 const RELEASE_STATES = ['planning', 'active', 'accepted'] as const;
 
 /**
- * The right panel's roll-up (P3-REL-FR-018): Task Roll-up hours (FR-023) plus the accepted
- * work total (FR-024). No percentage and no point totals — FR-037 forbids a Release Progress
- * widget on the Phase 3 list/detail and §7.5 defers progress to `Portfolio > Release Tracking`.
+ * Task Roll-up hours plus the accepted work total — the BA's own §7.4 Release Detail DTO
+ * (`taskRollup` + `accepted`), which is why the contract still carries it.
+ *
+ * **No Phase 3 surface may RENDER any of it.** FR-023 forbids a Task Roll-up, Burndown or other
+ * release progress widget on Release Detail, FR-024 puts accepted/progress totals in
+ * `Portfolio > Release Tracking` alone, FR-037 keeps a progress column/widget off the Phase 3
+ * list, and AC #10 makes the right panel metadata only — re-confirmed by the BA's 2026-08-17
+ * retest (`GAP-P3-REL-001`). The SPA's `Release` mirror deliberately does not declare this field.
+ * No percentage and no point totals here either: §7.5 defers progress out of Phase 3.2.
  */
 const TaskRollupSchema = z.object({
   estimateHours: z.number(),

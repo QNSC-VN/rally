@@ -852,6 +852,33 @@ export class ProjectsService {
   }
 
   /**
+   * {@link listProjectTeams} as a READER sees it — an Editor sees only their own Teams
+   * (`GAP-P4-RBAC-003` AC2, §2.2 "works only within assigned Teams").
+   *
+   * A separate method rather than an actor parameter on the one above, because that one is also the
+   * single home of the "team must be linked to this project" RULE
+   * ({@link assertTeamLinkedToProject}) and of the Team picker's own write-side validation. Narrowing
+   * it by the caller would make a legitimate link invisible to a rule that has to see every link, and
+   * an Editor could then no longer be given work in their own team.
+   *
+   * A per-project `admin` and a Workspace Admin both keep All Teams (§3.1). An Editor with no active
+   * Team gets an EMPTY list, which is AC1's "no delivery scope" expressed in the feed — the SPA must
+   * not synthesize an `All Teams` entry over it.
+   */
+  async listProjectTeamsForReader(
+    workspaceId: string,
+    projectId: string,
+    actorId: string,
+  ): Promise<ProjectTeamLink[]> {
+    const links = await this.listProjectTeams(workspaceId, projectId);
+    if (await this.access.isWorkspaceAdmin(workspaceId, actorId)) return links;
+    const level = await this.access.getProjectAccessLevel(workspaceId, actorId, projectId);
+    if (level !== 'editor') return links;
+    const scoped = await this.access.listScopedTeamIds(workspaceId, actorId, projectId);
+    return links.filter((l) => scoped.includes(l.teamId));
+  }
+
+  /**
    * Single source of truth for the "team must be linked to this project" rule
    * (SRS P1-MANAGE-ORG). Other modules (work items, iterations) delegate here
    * instead of re-implementing the check, so the rule — and any future
@@ -1049,17 +1076,25 @@ export class ProjectsService {
    * Team STATUS is deliberately not checked: an archived team keeps its work (DB design §488), so
    * refusing here would make the Owner field unusable on every item that team still owns.
    *
-   * DECLARED CONFLICT, needs a BA ruling — Workspace Admins are excluded here too.
+   * RULED — the Workspace Admin exclusion applies to the PROJECT-WIDE branch ONLY (2026-08-17).
    * ---------------------------------------------------------------------------
-   * `AC-16` says a Workspace Admin is "not an assignable owner", and migration 0118 deletes a WA's
-   * `project_members` rows on purpose, so the project-wide branch cannot offer them either way.
-   * WID-007 says "its active members of that Team", and a WA CAN hold a `team_members` row —
-   * `TeamService.grantTeamRosterProjectAccess` runs with `onWorkspaceAdmin: 'skip'` precisely because
-   * a WA on a roster needs no grant. Those two readings disagree for exactly one person: a Workspace
-   * Admin who is on the selected team. AC-16 wins here because it is the narrower, explicit statement
-   * about OWNER OPTIONS and because it keeps one filter over both populations — but this is a
-   * declared reading, not a settled one. If the BA rules the other way, the change is this filter and
-   * nothing else.
+   * This used to subtract Workspace Admins from BOTH populations, on the reading that `AC-16`
+   * ("Workspace Admin is not an assignable owner") is the narrower statement. It is what MADE
+   * `GAP-P1-WID-007` a Confirmed Fail on the 2026-08-17 retest: the selected team's only active
+   * member held the workspace grant, so the Owner dropdown for a Story WITH a team offered nothing
+   * but `Unassigned` and no owner could be set at all. The retest ACs name exactly two exclusions —
+   * a member outside the selected Team (AC3) and an inactive one (AC3) — and AC1 requires "every
+   * active member of that Team".
+   *
+   * So a `team_members` row is what decides the team branch, whatever else its holder is: they ARE
+   * an active member of that Team, which is the only question `WID-FR-016` / `TASK-FR-017` ask.
+   * `TeamService.grantTeamRosterProjectAccess` running with `onWorkspaceAdmin: 'skip'` is not the
+   * absence of membership — it is a grant a WA does not NEED.
+   *
+   * The project-wide branch keeps the filter, because §2.1 and migration 0118 mean a WA holds no
+   * `project_members` row in the first place; subtracting them there states the rule rather than
+   * changing the result. That branch stays the id→name resolver as well, so an owner who has since
+   * left the team still renders under their own name.
    */
   async listProjectMemberOptions(
     workspaceId: string,
@@ -1074,12 +1109,14 @@ export class ProjectsService {
     }>
   > {
     await this.getProject(workspaceId, projectId);
-    const admins = await this.workspaceAdminIds(workspaceId);
+    // The team branch is decided by the team roster alone (see the ruling above), so it asks for no
+    // admin set at all rather than computing one it must not apply.
+    const excluded = teamId ? new Set<string>() : await this.workspaceAdminIds(workspaceId);
     const members = teamId
       ? await this.teamRosterOptionSource(workspaceId, projectId, teamId)
       : await this.projectMemberRepo.listByProject(projectId);
     return members
-      .filter((m) => !admins.has(m.userId) && m.status === 'active')
+      .filter((m) => !excluded.has(m.userId) && m.status === 'active')
       .map((m) => ({
         userId: m.userId,
         displayName: m.displayName ?? null,

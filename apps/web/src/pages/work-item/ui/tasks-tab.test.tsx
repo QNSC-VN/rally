@@ -78,7 +78,14 @@ beforeEach(() => {
 })
 
 function renderTab() {
-  return render(<TasksTab workItemId="wi-1" projectId="proj-record" readOnly={false} />)
+  return render(
+    <TasksTab
+      workItemId="wi-1"
+      projectId="proj-record"
+      parentTeamId="team-parent"
+      readOnly={false}
+    />,
+  )
 }
 
 describe("TasksTab — the Project column is the record's project (P6-E2E-003)", () => {
@@ -122,7 +129,25 @@ describe("TasksTab — the inline Owner picker is scoped to the ROW's Team (GAP-
     expect(screen.queryByText('Alice Smith')).toBeTruthy()
   })
 
-  it('offers nothing when the row carries no Team', () => {
+  /**
+   * `TASK-FR-017` scopes a Task's Owner options to its INHERITED PARENT Team, and `work.tasks.team_id`
+   * only DEFAULTS to the parent's (SRS P1-04) and is nullable — so reading the row's own value alone
+   * offered `Unassigned` and nothing else on an ordinary row (retest 2026-08-17).
+   */
+  it("falls back to the PARENT's Team when the row carries none", () => {
+    tasks.mockReturnValue({
+      data: [task({ teamId: null, assigneeId: null })],
+      isLoading: false,
+      isError: false,
+    })
+    renderTab()
+
+    expect(teamOwnerOptions).toHaveBeenCalledWith('proj-record', 'team-parent')
+    fireEvent.click(screen.getByRole('button', { name: 'Task TA-1 owner' }))
+    expect(screen.queryByText('Alice Smith')).toBeTruthy()
+  })
+
+  it('offers nothing when NEITHER the row nor its parent carries a Team (AC6)', () => {
     tasks.mockReturnValue({
       data: [task({ teamId: null, assigneeId: null })],
       isLoading: false,
@@ -130,10 +155,33 @@ describe("TasksTab — the inline Owner picker is scoped to the ROW's Team (GAP-
     })
     // `useTeamOwnerOptions` is disabled without a team — the rule lives in the feed.
     teamOwnerOptions.mockReturnValue({ data: undefined })
-    renderTab()
+    render(
+      <TasksTab workItemId="wi-1" projectId="proj-record" parentTeamId={null} readOnly={false} />,
+    )
 
     expect(teamOwnerOptions).toHaveBeenCalledWith('proj-record', null)
     fireEvent.click(screen.getByRole('button', { name: 'Task TA-1 owner' }))
     expect(screen.queryByText('Alice Smith')).toBeNull()
+  })
+
+  /**
+   * The other half of the same rule: a Workspace Admin on the team roster is now an Owner OPTION
+   * (`GAP-P1-WID-007` AC1/AC3), and the project-wide feed still does not carry them — so the row must
+   * NAME them from the team roster or a saved Owner reads back as unset, which is `GAP-P2-IS-004`'s
+   * symptom in a different place.
+   */
+  it('names an owner the project-wide feed does not carry', () => {
+    const wa = { userId: 'wa-1', displayName: 'Workspace Admin', email: 'wa@qnsc.dev' }
+    teamOwnerOptions.mockReturnValue({ data: [ALICE, wa] })
+    tasks.mockReturnValue({
+      data: [task({ assigneeId: 'wa-1' })],
+      isLoading: false,
+      isError: false,
+    })
+    renderTab()
+
+    expect(screen.getByRole('button', { name: 'Task TA-1 owner' }).textContent).toContain(
+      'Workspace Admin',
+    )
   })
 })

@@ -497,7 +497,9 @@ export class ProjectsController {
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiCommonErrors(401, 404)
   async listProjectTeams(@CurrentUser() user: JwtPayload, @Param('id', ParseUUIDPipe) id: string) {
-    return this.projectsService.listProjectTeams(user.workspaceId, id);
+    // The READER-scoped feed: an Editor is offered only their own Teams (`GAP-P4-RBAC-003` AC2). The
+    // unscoped `listProjectTeams` stays internal — it is also the home of the link RULE.
+    return this.projectsService.listProjectTeamsForReader(user.workspaceId, id, user.sub);
   }
 
   // Linking a Team to a Project is Team CONFIGURATION, which §3.1 reserves for the Workspace Admin

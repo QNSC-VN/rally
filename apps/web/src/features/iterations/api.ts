@@ -19,7 +19,7 @@ export type IterationStatus = components['schemas']['IterationStatusResponseDto'
 export type IterationStatusItem = IterationStatus['items'][number]
 export type CreateIterationItemInput = components['schemas']['CreateIterationItemDto']
 
-/** ELIGIBILITY — `GET /iterations/assignable`, `planning | committed`. */
+/** ELIGIBILITY — `GET /iterations/assignable`; every state, no `teamId` (see the hook below). */
 export type IterationOption = components['schemas']['IterationOptionDto']
 /** REFERENCE — `GET /iterations/options`, every state. */
 export type IterationReference = components['schemas']['IterationReferenceDto']
@@ -68,8 +68,13 @@ export function useIterationActivityLog(iterationId: string | undefined) {
 //
 // TWO HOOKS, because there are two questions and two populations:
 //
-//   useIterationOptions      REFERENCE    every state          filters, id→name labels, scope pickers
-//   useAssignableIterations  ELIGIBILITY  planning|committed    the bulk-assign bar, inline pickers
+//   useIterationOptions      REFERENCE    + teamId              filters, id→name labels, scope pickers
+//   useAssignableIterations  ELIGIBILITY  no teamId             the bulk-assign bar, inline pickers
+//
+// Both cover EVERY state. Eligibility used to stop at `planning | committed`, which is the P6-VEL-004
+// defect: an item could be moved OUT of a finished sprint but never back IN, because the selector no
+// longer offered it — and Velocity reads the CURRENT assignment, so the move-out changed a bar the
+// move-in could not restore. The server never refused a closed target; only the picker did.
 //
 // Both are `iteration:view`, which every project access level holds. `useIterations` below is the
 // timebox RECORD and is `timebox:view` — §3.2 hides that surface from an Editor, so ONLY
@@ -99,12 +104,13 @@ export function useIterationOptions(projectId: string | undefined, teamId?: stri
 }
 
 /**
- * ELIGIBILITY. Only the iterations work may be assigned INTO (`planning | committed`), so a picker
- * can never offer a target the server would refuse.
+ * ELIGIBILITY. The iterations work may be assigned INTO — every state in the project, and a
+ * team-scoped timebox only for that team, which is exactly what the server accepts. So a picker can
+ * neither offer a target the server would refuse nor hide one it accepts (P6-VEL-004).
  *
- * Do NOT reach for this to resolve an already-set `iterationId` to a name: an accepted iteration is
- * absent here by design, and reusing it that way rendered `--` for genuinely scheduled items.
- * `useIterationOptions` is the feed for that.
+ * `teamId` means "the team's own timeboxes PLUS the project's shared ones" server-side, as on the
+ * reference feed. This payload carries NO `teamId` field, so use `useIterationOptions` where
+ * `iterationsInScope` has to tell a team's own timebox from a shared one.
  */
 export function useAssignableIterations(projectId: string | undefined, teamId?: string | null) {
   return useQuery({

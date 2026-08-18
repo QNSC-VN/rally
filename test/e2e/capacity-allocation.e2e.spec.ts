@@ -1,19 +1,19 @@
 /**
  * Capacity allocation E2E — the metric definitions, against real SQL.
  *
- * These exist because the numbers follow RALLY'S rule, and only a real database can show
- * whether the SQL implements it (Broadcom TechDocs, "View Capacity Plan Details"): "If a
- * portfolio item includes allocated points/counts, the Project and Release fields in the
- * story must match the plan for that story to be included in the Rollup calculation" —
- * and the identical sentence for Complete.
+ * These exist because only a real database can show whether the SQL implements
+ * `P5-CAP-AC-016`: Complete is the live sum of child Plan Estimate at `Completed`, `Accepted` or
+ * `Release`; Rollup is the live sum of EVERY linked Story/Defect Plan Estimate. No Project or
+ * Release qualifier — the BA reversed Rally's on 2026-08-17 (`P5-CP-029`, P0), which is why the
+ * first test here now asserts the opposite of what it used to.
  *
  * Three consequences are asserted here and cannot be seen from a unit test:
  *
- *   • a child story in ANOTHER release does not count, even though it belongs to the
- *     allocated Feature — without that filter every plan touching a long-lived Feature
- *     reports inflated demand;
- *   • a Feature SHARED between teams is not double-counted: Rally attributes a story by its
- *     Project, which in Rally's model is the team, so each team sees only its own children;
+ *   • EVERY linked child counts, including one carrying no Release of its own — the ordinary shape,
+ *     and the one that made the BA's Feature report `Rollup = 0`;
+ *   • a Feature SHARED between teams is not double-counted, and its team slices still SUM to the
+ *     Feature's own total: a child lands in exactly one slice, its own team's when that team is
+ *     allocated the Feature here, otherwise the Feature's owner's;
  *   • `Complete` uses COMPLETED_SCHEDULE_STATES while the portfolio's Percent Done uses
  *     ACCEPTED_SCHEDULE_STATES — the D1 distinction, which must stay different.
  *
@@ -151,7 +151,16 @@ describe('capacity allocation (e2e)', () => {
     await app?.close();
   });
 
-  it('counts only children in the PLAN’S release', async () => {
+  it('counts EVERY linked child, whatever Release it carries — AC-016 has no qualifier', async () => {
+    /**
+     * `P5-CP-029`, and the exact assertion this test used to make in reverse.
+     *
+     * It read "ONLY the 8. Without Rally's release filter this would read 16", pinning the declared
+     * divergence in Broadcom's favour. The BA ruled against it on 2026-08-17 (Confirmed Fail, P0): the
+     * release-less child is the ORDINARY shape — a Story gets a Release only if someone sets one — so
+     * the filter made a Feature whose children were all in progress report `Rollup = 0` on all three
+     * surfaces at once.
+     */
     const featureId = await newFeature(`Release filter ${uniqueKey()}`);
     await capacity.allocate(admin, planId, {
       portfolioItemId: featureId,
@@ -166,12 +175,14 @@ describe('capacity allocation (e2e)', () => {
 
     const detail = await capacity.getPlanDetail(admin, planId);
     const row = detail.allocations.find((a) => a.portfolioItemId === featureId);
+    const item = detail.items.find((i) => i.portfolioItemId === featureId);
 
-    // ONLY the 8. Without Rally's release filter this would read 16.
-    expect(row?.metrics.rollup).toBe(8);
+    // All 16, on the team slice and on the Features tab alike.
+    expect(row?.metrics.rollup).toBe(16);
+    expect(item?.rollup).toBe(16);
   });
 
-  it('does NOT double-count a Feature shared between two teams', async () => {
+  it('does NOT double-count a Feature shared between two teams, and the slices SUM', async () => {
     const featureId = await newFeature(`Shared ${uniqueKey()}`);
     await capacity.allocate(admin, planId, {
       portfolioItemId: featureId,
@@ -191,9 +202,57 @@ describe('capacity allocation (e2e)', () => {
     const rows = detail.allocations.filter((a) => a.portfolioItemId === featureId);
     const byTeam = new Map(rows.map((r) => [r.teamId, r.metrics.rollup]));
 
-    // Each team sees only its own children — 7 and 4, not 11 and 11.
+    // Each child lands in exactly ONE slice — 7 and 4, not 11 and 11.
     expect(byTeam.get(teamAId)).toBe(7);
     expect(byTeam.get(teamBId)).toBe(4);
+    // ...and together they are the Feature's own total, which is what makes the plan header (the sum
+    // of the team rows) agree with the Features tab. AC-017's reconciliation requirement.
+    const item = detail.items.find((i) => i.portfolioItemId === featureId);
+    expect((byTeam.get(teamAId) ?? 0) + (byTeam.get(teamBId) ?? 0)).toBe(item?.rollup);
+  });
+
+  it('gives an UNTEAMED child to the Feature’s owner, so no slice loses it', async () => {
+    /**
+     * The two-tier attribution, and the half that was missing. `work_items.team_id` is nullable and
+     * mostly unset, and the slice predicate was a strict `work_items.team_id = ?` — SQL equality never
+     * matches NULL, so an unteamed child fell out of EVERY team slice and therefore out of the plan
+     * header, which is the sum of them. It now falls to the Feature's primary team, Rally's Planned
+     * Team Assignment: exactly one slice, and the slices still sum.
+     */
+    const featureId = await newFeature(`Unteamed ${uniqueKey()}`);
+    await capacity.allocate(admin, planId, {
+      portfolioItemId: featureId,
+      teamId: teamAId,
+      value: 10,
+    });
+    await capacity.allocate(admin, planId, {
+      portfolioItemId: featureId,
+      teamId: teamBId,
+      value: 10,
+    });
+
+    // No team at all, and `completed` so it lands in both sums.
+    await story({
+      featureId,
+      releaseId: planReleaseId,
+      teamId: null,
+      points: '6',
+      state: 'completed',
+    });
+
+    const detail = await capacity.getPlanDetail(admin, planId);
+    const rows = detail.allocations.filter((a) => a.portfolioItemId === featureId);
+    const owner = rows.find((r) => r.isPrimary);
+    const contributor = rows.find((r) => !r.isPrimary);
+
+    // The first team allocated becomes the primary (`allocate`), so team A owns it here.
+    expect(owner?.teamId).toBe(teamAId);
+    expect(owner?.metrics.rollup).toBe(6);
+    expect(owner?.metrics.complete).toBe(6);
+    // Counted ONCE: the contributor's slice is empty rather than a second copy.
+    expect(contributor?.metrics.rollup).toBe(0);
+    const item = detail.items.find((i) => i.portfolioItemId === featureId);
+    expect(item?.rollup).toBe(6);
   });
 
   it('separates Complete (COMPLETED states) from the portfolio’s accepted-only rule', async () => {

@@ -39,6 +39,31 @@ export class CollaborationService {
   }
 
   /**
+   * The subject must be REACHABLE by this caller, not merely in a project they can act in
+   * (BA ruling 2026-08-17: enforce the Editor Team scope "consistently in API queries, lists,
+   * reports, search, pickers and direct URLs").
+   *
+   * `@RequirePermission('work_item:view', { resource: 'work_item' })` on the route resolves the
+   * PROJECT and nothing finer, so an Editor on one Team could read another Team's discussion — and the
+   * Project Backlog's — through this door while the record itself was refused. A comment thread carries
+   * the item's own conversation, so the leak is the same disclosure as the record.
+   *
+   * Only the work-item branch is team-scoped. A Portfolio Item is `portfolio:view`, which §3.2 withholds
+   * from an Editor entirely, so the level check above is already the whole answer there — and the
+   * ruling is about Work Items.
+   */
+  private async assertSubjectReachable(actor: JwtPayload, ref: CommentRef): Promise<void> {
+    if (ref.entityType !== 'work_item') return;
+    const item = await this.workItemsService.getWorkItem(actor.workspaceId, ref.entityId);
+    await this.accessService.assertTeamInScope(
+      actor.workspaceId,
+      actor.sub,
+      item.projectId,
+      item.teamId ?? null,
+    );
+  }
+
+  /**
    * Authorize a collaboration write against the OWNING project of the subject.
    *
    * Resolving the subject's project makes commenting project-scoped like every other
@@ -59,12 +84,16 @@ export class CollaborationService {
       projectId,
       ref.entityType === 'work_item' ? PERMISSION.WORK_ITEM_EDIT : PERMISSION.PORTFOLIO_EDIT,
     );
+    await this.assertSubjectReachable(actor, ref);
     await this.projects.assertProjectWritable(actor.workspaceId, projectId);
   }
 
   // ── Comments ──────────────────────────────────────────────────────────────
 
   async listComments(actor: JwtPayload, ref: CommentRef): Promise<Comment[]> {
+    // The READ needs the same reachability check as the write: the route's own guard stops at the
+    // project. See {@link assertSubjectReachable}.
+    await this.assertSubjectReachable(actor, ref);
     return this.commentRepo.listByEntity(ref, actor.workspaceId);
   }
 

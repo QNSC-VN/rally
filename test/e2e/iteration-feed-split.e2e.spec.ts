@@ -13,14 +13,17 @@
  *
  * WHY TWO NEW ROUTES AND NOT ONE FLAG
  * Two questions were conflated in one endpoint:
- *   • REFERENCE   "what is this iteration called, and when was it?"  EVERY state
- *   • ELIGIBILITY "which iterations may I assign work INTO?"         planning | committed
+ *   • REFERENCE   "what is this iteration called, and when was it?"  every state, plus `teamId`
+ *   • ELIGIBILITY "which iterations may I assign work INTO?"         every state, no `teamId`
  * `GET /iterations/options` used to answer the second, which is exactly why the pickers could not use
  * it — an ACCEPTED iteration must still resolve to a name, and it could not offer one. A
  * `?includeAllStates` flag would have let one caller measure a population while a sibling caller
  * enumerated another; CLAUDE.md records that conflation producing zero-point Velocity bars, so
  * `/options` took the REFERENCE meaning it already carries for releases, milestones, portfolio items
  * and member options, and eligibility moved to `/assignable`.
+ *
+ * Eligibility's `planning | committed` predicate is GONE (P6-VEL-004, BA retest 2026-08-17) — it never
+ * matched the write rule, and the test below asserts the reverse of what it once did.
  *
  * WHAT THIS FILE ADDS OVER THE SPECS THAT ALREADY EXIST
  *   • `test/iteration-timebox-gate.spec.ts` reads decorator METADATA. It cannot see a `scope` that
@@ -154,16 +157,24 @@ describe('the iteration feed split (e2e)', () => {
   });
 
   /**
-   * THE POINT OF THE SPLIT, and the half no gate test can see.
+   * A CLOSED timebox is named by the reference feed AND offered by the eligibility one — the
+   * behaviour half, which no gate test can see.
    *
    * `NXP_ITER_PAST_ID` is Sprint 25.12: `state: 'accepted'`, with a `goal` and a `plannedVelocity`
-   * of 18 (`db/seeds/reference-extras.ts`). It is not assignable, so it must be ABSENT from
-   * `/assignable` — and it must be PRESENT in `/options`, because an item scheduled into it still has
-   * to render its name once the sprint closes. Reusing the eligibility feed for that rendered `--`
-   * for a genuinely scheduled item (RELATION_DATA_TRACEABILITY.md), which is why six SPA call sites
-   * read the RECORD instead and why this endpoint had to exist before the record could be gated.
+   * of 18 (`db/seeds/reference-extras.ts`). It must be PRESENT in `/options`, because an item
+   * scheduled into it still has to render its name once the sprint closes — reusing the eligibility
+   * feed for that rendered `--` for a genuinely scheduled item (RELATION_DATA_TRACEABILITY.md), which
+   * is why six SPA call sites read the RECORD instead and why this endpoint had to exist before the
+   * record could be gated.
+   *
+   * It must ALSO be present in `/assignable`, and this assertion is REVERSED from what it was
+   * (P6-VEL-004, BA retest 2026-08-17). Eligibility used to stop at `planning | committed`, which
+   * never matched the write: `assertIterationAssignable` reads `project_id` and `team_id` and no
+   * state, so the API accepted a closed target the picker refused to offer. Velocity attributes points
+   * by the item's CURRENT iteration, so moving a Story out of a finished sprint changed its bar and
+   * nothing could put it back. Assignability is a scope question, not a lifecycle one.
    */
-  it('names an ACCEPTED iteration in the REFERENCE feed and withholds it from the ELIGIBILITY one', async () => {
+  it('names an ACCEPTED iteration in the REFERENCE feed and OFFERS it in the ELIGIBILITY one', async () => {
     const editor = await tokenFor('dev@qnsc.dev');
 
     const reference = await get(REFERENCE, editor);
@@ -174,30 +185,20 @@ describe('the iteration feed split (e2e)', () => {
     expect(eligibility.statusCode, eligibility.body).toBe(200);
     const assignable = JSON.parse(eligibility.body) as CompactIteration[];
 
-    const accepted = references.find((i) => i.id === NXP_ITER_PAST_ID);
-    expect(
-      accepted,
-      'the accepted Sprint 25.12 must appear in the REFERENCE feed — a closed timebox still has a name',
-    ).toBeTruthy();
-    expect(accepted!.state).toBe('accepted');
-
-    expect(
-      assignable.some((i) => i.id === NXP_ITER_PAST_ID),
-      'the accepted Sprint 25.12 must NOT appear in the ELIGIBILITY feed — work cannot be assigned into it',
-    ).toBe(false);
-    expect(
-      assignable.every((i) => i.state === 'planning' || i.state === 'committed'),
-      `every assignable iteration must be planning|committed, got ${assignable
-        .map((i) => i.state)
-        .join(', ')}`,
-    ).toBe(true);
-
-    // And the committed one is in BOTH, so the assertions above are about STATE and not about one
-    // feed being empty. An empty eligibility feed would satisfy every negative check here.
     for (const [label, rows] of [
       ['reference', references],
       ['eligibility', assignable],
     ] as const) {
+      const accepted = rows.find((i) => i.id === NXP_ITER_PAST_ID);
+      expect(
+        accepted,
+        `the accepted Sprint 25.12 must appear in the ${label} feed — a closed timebox still has a ` +
+          'name and is still a legal assignment target (P6-VEL-004)',
+      ).toBeTruthy();
+      expect(accepted!.state).toBe('accepted');
+
+      // And the committed one too, so the assertions above are about a POPULATION and not about one
+      // feed happening to return everything because it returns nothing selective.
       expect(
         rows.some((i) => i.id === NXP_ITER_CURRENT_ID),
         `the committed Sprint 26.1 must appear in the ${label} feed`,

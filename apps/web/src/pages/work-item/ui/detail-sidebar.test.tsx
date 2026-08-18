@@ -22,6 +22,7 @@ const projectMemberOptions = vi.fn()
 const recordProject = vi.fn()
 const assignableIterations = vi.fn()
 const iterationOptions = vi.fn()
+const teamScope = vi.fn()
 
 vi.mock('@/features/teams/api', () => ({
   useProjectTeams: () => ({ data: [{ id: 'team-1', name: 'Team Alpha', key: 'TA' }] }),
@@ -50,6 +51,7 @@ vi.mock('@/features/portfolio/api', () => ({
 vi.mock('@/features/milestones/api', () => ({ useMilestoneOptions: () => ({ data: [] }) }))
 vi.mock('@/features/access/api', () => ({
   useProjectPermissions: () => ({ can: () => true }),
+  useProjectTeamScope: () => teamScope(),
 }))
 
 import '@/shared/i18n/i18n'
@@ -99,6 +101,8 @@ function setup() {
   })
   assignableIterations.mockReturnValue({ data: [] })
   iterationOptions.mockReturnValue({ data: [] })
+  // An admin by default — the caller who may still move an item to the Project Backlog.
+  teamScope.mockReturnValue({ unrestricted: true, teamRequired: false, isLoading: false })
 }
 
 function renderSidebar(over: Partial<WorkItem> = {}) {
@@ -186,10 +190,65 @@ describe("DetailSidebar — the Project field is the RECORD's project (P6-E2E-00
   })
 })
 
-describe('DetailSidebar — the Iteration label comes from the reference feed', () => {
-  it('names an iteration that is no longer assignable, and keeps it selected', () => {
+describe('DetailSidebar — the Iteration selector offers a CLOSED sprint (P6-VEL-004)', () => {
+  /**
+   * The BA's repro, on the Work Item Detail half: US-2 must be assignable back INTO the finished
+   * `Carryover Sprint` it was moved out of, because Velocity attributes points by an item's CURRENT
+   * iteration and the move-out already changed the bar.
+   *
+   * The eligibility feed stopped filtering by state server-side; the property this test adds is that
+   * this select does not re-filter it here, and that choosing a closed sprint goes through the
+   * ORDINARY update path — one `{ iterationId }` patch, so Schedule State, Flow State and the
+   * acceptance stamp are untouched by construction.
+   */
+  it('offers an ACCEPTED iteration and persists it through the ordinary update', () => {
     setup()
-    // Accepted iterations are absent from the ELIGIBILITY feed by design.
+    const onUpdate = vi.fn()
+    assignableIterations.mockReturnValue({
+      data: [
+        { id: 'it-open', name: 'Empty Sprint', iterationKey: 'IT-2', state: 'planning' },
+        { id: 'it-done', name: 'Carryover Sprint', iterationKey: 'IT-1', state: 'accepted' },
+      ],
+    })
+    render(
+      <DetailSidebar
+        item={item({ iterationId: null })}
+        onUpdate={onUpdate}
+        updating={false}
+        readOnly={false}
+      />,
+    )
+
+    const options = openOptions('Iteration')
+    // `--` / no iteration stays the un-assign choice, and the closed sprint is offered beside it.
+    expect(has(options, 'No iteration')).toBe(true)
+    expect(has(options, 'IT-1')).toBe(true)
+    expect(has(options, 'IT-2')).toBe(true)
+
+    const list = screen.getByRole('dialog')
+    fireEvent.click(
+      within(list)
+        .getAllByRole('button')
+        .find((b) => (b.textContent ?? '').includes('IT-1'))!,
+    )
+
+    // ONE field. Nothing about state, flow or acceptance rides along with an iteration change.
+    expect(onUpdate).toHaveBeenCalledWith({ iterationId: 'it-done' })
+  })
+
+  it('keeps the eligibility feed scoped to the item, not to the selected project or team', () => {
+    setup()
+    renderSidebar({ projectId: 'proj-record', teamId: 'team-1' })
+
+    expect(assignableIterations).toHaveBeenCalledWith('proj-record', 'team-1')
+  })
+})
+
+describe('DetailSidebar — the Iteration label comes from the reference feed', () => {
+  it('names an iteration that is outside the eligibility feed, and keeps it selected', () => {
+    setup()
+    // An iteration the eligibility feed does not carry — since P6-VEL-004 that is a TEAM-scope
+    // difference rather than a state one (the item's team changed, say), not a closed sprint.
     assignableIterations.mockReturnValue({
       data: [{ id: 'it-open', name: 'Sprint 26.2', iterationKey: 'IT-2' }],
     })
@@ -220,12 +279,45 @@ describe('DetailSidebar — the Iteration label comes from the reference feed', 
         { id: 'it-done', name: 'Sprint 26.1', iterationKey: 'IT-1' },
       ],
     })
-    // No iteration set, so there is nothing to keep NAMED — the accepted one must stay out of a list
-    // this select WRITES from, or the server would refuse the assignment.
+    // No iteration set, so there is nothing to keep NAMED. The reference feed is a LABEL source, and
+    // unioning it into the options would offer rows the eligibility feed deliberately left out —
+    // out-of-team timeboxes now that state is no longer a predicate.
     renderSidebar({ iterationId: null })
 
     const options = openOptions('Iteration')
     expect(has(options, 'IT-1')).toBe(false)
     expect(has(options, 'IT-2')).toBe(true)
+  })
+})
+
+/**
+ * Clearing the Team is a MOVE INTO the Project Backlog — BA ruling 2026-08-17.
+ *
+ * "Null means Project Backlog, accessible only to Workspace Admin and Project Admin. Editor … cannot
+ * access team-less items." `updateWorkItem` re-checks the DESTINATION team, so an Editor choosing the
+ * empty option gets `PROJECT_BACKLOG_ADMIN_ONLY` (403) — and were it ever to succeed they would have
+ * sent the item somewhere they can no longer open it. The option is therefore not offered to them.
+ *
+ * Both directions, because withdrawing it from everyone would make the Team a one-way move for the
+ * admin it belongs to — the exact defect the field's own comment records being fixed once already.
+ */
+describe('DetailSidebar — the Project Backlog is admin-only (BA ruling 2026-08-17)', () => {
+  it('offers no empty Team option to an Editor', () => {
+    setup()
+    teamScope.mockReturnValue({ unrestricted: false, teamRequired: true, isLoading: false })
+    renderSidebar({ teamId: 'team-1' })
+
+    const options = openOptions('Team')
+    // The team itself is still offered — a narrowing, not a disabled field.
+    expect(has(options, 'Team Alpha')).toBe(true)
+    expect(has(options, 'No team')).toBe(false)
+  })
+
+  it('keeps it for an admin, so the move stays two-way', () => {
+    setup()
+    renderSidebar({ teamId: 'team-1' })
+
+    const options = openOptions('Team')
+    expect(has(options, 'No team')).toBe(true)
   })
 })

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
@@ -22,7 +22,17 @@ import { workspaceSettings } from '../../../../../../db/schema/workspace';
 import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
 import type { StoredSnapshot } from '../../domain/burndown';
 import type { ReleaseChild, ReleaseFeature, StoredBurnupRow } from '../../domain/release-tracking';
-import { DEFAULT_WORKING_DAYS, isEndOfDayCapture, type TeamScope } from '../../domain/report-scope';
+import {
+  DEFAULT_WORKING_DAYS,
+  frozenSeriesScope,
+  isEmptyTeamScope,
+  isEndOfDayCapture,
+  type TeamScope,
+} from '../../domain/report-scope';
+// The one home of "how a TeamScope becomes SQL", asserted without a database in
+// `team-scope.sql.spec.ts`. No `scope.kind === 'team' ? … : undefined` ternary survives in this
+// file: that shape treats an unhandled scope kind as "read everything".
+import { inList, teamMatches, timeboxInScope } from './team-scope.sql';
 import type { CapacityRecord, ScopedTaskHours } from '../../domain/team-capacity';
 import type { VelocityItem } from '../../domain/velocity';
 import {
@@ -103,6 +113,9 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     scope: TeamScope,
     fallbackIterationId: string,
   ): Promise<IterationRow[]> {
+    // A reader with no Team has no scope at all, and this is the query every iteration report's
+    // scope flows from — so it is also where their empty state begins.
+    if (isEmptyTeamScope(scope)) return [];
     // A dateless iteration belongs to no timebox, so there is nothing to fuse and the
     // selected iteration IS the scope. Grouping on a null key would pool every unscheduled
     // iteration in the project into one bar.
@@ -113,7 +126,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
             eq(iterations.workspaceId, workspaceId),
             eq(iterations.projectId, projectId),
             eq(iterations.timeboxGroupId, timeboxGroupId),
-            scope.kind === 'team' ? teamOrSharedTimebox(scope.teamId) : undefined,
+            timeboxInScope(scope),
           );
 
     const rows = await this.db
@@ -134,6 +147,16 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     timeZone: string,
   ): Promise<StoredSnapshot[]> {
     if (iterationIds.length === 0) return [];
+    /**
+     * ONE series, or none — `frozenSeriesScope` owns that decision (see its docblock).
+     *
+     * A team-restricted reader holding several Teams asked for an aggregate that was never
+     * measured: the `team_id IS NULL` row spans Teams they may not see, and summing their team rows
+     * is forbidden here. Returning no rows makes the report say the history is unavailable for this
+     * scope, which is true, instead of fabricating or leaking one.
+     */
+    const frozen = frozenSeriesScope(scope);
+    if (frozen === null) return [];
     const rows = await this.db
       .select({
         date: iterationDailySnapshots.snapshotDate,
@@ -154,8 +177,8 @@ export class ReportingDrizzleRepository implements IReportingRepository {
            * overlap. Team rows only exist from migration 0093 onwards, so a team-scoped chart of
            * older history is a legitimate gap rather than a silent fallback to All Teams.
            */
-          scope.kind === 'team'
-            ? eq(iterationDailySnapshots.teamId, scope.teamId)
+          frozen.kind === 'team'
+            ? eq(iterationDailySnapshots.teamId, frozen.teamId)
             : isNull(iterationDailySnapshots.teamId),
         ),
       )
@@ -200,10 +223,11 @@ export class ReportingDrizzleRepository implements IReportingRepository {
            * `hasScheduledWork: true` — because the count saw the other teams' items — so instead of
            * "no scheduled work" the reader was told the snapshot history was missing and sent to look
            * for a broken cron job.
+           *
+           * For a team-restricted reader the same clause also excludes the Project Backlog: an item
+           * with no team anywhere resolves to NULL, which no `IN (…)` matches.
            */
-          scope.kind === 'team'
-            ? sql`coalesce(${workItems.teamId}, ${iteration.teamId}) = ${scope.teamId}::uuid`
-            : undefined,
+          teamMatches(scope, sql`coalesce(${workItems.teamId}, ${iteration.teamId})`),
         ),
       );
     return rows[0]?.n ?? 0;
@@ -251,10 +275,11 @@ export class ReportingDrizzleRepository implements IReportingRepository {
            * `teamOrSharedTimebox` became an eligible bar for a team whose work was then filtered out
            * of it. The result was a zero-point bar for a sprint the team never worked in, and those
            * zeros divided Trend, Last 3, Best 3 and Worst 3.
+           *
+           * The property holds for the restricted scope too: `getVelocityItems` narrows by the same
+           * `IN (…)` over the same coalesce, so a bar exists only where that reader has work.
            */
-          scope.kind === 'team'
-            ? sql`coalesce(${workItems.teamId}, ${iterations.teamId}) = ${scope.teamId}::uuid`
-            : undefined,
+          teamMatches(scope, sql`coalesce(${workItems.teamId}, ${iterations.teamId})`),
         ),
       )
       .where(
@@ -262,7 +287,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           eq(iterations.workspaceId, workspaceId),
           eq(iterations.projectId, projectId),
           sql`${iterations.endDate} < ${todayLocalDate}`,
-          scope.kind === 'team' ? teamOrSharedTimebox(scope.teamId) : undefined,
+          timeboxInScope(scope),
         ),
       )
       .groupBy(groupKey)
@@ -313,7 +338,7 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           inArray(workItems.iterationId, iterationIds),
           inArray(workItems.type, [...LEAF_TYPES]),
           isNull(workItems.deletedAt),
-          scope.kind === 'team' ? sql`${resolvedTeam} = ${scope.teamId}::uuid` : undefined,
+          teamMatches(scope, resolvedTeam),
         ),
       );
     return rows.map((r) => ({
@@ -351,7 +376,9 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           eq(memberCapacity.workspaceId, workspaceId),
           eq(memberCapacity.projectId, projectId),
           inArray(memberCapacity.iterationId, iterationIds),
-          scope.kind === 'team' ? eq(memberCapacity.teamId, scope.teamId) : undefined,
+          // `member_capacity.team_id` is NOT NULL, so there is no Project Backlog row to exclude
+          // here — the exclusion that matters for this report is in `getScopedTaskHours` below.
+          teamMatches(scope, memberCapacity.teamId),
         ),
       );
     return rows.map((r) => ({
@@ -416,7 +443,14 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           eq(tasks.projectId, projectId),
           isNull(tasks.deletedAt),
           sql`(${tasks.iterationId} in ${inList(iterationIds)} or ${parent.iterationId} in ${inList(iterationIds)})`,
-          scope.kind === 'team' ? sql`${resolvedTeam} = ${scope.teamId}::uuid` : undefined,
+          /**
+           * For a team-restricted reader this also drops the `No Team` bucket.
+           *
+           * A task with no team on itself, its parent or its iteration is Project Backlog work, which
+           * the 2026-08-17 ruling makes admin-only — so it must not reach that reader's Capacity
+           * totals, even though it groups under `No Team` for an admin.
+           */
+          teamMatches(scope, resolvedTeam),
         ),
       );
 
@@ -582,6 +616,11 @@ export class ReportingDrizzleRepository implements IReportingRepository {
     scope: TeamScope,
     unit: 'points' | 'count',
   ): Promise<StoredBurnupRow[]> {
+    // One series or none, exactly as `getIterationSnapshots` — and here a sum would be wrong on its
+    // own terms as well as forbidden: a team-agnostic child counts inside EVERY team's row (see
+    // `inScope`), so adding two team rows double-counts it.
+    const frozen = frozenSeriesScope(scope);
+    if (frozen === null) return [];
     const rows = await this.db
       .select({
         date: releaseDailySnapshots.snapshotDate,
@@ -602,8 +641,8 @@ export class ReportingDrizzleRepository implements IReportingRepository {
           eq(releaseDailySnapshots.releaseId, releaseId),
           // The All Teams row is STORED (`team_id IS NULL`) rather than summed from the Team
           // rows: an item two Teams both touch must be counted once, which a SUM cannot do.
-          scope.kind === 'team'
-            ? eq(releaseDailySnapshots.teamId, scope.teamId)
+          frozen.kind === 'team'
+            ? eq(releaseDailySnapshots.teamId, frozen.teamId)
             : isNull(releaseDailySnapshots.teamId),
         ),
       )
@@ -643,8 +682,11 @@ export class ReportingDrizzleRepository implements IReportingRepository {
            * whose `team_id` is NULL, so All Teams showed the burnup's secondary iteration band and
            * selecting ANY team made the whole row vanish — telling the reader the release crosses no
            * sprints. `findTimeboxSiblings` and `findEligibleTimeboxes` already got this right.
+           *
+           * `timeboxInScope` is now the single home of that rule, for the same reason: the ternary
+           * this replaced treated any new scope kind as "no filter".
            */
-          scope.kind === 'team' ? teamOrSharedTimebox(scope.teamId) : undefined,
+          timeboxInScope(scope),
         ),
       )
       .orderBy(asc(iterations.startDate), asc(iterations.id));
@@ -788,7 +830,14 @@ export class ReportingDrizzleRepository implements IReportingRepository {
      * and "the recorded baseline was zero" are different facts and only the first may hide the Ideal
      * line. A pre-0098 iteration has one no-team row, so All Teams keeps its old number while a
      * team-scoped read honestly finds nothing.
+     *
+     * Scoped through `frozenSeriesScope` so the baseline and the bars it is compared against can
+     * never be scoped differently — §6 compares `remainingToDo(d)` with `ideal(d)`, so a baseline
+     * served for a scope whose bars are unavailable would draw a plan over an empty chart. A
+     * multi-Team restricted reader gets `null`: no Ideal, exactly as they get no series.
      */
+    const frozen = frozenSeriesScope(scope);
+    if (frozen === null) return null;
     const rows = await this.db
       .select({
         total: sql<number | null>`sum(${iterationTeamBaselines.totalTaskEstimateAtStart})::float8`,
@@ -798,7 +847,8 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         and(
           eq(iterationTeamBaselines.workspaceId, workspaceId),
           inArray(iterationTeamBaselines.iterationId, iterationIds),
-          scope.kind === 'team' ? eq(iterationTeamBaselines.teamId, scope.teamId) : undefined,
+          // All Teams SUMS every row (IB §4), including the no-team one; a single Team reads its own.
+          frozen.kind === 'team' ? eq(iterationTeamBaselines.teamId, frozen.teamId) : undefined,
         ),
       );
     const total = rows[0]?.total;
@@ -852,7 +902,12 @@ export class ReportingDrizzleRepository implements IReportingRepository {
      * are different facts and only the first may hide the Ideal line. A pre-0099 release carries only
      * the no-team row, so All Teams keeps exactly its old number while a team-scoped burnup honestly
      * finds nothing.
+     *
+     * A multi-Team restricted reader has no series here either, so it has no target: an Ideal drawn
+     * over an unavailable Accepted line is a plan with nothing to judge it against.
      */
+    const frozen = frozenSeriesScope(scope);
+    if (frozen === null) return null;
     const rows = await this.db
       .select({
         points: releaseTeamTargets.idealTargetPoints,
@@ -863,8 +918,8 @@ export class ReportingDrizzleRepository implements IReportingRepository {
         and(
           eq(releaseTeamTargets.workspaceId, workspaceId),
           eq(releaseTeamTargets.releaseId, releaseId),
-          scope.kind === 'team'
-            ? eq(releaseTeamTargets.teamId, scope.teamId)
+          frozen.kind === 'team'
+            ? eq(releaseTeamTargets.teamId, frozen.teamId)
             : isNull(releaseTeamTargets.teamId),
         ),
       )
@@ -1081,34 +1136,3 @@ const ITERATION_COLUMNS = {
   startDate: iterations.startDate,
   endDate: iterations.endDate,
 } as const;
-
-/**
- * Which iterations a TEAM-scoped report may draw on: the team's own, plus the SHARED ones.
- *
- * `iterations.team_id` is optional in this schema — an iteration needs a project and may name a
- * team (real Rally collapses the two, we do not) — so a project can run one timebox per sprint
- * that every team works inside. Matching `team_id = :team` alone therefore returned NOTHING for
- * such a project: 195 of 206 iterations in the local database are team-less, so a selected Team
- * showed `iterationCount: 0`, empty Velocity bars and zero capacity while Team Status showed the
- * hours. The inverse was just as wrong — the null-group fallback branch dropped the predicate
- * entirely, so a selected Team DID get a shared iteration's data there.
- *
- * The timebox says WHICH window; the work says WHOSE it is. So a shared window is in scope and
- * the per-item team predicate below is what narrows the numbers.
- */
-function teamOrSharedTimebox(teamId: string) {
-  return or(eq(iterations.teamId, teamId), isNull(iterations.teamId));
-}
-
-/**
- * A parenthesised SQL list for a raw `in` inside a hand-written predicate.
- *
- * Drizzle's `inArray` cannot be embedded in the OR the task-scoping rule needs, and binding
- * each id separately keeps this parameterised rather than string-concatenated.
- */
-function inList(ids: string[]) {
-  return sql`(${sql.join(
-    ids.map((id) => sql`${id}::uuid`),
-    sql`, `,
-  )})`;
-}

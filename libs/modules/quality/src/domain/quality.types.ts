@@ -32,6 +32,13 @@ export interface DefectRow {
   foundInReleaseName: string | null;
   assigneeId: string | null;
   assigneeName: string | null;
+  /**
+   * WHOSE defect this is. On the row because the Quality grid's bulk `Copy` re-creates it, and a copy
+   * that carried no team filed the new defect into the Project Backlog — silently for an admin, and as
+   * a `WORK_ITEM_TEAM_REQUIRED` refusal for an Editor, who is exactly who this surface is for
+   * (`quality:view` is a `PROJECT_MEMBER` code). BA ruling 2026-08-17.
+   */
+  teamId: string | null;
   scheduleState: WorkItemScheduleState;
   iterationId: string | null;
   iterationName: string | null;
