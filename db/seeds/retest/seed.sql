@@ -27,9 +27,20 @@
 -- and audit the rows.
 -- ============================================================================
 
--- ── EDIT THESE FOUR, then run ───────────────────────────────────────────────
--- Each account must have signed in through Entra at least once: that first SSO
--- login is what creates its `identity.users` row, which SQL cannot do. The
+-- ── EDIT THESE, then run ────────────────────────────────────────────────────
+-- THREE are required; `unassigned_email` is OPTIONAL — leave it as the
+-- `change-me` default (or empty) to skip it.
+--
+-- Optional because the seed writes NOTHING for that account: "No Access" is the
+-- ABSENCE of a `project_members` row, so there is nothing to grant and nothing
+-- to name. Requiring a fourth principal would only have forced a new company
+-- account into existence to satisfy a guard. The BA's own plan already covers
+-- the case the other way round — "Bằng WA, remove TEST access của <editor>" —
+-- so the unassigned session is made by REMOVING access from an account that has
+-- it, not by seeding a spare one.
+--
+-- Each address given must have signed in through Entra at least once: that first
+-- SSO login is what creates its `identity.users` row, which SQL cannot do. The
 -- guard below ABORTS the whole transaction (nothing written) and names any
 -- address it cannot find, because a half-seeded RBAC group is worse than none.
 --
@@ -40,7 +51,7 @@
 -- Management by an existing admin. A first SSO login only gives the default
 -- role, so an unprepared wa_email account will read like the Project Admin one.
 --
--- EDIT THE FOUR LINES BELOW. A command-line `-v wa_email=…` does NOT win: psql
+-- EDIT THE LINES BELOW. A command-line `-v wa_email=…` does NOT win: psql
 -- keeps the LAST assignment and these `\set`s run after it (verified). Deleting a
 -- line instead of editing it is not a softer option either — an unset variable is
 -- left uninterpolated and the INSERT fails with a bare syntax error, before the
@@ -73,6 +84,12 @@ INSERT INTO retest_accounts (role, email) VALUES
 -- Case-insensitive, because an IdP may return a differently-cased local part
 -- for the same mailbox (the same reason INVITATION_EMAIL_MISMATCH compares
 -- case-insensitively).
+-- An untouched placeholder is the same statement as an empty one: "not provided".
+-- Normalised to NULL first so every check below reads one representation.
+UPDATE retest_accounts
+   SET email = NULL
+ WHERE email IS NULL OR btrim(email) = '' OR lower(email) LIKE 'change-me@%';
+
 UPDATE retest_accounts a
    SET user_id = u.id
   FROM identity.users u
@@ -84,10 +101,13 @@ DECLARE
   outside  text;
   dupes    text;
 BEGIN
-  SELECT string_agg(format('%s=%s', role, coalesce(email, '<unset>')), ', ' ORDER BY role)
+  -- `unassigned` is exempt: it may legitimately be absent (see the header). The other
+  -- three are what the RBAC group is made of, so an unresolved one aborts.
+  SELECT string_agg(format('%s=%s', role, coalesce(email, '<not provided>')), ', ' ORDER BY role)
     INTO missing
     FROM retest_accounts
-   WHERE user_id IS NULL;
+   WHERE user_id IS NULL
+     AND (role <> 'unassigned' OR email IS NOT NULL);
 
   IF missing IS NOT NULL THEN
     RAISE EXCEPTION 'RETEST-2026-08-18 seed aborted: no identity.users row for %', missing
@@ -107,7 +127,8 @@ BEGIN
            ON m.user_id = a.user_id
           AND m.workspace_id = '00000000-0000-7000-8000-000000000003'::uuid
           AND m.status = 'active'
-   WHERE m.user_id IS NULL;
+   WHERE m.user_id IS NULL
+     AND a.user_id IS NOT NULL;
 
   IF outside IS NOT NULL THEN
     RAISE EXCEPTION 'RETEST-2026-08-18 seed aborted: not an ACTIVE member of this workspace: %', outside
@@ -120,13 +141,19 @@ BEGIN
   -- a member.
   SELECT string_agg(DISTINCT lower(email), ', ') INTO dupes
     FROM retest_accounts
-   WHERE lower(email) IN (
-     SELECT lower(email) FROM retest_accounts GROUP BY lower(email) HAVING count(*) > 1
-   );
+   WHERE email IS NOT NULL
+     AND lower(email) IN (
+       SELECT lower(email) FROM retest_accounts
+        WHERE email IS NOT NULL
+        GROUP BY lower(email) HAVING count(*) > 1
+     );
 
   IF dupes IS NOT NULL THEN
     RAISE EXCEPTION 'RETEST-2026-08-18 seed aborted: the four accounts must be four DIFFERENT people; repeated: %', dupes
       USING HINT = 'wa_email, pa_email, editor_email and unassigned_email must all differ. Nothing was written.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM retest_accounts WHERE role = 'unassigned' AND email IS NOT NULL) THEN
+    RAISE NOTICE 'RETEST-2026-08-18: no unassigned account supplied. Nothing is seeded for that role by design — make the unassigned session by REMOVING an account''s project access (the BA''s own step), not by expecting a row here.';
   END IF;
 END
 $guard$;
