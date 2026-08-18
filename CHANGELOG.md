@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/QNSC-VN/rally/compare/v0.7.0...v0.7.1) (2026-08-18)
+
+
+### 🐛 Bug Fixes
+
+* **infra:** let Terraform write the tunnel's ingress rule, production first ([#452](https://github.com/QNSC-VN/rally/issues/452)) ([abf7477](https://github.com/QNSC-VN/rally/commit/abf7477cb8964195a022ac8d338980f367d6723f))
+
 ## [0.7.0](https://github.com/QNSC-VN/rally/compare/v0.6.1...v0.7.0) (2026-08-18)
 
 
