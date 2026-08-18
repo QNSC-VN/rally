@@ -26,14 +26,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 
 import { IterationsService } from '@modules/iterations';
-import { ProjectsService } from '@modules/projects';
 import { ReportingService } from '@modules/reporting';
 import { WorkItemsService } from '@modules/work-items';
 import { DRIZZLE } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { workItems } from '@db/schema/work';
 
-import { adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { SEEDED, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
 
 describe('Velocity refuses to guess an accepted item with no acceptedDate (P6-VEL-008)', () => {
   let app: INestApplication;
@@ -41,8 +40,21 @@ describe('Velocity refuses to guess an accepted item with no acceptedDate (P6-VE
   let db: DrizzleDB;
   const admin = adminActor();
 
-  let projectId: string;
+  /**
+   * The SEEDED project, not one of this spec's own.
+   *
+   * `test/e2e-fixtures.ratchet.spec.ts` caps how many projects the suite builds for itself, and it
+   * caught this file adding an 82nd against a ceiling of 81. The cap exists because the suite once
+   * leaked ~84 projects per run and twice drove `portfolio_items.rank` into its `varchar(255)`
+   * ceiling. Nothing here needs a private project: the fixture is one iteration and two stories, and
+   * `accepted-date-backfill.e2e.spec.ts` works against `SEEDED.nxp` for the same reason.
+   *
+   * Safe to share because the bar is found by NAME, uniquely suffixed per run — `phase6-reports`
+   * asserts velocity values only inside its own project, and `report-authz` checks status codes.
+   */
+  const projectId = SEEDED.nxp.projectId;
   let iterationId: string;
+  let iterationName: string;
   let brokenItemKey: string;
 
   /** The points on the invalid row. Distinct from the healthy one so the buckets cannot be confused. */
@@ -53,19 +65,15 @@ describe('Velocity refuses to guess an accepted item with no acceptedDate (P6-VE
     app = await bootRallyApp();
     reporting = app.get(ReportingService);
     db = app.get<DrizzleDB>(DRIZZLE);
-    const projects = app.get(ProjectsService);
     const iterations = app.get(IterationsService);
     const items = app.get(WorkItemsService);
 
-    const project = await projects.createProject(admin, {
-      key: uniqueKey(),
-      name: 'P6-VEL-008 data quality',
-    });
-    projectId = project.id;
-
     // A FINISHED timebox: Velocity only reports iterations whose window has closed, so a current
     // sprint would produce no bar at all and the test would pass for the wrong reason.
-    const iteration = await iterations.createIteration(admin, projectId, 'DQ Sprint', {
+    // Unique per run, so a local re-run with `E2E_SKIP_RESET=true` cannot leave two sprints of the
+    // same name for `bars.find` to choose between.
+    iterationName = `DQ Sprint ${uniqueKey('D')}`;
+    const iteration = await iterations.createIteration(admin, projectId, iterationName, {
       startDate: '2026-01-05',
       endDate: '2026-01-16',
     });
@@ -110,7 +118,7 @@ describe('Velocity refuses to guess an accepted item with no acceptedDate (P6-VE
 
   it('counts the points as UNCLASSIFIED and keeps them out of every measured bucket', async () => {
     const report = await reporting.getVelocity(admin, { projectId });
-    const bar = report.bars.find((b) => b.name === 'DQ Sprint');
+    const bar = report.bars.find((b) => b.name === iterationName);
 
     expect(bar, 'the finished iteration must produce a bar').toBeDefined();
     // Keyed by NAME, not by iteration id: a bar aggregates a shared TIMEBOX (`timebox_group_id`
