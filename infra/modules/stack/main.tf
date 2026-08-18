@@ -19,6 +19,12 @@ locals {
   name         = "${var.product}-${var.env_slug}"
   app_base_url = "https://${var.app_domain}"
 
+  # The port the api container listens on. ONE definition, because two consumers must
+  # agree: the Cloudflare Tunnel's ingress rule (`module.tunnel`) names it, and the
+  # cloudflared sidecar (`module.tunnel_api`) forwards to it. A disagreement between them
+  # is a 502 with nothing in the app's own logs to explain it.
+  api_container_port = 3000
+
   kms_key_arn        = data.terraform_remote_state.shared.outputs.kms_key_arn
   cloudflare_zone_id = try(data.terraform_remote_state.shared.outputs.cloudflare_zone_id, "")
   cloudflare_ipv4    = data.terraform_remote_state.shared.outputs.cloudflare_ipv4
@@ -348,10 +354,31 @@ module "tunnel" {
   // rally-api-dev.qnsc.vn — new UUID, new CNAME target, new connector token. The plan is
   // the only place that was visible before it happened.
   //
-  // Step two moves routing under Terraform (set `hostname` and `service` to match what
-  // the tunnel serves today) as a separate change, once someone has read the existing
-  // rules. qnsc-kb already runs that way, having been created rather than adopted.
-  config_src = "" // unset — see above
+  // STEP TWO IS NOW AVAILABLE, PER ENVIRONMENT, via `tunnel_routing_managed`.
+  //
+  // What forced it: production went live on 2026-08-18 with a tunnel that had no ingress
+  // rule, so `cloudflared` connected, reported healthy and returned 503 to every request
+  // — `No ingress rules were defined in provided config (if any) nor from the cli`. The
+  // post-deploy readiness check caught it, but nothing in the pipeline could have created
+  // the rule, because rally adopted its tunnels and left routing outside Terraform. That
+  // is a step someone has to remember, and on production nobody did.
+  //
+  // Still OPT-IN, and still off for develop, because the configuration API is a
+  // whole-document PUT: develop's live rule set has never been compared rule-by-rule, and
+  // production's holds nothing but the catch-all 503 this change exists to replace.
+  //
+  // `config_src` STAYS UNSET even when routing is managed, and that is deliberate. The
+  // attribute forces replacement (the plan quoted above), and it is not needed: it only
+  // tells the connector where to READ routing from, and both tunnels already read it from
+  // Cloudflare. Writing the ingress rule is the whole job; writing `config_src` alongside
+  // it would destroy and recreate the tunnel — new UUID, new CNAME target, new connector
+  // token — to restate something already true.
+  //
+  // `hostname` is the api domain and `service` is the app port, so the rule cannot drift
+  // from the task it forwards to — the module writes a catch-all `http_status:404` after
+  // it, which Cloudflare requires as the last rule.
+  hostname = var.tunnel_routing_managed ? var.api_domain : ""
+  service  = "http://localhost:${local.api_container_port}"
 }
 
 # The connector token, in its own secret rather than as a key in the bundle.
@@ -396,9 +423,11 @@ module "tunnel_api" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/tunnel-agent?ref=tunnel-agent-v1.0.0"
 
   tunnel_token_secret_arn = length(aws_secretsmanager_secret.tunnel_token) > 0 ? aws_secretsmanager_secret.tunnel_token[0].arn : ""
-  app_port                = 3000
-  log_group               = local.api_log_group
-  region                  = var.region
+  // Same local as the tunnel's own ingress rule above: the connector forwards to this
+  // port and the rule names this port, so they cannot drift into a 502 nobody can explain.
+  app_port  = local.api_container_port
+  log_group = local.api_log_group
+  region    = var.region
 }
 
 module "otel_agent_api" {

@@ -161,6 +161,31 @@ module "stack" {
   // (enable_alb there) and it comes back with a NEW DNS name.
   tunnel_enabled = true
 
+  // ROUTING UNDER TERRAFORM, production only (2026-08-18).
+  //
+  // This is the gap the first production deploy found. The tunnel, its token and the DNS
+  // record were all created by Terraform, and the connector came up healthy — but nothing
+  // had ever written an INGRESS RULE, so `cloudflared` logged
+  //   No ingress rules were defined in provided config (if any) nor from the cli
+  // and answered 503 to every request, including the post-deploy readiness check that
+  // failed the deploy. Develop only works because its rule was added by hand on
+  // 2026-08-02; that is a step someone has to remember, and remembering is not a control.
+  //
+  // Safe to switch on HERE and not on develop because the configuration API is a
+  // whole-document PUT: production's live configuration holds nothing but the catch-all
+  // 503 this replaces, while develop's rule set has never been compared rule-by-rule.
+  // Nothing about the tunnel itself is rewritten — `config_src` is left unset by the
+  // stack module precisely because writing it would force a replacement, and the
+  // connector already reads its routing from Cloudflare. The DNS record is untouched too:
+  // it already exists and points at this tunnel, which is why the DASHBOARD cannot create
+  // this rule (its route form insists on creating its own record and refuses with "A DNS
+  // record with this name already exists").
+  //
+  // The rule the module writes is `api_domain` → `http://localhost:${app_port}`, plus the
+  // catch-all `http_status:404` Cloudflare requires last. Both sides come from variables
+  // this file already sets, so the route cannot drift from the port the task listens on.
+  tunnel_routing_managed = true
+
   // OFF, including in production. Audited every consumer: all 7 alarms and all 6
   // dashboard widgets read AWS/ECS, AWS/ApplicationELB and AWS/RDS — native namespaces
   // that are free and published whether Container Insights is on or off. Nothing reads
