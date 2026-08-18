@@ -129,6 +129,22 @@ describe('Velocity refuses to guess an accepted item with no acceptedDate (P6-VE
     const measured =
       (bar?.acceptedDuring ?? 0) + (bar?.acceptedAfter ?? 0) + (bar?.notAccepted ?? 0);
     expect(measured).toBe(HEALTHY_POINTS);
+
+    /**
+     * PRINTED on purpose. `P6-VEL-008` is signed off from this file's output rather than from a
+     * screenshot — the BA's instruction is that the invalid row must never exist on shared DevInt — so
+     * the evidence has to carry the NUMBERS and not only a green tick. A reviewer can read the bucket
+     * split here and check it against the SRS without running anything.
+     */
+    // Deliberate: this line IS the retest evidence for a case that must never be seeded onto shared
+    // DevInt, so it belongs in the run output rather than in a screenshot.
+    // eslint-disable-next-line no-console
+    console.log(
+      `[P6-VEL-008] bar=${bar?.name} unclassified=${bar?.unclassified} ` +
+        `acceptedDuring=${bar?.acceptedDuring} acceptedAfter=${bar?.acceptedAfter} ` +
+        `notAccepted=${bar?.notAccepted} measuredTotal=${measured} ` +
+        `(invalid item = ${BROKEN_POINTS} pts, healthy item = ${HEALTHY_POINTS} pts)`,
+    );
   });
 
   it('SAYS a data-quality gap exists, so a shorter bar is not read as a measurement', async () => {
@@ -137,6 +153,12 @@ describe('Velocity refuses to guess an accepted item with no acceptedDate (P6-VE
     // The count is what the Velocity screen renders its data-quality note from. Without it the bar is
     // simply 4 points shorter and nothing on screen contradicts the reader's assumption.
     expect(report.unclassifiedItems).toBeGreaterThanOrEqual(1);
+    // Evidence output, not a stray debug statement — see the note above.
+    // eslint-disable-next-line no-console
+    console.log(
+      `[P6-VEL-008] report.unclassifiedItems=${report.unclassifiedItems} ` +
+        '— this is what the Velocity screen renders its data-quality note from',
+    );
   });
 
   it('is a backfill candidate, so DEV can repair it from audit history', async () => {
