@@ -90,6 +90,58 @@ import { sql } from 'drizzle-orm';
 // Links an external SSO identity (e.g. Microsoft Entra) to a Rally user.
 // One user may have at most one identity per provider.
 
+// ── api_tokens ────────────────────────────────────────────────────────────
+//
+// Long-lived credentials for MACHINE clients (CI, scripts, the agent platform).
+// Real Rally's equivalent is the API Key a user mints in My Settings; this follows
+// that shape with the three things Rally's model lacks and every current product has
+// converged on — mandatory expiry, an optional scope narrowing, and an audit trail.
+//
+// The token itself is never stored. `token_hash` is `sha256(plaintext)`, NOT a slow
+// KDF: the value is 32 bytes of CSPRNG output, so there is nothing to brute-force
+// that a work factor would slow, and this hash is computed on EVERY authenticated
+// request. `prefix` is the first 12 characters (`rly_` + 8), stored so the UI, the
+// audit rows and a leaked-secret search can identify a token without holding it.
+//
+// `scopes` NARROWS, it never grants. Effective permissions are the principal's
+// database assignments INTERSECTED with this array — an empty/absent array means "no
+// narrowing", and a token can therefore never exceed the user behind it. This is why
+// it does not contradict "permissions are NEVER in the token": authorization still
+// resolves from the database on every request (see PolicyGuard), and the token only
+// subtracts.
+export const apiTokens = identitySchema.table(
+  'api_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    /** Human label, shown in the token list. Not unique — people reuse names. */
+    name: varchar('name', { length: 100 }).notNull(),
+    /** `rly_` + first 8 chars of the secret. Identifies a token without holding it. */
+    prefix: varchar('prefix', { length: 16 }).notNull(),
+    tokenHash: text('token_hash').notNull(),
+    /** Narrowing only; NULL means "inherit the user's permissions unchanged". */
+    scopes: text('scopes').array(),
+    /** Mandatory, unlike real Rally's never-expiring keys. Capped in the service. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    /**
+     * Touched on use, throttled to once a minute in the repository: a write on every
+     * request would turn a read path into a write path for no operational gain.
+     */
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // Lookup is by prefix, then a constant-time hash comparison. Unique so a prefix
+    // collision cannot make authentication ambiguous.
+    prefixIdx: uniqueIndex('uq_api_tokens_prefix').on(t.prefix),
+    tokenHashIdx: uniqueIndex('uq_api_tokens_token_hash').on(t.tokenHash),
+    userIdx: index('ix_api_tokens_user').on(t.userId),
+    workspaceIdx: index('ix_api_tokens_workspace').on(t.workspaceId),
+  }),
+);
+
 export const ssoIdentities = identitySchema.table(
   'sso_identities',
   {

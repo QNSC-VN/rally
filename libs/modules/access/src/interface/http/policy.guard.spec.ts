@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
 import type { Reflector } from '@nestjs/core';
 import { PermissionDeniedException, type JwtPayload } from '@platform';
-import { PolicyGuard, type PolicyScope, AUTHZ_MODE_KEY } from './policy.guard';
+import {
+  PolicyGuard,
+  type PolicyScope,
+  AUTHZ_MODE_KEY,
+  grantsUnderTokenScopes,
+} from './policy.guard';
 import type { AccessService } from '../../application/access.service';
 import type { ProjectScopeResolver } from '../../application/project-scope.resolver';
 
@@ -220,5 +225,48 @@ describe('PolicyGuard', () => {
       );
       await expect(guardFor(reflector).canActivate(ctx)).rejects.toThrow('WORK_ITEM_NOT_FOUND');
     });
+  });
+});
+
+describe('grantsUnderTokenScopes', () => {
+  it('is a no-op for a principal with no scopes', () => {
+    // Every cookie session and every JWT lands here: no scopes at all, so nothing may be narrowed.
+    expect(grantsUnderTokenScopes(['work_item:view'], undefined, 'work_item:view')).toBe(true);
+    expect(grantsUnderTokenScopes(['work_item:view'], [], 'work_item:view')).toBe(true);
+  });
+
+  it('requires BOTH the database and the token to grant the permission', () => {
+    expect(grantsUnderTokenScopes(['work_item:view'], ['work_item:view'], 'work_item:view')).toBe(
+      true,
+    );
+    // Held but not scoped: the token was minted without it.
+    expect(grantsUnderTokenScopes(['work_item:view'], ['work_item:create'], 'work_item:view')).toBe(
+      false,
+    );
+    // Scoped but not held: the scope cannot conjure a grant the user does not have.
+    expect(grantsUnderTokenScopes([], ['work_item:view'], 'work_item:view')).toBe(false);
+  });
+
+  it('can only subtract, never add', () => {
+    // The property that keeps this from being the `claims.permissions` snapshot again: a token is
+    // always a subset of its owner, so a revoked grant lands on the token's next request.
+    const held = ['work_item:view'];
+    for (const scopes of [['workspace:*'], ['work_item:*'], ['project:delete']]) {
+      expect(grantsUnderTokenScopes(held, scopes, 'project:delete')).toBe(false);
+    }
+  });
+
+  it('honours a wildcard on either side', () => {
+    // The case an array intersection gets wrong in both directions, which is why this is a two-sided
+    // check rather than a set intersection.
+    expect(grantsUnderTokenScopes(['work_item:view'], ['work_item:*'], 'work_item:view')).toBe(
+      true,
+    );
+    expect(grantsUnderTokenScopes(['workspace:*'], ['work_item:view'], 'work_item:view')).toBe(
+      true,
+    );
+    expect(grantsUnderTokenScopes(['workspace:*'], ['work_item:*'], 'work_item:create')).toBe(true);
+    // A namespace scope still refuses another namespace.
+    expect(grantsUnderTokenScopes(['workspace:*'], ['work_item:*'], 'project:delete')).toBe(false);
   });
 });

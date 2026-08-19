@@ -48,6 +48,20 @@ export const PERMISSION = {
   USERS_REMOVE: 'users:remove',
   USERS_ASSIGN_ROLE: 'users:assign_role',
 
+  // ── api tokens namespace ───────────────────────────────────────────────────
+  //
+  // ONE code, and it is the ADMIN one. Minting, listing and revoking your OWN tokens
+  // needs no permission at all — it is `me/*` surface, self-scoped by the principal,
+  // exactly like `me/avatar`. Real Rally works this way too: any user may create an
+  // API Key, and only a subscription administrator can see or reset everyone's.
+  //
+  // What this code grants is the administrator's view: every token in the workspace,
+  // whose it is, when it was last used, and the ability to revoke it. That is an
+  // offboarding and incident-response capability, not a convenience — a workspace
+  // admin who cannot enumerate live machine credentials cannot answer "what still has
+  // access" after someone leaves.
+  API_TOKEN_MANAGE_ALL: 'api_token:manage_all',
+
   // ── roles namespace (the Roles & Permissions surface itself) ────────────────
   // Managing WHAT a role can do is a distinct concern from managing PEOPLE —
   // previously conflated under `workspace:manage_members`.
@@ -267,6 +281,7 @@ export const PERMISSION_TIER = {
   [PERMISSION.USERS_INVITE]: 'workspace',
   [PERMISSION.USERS_REMOVE]: 'workspace',
   [PERMISSION.USERS_ASSIGN_ROLE]: 'workspace',
+  [PERMISSION.API_TOKEN_MANAGE_ALL]: 'workspace',
   [PERMISSION.ROLES_VIEW]: 'workspace',
   [PERMISSION.ROLES_EDIT]: 'workspace',
   [PERMISSION.TEAMS_CREATE]: 'workspace',
@@ -385,6 +400,7 @@ export const ROLE_PERMISSIONS: Record<SystemRoleSlug, Permission[]> = {
     PERMISSION.USERS_INVITE,
     PERMISSION.USERS_REMOVE,
     PERMISSION.USERS_ASSIGN_ROLE,
+    PERMISSION.API_TOKEN_MANAGE_ALL,
     PERMISSION.ROLES_VIEW,
     PERMISSION.ROLES_EDIT,
     PERMISSION.TEAMS_CREATE,

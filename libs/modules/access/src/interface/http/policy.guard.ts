@@ -140,7 +140,7 @@ export class PolicyGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<{
-      user?: JwtPayload;
+      user?: JwtPayload & { scopes?: readonly string[] };
       params: Record<string, string>;
       query: Record<string, unknown>;
       body: Record<string, unknown>;
@@ -158,7 +158,7 @@ export class PolicyGuard implements CanActivate {
     // revoked grant stayed effective until the token rotated.
     if (!isProjectTierPermission(permission)) {
       const baseline = await this.accessService.getWorkspacePermissions(user.sub, user.workspaceId);
-      if (permissionGrants(baseline, permission)) return true;
+      if (grantsUnderTokenScopes(baseline, user.scopes, permission)) return true;
       throw this.deny();
     }
 
@@ -170,7 +170,7 @@ export class PolicyGuard implements CanActivate {
       user.workspaceId,
       projectId,
     );
-    if (permissionGrants(effective, permission)) return true;
+    if (grantsUnderTokenScopes(effective, user.scopes, permission)) return true;
 
     this.logger.warn({ userId: user.sub, projectId, permission }, 'PolicyGuard: access denied');
     throw this.deny();
@@ -283,3 +283,33 @@ export const AuthzGap = (reason: string) =>
     SetMetadata(AUTHZ_MODE_KEY, { mode: 'gap', reason } satisfies AuthzMode),
     ApiBearerAuth('access-token'),
   );
+
+/**
+ * Whether a principal is granted `required`, accounting for an API token's scopes.
+ *
+ * BOTH sides must grant it: the database (what the user actually holds) and the token's scope list
+ * (what this credential is allowed to use). Absent or empty scopes mean no narrowing, which is what a
+ * token minted without a scope list gets and what every non-token principal gets — a cookie session and
+ * a JWT carry no scopes at all.
+ *
+ * Two-sided, rather than intersecting the arrays, because either side can hold a wildcard and an array
+ * intersection gets both cases wrong. An admin whose baseline is `workspace:*` minting a
+ * `work_item:view` token has no literal overlap to intersect, and a `work_item:*` scope over a baseline
+ * of `work_item:view` has none either — the first would silently grant nothing, the second the same.
+ * Asking "does each side grant THIS permission" is the question the guard actually needs answered, and
+ * `permissionGrants` already knows the wildcard rule, so it is reused on both sides rather than a second
+ * matcher being written to eventually disagree with it.
+ *
+ * The direction still holds: scopes can only subtract. Nothing here consults the token for a permission
+ * the database did not return, so a token is always a subset of its owner and a revoked grant takes
+ * effect on the token's next request.
+ */
+export function grantsUnderTokenScopes(
+  baseline: string[],
+  scopes: readonly string[] | undefined,
+  required: string,
+): boolean {
+  if (!permissionGrants(baseline, required)) return false;
+  if (!scopes || scopes.length === 0) return true;
+  return permissionGrants([...scopes], required);
+}

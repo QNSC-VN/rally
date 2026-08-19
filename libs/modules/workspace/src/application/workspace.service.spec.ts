@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mocked } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AccessService } from '@modules/access';
+import { ApiTokensService } from '@modules/api-tokens/application/api-tokens.service';
 import { WorkspaceService } from './workspace.service';
 import { GuestInviteSchedulerService } from './guest-invite-scheduler.service';
 import { WORKSPACE_REPOSITORY, IWorkspaceRepository } from '../domain/ports/workspace.repository';
@@ -192,6 +193,12 @@ describe('WorkspaceService', () => {
   let access: ReturnType<typeof makeAccessService>;
   let uow: ReturnType<typeof makeUow>;
 
+  /**
+   * Offboarding revokes a departing member's machine credentials: cache invalidation makes the principal
+   * powerless but leaves the token AUTHENTICATING for up to a year (migration 0125).
+   */
+  const apiTokens = { revokeAllForUser: vi.fn().mockResolvedValue(0) };
+
   beforeEach(async () => {
     workspaceRepo = makeWorkspaceRepo();
     memberRepo = makeMemberRepo();
@@ -216,6 +223,7 @@ describe('WorkspaceService', () => {
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         { provide: AccessService, useValue: access },
         { provide: GuestInviteSchedulerService, useValue: guestInviteScheduler },
+        { provide: ApiTokensService, useValue: apiTokens },
       ],
     }).compile();
 
@@ -511,6 +519,30 @@ describe('WorkspaceService', () => {
       await expect(service.removeMember('ws-1', 'user-1', 'actor-1')).rejects.toThrow(
         PreconditionFailedException,
       );
+    });
+    it("revokes the departing member's API tokens, not just their grants", async () => {
+      // Invalidating the permission cache makes the principal powerless but leaves a token
+      // AUTHENTICATING for up to a year (migration 0125). A live 401-vs-403 distinction is the
+      // difference between a credential that is dead and one that is merely idle.
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      memberRepo.findMember.mockResolvedValue(mockMember());
+      memberRepo.isActiveAdmin.mockResolvedValue(false);
+
+      await service.removeMember('ws-1', 'user-1', 'actor-1');
+
+      expect(apiTokens.revokeAllForUser).toHaveBeenCalledWith('ws-1', 'user-1');
+    });
+
+    it('completes the removal even when token revocation fails', async () => {
+      // Best-effort on purpose: a transient outage must not roll back a removal that has already
+      // committed, which would leave the member in the workspace.
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      memberRepo.findMember.mockResolvedValue(mockMember());
+      memberRepo.isActiveAdmin.mockResolvedValue(false);
+      apiTokens.revokeAllForUser.mockRejectedValueOnce(new Error('database gone'));
+
+      await expect(service.removeMember('ws-1', 'user-1', 'actor-1')).resolves.toBeUndefined();
+      expect(access.invalidateUser).toHaveBeenCalledWith('ws-1', 'user-1');
     });
   });
 

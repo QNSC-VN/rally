@@ -49,6 +49,9 @@ describe('PERMISSION_TIER (workspace vs project scope)', () => {
     PERMISSION.USERS_INVITE,
     PERMISSION.USERS_REMOVE,
     PERMISSION.USERS_ASSIGN_ROLE,
+    // Machine credentials are a workspace-wide concern: the question it answers — "what still has
+    // access after someone leaves" — cannot be answered per project (migration 0125).
+    PERMISSION.API_TOKEN_MANAGE_ALL,
     PERMISSION.ROLES_VIEW,
     PERMISSION.ROLES_EDIT,
     PERMISSION.TEAMS_CREATE,

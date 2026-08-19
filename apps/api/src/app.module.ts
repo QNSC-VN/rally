@@ -23,6 +23,7 @@ import { PortfolioModule } from '@modules/portfolio';
 import { CapacityModule } from '@modules/capacity';
 import { QualityModule } from '@modules/quality';
 import { ScmModule } from '@modules/scm';
+import { ApiTokensModule } from '@modules/api-tokens';
 import { GlobalExceptionFilter, REQUEST_CONTEXT } from '@qnsc-vn/platform-http';
 import { HttpLoggingInterceptor } from '@platform/http/http-logging.interceptor';
 import { ZodValidationPipe } from 'nestjs-zod';
@@ -67,6 +68,7 @@ import { AsyncLocalStorageMiddleware } from '@platform/context/als.middleware';
     CapacityModule,
     QualityModule,
     ScmModule,
+    ApiTokensModule,
   ],
   providers: [
     // Bind the shared filter's request-context port to rally's ALS-backed service.

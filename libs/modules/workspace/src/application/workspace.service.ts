@@ -18,6 +18,11 @@ import {
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
 import { isProjectAccessLevel } from '@shared-kernel';
 import { AccessService } from '@modules/access';
+// Deep import, not the barrel: `@modules/api-tokens` re-exports the module and its controllers, which
+// import `@modules/identity`, which imports this module — a cycle that leaves the injected type
+// `undefined` at runtime and fails as "argument at index [11]" with no name. The service file itself
+// pulls nothing back.
+import { ApiTokensService } from '@modules/api-tokens/application/api-tokens.service';
 import { GuestInviteSchedulerService } from './guest-invite-scheduler.service';
 import { IWorkspaceRepository, WORKSPACE_REPOSITORY } from '../domain/ports/workspace.repository';
 import {
@@ -68,6 +73,9 @@ export class WorkspaceService {
     private readonly audit: AuditProducer,
     private readonly access: AccessService,
     private readonly guestInviteScheduler: GuestInviteSchedulerService,
+    // Injectable without importing ApiTokensModule: it is @Global and exports the service, for the same
+    // reason IdentityModule is (its guard seam must be visible everywhere).
+    private readonly apiTokens: ApiTokensService,
   ) {}
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────
@@ -394,6 +402,7 @@ export class WorkspaceService {
     // next request resolves zero permissions instead of waiting out the 5-min TTL.
     if (input.status === 'suspended' || input.status === 'removed') {
       await this.access.invalidateUser(workspaceId, member.userId);
+      await this.revokeMachineCredentials(workspaceId, member.userId);
     }
     this.logger.log({ workspaceId, memberId, actorId }, 'Member updated');
     return updated;
@@ -438,7 +447,39 @@ export class WorkspaceService {
     // §8: removal is effective on the next page refresh — drop the permission cache
     // now so the very next request from the removed member resolves nothing.
     await this.access.invalidateUser(workspaceId, userId);
+    await this.revokeMachineCredentials(workspaceId, userId);
     this.logger.log({ workspaceId, userId, actorId }, 'Member removed from workspace');
+  }
+
+  /**
+   * Revoke a departing member's API tokens.
+   *
+   * Cache invalidation alone is not enough for a machine credential. It makes the principal powerless —
+   * `PolicyGuard` resolves nothing, so every route answers 403 — but the token still AUTHENTICATES, for
+   * up to a year, and a live 401-vs-403 distinction is the difference between a credential that is dead
+   * and one that is merely idle. Revoking the rows is what makes "removed" true of the credential and
+   * not just of the grants.
+   *
+   * Best-effort on purpose: a failure here must not roll back a removal that has already committed, or a
+   * transient outage would leave the member in the workspace. The permission cache has already been
+   * dropped, so the worst case is a token that authenticates and is permitted nothing until the next
+   * sweep or its expiry.
+   */
+  private async revokeMachineCredentials(workspaceId: string, userId: string): Promise<void> {
+    try {
+      const revoked = await this.apiTokens.revokeAllForUser(workspaceId, userId);
+      if (revoked > 0) {
+        this.logger.log(
+          { workspaceId, userId, revoked },
+          'Revoked API tokens for departing member',
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        { err, workspaceId, userId },
+        'Failed to revoke API tokens for departing member — grants are already invalidated',
+      );
+    }
   }
 
   // ── Invitations ─────────────────────────────────────────────────────────────
