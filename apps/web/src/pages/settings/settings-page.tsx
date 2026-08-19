@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   UserCheck,
+  Key,
   KeyRound,
   Globe,
   Users,
@@ -25,6 +26,7 @@ import { AuditLogTab } from './ui/audit-log-tab'
 import { IntegrationsTab } from './ui/integrations-tab'
 import { WorkspaceProjectsPanel } from './ui/workspace-projects-panel'
 import { MyPermissionsTab } from './ui/my-permissions-tab'
+import { ApiTokensTab } from './ui/api-tokens-tab'
 import { PermissionModelTab } from './ui/permission-model-tab'
 // NotificationsTab is intentionally NOT wired into the sidebar: Notification
 // Preferences is Future Backlog (BA decision 2026-08-06, C6). Phase 4 ships fixed
@@ -51,6 +53,10 @@ const SIDEBAR: SettingsGroup[] = [
     items: [
       { key: 'profile', label: 'nav.profile', icon: UserCheck, requires: null },
       { key: 'my-permissions', label: 'My Permissions', icon: KeyRound, requires: null },
+      // `requires: null`, like the other Personal entries: `/v1/me/api-tokens` is scoped to the
+      // caller by the route itself, so there is no permission to gate on and nothing to hide. The
+      // administrative surface over everyone's tokens is a different route and a different tab.
+      { key: 'api-tokens', label: 'nav.apiTokens', icon: Key, requires: null },
       // Notification Preferences tab removed per BA C6 (Future Backlog).
     ],
   },
@@ -198,6 +204,8 @@ export function SettingsPage() {
       <ProfileTab />
     ) : activeKey === 'my-permissions' ? (
       <MyPermissionsTab />
+    ) : activeKey === 'api-tokens' ? (
+      <ApiTokensTab />
     ) : activeKey === 'members' ? (
       <MembersTab />
     ) : activeKey === 'workspace' ? (

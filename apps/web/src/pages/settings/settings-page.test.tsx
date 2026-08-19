@@ -174,7 +174,13 @@ describe('Settings sidebar — an entry the reader lacks is HIDDEN, not padlocke
     expect(screen.queryByText('Workspace')).toBeNull()
     expect(screen.queryByText('Workspaces & Projects')).toBeNull()
     expect(screen.queryByTitle('Requires admin role')).toBeNull()
-    expect(sidebarLabels()).toEqual(['Profile & Account', 'My Permissions'])
+    // "Personal only" still holds — API Tokens IS a Personal entry. It is listed at every access
+    // level because `/v1/me/api-tokens` is scoped to the caller by the route itself, so there is no
+    // permission to gate it on, and because an owner must be able to REVOKE their own credentials
+    // whatever their level: a token inherits its owner's permissions at request time, so one minted
+    // by a No Access reader becomes useful the moment access is granted, and the person who minted
+    // it is the person who should be able to see it.
+    expect(sidebarLabels()).toEqual(['Profile & Account', 'My Permissions', 'API Tokens'])
   })
 
   it('shows Permission Model to a per-project Admin and nothing else new (§3:57)', async () => {
