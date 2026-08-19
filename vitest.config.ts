@@ -52,7 +52,17 @@ export default defineConfig({
     // coverage-include.spec.ts. Deliberately NOT `test/**` — that would drag in
     // test/e2e/*.e2e.spec.ts, which need a live Postgres + Valkey and run under
     // test/vitest.e2e.config.ts instead.
-    include: ['libs/**/*.spec.ts', 'apps/**/*.spec.ts', 'db/**/*.spec.ts', 'test/*.spec.ts'],
+    // `test/acceptance/**` is where agent-forge writes a story's acceptance tests, and it needs the
+    // recursive glob: `test/*.spec.ts` matches one level only, so an acceptance test would be ignored
+    // by `pnpm test` while every gate still passed — the story would merge having never run the test
+    // that defines it.
+    include: [
+      'libs/**/*.spec.ts',
+      'apps/**/*.spec.ts',
+      'db/**/*.spec.ts',
+      'test/*.spec.ts',
+      'test/acceptance/**/*.spec.ts',
+    ],
     // Bare 'node_modules' only matches a top-level segment, not nested ones —
     // apps/**/*.spec.ts otherwise pulls in package-internal specs like
     // apps/web/node_modules/@tiptap/react/src/*.spec.ts, which need jsdom and
