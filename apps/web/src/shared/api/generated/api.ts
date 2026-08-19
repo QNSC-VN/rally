@@ -2757,6 +2757,84 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/me/api-tokens': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * List my API tokens
+     * @description Includes revoked tokens: the list is also the audit surface, and a token that vanished on revocation would leave no record that it ever existed.
+     */
+    get: operations['ApiTokensController_list']
+    put?: never
+    /**
+     * Mint an API token
+     * @description Returns the credential ONCE. It is stored only as a hash, so it cannot be shown again — a lost token is revoked and replaced. Scopes narrow the token; they can never widen it.
+     */
+    post: operations['ApiTokensController_create']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/me/api-tokens/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Revoke one of my API tokens */
+    delete: operations['ApiTokensController_revoke']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/api-tokens': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * List every live API token in the workspace
+     * @description Live tokens only. Revoked ones are history and belong to their owner’s list; this surface answers "what still has access".
+     */
+    get: operations['ApiTokensAdminController_list']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/v1/api-tokens/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Revoke any API token in the workspace */
+    delete: operations['ApiTokensAdminController_revoke']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -5507,6 +5585,48 @@ export interface components {
     ScmSyncResponseDto: {
       /** @description True when a backfill job was queued */
       enqueued: boolean
+    }
+    CreateApiTokenDto: {
+      /** @description Human label, shown in the token list */
+      name: string
+      /** @description Lifetime in days. Defaults to 90, capped at 365. */
+      expiresInDays?: number
+      /** @description Permission codes this token may use. NARROWING only — the effective set is your own permissions intersected with this list, so a token can never exceed its owner. Omit to inherit your permissions unchanged. */
+      scopes?: string[]
+    }
+    CreatedApiTokenResponseDto: {
+      /** Format: uuid */
+      id: string
+      name: string
+      /** @description First 12 characters. Identifies the token; cannot reconstruct it. */
+      prefix: string
+      scopes: string[] | null
+      /** Format: date-time */
+      expiresAt: string
+      lastUsedAt: string | null
+      revokedAt: string | null
+      /** Format: date-time */
+      createdAt: string
+      /** Format: uuid */
+      userId: string
+      /** @description The credential. Shown once and never retrievable again — store it now. A lost token is revoked and replaced, not recovered. */
+      token: string
+    }
+    ApiTokenResponseDto: {
+      /** Format: uuid */
+      id: string
+      name: string
+      /** @description First 12 characters. Identifies the token; cannot reconstruct it. */
+      prefix: string
+      scopes: string[] | null
+      /** Format: date-time */
+      expiresAt: string
+      lastUsedAt: string | null
+      revokedAt: string | null
+      /** Format: date-time */
+      createdAt: string
+      /** Format: uuid */
+      userId: string
     }
   }
   responses: never
@@ -15142,6 +15262,205 @@ export interface operations {
     requestBody?: never
     responses: {
       /** @description Mapping removed */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ApiTokensController_list: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ApiTokenResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ApiTokensController_create: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateApiTokenDto']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CreatedApiTokenResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unprocessable — business rule violation */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ApiTokensController_revoke: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Revoked, or already revoked — the call is idempotent. */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ApiTokensAdminController_list: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ApiTokenResponseDto'][]
+        }
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  ApiTokensAdminController_revoke: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Revoked, or already revoked — the call is idempotent. */
       204: {
         headers: {
           [name: string]: unknown

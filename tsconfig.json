@@ -63,7 +63,9 @@
       "@modules/quality": ["./libs/modules/quality/src/index"],
       "@modules/quality/*": ["./libs/modules/quality/src/*"],
       "@modules/scm": ["./libs/modules/scm/src/index"],
-      "@modules/scm/*": ["./libs/modules/scm/src/*"]
+      "@modules/scm/*": ["./libs/modules/scm/src/*"],
+      "@modules/api-tokens": ["./libs/modules/api-tokens/src/index"],
+      "@modules/api-tokens/*": ["./libs/modules/api-tokens/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "apps/web"]

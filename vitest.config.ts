@@ -76,6 +76,8 @@ export default defineConfig({
         'libs/modules/capacity/src/domain/capacity-forecast.ts',
         'libs/modules/access/src/application/access.service.ts',
         'libs/modules/access/src/interface/http/policy.guard.ts',
+        'libs/modules/api-tokens/src/application/api-tokens.service.ts',
+        'libs/modules/api-tokens/src/domain/api-token.ts',
         'libs/modules/activity/src/application/activity-logger.service.ts',
         'libs/modules/activity/src/domain/activity-diff.ts',
         'libs/modules/attachments/src/application/attachments.service.ts',

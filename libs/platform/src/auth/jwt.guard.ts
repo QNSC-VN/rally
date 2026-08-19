@@ -16,6 +16,7 @@ import {
   BFF_SESSION_RESOLVER,
   type BffSessionResolver,
 } from './bff-session-resolver';
+import { API_TOKEN_RESOLVER, isApiTokenValue, type ApiTokenResolver } from './api-token-resolver';
 import type { JwtPayload } from './jwt.strategy';
 
 /**
@@ -35,6 +36,11 @@ import type { JwtPayload } from './jwt.strategy';
  * server-side session. When the resolver is unbound (a product without BFF),
  * this path is skipped entirely and the Bearer flow is byte-for-byte unchanged.
  *
+ * API-token mode: when an {@link ApiTokenResolver} is bound and the Bearer value carries the API-token
+ * prefix, the guard authenticates from that opaque credential instead of verifying a JWT. Checked
+ * BEFORE the JWT path because the two are distinguishable by shape and a token would otherwise fail
+ * signature verification with a misleading error. Unbound, this path does not exist.
+ *
  * Pair with @Public() decorator to opt-out individual routes.
  */
 @Injectable()
@@ -48,6 +54,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     @Optional()
     @Inject(BFF_SESSION_RESOLVER)
     private readonly bffResolver?: BffSessionResolver,
+    @Optional()
+    @Inject(API_TOKEN_RESOLVER)
+    private readonly apiTokenResolver?: ApiTokenResolver,
   ) {
     super();
   }
@@ -59,7 +68,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       ip: string;
       user?: JwtPayload;
       bffSid?: string;
+      apiTokenId?: string;
     }>();
+
+    // API-token path: an opaque machine credential, identified by its prefix. Ordered first because a
+    // token and a JWT arrive in the same header and only their shape distinguishes them — verifying a
+    // token as a JWT fails with "invalid signature", which is true and useless.
+    const bearer = bearerValue(req.headers.authorization);
+    if (this.apiTokenResolver?.enabled && bearer && isApiTokenValue(bearer)) {
+      return this.authenticateFromApiToken(req, bearer);
+    }
 
     // BFF session path: only when a resolver is bound + enabled, there is no
     // Bearer token (which always takes precedence), and the session cookie is
@@ -107,6 +125,52 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     req.bffSid = sid;
     this.ctx.setAuthContext(claims.workspaceId, claims.sub, claims.sessionId);
     return true;
+  }
+
+  /**
+   * Authenticate a request from an API token: resolve it, enforce the user-level denylist, then
+   * populate `req.user`, `req.apiTokenId` and the request context so downstream code is path-agnostic.
+   *
+   * Only the USER denylist applies. The per-token (logout) denylist is keyed by a JWT `jti` and has
+   * nothing to say about a credential that is revoked by a row update instead — the resolver has
+   * already checked `revoked_at` and `expires_at`, which is the equivalent and is authoritative rather
+   * than best-effort. The user denylist still matters: it is what closes the window between an
+   * offboarding write and the token rows being revoked.
+   */
+  private async authenticateFromApiToken(
+    req: { ip: string; user?: JwtPayload; apiTokenId?: string },
+    rawToken: string,
+  ): Promise<boolean> {
+    const principal = await this.apiTokenResolver!.resolve(rawToken, req.ip);
+    if (!principal) {
+      throw new UnauthorizedException('Invalid, expired or revoked API token');
+    }
+    await this.enforceUserDenylist(principal.sub);
+
+    req.user = principal;
+    req.apiTokenId = principal.apiTokenId;
+    this.ctx.setAuthContext(principal.workspaceId, principal.sub, principal.sessionId);
+    return true;
+  }
+
+  /**
+   * User-level denylist only, with the same fail-open behaviour and the same telemetry as
+   * {@link enforceDenylist}. Split out rather than parameterised so the Bearer/BFF path keeps its exact
+   * two-lookup shape and this one does not pay for a `jti` it does not have.
+   */
+  private async enforceUserDenylist(sub: string): Promise<void> {
+    try {
+      if (await this.authCache.isUserRevoked(sub)) {
+        throw new UnauthorizedException('Token has been revoked');
+      }
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
+      this.logger.warn(
+        failOpenLog('denylist', { err }),
+        'User denylist check failed for API token; failing open',
+      );
+      this.securityMetrics.recordFailOpen('denylist');
+    }
   }
 
   /**
@@ -165,4 +229,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 function hasBearerToken(authorization: string | string[] | undefined): boolean {
   const value = Array.isArray(authorization) ? authorization[0] : authorization;
   return typeof value === 'string' && value.trim().toLowerCase().startsWith('bearer ');
+}
+
+/** The credential in an `Authorization: Bearer <value>` header, or undefined. */
+function bearerValue(authorization: string | string[] | undefined): string | undefined {
+  const header = Array.isArray(authorization) ? authorization[0] : authorization;
+  if (typeof header !== 'string') return undefined;
+  const trimmed = header.trim();
+  if (!trimmed.toLowerCase().startsWith('bearer ')) return undefined;
+  return trimmed.slice('bearer '.length).trim() || undefined;
 }
