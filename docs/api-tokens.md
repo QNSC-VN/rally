@@ -6,6 +6,27 @@ token; Rally treats it as that user, narrowed to whatever scopes the token was g
 Implemented in migration 0125. The design rationale is in the migration comment; the integration
 pitfalls are in `CLAUDE.md`. This file is how to use it.
 
+## In the app
+
+**Settings ▸ Personal ▸ API Tokens** does all of this without curl: mint, list, revoke.
+
+The screen is shaped by one fact — the credential is readable exactly once, in the reply that created
+it. So the create flow ends in a panel holding the token with a copy button and an explicit
+acknowledgement, and nothing in the list offers to show a token again, because nothing can.
+
+Three other things the UI makes visible that the API only implies:
+
+- **`Expiring`** is its own state inside a fortnight of expiry. Every token dies eventually, and one
+  that dies at 03:00 on a Sunday is an incident rather than a task.
+- **Revoked tokens stay listed**, marked revoked. `revoked_at` is the audit trail, and a row that
+  vanishes takes it with it.
+- **`Last used`** is shown, including "Never used" — the strongest signal that revoking something
+  breaks nothing.
+
+The tab is under `Personal` and needs no permission: `/v1/me/api-tokens` is scoped to the caller by
+the route itself. Administering everyone's tokens is a different pair of routes gated on
+`api_token:manage_all`, and it has no UI yet — see "Refusals" for what the admin routes do.
+
 ## Mint one
 
 ```bash

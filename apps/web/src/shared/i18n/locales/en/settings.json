@@ -16,7 +16,8 @@
     "members": "User Management",
     "roles": "Roles & Permissions",
     "integrations": "Integrations",
-    "audit": "Audit Log"
+    "audit": "Audit Log",
+    "apiTokens": "API Tokens"
   },
   "comingSoon": "Available in a future release.",
   "profile": {
@@ -428,6 +429,63 @@
     "members": "Manage who can access this workspace, their role and status.",
     "teams": "Organize people into teams, assign leads and projects.",
     "audit": "Review recent activity and changes across the workspace.",
-    "integrations": "Connect GitHub and manage repository sync."
+    "integrations": "Connect GitHub and manage repository sync.",
+    "apiTokens": "Credentials a machine uses on your behalf. Each one carries your permissions and nothing more."
+  },
+  "apiTokens": {
+    "list": {
+      "title": "Your tokens",
+      "new": "New token",
+      "loading": "Loading tokens…",
+      "loadError": "Could not load your tokens",
+      "empty": {
+        "title": "No API tokens",
+        "description": "Create one to let a script, a CI job or an integration call Rally as you."
+      }
+    },
+    "col": {
+      "name": "Name",
+      "status": "Status",
+      "lastUsed": "Last used",
+      "prefix": "Prefix",
+      "expires": "Expires"
+    },
+    "neverUsed": "Never used",
+    "expiresIn_one": "Expires tomorrow",
+    "expiresIn_other": "Expires in {{count}} days",
+    "expiredAt": "Expired {{date}}",
+    "revokedAt": "Revoked {{date}}",
+    "revokeAria": "Revoke {{name}}",
+    "revokeConfirm": "Revoke token",
+    "revokeTitle": "Revoke “{{name}}”?",
+    "revokeMessage": "Anything using this token stops working on its next request. This cannot be undone — a replacement is a new token.",
+    "revoked": "“{{name}}” revoked",
+    "revokeFailed": "Could not revoke the token",
+    "footnote": "A token inherits your permissions at the moment of every request, so access you lose is access it loses. Send it as a bearer token: Authorization: Bearer rly_…",
+    "create": {
+      "title": "New API token",
+      "subtitle": "It will be shown once, immediately after it is created.",
+      "nameLabel": "Name",
+      "nameHint": "What will use it. This is how you will recognise it when deciding what to revoke.",
+      "namePlaceholder": "CI pipeline",
+      "nameRequired": "Give the token a name",
+      "expiryLabel": "Expires after",
+      "expiryHint": "Every token expires. {{max}} days is the maximum the API accepts.",
+      "expiryOption_one": "{{count}} day",
+      "expiryOption_other": "{{count}} days",
+      "scopeNote": "The token inherits your permissions. It can never do more than you can, and it stops being able to do what you stop being able to do.",
+      "cancel": "Cancel",
+      "submit": "Create token",
+      "pending": "Creating…",
+      "failed": "Could not create the token"
+    },
+    "created": {
+      "title": "Token created",
+      "warning": "Copy it now. Rally stores only a hash, so this is the one and only time it can be shown — a lost token is revoked and replaced, not recovered.",
+      "label": "Token for {{name}}",
+      "copy": "Copy token",
+      "usage": "Send it as a bearer token: Authorization: Bearer <token>",
+      "done": "I have stored it"
+    }
   }
 }

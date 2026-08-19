@@ -155,6 +155,7 @@ export type EntityTag =
   | 'notification'
   | 'comments'
   | 'attachments'
+  | 'api-token'
 
 export const INVALIDATION_MAP: Record<EntityTag, QueryKey[]> = {
   'work-item': dedup(WORK_ITEM_ALL),
@@ -173,6 +174,10 @@ export const INVALIDATION_MAP: Record<EntityTag, QueryKey[]> = {
   notification: [['notifications']],
   comments: [['comments']],
   attachments: [['attachments']],
+  // Nothing else derives from a personal API token: no list, picker or dashboard reads one. So the
+  // tag is its own root rather than being folded into `workspace`, which would refresh nineteen
+  // read-models to update one card.
+  'api-token': [['api-tokens']],
 }
 
 // ── Mutation meta contract ───────────────────────────────────────────────────
