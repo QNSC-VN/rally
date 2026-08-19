@@ -1,0 +1,42 @@
+# agent-forge test-guard — copy into a target repository and make it a required check.
+#
+# This is the only guardrail agent-forge does not run itself. Layers 1 and 2 (the in-slot hook and the
+# orchestrator's diff scan) are the platform judging its own output; if the orchestrator has a bug,
+# it is also the thing that would have caught it. This runs where the merge actually happens.
+#
+# It applies to human pull requests too, deliberately. A check that exempts humans is a check that
+# tells an agent to open its pull request as a human.
+name: agent-forge test-guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    # `edited` matters: the approval paths are declared in the pull request BODY, so editing the body
+    # to add an approval must re-run the check rather than leaving a red tick nobody can clear.
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  test-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The guard diffs against the merge base, which does not exist in a shallow clone.
+          fetch-depth: 0
+
+      - name: capture the pull request body
+        # Written to a file rather than passed as an argument: a body containing a shell
+        # metacharacter would otherwise be interpreted, and the body is attacker-controlled text.
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$PR_BODY" > /tmp/pr-body.txt
+
+      - name: test-guard
+        run: |
+          python3 tools/agent_forge_test_guard.py \
+            --base "origin/${{ github.event.pull_request.base.ref }}" \
+            --head HEAD \
+            --body-file /tmp/pr-body.txt
