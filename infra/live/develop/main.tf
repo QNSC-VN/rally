@@ -298,7 +298,20 @@ module "stack" {
   //
   // A pass between 02:00 and 08:00 would be pointless: nothing wakes develop in that
   // window except a deploy, and 02:00 already caught the previous evening's.
-  idle_schedule = "cron(0 2,19,22 * * ? *)"
+  # 00:00 and 03:00 Asia/Ho_Chi_Minh. Moved back from 19:00 on request 2026-08-19: a 19:00
+  # stop cut the evening short, and develop being down while somebody is still working costs
+  # more in interruption than the hours save.
+  #
+  # WHAT IT COSTS: +$3.90/mo for this stack. 55h/week becomes 80h (16h x 5 days), so RDS
+  # instance-hours and Fargate both rise ~45%. The weekday-only wake below is what keeps
+  # this from being the old 112h/week schedule — weekends are still the larger saving and
+  # they stay off.
+  #
+  # TWO PASSES, and the second is not optional. 00:00 ends the day; 03:00 catches a deploy
+  # that landed late and woke the environment, because nothing else would put it back down
+  # until the next working day. Each pass is a no-op when develop is already down
+  # (InvalidDBInstanceState, deliberately not retried).
+  idle_schedule = "cron(0 0,3 * * ? *)"
 
   // 08:00 local, EVERY DAY. This was MON-FRI first, on the argument that a 7-day wake
   // "would pay for two days a week nobody works". Two weekends in, that argument had
@@ -316,9 +329,9 @@ module "stack" {
   // API tasks then need to pass a readiness check, so the environment is serving by
   // roughly 08:10 — before the working day rather than during its first minutes.
   //
-  // This does NOT conflict with the 02:00 stop above. 02:00 fires while develop is
+  // This does NOT conflict with the 03:00 stop above. 03:00 fires while develop is
   // already down (a no-op, InvalidDBInstanceState, deliberately not retried) and 08:00
-  // brings it up six hours later. The 19:00 stop then ends the day. A deploy landing at
+  // brings it up five hours later. The 00:00 stop then ends the day. A deploy landing at
   // any hour still wakes it independently — that path is unchanged, and it is what makes
   // the weekday-only wake safe.
   //
@@ -338,7 +351,7 @@ module "stack" {
   // of a few minutes, not a manual step or a support request. It is the same mechanism
   // that already covers a 07:00 start on a weekday.
   //
-  // Expected effect: develop is up 08:00-19:00 on weekdays, 55h/week rather than 112.
+  // Expected effect: develop is up 08:00-00:00 on weekdays, 80h/week rather than 112.
   //
   // VERIFIED FIRING, so a future failure is a regression and not "it never worked":
   // CloudTrail 2026-08-07 (the first weekday after it was created) shows all three
