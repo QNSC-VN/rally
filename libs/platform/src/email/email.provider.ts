@@ -50,6 +50,17 @@ export interface EmailPayload {
   idempotencyKey?: string;
 }
 
+/**
+ * What a transport reports back on acceptance. `messageId` is the provider's own id for
+ * the send — SES's `MessageId`, Resend's email id — and it is how the asynchronous
+ * feedback loop matches a later bounce/complaint event to the row that sent it. NULL
+ * means the provider has none to give (the dev transport), and a row sent without one
+ * simply cannot be bounce-matched; that is honest, not an error.
+ */
+export interface EmailSendResult {
+  messageId: string | null;
+}
+
 export interface IEmailProvider {
-  send(payload: EmailPayload): Promise<void>;
+  send(payload: EmailPayload): Promise<EmailSendResult>;
 }

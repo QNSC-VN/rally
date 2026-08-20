@@ -987,6 +987,8 @@ module "worker" {
     # The WORKER sends too — the notification relay is its job — so it needs the sender for the
     # same reason the api task does.
     { name = "EMAIL_PROVIDER", value = "ses" },
+    { name = "SES_BOUNCE_CONFIGSET", value = data.terraform_remote_state.shared.outputs["ses_bounce_configset_name"] },
+    { name = "SES_BOUNCE_QUEUE_URL", value = data.terraform_remote_state.shared.outputs["ses_bounce_queue_url"] },
     { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
@@ -1888,4 +1890,26 @@ resource "aws_iam_role_policy" "worker_ses_send" {
   name   = "${local.name}-worker-ses-send"
   role   = split("/", module.worker.task_role_arn)[1]
   policy = local.ses_send_policy
+}
+
+# The feedback half of the SES loop: the worker's BounceFeedbackService long-polls the shared
+# bounce queue. Scoped to the ONE queue and the three calls a drain makes — Receive to claim a
+# batch, Delete to acknowledge (which the consumer does whether or not the event matched a row,
+# so an unmatched event can never poison the queue into a retry that cannot succeed), and
+# GetQueueAttributes for the SDK's standard startup probe. No wildcard: a compromised worker
+# must not be able to drain or tamper with any other queue in the account.
+resource "aws_iam_role_policy" "worker_sqs_bounce_feedback" {
+  name = "${local.name}-worker-sqs-bounce-feedback"
+  role = split("/", module.worker.task_role_arn)[1]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+        Resource = data.terraform_remote_state.shared.outputs["ses_bounce_queue_arn"]
+      },
+    ]
+  })
 }

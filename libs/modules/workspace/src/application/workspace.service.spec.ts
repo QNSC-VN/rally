@@ -26,6 +26,7 @@ import {
   PreconditionFailedException,
   AppConfigService,
   EmailSchedulerService,
+  EmailDeliveryService,
   UnitOfWork,
   AuditProducer,
 } from '@platform';
@@ -192,6 +193,7 @@ describe('WorkspaceService', () => {
   let access: ReturnType<typeof makeAccessService>;
   let uow: ReturnType<typeof makeUow>;
   let config: ReturnType<typeof makeConfig>;
+  let moduleRef: TestingModule;
 
   /**
    * Offboarding revokes a departing member's machine credentials: cache invalidation makes the principal
@@ -220,6 +222,18 @@ describe('WorkspaceService', () => {
         { provide: WORKSPACE_SETTINGS_REPOSITORY, useValue: settingsRepo },
         { provide: AppConfigService, useValue: config },
         { provide: EmailSchedulerService, useValue: emailScheduler },
+        // statusesFor is a total answer (unknown pre-seeded); tests that care about a
+        // verdict override the mock per-case.
+        {
+          provide: EmailDeliveryService,
+          useValue: {
+            statusesFor: vi
+              .fn()
+              .mockImplementation(
+                async (keys: readonly string[]) => new Map(keys.map((k: string) => [k, 'unknown'])),
+              ),
+          },
+        },
         { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
         { provide: AccessService, useValue: access },
@@ -228,6 +242,7 @@ describe('WorkspaceService', () => {
       ],
     }).compile();
 
+    moduleRef = module;
     service = module.get(WorkspaceService);
   });
 
@@ -772,6 +787,43 @@ describe('WorkspaceService', () => {
         expect.objectContaining({ to: 'namnh@qnsc.vn' }),
         expect.anything(),
       );
+    });
+  });
+
+  describe('listInvitations — email delivery verdict', () => {
+    it('attaches the feedback-loop verdict per invitation', async () => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      invitationRepo.listByWorkspace.mockResolvedValue([
+        mockInvitation({ id: 'inv-bounced' }),
+        mockInvitation({ id: 'inv-delivered' }),
+      ]);
+      const delivery = moduleRef.get(EmailDeliveryService);
+      (delivery as unknown as { statusesFor: ReturnType<typeof vi.fn> }).statusesFor = vi
+        .fn()
+        .mockResolvedValue(
+          new Map([
+            ['inv-bounced', 'bounced'],
+            ['inv-delivered', 'sent'],
+          ]),
+        );
+
+      const result = await service.listInvitations('ws-1');
+
+      expect(result.find((i) => i.id === 'inv-bounced')?.emailDelivery).toBe('bounced');
+      expect(result.find((i) => i.id === 'inv-delivered')?.emailDelivery).toBe('sent');
+    });
+
+    it('asks statusesFor for exactly the invitation ids on the page', async () => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      invitationRepo.listByWorkspace.mockResolvedValue([mockInvitation({ id: 'inv-1' })]);
+      const delivery = moduleRef.get(EmailDeliveryService);
+      (delivery as { statusesFor: ReturnType<typeof vi.fn> }).statusesFor.mockResolvedValue(
+        new Map([['inv-1', 'unknown']]),
+      );
+
+      await service.listInvitations('ws-1');
+
+      expect(delivery.statusesFor).toHaveBeenCalledWith(['inv-1']);
     });
   });
 

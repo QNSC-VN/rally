@@ -181,6 +181,8 @@
     "copyInvitationLink": "Copy invitation link",
     "inviteLinkCopied": "Invitation link copied — the previously emailed link is now invalid",
     "inviteLinkCopyFailed": "Could not copy — please copy the link manually",
+    "inviteEmailBounced": "Email bounced — use Copy link instead",
+    "inviteEmailComplained": "Recipient marked the email as spam",
     "memberRemoved": "Member removed",
     "inviteSent": "Invitation sent",
     "noWorkspace": "No workspace selected.",

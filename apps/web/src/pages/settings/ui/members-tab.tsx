@@ -450,50 +450,71 @@ export function MembersTab() {
               {t('members.pendingInvitations')} ({invitations.length})
             </h3>
             <div className="max-h-56 overflow-y-auto rounded-lg border">
-              {invitations.map((inv: { id: string; email: string; roleId: string | null }) => {
-                return (
-                  <div
-                    key={`inv-${inv.id}`}
-                    className="flex items-center gap-3 border-t px-4 py-2 first:border-t-0"
-                  >
-                    <Mail size={16} className="shrink-0 text-foreground-subtle" />
-                    <span className="min-w-0 flex-1 truncate text-ui-md text-foreground-subtle">
-                      {inv.email}
-                    </span>
-                    <MemberStatusBadge status="invited" />
-                    <IconButton
-                      size="sm"
-                      aria-label={t('members.resendInvitation')}
-                      title={t('members.resendInvitation')}
-                      onClick={() => resendInvite.mutate(inv.id)}
-                      disabled={resendInvite.isPending}
+              {invitations.map(
+                (inv: {
+                  id: string
+                  email: string
+                  roleId: string | null
+                  emailDelivery?: string
+                }) => {
+                  return (
+                    <div
+                      key={`inv-${inv.id}`}
+                      className="flex items-center gap-3 border-t px-4 py-2 first:border-t-0"
                     >
-                      <Send size={13} className={resendInvite.isPending ? 'animate-pulse' : ''} />
-                    </IconButton>
-                    <IconButton
-                      size="sm"
-                      aria-label={t('members.copyInvitationLink')}
-                      title={t('members.copyInvitationLink')}
-                      onClick={() => copyInviteLink.mutate(inv.id)}
-                      disabled={copyInviteLink.isPending}
-                    >
-                      <Link2
-                        size={13}
-                        className={copyInviteLink.isPending ? 'animate-pulse' : ''}
-                      />
-                    </IconButton>
-                    <IconButton
-                      size="sm"
-                      aria-label={t('members.cancelInvitation')}
-                      title={t('members.cancelInvitation')}
-                      onClick={() => cancelInvite.mutate(inv.id)}
-                      disabled={cancelInvite.isPending}
-                    >
-                      <X size={13} />
-                    </IconButton>
-                  </div>
-                )
-              })}
+                      <Mail size={16} className="shrink-0 text-foreground-subtle" />
+                      <span className="min-w-0 flex-1 truncate text-ui-md text-foreground-subtle">
+                        {inv.email}
+                      </span>
+                      <MemberStatusBadge status="invited" />
+                      {inv.emailDelivery === 'bounced' || inv.emailDelivery === 'complained' ? (
+                        <span
+                          className="text-ui-xs font-medium text-destructive"
+                          title={
+                            inv.emailDelivery === 'bounced'
+                              ? t('members.inviteEmailBounced')
+                              : t('members.inviteEmailComplained')
+                          }
+                        >
+                          {inv.emailDelivery === 'bounced'
+                            ? t('members.inviteEmailBounced')
+                            : t('members.inviteEmailComplained')}
+                        </span>
+                      ) : null}
+                      <IconButton
+                        size="sm"
+                        aria-label={t('members.resendInvitation')}
+                        title={t('members.resendInvitation')}
+                        onClick={() => resendInvite.mutate(inv.id)}
+                        disabled={resendInvite.isPending}
+                      >
+                        <Send size={13} className={resendInvite.isPending ? 'animate-pulse' : ''} />
+                      </IconButton>
+                      <IconButton
+                        size="sm"
+                        aria-label={t('members.copyInvitationLink')}
+                        title={t('members.copyInvitationLink')}
+                        onClick={() => copyInviteLink.mutate(inv.id)}
+                        disabled={copyInviteLink.isPending}
+                      >
+                        <Link2
+                          size={13}
+                          className={copyInviteLink.isPending ? 'animate-pulse' : ''}
+                        />
+                      </IconButton>
+                      <IconButton
+                        size="sm"
+                        aria-label={t('members.cancelInvitation')}
+                        title={t('members.cancelInvitation')}
+                        onClick={() => cancelInvite.mutate(inv.id)}
+                        disabled={cancelInvite.isPending}
+                      >
+                        <X size={13} />
+                      </IconButton>
+                    </div>
+                  )
+                },
+              )}
             </div>
           </div>
         )}
