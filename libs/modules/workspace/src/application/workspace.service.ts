@@ -9,6 +9,7 @@ import {
   AppConfigService,
   Span,
   EmailSchedulerService,
+  EmailDeliveryService,
   UnitOfWork,
   AuditProducer,
   AUDIT_ACTION,
@@ -16,6 +17,7 @@ import {
   addDays,
 } from '@platform';
 import type { JwtPayload, CursorPayload, PagedResult, DbExecutor } from '@platform';
+import type { EmailDeliveryStatus } from '@platform';
 import { isProjectAccessLevel } from '@shared-kernel';
 import { AccessService } from '@modules/access';
 // Deep import, not the barrel: `@modules/api-tokens` re-exports the module and its controllers, which
@@ -69,6 +71,7 @@ export class WorkspaceService {
     private readonly settingsRepo: IWorkspaceSettingsRepository,
     private readonly config: AppConfigService,
     private readonly emailScheduler: EmailSchedulerService,
+    private readonly emailDelivery: EmailDeliveryService,
     private readonly uow: UnitOfWork,
     private readonly audit: AuditProducer,
     private readonly access: AccessService,
@@ -919,9 +922,20 @@ export class WorkspaceService {
     return { invitationId: inv.id, email: inv.email, inviteUrl, expiresAt: inv.expiresAt };
   }
 
-  async listInvitations(workspaceId: string): Promise<WorkspaceInvitation[]> {
+  /**
+   * Invitations with the email feedback verdict attached (`emailDelivery`). The
+   * invitation's own status says what the INVITEE did; this says what the EMAIL did
+   * after the provider accepted it — `bounced`/`complained` mean the link probably never
+   * arrived, which before the feedback loop presented as silence. Optional on the type
+   * because every other caller of the domain object has no verdict to show.
+   */
+  async listInvitations(
+    workspaceId: string,
+  ): Promise<(WorkspaceInvitation & { emailDelivery?: EmailDeliveryStatus })[]> {
     await this.getWorkspace(workspaceId);
-    return this.invitationRepo.listByWorkspace(workspaceId);
+    const invitations = await this.invitationRepo.listByWorkspace(workspaceId);
+    const delivery = await this.emailDelivery.statusesFor(invitations.map((i) => i.id));
+    return invitations.map((i) => ({ ...i, emailDelivery: delivery.get(i.id) }));
   }
 
   async cancelInvitation(

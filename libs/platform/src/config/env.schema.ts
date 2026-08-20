@@ -128,6 +128,18 @@ export const EnvSchema = z
      */
     AWS_ENDPOINT_URL: z.string().url().optional(),
     /**
+     * SES configuration set every send is tagged with, so bounce/complaint events fan out
+     * to the feedback queue. OPTIONAL: unset = sends are untagged and behave exactly as
+     * before the feedback loop existed (the dev provider ignores it entirely).
+     */
+    SES_BOUNCE_CONFIGSET: z.string().default(''),
+    /**
+     * The SQS queue BounceFeedbackService drains for SES bounce/complaint verdicts.
+     * OPTIONAL and the consumer's OFF switch: unset = no consumer starts. Set alongside
+     * SES_BOUNCE_CONFIGSET in a deployed environment for the loop to be live end to end.
+     */
+    SES_BOUNCE_QUEUE_URL: z.string().default(''),
+    /**
      * Static AWS credentials. Set ONLY alongside AWS_ENDPOINT_URL for local dev /
      * CI (LocalStack accepts any value, conventionally "test"). In real AWS the
      * ECS task role / instance profile supplies credentials — leave these UNSET.

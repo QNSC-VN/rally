@@ -24,7 +24,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Resend } from 'resend';
 import { randomUUID } from 'node:crypto';
 import { AppConfigService } from '../../config/app-config.service';
-import type { IEmailProvider, EmailPayload } from '../email.provider';
+import type { IEmailProvider, EmailPayload, EmailSendResult } from '../email.provider';
 import { buildFromAddress, resolveFromEmail, buildUnsubscribeHeaders } from './shared';
 
 @Injectable()
@@ -51,7 +51,7 @@ export class ResendEmailProvider implements IEmailProvider {
     this.appBaseUrl = config.get('APP_BASE_URL');
   }
 
-  async send(payload: EmailPayload): Promise<void> {
+  async send(payload: EmailPayload): Promise<EmailSendResult> {
     const category = payload.category ?? 'transactional';
     const idempotencyKey = payload.idempotencyKey ?? randomUUID();
 
@@ -61,7 +61,7 @@ export class ResendEmailProvider implements IEmailProvider {
     };
 
     try {
-      const { error } = await this.client.emails.send(
+      const { data, error } = await this.client.emails.send(
         {
           from: payload.from ?? this.fromAddress,
           to: payload.to,
@@ -84,6 +84,10 @@ export class ResendEmailProvider implements IEmailProvider {
         { to: payload.to, subject: payload.subject, category, idempotencyKey },
         'Email sent via Resend',
       );
+
+      // Resend's id is what its webhook events carry; with no webhook wired the id is
+      // inert, but returning it costs nothing and keeps the provider contract uniform.
+      return { messageId: data?.id ?? null };
     } catch (err) {
       this.logger.error({ err, to: payload.to, subject: payload.subject }, 'Resend send failed');
       throw err;

@@ -34,6 +34,12 @@ export const InvitationResponseSchema = z.object({
   status: z.string().describe('Invitation status: pending | accepted | cancelled | expired'),
   invitedBy: z.string().uuid(),
   expiresAt: z.string().datetime(),
+  /**
+   * What happened to the invitation email AFTER the provider accepted it — the
+   * feedback-loop verdict, not the send receipt. `bounced`/`complained` mean the link
+   * likely never arrived: use Copy invitation link instead of Resend.
+   */
+  emailDelivery: z.enum(['sent', 'bounced', 'complained', 'failed', 'unknown']),
   resendCount: z.number().int(),
   lastSentAt: z.string().datetime(),
   acceptedBy: z.string().uuid().nullable(),

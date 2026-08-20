@@ -342,3 +342,72 @@ resource "cloudflare_record" "ses_mail_from_spf" {
   ttl     = 300
   comment = "SES custom MAIL FROM SPF — managed by rally-infra _shared"
 }
+
+# ── SES asynchronous feedback: bounce and complaint events ──────────────────
+#
+# WHY THIS EXISTS. `EMAIL_PROVIDER=ses` answers 200 before the receiving mail server has said
+# anything, so acceptance and delivery are different facts — and the app could only see the first.
+# An invitation the inviter saw as "sent" could be hard-bounced or tenant-quarantined on the other
+# end, with silence as the only symptom (that exact case cost a multi-day investigation: every local
+# signal green, the invitee never saw mail). This loop makes the second fact visible: a
+# configuration set tags every send, SES publishes BOUNCE/COMPLAIT events to SNS, SNS fans out to
+# SQS, and the worker's BounceFeedbackService drains the queue onto the email_outbox row that sent.
+#
+# SNS IN THE MIDDLE IS NOT A CHOICE: SES event destinations speak SNS, Kinesis or EventBridge —
+# never SQS directly. SQS at the end IS a choice: no public HTTPS endpoint to signature-check, no
+# Cloudflare in the blast radius, and the consumer sits beside the relay that wrote the rows.
+# Default (envelope) delivery, deliberately: the consumer parses SNS's `Message` field, which is
+# the SES event JSON — raw_message_delivery would strip the envelope the code expects.
+#
+# Shared like the identity above: one configuration set per (account, region), both environments
+# send through it, and each environment's worker drains from the one queue. A verdict's row is
+# matched by SES message id, so cross-environment events cannot land on the wrong row even if both
+# workers race — the guarded UPDATE answers whichever row owns that id.
+# No `delivery_options`: the pinned AWS provider predates that argument on this
+# resource, and Require is SES's own default for a domain-verified identity anyway.
+resource "aws_sesv2_configuration_set" "email_feedback" {
+  # `configuration_set_name`, not `name`: the pinned provider version predates the rename.
+  configuration_set_name = "rally-email-feedback"
+}
+
+resource "aws_sns_topic" "ses_bounce_events" {
+  name = "rally-ses-bounce-events"
+}
+
+resource "aws_sesv2_configuration_set_event_destination" "bounces" {
+  configuration_set_name = aws_sesv2_configuration_set.email_feedback.configuration_set_name
+  event_destination_name = "bounce-complaints-to-sqs"
+
+  event_destination {
+    enabled              = true
+    matching_event_types = ["BOUNCE", "COMPLAINT"]
+    sns_destination {
+      topic_arn = aws_sns_topic.ses_bounce_events.arn
+    }
+  }
+}
+
+resource "aws_sqs_queue" "ses_bounce_feedback" {
+  name = "rally-ses-bounce-feedback"
+}
+
+resource "aws_sns_topic_subscription" "ses_bounce_to_sqs" {
+  topic_arn = aws_sns_topic.ses_bounce_events.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.ses_bounce_feedback.arn
+}
+
+output "ses_bounce_configset_name" {
+  value       = aws_sesv2_configuration_set.email_feedback.configuration_set_name
+  description = "Configuration set every SES send is tagged with, so bounce/complaint events reach the feedback queue."
+}
+
+output "ses_bounce_queue_url" {
+  value       = aws_sqs_queue.ses_bounce_feedback.url
+  description = "The SQS queue BounceFeedbackService drains for SES verdicts. Also the consumer's on/off switch."
+}
+
+output "ses_bounce_queue_arn" {
+  value       = aws_sqs_queue.ses_bounce_feedback.arn
+  description = "Same queue by ARN, for the worker task role's IAM resource scope."
+}
