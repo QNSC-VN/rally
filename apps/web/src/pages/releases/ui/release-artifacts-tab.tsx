@@ -97,16 +97,52 @@ export function ReleaseArtifactsTab({
   // One feed for both halves of the picker: the project's stories/defects are the candidates, and the
   // subset already pointing at this release is the current selection. Reading membership from the
   // same rows is what keeps the diff below honest when the artifacts table is showing page 2.
-  const { data: projectItems = [], isPending: baselinePending } = useWorkItems(
+  /**
+   * What the picker's search box asked for, sent to the SERVER.
+   *
+   * The candidates are one page of a project's work items (`CANDIDATE_LIMIT`), and the modal used to
+   * filter that page in the browser — so an item outside it could not be found and therefore could not
+   * be ticked, which is what "the checkbox sometimes doesn't fetch" was. The term now narrows the
+   * QUERY, so any story or defect in the project is reachable.
+   */
+  const [candidateSearch, setCandidateSearch] = useState('')
+
+  /**
+   * TWO reads of the same list, and they must not be one.
+   *
+   * `baseline` is UNSEARCHED and decides MEMBERSHIP — which items already point at this release, which
+   * is both the modal's opening tick state and the left-hand side of the save diff. `offered` is the
+   * searched page and decides only which rows the reader can see.
+   *
+   * Collapsing them is a silent data-loss bug, not an optimisation: with one searched query, unticking
+   * an item and then typing in the search box drops it out of the membership set, so the save computes
+   * `remove: []` and the untick is discarded without a word. The baseline has to be a fact about the
+   * release, not about what is on screen.
+   *
+   * With no search term both hooks resolve the same query key, so this costs one request until someone
+   * types.
+   */
+  const baselineItems = useWorkItems(
     mayEdit && projectId ? { projectId, limit: CANDIDATE_LIMIT } : null,
   )
+  const offeredItems = useWorkItems(
+    mayEdit && projectId
+      ? { projectId, limit: CANDIDATE_LIMIT, q: candidateSearch.trim() || undefined }
+      : null,
+  )
+  const baselinePending = baselineItems.isPending
+
+  const isWorkProduct = (w: { type: string }) => w.type === 'story' || w.type === 'defect'
   const candidates = useMemo(
-    () => projectItems.filter((w) => w.type === 'story' || w.type === 'defect'),
-    [projectItems],
+    () => (offeredItems.data ?? []).filter(isWorkProduct),
+    [offeredItems.data],
   )
   const assignedIds = useMemo(
-    () => candidates.filter((w) => w.releaseId === releaseId).map((w) => w.id),
-    [candidates, releaseId],
+    () =>
+      (baselineItems.data ?? [])
+        .filter((w) => isWorkProduct(w) && w.releaseId === releaseId)
+        .map((w) => w.id),
+    [baselineItems.data, releaseId],
   )
   const setArtifacts = useSetReleaseArtifacts()
 
@@ -159,6 +195,7 @@ export function ReleaseArtifactsTab({
           icon: <TypeBadge type={c.type} size={16} />,
         }))}
         selectedIds={assignedIds}
+        onSearchChange={setCandidateSearch}
         onSave={async (ids) => {
           // A diff, not a replace-set: `bulk-release` writes one release id per call, and the items
           // this release never had must not be touched at all.

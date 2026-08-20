@@ -3,11 +3,10 @@
  */
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
-import { apiErrorMessage } from '@/shared/api/api-error'
+import { ApiError, apiErrorMessage } from '@/shared/api/api-error'
 // Single source of truth for severity lives in the entity layer.
 export type { DefectSeverity } from '@/entities/work-item/model/types'
 import type { DefectSeverity } from '@/entities/work-item/model/types'
-import { withCsrfHeader } from '@/shared/api/csrf'
 
 export type DefectEnvironment = 'development' | 'staging' | 'production' | 'testing'
 
@@ -154,13 +153,26 @@ export interface CreateDefectInput {
   teamId?: string
 }
 
+/**
+ * Log a defect — a WORK ITEM of type `defect`, so it goes through `POST /v1/work-items`.
+ *
+ * THE PATH WAS `/api/v1/work-items`, WHICH IS NOT AN API PATH. Nothing serves `/api/*`: the SPA talks
+ * to a same-origin Cloudflare Pages Function mounted at `/v1/[[path]]`, so that URL reached the static
+ * host and came back `405`, with the modal reporting `Request failed (405)` — `Add New` on
+ * `Track > Quality` could never have created anything. Every other caller in the SPA uses `apiClient`,
+ * whose `baseUrl` is the one place that prefix is decided; this hook hand-rolled `fetch` and hard-coded
+ * a different one.
+ *
+ * On `apiClient` now, which also removes the two things the hand-rolled version had to remember and got
+ * wrong once already: the CSRF header (its request middleware sets it on every non-GET) and the error
+ * envelope (`ApiError` carries `{ error: { code, message } }` and the status, so a `412`
+ * `WORK_ITEM_TEAM_REQUIRED` renders the server's own sentence instead of a bare status).
+ */
 export function useCreateDefect() {
   return useMutation({
     mutationFn: async (body: CreateDefectInput) => {
-      const res = await fetch('/api/v1/work-items', {
-        method: 'POST',
-        headers: withCsrfHeader('POST', { 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
+      const { data, error, response } = await apiClient.POST('/v1/work-items', {
+        body: {
           projectId: body.projectId,
           type: 'defect',
           title: body.title,
@@ -176,16 +188,10 @@ export function useCreateDefect() {
           notes: body.notes,
           parentId: body.parentId,
           teamId: body.teamId,
-        }),
+        } as never,
       })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        // `apiErrorMessage`, not `json.message`: the API's envelope is `{ error: { code, message } }`,
-        // so reading a flat `message` found nothing and every refusal rendered as
-        // `Failed to create defect (412)` — the status of a rule the server had explained in words.
-        throw new Error(apiErrorMessage(json, res.status))
-      }
-      return json
+      if (error) throw new ApiError(error, response.status)
+      return data
     },
     // A defect is a work item, so refresh the full work-item fan-out (which
     // includes the Quality/Defects read-model).

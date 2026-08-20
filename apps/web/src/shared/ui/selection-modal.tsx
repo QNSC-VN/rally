@@ -62,6 +62,21 @@ interface SelectionModalProps {
   confirmLabel?: string
   /** Search placeholder. Defaults to the title, which reads oddly for a title that is a sentence. */
   searchPlaceholder?: string
+  /**
+   * Hand the search term to the CALLER, so it can ask the server instead of filtering what it happens
+   * to hold.
+   *
+   * The default is a client-side filter over `items`, which is right for a bounded list (a project's
+   * teams, a Feature's milestones) and wrong for one that is a PAGE of a larger set: the Release
+   * artifacts picker fetches the first 100 work items, so typing found nothing outside them and the
+   * row a reader wanted could not be ticked at all — reported as "the checkbox sometimes doesn't
+   * fetch".
+   *
+   * When supplied, this component still renders the box and still owns the input's value, but stops
+   * filtering — the caller's `items` are taken as already narrowed. Both halves move together on
+   * purpose: filtering locally AND remotely would hide rows the server had just been asked for.
+   */
+  onSearchChange?: (term: string) => void
 }
 
 export function SelectionModal({
@@ -73,6 +88,7 @@ export function SelectionModal({
   onSave,
   confirmLabel,
   searchPlaceholder,
+  onSearchChange,
 }: SelectionModalProps) {
   const [search, setSearch] = useState('')
   const [local, setLocal] = useState<string[]>([])
@@ -87,14 +103,19 @@ export function SelectionModal({
     if (open) {
       setLocal([...selectedIds])
       setSearch('')
+      // The caller's query resets with the box, or a reopened picker would show the LAST search's
+      // narrowed page while its input reads empty.
+      onSearchChange?.('')
     }
   }
 
   const filtered = useMemo(() => {
-    if (!search) return items
+    // A caller that searches server-side has already narrowed `items`; filtering again would drop rows
+    // it deliberately fetched (the server matches keys and titles this component cannot see).
+    if (onSearchChange || !search) return items
     const q = search.toLowerCase()
     return items.filter((it) => it.name.toLowerCase().includes(q))
-  }, [items, search])
+  }, [items, search, onSearchChange])
 
   /** Select-all and the tick counts ignore disabled rows: they cannot be selected. */
   const selectable = useMemo(() => filtered.filter((it) => !it.disabled), [filtered])
@@ -137,7 +158,10 @@ export function SelectionModal({
       <div className="px-5 pt-3 pb-1">
         <SearchInput
           value={search}
-          onChange={setSearch}
+          onChange={(term) => {
+            setSearch(term)
+            onSearchChange?.(term)
+          }}
           placeholder={searchPlaceholder ?? `Search ${title.toLowerCase()}...`}
           ariaLabel={searchPlaceholder ?? `Search ${title.toLowerCase()}`}
           iconSize={13}

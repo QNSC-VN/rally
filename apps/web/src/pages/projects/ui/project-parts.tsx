@@ -9,6 +9,7 @@ import { DateField } from '@/shared/ui/date-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { notify, errorMessage } from '@/shared/lib/toast'
+import { suggestKey } from '@/shared/lib/suggest-key'
 import {
   useCreateProject,
   type Project,
@@ -326,11 +327,10 @@ export function NewProjectModal({
   })
   const { mutateAsync, isPending } = useCreateProject()
 
-  const autoKey = (n: string) =>
-    n
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '')
-      .slice(0, 4)
+  // The shared rule, so a third form cannot hand-roll a third one — which is how the Create-team form
+  // came to have a required key field with nothing filling it in. `prefix` keeps exactly what this
+  // form has always suggested (`Mini Rally` gives `MINI`).
+  const autoKey = (n: string) => suggestKey(n, { style: 'prefix', max: 4 })
 
   function patch(p: Partial<ProjectFormValues>) {
     setValues((v) => {
