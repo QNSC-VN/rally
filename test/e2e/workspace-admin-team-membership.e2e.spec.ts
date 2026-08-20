@@ -8,8 +8,13 @@
  * is ABSENT after the write — and absence is exactly what a unit test with a mocked grant writer
  * cannot prove. Hence real HTTP against a real database.
  *
- * `admin@qnsc.dev` is the seeded Workspace Admin (`ADMIN_USER_ID`) and is deliberately NOT on Team
- * Alpha in the fixture, which is also AC2's evidence: nothing enrolled them.
+ * IT CREATES ITS OWN TEAM, and that is not tidiness. The seed puts the Workspace Admin on Team Alpha,
+ * and `project-access-team-rule.e2e.spec.ts` ASSERTS that membership as the precondition of its
+ * rollback proof — so an earlier version of this file, which removed the admin from Alpha in
+ * `beforeAll`, passed alone and broke that spec in a full run. Same shape as the fixture leaks
+ * CLAUDE.md records: a shared fixture is not a scratch pad. Creating a team also makes AC2's evidence
+ * stronger than a seeded absence, because a team that has just been created with no members named is
+ * exactly the case "not automatically a Team member" is about.
  *
  * Bearer token from `AuthService.devLogin`: Bearer callers are CSRF-exempt by design, and the test app
  * has no `/v1` prefix and no cookie plugin (`reply.setCookie is not a function`).
@@ -21,13 +26,10 @@ import { AuthService } from '@qnsc-vn/identity';
 import { AccessService } from '@modules/access';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { randomUUID } from 'crypto';
+
 import { AppModule } from '../../apps/api/src/app.module';
-import {
-  ADMIN_USER_ID,
-  SEED_PROJECTS,
-  TEAM_ALPHA_ID,
-  WORKSPACE_ID,
-} from '../../db/seeds/constants';
+import { ADMIN_USER_ID, DEVELOPER_ID, SEED_PROJECTS, WORKSPACE_ID } from '../../db/seeds/constants';
 
 const NXP = SEED_PROJECTS[0].id;
 
@@ -41,12 +43,17 @@ describe('a Workspace Admin as a Team member', () => {
   let app: NestFastifyApplication;
   let token: string;
   let access: AccessService;
+  /** This file's OWN team — never a seeded one. See the docblock. */
+  let teamId: string;
 
-  const as = (method: 'GET' | 'POST' | 'DELETE', url: string, payload?: Record<string, unknown>) =>
-    app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+  const as = (
+    method: 'GET' | 'POST' | 'DELETE' | 'PATCH',
+    url: string,
+    payload?: Record<string, unknown>,
+  ) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
 
   const roster = async (): Promise<RosterRow[]> =>
-    (await as('GET', `/teams/${TEAM_ALPHA_ID}/members`)).json();
+    (await as('GET', `/teams/${teamId}/members`)).json();
 
   /** User ids out of any picker/roster payload, typed once so the assertions stay readable. */
   const userIdsOf = (body: unknown): string[] =>
@@ -66,12 +73,27 @@ describe('a Workspace Admin as a Team member', () => {
     await app.getHttpAdapter().getInstance().ready();
     token = (await app.get(AuthService).devLogin('admin@qnsc.dev')).accessToken;
     access = app.get(AccessService);
-    // Idempotent start, so the file can be re-run without `TEAM_MEMBER_ALREADY_EXISTS`.
-    await as('DELETE', `/teams/${TEAM_ALPHA_ID}/members/${ADMIN_USER_ID}`);
+
+    // `varchar(10)`, uppercase, and unique per run — a fixed key would collide with itself on the
+    // second run, since a team cannot be deleted (only deactivated, DB design §488).
+    const key = `W${randomUUID().replace(/-/g, '').slice(0, 9).toUpperCase()}`;
+    const created = await as('POST', `/workspaces/${WORKSPACE_ID}/teams`, {
+      name: `WA membership ${key}`,
+      key,
+      projectIds: [NXP],
+      // One ORDINARY member, named explicitly. It gives the badge something to contrast against, and
+      // it makes AC2 sharper: a team created WITH a member still does not enrol the admin.
+      memberUserIds: [DEVELOPER_ID],
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    teamId = created.json().id;
   }, 60_000);
 
   afterAll(async () => {
-    await as('DELETE', `/teams/${TEAM_ALPHA_ID}/members/${ADMIN_USER_ID}`);
+    // Deactivated rather than left active: the team picker and `GET /projects/:id/teams` are populations
+    // other specs measure, and an archived team keeps its history (§488) so nothing is destroyed.
+    await as('DELETE', `/teams/${teamId}/members/${ADMIN_USER_ID}`);
+    await as('PATCH', `/teams/${teamId}`, { status: 'archived' });
     await app?.close();
   });
 
@@ -80,7 +102,7 @@ describe('a Workspace Admin as a Team member', () => {
   });
 
   it('is added, and the roster badges them rather than showing a level (AC1)', async () => {
-    const added = await as('POST', `/teams/${TEAM_ALPHA_ID}/members`, { userId: ADMIN_USER_ID });
+    const added = await as('POST', `/teams/${teamId}/members`, { userId: ADMIN_USER_ID });
 
     expect(added.statusCode).toBe(201);
     expect(added.json().isWorkspaceAdmin).toBe(true);
@@ -93,7 +115,7 @@ describe('a Workspace Admin as a Team member', () => {
   });
 
   it('gains NO project-access assignment from the membership (AC1/AC4)', async () => {
-    await as('POST', `/teams/${TEAM_ALPHA_ID}/members`, { userId: ADMIN_USER_ID });
+    await as('POST', `/teams/${teamId}/members`, { userId: ADMIN_USER_ID });
 
     // RBE-06 grants `editor` from a roster row for everyone else; for a Workspace Admin the grant
     // writer skips, because §2.1 says they are not a Project user. This is the assertion that the
@@ -103,7 +125,7 @@ describe('a Workspace Admin as a Team member', () => {
   });
 
   it('keeps full Workspace authority while on the Team (AC4)', async () => {
-    await as('POST', `/teams/${TEAM_ALPHA_ID}/members`, { userId: ADMIN_USER_ID });
+    await as('POST', `/teams/${teamId}/members`, { userId: ADMIN_USER_ID });
 
     expect(await access.isWorkspaceAdmin(WORKSPACE_ID, ADMIN_USER_ID)).toBe(true);
     // Read through the permission resolver rather than the role table: `workspace:*` is what actually
@@ -118,9 +140,9 @@ describe('a Workspace Admin as a Team member', () => {
   });
 
   it('is selectable as a Work Item Owner in that Team (AC3)', async () => {
-    await as('POST', `/teams/${TEAM_ALPHA_ID}/members`, { userId: ADMIN_USER_ID });
+    await as('POST', `/teams/${teamId}/members`, { userId: ADMIN_USER_ID });
 
-    const res = await as('GET', `/projects/${NXP}/member-options?teamId=${TEAM_ALPHA_ID}`);
+    const res = await as('GET', `/projects/${NXP}/member-options?teamId=${teamId}`);
 
     expect(res.statusCode).toBe(200);
     expect(userIdsOf(res.json())).toContain(ADMIN_USER_ID);
@@ -135,9 +157,9 @@ describe('a Workspace Admin as a Team member', () => {
   });
 
   it('loses only the membership on removal (AC5)', async () => {
-    await as('POST', `/teams/${TEAM_ALPHA_ID}/members`, { userId: ADMIN_USER_ID });
+    await as('POST', `/teams/${teamId}/members`, { userId: ADMIN_USER_ID });
 
-    const removed = await as('DELETE', `/teams/${TEAM_ALPHA_ID}/members/${ADMIN_USER_ID}`);
+    const removed = await as('DELETE', `/teams/${teamId}/members/${ADMIN_USER_ID}`);
 
     expect(removed.statusCode).toBe(204);
     expect((await roster()).map((m) => m.userId)).not.toContain(ADMIN_USER_ID);
@@ -152,16 +174,16 @@ describe('a Workspace Admin as a Team member', () => {
   });
 
   it('reports the same membership state to every view that carries it (AC6)', async () => {
-    await as('POST', `/teams/${TEAM_ALPHA_ID}/members`, { userId: ADMIN_USER_ID });
+    await as('POST', `/teams/${teamId}/members`, { userId: ADMIN_USER_ID });
 
     const teams: Array<{ teamId: string; memberCount?: number }> = (
       await as('GET', `/projects/${NXP}/teams`)
     ).json();
-    const alpha = teams.find((t) => t.teamId === TEAM_ALPHA_ID);
+    const own = teams.find((t) => t.teamId === teamId);
     const rosterSize = (await roster()).length;
 
     // The count beside the roster and the roster itself are the pair this repo has seen disagree
     // before (a WA hidden from one and counted by the other).
-    if (alpha?.memberCount !== undefined) expect(alpha.memberCount).toBe(rosterSize);
+    if (own?.memberCount !== undefined) expect(own.memberCount).toBe(rosterSize);
   });
 });
