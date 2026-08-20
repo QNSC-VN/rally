@@ -13,11 +13,15 @@ The narrowing mechanism already exists in the API layer. The issue is that the S
 ## Solution
 
 Add a scope selector to the create-token form that:
-1. Reads available permission codes from the frontend permission catalogue mirror
-2. Allows the user to select zero or more permissions
-3. Explains that selecting none inherits the creator's full permissions
-4. Sends the selected codes as the `scopes` array on token creation
-5. Omits the `scopes` field entirely when no permissions are selected
+1. Reads available permission codes from the caller's own permissions (via an API call to fetch the user's resolved permissions), not from the catalogue
+2. Excludes any permission whose value contains `:*` (wildcards defeat narrowing)
+3. Allows the user to select zero or more permissions
+4. Explains that selecting none inherits the creator's full permissions
+5. Sorts selected scopes alphabetically for deterministic display
+6. Sends the selected codes as the `scopes` array on token creation
+7. Omits the `scopes` field entirely when no permissions are selected
+8. Displays validation errors inline below the scope selector using FormField's `error` prop
+9. Fixes the token name `maxLength` from 80 to 100 to match the API DTO
 
 Additionally, display the scopes on the token list so users can distinguish between unscoped and scoped tokens at a glance.
 
@@ -29,6 +33,8 @@ The permission catalogue (`db/permissions.catalog.ts`) is the single source of t
 - Backend changes are out of scope
 - The frontend mirror contains permissions users understand and use in the application
 
+**Scope selector shows ONLY the permissions the caller currently holds, not the whole catalogue.** Scopes can only narrow — the effective set is the owner's permissions intersected with the selection — so offering a permission the user does not hold would produce a token that appears to grant something it can never grant. The form must read the caller's own permissions from the API, not the PERMISSION catalogue object.
+
 If the frontend mirror diverges from the backend catalogue, token creation will fail with a validation error. The UI displays this error clearly so users can report the drift.
 
 ### Empty Selection vs. Unselected Field
@@ -39,29 +45,49 @@ An empty `scopes` array and an absent `scopes` field have different meanings to 
 The form must omit the field when no permissions are selected, not send an empty array.
 
 ### UI Component for Scope Selection
-Use a **searchable multi-select dropdown** with the following characteristics:
-- Supports text search to filter the ~30 permission options
-- Shows permission codes as the display text (e.g., `work_item:view`)
-- Renders selected items as removable chips/tags below the selector
-- Does NOT show wildcards (`workspace:*`, `work_item:*`) as options — users select individual concrete permissions only
+Use the existing **`SearchableSelect` component** from `@/shared/ui/searchable-select` with the following configuration:
+- `multiple={true}` - enables multi-select mode with checkboxes
+- `variant="field"` - form-style appearance (bordered box, not grid-cell style)
+- Permission codes as the display text (e.g., `work_item:view`)
+- Renders selected items as removable chips below the selector
+- Search box with placeholder "Search permissions…"
+- Auto-groups options into "Selected" / "Available" buckets (built-in behavior)
 
-With ~30 options, search makes the selector usable. Individual codes are shown because no human-readable label mapping exists and adding one is out of scope. Wildcards are excluded because they represent "everything in this namespace" — selecting individual permissions is more explicit and auditable.
+The permission options come from an API call that fetches the caller's own resolved permissions, not from the `PERMISSION` catalogue object. This ensures the selector only offers permissions the user actually holds — selecting a permission the user does not hold would produce a token that appears to grant something it can never grant. With ~24 permission options (for a user with broad permissions), search makes the selector usable. Individual codes are shown because no human-readable label mapping exists and adding one is out of scope.
+
+### Wildcard Permissions
+**Exclude any permission whose value contains `:*`, not just `workspace:*` by value.** A wildcard scope defeats the narrowing this field exists for, and keying on the pattern rather than one literal means a new wildcard added to the catalogue later is excluded without anyone remembering to come back here.
+
+### Permission Ordering
+Permissions in the dropdown should be ordered alphabetically by their code to make them findable.
+
+**Sort selected scopes alphabetically when displayed.** Selection order carries no meaning, and deterministic rendering is what makes the row assertable in a test and scannable by a person.
 
 ### Backend Compatibility
 No backend changes are required. The API already accepts and processes the `scopes` parameter correctly. This is purely a frontend enhancement to expose existing capability.
 
 ### Displaying Scopes in the Token List
-Add a new **"Scopes"** column to the token list with the following display rules:
-- If `scopes` is `null`: display "Full access" (inherits your permissions)
+Add a new **"Scopes"** column to the token list. **The column should be positioned after the "Name" column and before the "Status" column.** This places identity information together (name, scopes, status) before temporal information (last used, actions).
+
+Display rules (using i18n keys from `settings.json`):
+- If `scopes` is `null`: display `t('apiTokens.scopes.fullAccess')` ("Full access")
 - If `scopes` is an array:
-  - Empty array: display "No permissions" (theoretical edge case)
+  - Empty array: display `t('apiTokens.scopes.noPermissions')` ("No permissions")
   - 1-2 permissions: display comma-separated codes (e.g., "work_item:view, work_item:create")
-  - 3+ permissions: display "X scopes" where X is the count, with a tooltip showing the full list on hover
+  - 3+ permissions: display `t('apiTokens.scopes.count', { count })` ("X scopes")
+
+**Use the existing Tooltip component from `apps/web/src/shared/ui/tooltip.tsx`. Show ALL scopes in the tooltip, not only the overflow:** the tooltip is the only place the full set is legible, and a reader who has to combine what is visible with what is hidden is doing the component's work.
 
 ### Error Handling
 The permission catalogue mirror is a static TypeScript file bundled with the frontend, so there is no runtime fetch and no error handling needed for the catalogue itself. If the file is missing or malformed, the build fails before the app runs.
 
-The only network-dependent operation is the token creation itself. If the API rejects a permission code (because the frontend mirror diverged from the backend catalogue), the error response will indicate which code was invalid. The UI displays this error to the user.
+The only network-dependent operation is the token creation itself. If the API rejects a permission code (because the frontend mirror diverged from the backend catalogue), the error response will indicate which code was invalid. The UI displays this error inline below the scope selector using FormField's `error` prop, which is the convention for field validation everywhere else in this codebase. A toast is for something that happened elsewhere; this is about the field the user is looking at.
+
+### Token Name Length
+The `CreateTokenModal` currently enforces `maxLength={80}` on the name field, but the backend API DTO specifies `max(100)`. The DTO is the authority (name: z.string().trim().min(1).max(100)). The maxLength={80} in create-token-modal.tsx is a defect that will be fixed to 100 as part of this story.
+
+### Search Behavior
+The `SearchableSelect` component uses case-insensitive substring matching (`.toLowerCase().includes()`). This default behavior is appropriate for permission codes.
 
 ### Affected Area
 - `apps/web/src/pages/settings` — the settings screens where tokens are managed
@@ -72,19 +98,21 @@ The only network-dependent operation is the token creation itself. If the API re
 1. User navigates to Settings → API Tokens
 2. User clicks "Create Token"
 3. Form opens with a new "Scopes" section containing a searchable multi-select dropdown
-4. User types to search (e.g., "work") and sees matching permission codes (e.g., `work_item:view`, `work_item:create`)
-5. User selects the permissions the token needs by clicking options
-6. Selected permissions appear as removable chips below the selector
-7. User fills in other required fields (name, expiration)
-8. User submits the form
-9. Request includes the selected codes in the `scopes` array
-10. Created token's scopes match the selection
+4. Form fetches the caller's own permissions from the API to populate the dropdown options
+5. Dropdown displays only permissions the user actually holds, sorted alphabetically
+6. User types to search (e.g., "work") and sees matching permission codes (e.g., `work_item:view`, `work_item:create`)
+7. User selects the permissions the token needs by clicking options
+8. Selected permissions appear as removable chips below the selector, sorted alphabetically
+9. User fills in other required fields (name, expiration)
+10. User submits the form
+11. Request includes the selected codes in the `scopes` array
+12. Created token's scopes match the selection
 
 ### Creating an Unscoped Token
 1. User navigates to Settings → API Tokens
 2. User clicks "Create Token"
 3. Form opens with the "Scopes" section showing an empty dropdown
-4. Helper text below the dropdown explains: "Select permissions to limit this token's capabilities. If none are selected, the token will inherit your full permissions."
+4. Helper text below the dropdown explains: `t('apiTokens.create.scopesHint')` - "Search and select permissions to limit this token's capabilities. If none are selected, the token will inherit your full permissions."
 5. User leaves scopes unselected and fills in other fields
 6. User submits the form
 7. Request omits the `scopes` field entirely
@@ -92,11 +120,11 @@ The only network-dependent operation is the token creation itself. If the API re
 
 ### Viewing Token Scopes
 1. User navigates to Settings → API Tokens
-2. Token list displays each token's scopes in a new "Scopes" column
+2. Token list displays each token's scopes in a new "Scopes" column (positioned after Name, before Status)
 3. Unscoped tokens show "Full access"
 4. Scoped tokens with 1-2 permissions show comma-separated codes
 5. Scoped tokens with 3+ permissions show "X scopes" where X is the count
-6. Hovering over "X scopes" shows a tooltip with the full list of permission codes
+6. Hovering over "X scopes" shows a Tooltip from `apps/web/src/shared/ui/tooltip.tsx` with the full list of permission codes (all scopes, not just the overflow)
 7. Users can at a glance distinguish between full-privilege and narrowed tokens
 
 ## Acceptance Criteria
@@ -111,4 +139,15 @@ See `plan.json` for the detailed acceptance criteria with test tags.
 - Scope selection for tokens created through other means (e.g., API directly)
 - Permissions beyond what the API token endpoints already support
 - Human-readable permission labels
-- Wildcard permission selection
+- Wildcard permission selection (excluded by pattern `:*`, not just `workspace:*`)
+
+## Open Questions
+
+None. All design questions have been resolved through the review process:
+
+1. **Permission filtering**: Scope selector shows ONLY the permissions the caller currently holds, not the whole catalogue. The effective set is the owner's permissions intersected with the selection.
+2. **Wildcard exclusion rule**: Exclude any permission whose value contains `:*`, not just `workspace:*` by value.
+3. **Selected scope ordering**: Sort selected scopes alphabetically when displayed.
+4. **Tooltip implementation**: Use the existing Tooltip from `apps/web/src/shared/ui/tooltip.tsx`. Show ALL scopes in the tooltip, not only the overflow.
+5. **Error display location**: Display the error inline below the scope selector using FormField's `error` prop.
+6. **Token name length**: Maximum is 100 characters per the API DTO. The form's `maxLength={80}` is a defect that will be fixed.
