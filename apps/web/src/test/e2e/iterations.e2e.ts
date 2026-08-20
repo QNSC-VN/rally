@@ -35,6 +35,22 @@ test.describe('P2.2 Iteration Management (Timeboxes)', () => {
     await expect(page.getByText('Theme', { exact: true })).toBeVisible()
     await expect(page.getByText('Notes', { exact: true })).toBeVisible()
 
+    // The detail is a RECORD ROUTE, not page-local state. It was state until 2026-08-21, so opening
+    // an iteration pushed no history entry: the browser's Back left `/timeboxes` altogether and landed
+    // on whatever preceded it (Home, from a fresh login), and the iteration could not be linked or
+    // reloaded. Assert the URL, then assert Back returns HERE.
+    await expect(page).toHaveURL(/\/timeboxes\/[0-9a-f-]{36}$/)
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await settle(page)
+    // The NAME FIELD, not `getByText`: the header renders an editable input, so the name is a value.
+    // (The pre-reload assertion above passes on the create toast, which is gone by now.)
+    await expect(page.getByRole('textbox', { name: 'Name' })).toHaveValue(name)
+    await page.goBack()
+    await settle(page)
+    await expect(page).toHaveURL(/\/timeboxes$/)
+    await page.goForward()
+    await settle(page)
+
     // Back to the list — the new iteration is present and searchable.
     await page.getByRole('button', { name: 'Back' }).click()
     await settle(page)

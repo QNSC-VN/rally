@@ -20,20 +20,21 @@ Iteration Status found that the **grid shell is already unified** — all four u
 documented and must not be rebuilt.
 
 The inconsistency the audit was chasing is **not** in the list tables. It is in
-everything *around* the grid engine, and it comes from there being no agreed
+everything _around_ the grid engine, and it comes from there being no agreed
 contract for the two layers that sit next to it: the **detail surface** and the
 **form**. As a result each entity re-invented them:
 
-| Concern | Iteration Status | Milestones | Releases | Iterations (Timeboxes) |
-|---|---|---|---|---|
-| Grid shell | `DataTableFrame` | `DataTableFrame` | `DataTableFrame` | `DataTableFrame` |
-| Body rows | `StatusRow` component | `table.renderCells` | `ReleaseRow` component | **inline JSX in page** |
-| List sort | local `useState` | `useTableSort` | `useTableSort` | local `useState` |
-| Detail | shared `/item` route | routed page, `DetailHeader` + **hand-rolled tabs** | routed page, `DetailHeader` + **hand-rolled tabs** (+ **orphan modal**) | **in-place, hand-rolled header** |
-| Linked-items sub-table | n/a | shared `ArtifactTable` (dup wrapper) | shared `ArtifactTable` (dup wrapper) | **hand-rolled `<table>`** |
-| Create/edit form | bespoke modal | bespoke modals | bespoke modal (+ dead detail-modal) | bespoke modals |
+| Concern                | Iteration Status      | Milestones                                         | Releases                                                                | Iterations (Timeboxes)           |
+| ---------------------- | --------------------- | -------------------------------------------------- | ----------------------------------------------------------------------- | -------------------------------- |
+| Grid shell             | `DataTableFrame`      | `DataTableFrame`                                   | `DataTableFrame`                                                        | `DataTableFrame`                 |
+| Body rows              | `StatusRow` component | `table.renderCells`                                | `ReleaseRow` component                                                  | **inline JSX in page**           |
+| List sort              | local `useState`      | `useTableSort`                                     | `useTableSort`                                                          | local `useState`                 |
+| Detail                 | shared `/item` route  | routed page, `DetailHeader` + **hand-rolled tabs** | routed page, `DetailHeader` + **hand-rolled tabs** (+ **orphan modal**) | **in-place, hand-rolled header** |
+| Linked-items sub-table | n/a                   | shared `ArtifactTable` (dup wrapper)               | shared `ArtifactTable` (dup wrapper)                                    | **hand-rolled `<table>`**        |
+| Create/edit form       | bespoke modal         | bespoke modals                                     | bespoke modal (+ dead detail-modal)                                     | bespoke modals                   |
 
 Concrete debt found:
+
 - **4 different row-rendering strategies** for one concept.
 - `pages/iterations/ui/iteration-parts.tsx` hand-rolls its own dark detail
   header **and** a raw `<table>` for linked items, instead of `DetailHeader` +
@@ -147,7 +148,7 @@ Priority order (each unblocks a set of migrations):
    `DetailHeader` doc comment already promises, on top of shared `Tabs`.
 3. **`entities/*/model/fields.ts` + a `FieldSpec<Entity>` type** in
    `shared/ui/detail/types.ts` — mirrors `ColumnSpec`: `{ key, label, control,
-   render, editable, section }`. Drives both the detail field grid and the form.
+render, editable, section }`. Drives both the detail field grid and the form.
 4. **`shared/ui/detail/field-grid.tsx` + `detail-section.tsx`** — declarative
    field/section rendering from `FieldSpec[]`.
 5. **`ArtifactsTab`** promoted to a shared component (toolbar + `ArtifactTable` +
@@ -177,11 +178,16 @@ Non-blocking; do it entity-by-entity behind the new primitives.
   the same primitives; sidebar widths/backgrounds now identical to Releases
   (`w-80` + `bg-card`). Duplicate `ArtifactsTab` collapsed to the shared view.
   _(Remaining: move inline `MILESTONES_COLUMNS` to `entities/milestones/model`.)_
-- **Phase 3 — Iterations/Timeboxes (worst offender) — TODO:** replace inline-JSX
-  rows with an `IterationRow` component; replace the hand-rolled detail header
-  with `DetailLayout`; replace the raw `<table>` `IterationScope` with the shared
-  `ArtifactsTabView`; switch local sort to `useTableSort`; promote in-place
-  detail to a `/iterations/$id` route.
+- **Phase 3 — Iterations/Timeboxes (worst offender) — PARTIAL:** the in-place detail is
+  now the `/timeboxes/$iterationId` route this phase asked for (2026-08-21), with
+  `IterationRow` and `DetailLayout` already done in earlier passes. What promoted it was
+  a defect, not the ADR: page-local state gave the detail no URL, so the browser's Back
+  left `/timeboxes` entirely and landed on Home, and no iteration could be linked,
+  bookmarked or reloaded. The path is `/timeboxes/$iterationId` rather than the
+  `/iterations/$id` sketched here because the list route is `/timeboxes` and a record
+  folds onto its own list (see `NAV_PATH_ALIASES`). STILL TODO: the raw `<table>`
+  `IterationScope` becomes the shared `ArtifactsTabView`, and local sort becomes
+  `useTableSort`.
 - **Phase 4 — `FieldSpec` catalogs — TODO:** once ≥3 entities share
   `DetailField`, extract per-entity `fields.ts` so detail + create/edit forms
   render from one declaration (the table layer's `ColumnSpec` equivalent).

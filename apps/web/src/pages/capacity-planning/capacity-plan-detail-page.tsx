@@ -10,12 +10,13 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
+import { useDetailBack } from '@/shared/lib/use-detail-back'
 import { Pencil, Send, Trash2, Undo2, Users } from 'lucide-react'
 
 import { EmptyState } from '@/shared/ui/empty-state'
 import { LoadErrorState } from '@/shared/ui/load-error-state'
 import { valueResource } from '@/shared/lib/query/resource'
-import { toggleId } from './model/expanded-ids'
+import { useExpandedIds } from './model/expanded-ids'
 import { SkeletonList } from '@/shared/ui/skeleton'
 import { DataTableFrame } from '@/shared/ui/table/data-table-frame'
 import { DndContext } from '@dnd-kit/core'
@@ -83,6 +84,7 @@ import { EditCapacityPlanModal } from './ui/edit-capacity-plan-modal'
 export function CapacityPlanDetailPage() {
   const { t } = useTranslation('capacity')
   const navigate = useNavigate()
+  const back = useDetailBack({ to: '/capacity-planning' })
   const { planId } = useParams({ from: '/auth/capacity-planning/$planId' })
   const [tab, setTab] = useState('teams')
   /** Which Feature the Allocate dialog is splitting, or null when it is closed. */
@@ -108,28 +110,9 @@ export function CapacityPlanDetailPage() {
   const [forecastTeamId, setForecastTeamId] = useState<string | null>(null)
   const [showPublish, setShowPublish] = useState(false)
   const [confirmRevert, setConfirmRevert] = useState(false)
-  /**
-   * Teams whose allocated Features are shown.
-   *
-   * Collapsed by default, as Rally is: a plan with a dozen teams is a list of TEAMS, and
-   * expanding every one by default buries the capacity comparison the tab exists for. The row
-   * keeps a Feature count so a collapsed team still says how much it carries.
-   */
-  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
-  const toggleTeam = useCallback(
-    (teamId: string) => setExpandedTeams((prev) => toggleId(prev, teamId)),
-    [],
-  )
-
-  /**
-   * Which Features show their per-team breakdown. Same collapsed-by-default rule as the team grid:
-   * the tab exists to rank Features against the cutline, and every row expanded buries that.
-   */
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
-  const toggleItem = useCallback(
-    (itemId: string) => setExpandedItems((prev) => toggleId(prev, itemId)),
-    [],
-  )
+  // Teams whose allocated Features are shown, and which Features show their per-team breakdown.
+  const [expandedTeams, toggleTeam] = useExpandedIds()
+  const [expandedItems, toggleItem] = useExpandedIds()
 
   // `valueResource`, not `{ data }` alone: a 500/403 left `plan` undefined and the guard below
   // printed `detail.notFound` — "Capacity plan not found." — a claim the record does not exist,
@@ -525,8 +508,7 @@ export function CapacityPlanDetailPage() {
   return (
     <>
       <DetailLayout
-        onBack={() => void navigate({ to: '/capacity-planning' })}
-        backLabel={t('title')}
+        onBack={back}
         // The same three-part lead every detail surface in the app uses: glyph, key, title. The
         // glyph was missing here, so this was the one detail header whose key arrived unannounced.
         badge={<TypeBadge type="capacityPlan" />}

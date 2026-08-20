@@ -14,7 +14,8 @@ import { useState } from 'react'
 import { ProjectCell } from '@/shared/ui/project-cell'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { Link, useParams } from '@tanstack/react-router'
+import { useDetailBack } from '@/shared/lib/use-detail-back'
 import { FileText, History, Loader2, Package } from 'lucide-react'
 import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
 import { DetailField, DetailFieldPair, DetailReadonlyValue } from '@/shared/ui/detail/detail-field'
@@ -44,7 +45,8 @@ type TabKey = 'details' | 'artifacts' | 'history'
 
 export function ReleaseDetailPage() {
   const { t } = useTranslation('releases')
-  const navigate = useNavigate()
+  // Back means back; the list is only the deep-link fallback (see `useDetailBack`).
+  const back = useDetailBack({ to: '/releases' })
   const { releaseId } = useParams({ from: '/auth/releases/$releaseId' })
 
   const { data: release, isLoading, isError } = useRelease(releaseId)
@@ -137,7 +139,7 @@ export function ReleaseDetailPage() {
 
   return (
     <DetailLayout
-      onBack={() => void navigate({ to: '/releases' })}
+      onBack={back}
       badge={<TypeBadge type="release" />}
       itemKey={release.releaseKey}
       title={

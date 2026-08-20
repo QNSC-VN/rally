@@ -225,6 +225,7 @@ const NAV_PATH_ALIASES: Record<string, string> = {
   // own and this table still states no code of its own.
   '/releases/$releaseId': '/timeboxes',
   '/milestones/$milestoneId': '/timeboxes',
+  '/timeboxes/$iterationId': '/timeboxes',
   '/portfolio/$itemId': '/portfolio',
   '/capacity-planning/$planId': '/capacity-planning',
   // The one record whose surface is not a single row: a Story opens from Backlog and Iteration

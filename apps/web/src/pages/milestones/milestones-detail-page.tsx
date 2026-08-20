@@ -8,7 +8,8 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { Link, useParams } from '@tanstack/react-router'
+import { useDetailBack } from '@/shared/lib/use-detail-back'
 import { FileText, History, Loader2, Package } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
 import { DetailLayout, DetailTwoPane } from '@/shared/ui/detail/detail-layout'
@@ -63,7 +64,8 @@ type TabKey = 'details' | 'artifacts' | 'history'
 
 export function MilestoneDetailPage() {
   const { t } = useTranslation('milestones')
-  const navigate = useNavigate()
+  // Back means back; the list is only the deep-link fallback (see `useDetailBack`).
+  const back = useDetailBack({ to: '/milestones' })
   const { milestoneId } = useParams({ from: '/auth/milestones/$milestoneId' })
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId ?? ''
@@ -179,7 +181,7 @@ export function MilestoneDetailPage() {
 
   return (
     <DetailLayout
-      onBack={() => void navigate({ to: '/milestones' })}
+      onBack={back}
       badge={<TypeBadge type="milestone" />}
       itemKey={milestone.milestoneKey}
       title={

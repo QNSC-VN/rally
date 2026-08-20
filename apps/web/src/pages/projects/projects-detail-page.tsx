@@ -7,7 +7,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { Link, useParams } from '@tanstack/react-router'
+import { useDetailBack } from '@/shared/lib/use-detail-back'
 import { FileText, History, Loader2, Users } from 'lucide-react'
 import { ActivityHistoryTab } from '@/entities/activity/ui/activity-history-tab'
 import { listResource } from '@/shared/lib/query/resource'
@@ -48,7 +49,8 @@ const stripTags = (html: string | null | undefined): string =>
 
 export function ProjectDetailPage() {
   const { t } = useTranslation('projects')
-  const navigate = useNavigate()
+  // Back means back; the list is only the deep-link fallback (see `useDetailBack`).
+  const back = useDetailBack({ to: '/projects' })
   const { projectKey } = useParams({ from: '/auth/projects/$projectKey' })
   const { workspace } = useAppContext()
   const workspaceId = workspace?.workspaceId ?? ''
@@ -152,7 +154,7 @@ export function ProjectDetailPage() {
 
   return (
     <DetailLayout
-      onBack={() => void navigate({ to: '/projects' })}
+      onBack={back}
       badge={<TypeBadge type="project" />}
       itemKey={project.key}
       title={
