@@ -102,6 +102,10 @@ module "stack" {
   # AND the invitee hears nothing, because once this is on the guest-invite relay owns the invitation
   # email. Prod stays at the variable's `false` default until this has been exercised here.
   entra_guest_invite_enabled = true
+
+  # qnsc.vn is the company tenant: those users are directory members on SSO, not B2B
+  # guests — see the variable's own description for what this skips and unlocks.
+  internal_email_domains = "qnsc.vn"
   platform_admin_emails      = var.platform_admin_emails
 
   entra_tenant_id = var.entra_tenant_id

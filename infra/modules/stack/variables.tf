@@ -190,6 +190,21 @@ variable "seed_on_deploy" {
 }
 
 
+variable "internal_email_domains" {
+  description = <<-EOT
+    Comma-separated email domains that are INTERNAL to this deployment's Entra tenant
+    (exact domains; subdomains are deliberately not matched). An invited address on one
+    of these is a directory member signing in over the workspace SSO connection, so
+    `inviteMember` skips the B2B guest queue for them — the same-tenant Graph collision
+    the relay would resolve as "nothing to do" — and their invitation is additionally
+    deliverable by the copy-link route, which exists precisely because same-tenant mail
+    is the cohort a receiving filter is most likely to quarantine as spoofed. Empty
+    string = the distinction is off and every address is treated as external.
+  EOT
+  type    = string
+  default = ""
+}
+
 variable "entra_guest_invite_enabled" {
   description = <<-EOT
     Whether an invitation also provisions the invitee as an Entra B2B GUEST via Microsoft Graph.

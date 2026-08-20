@@ -763,6 +763,7 @@ module "api" {
     # Enqueue-side of Entra B2B guest provisioning: `inviteMember` writes a guest_invite_outbox row
     # only while this is true. The worker carries the same value for the drain side.
     { name = "ENTRA_GUEST_INVITE_ENABLED", value = tostring(var.entra_guest_invite_enabled) },
+    { name = "INTERNAL_EMAIL_DOMAINS", value = var.internal_email_domains },
     # GitHub App (SCM org-level auto-discovery + backfill). The API enumerates
     # the App's installations and mints installation tokens, so — like the worker —
     # it needs the App ID + private-key ref. Empty App ID keeps it dormant

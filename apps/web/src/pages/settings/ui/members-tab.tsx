@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { SettingsTabHeader } from './settings-tab-header'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Loader2, Mail, Send, UserPlus, UserX, X } from 'lucide-react'
+import { Link2, Loader2, Mail, Send, UserPlus, UserX, X } from 'lucide-react'
 import { BulkBarButton } from '@/shared/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { InviteUserModal } from './invite-user-modal'
@@ -248,6 +248,36 @@ export function MembersTab() {
     meta: { invalidates: ['workspace'] },
   })
 
+  /**
+   * Copy-link: rotates the token server-side and hands the URL to the inviter instead of
+   * emailing it — the path for members mail cannot reach (a same-tenant colleague behind a
+   * filter that quarantines transactional senders is the concrete case). The rotation means
+   * any previously emailed link dies with this click, which the success toast says out loud.
+   */
+  const copyInviteLink = useMutation({
+    mutationFn: async (invitationId: string) => {
+      if (!workspaceId) return ''
+      const { data, error, response } = await apiClient.POST(
+        '/v1/workspaces/{id}/invitations/{invitationId}/link',
+        { params: { path: { id: workspaceId, invitationId } } },
+      )
+      if (error || !data) throw new Error(apiErrorMessage(error, response.status))
+      return data.inviteUrl
+    },
+    onSuccess: async (inviteUrl) => {
+      try {
+        await navigator.clipboard.writeText(inviteUrl)
+        notify.success(t('members.inviteLinkCopied'))
+      } catch {
+        // Clipboard can be unavailable (insecure context, permission denied) — surface the
+        // URL through the error channel rather than pretending the copy happened.
+        notify.error(`${t('members.inviteLinkCopyFailed')}: ${inviteUrl}`)
+      }
+    },
+    onError: (err) => notify.error(apiErrorMessage(err)),
+    meta: { invalidates: ['workspace'] },
+  })
+
   const metrics = useMemo(() => {
     const active = members.filter((m) => m.status === 'active').length
     return { total: members.length, active }
@@ -439,6 +469,18 @@ export function MembersTab() {
                       disabled={resendInvite.isPending}
                     >
                       <Send size={13} className={resendInvite.isPending ? 'animate-pulse' : ''} />
+                    </IconButton>
+                    <IconButton
+                      size="sm"
+                      aria-label={t('members.copyInvitationLink')}
+                      title={t('members.copyInvitationLink')}
+                      onClick={() => copyInviteLink.mutate(inv.id)}
+                      disabled={copyInviteLink.isPending}
+                    >
+                      <Link2
+                        size={13}
+                        className={copyInviteLink.isPending ? 'animate-pulse' : ''}
+                      />
                     </IconButton>
                     <IconButton
                       size="sm"
