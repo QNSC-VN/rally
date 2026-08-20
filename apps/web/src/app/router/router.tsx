@@ -266,6 +266,20 @@ const timeboxesRoute = createRoute({
   ),
 })
 
+const iterationDetailRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: '/timeboxes/$iterationId',
+  staticData: { breadcrumb: 'Iteration Detail' },
+  // A record of the Timeboxes surface, so it carries `timebox:view` like the list modes and the
+  // Release/Milestone records do. It was page-local state until now, which is why it is new here
+  // rather than having always been guarded.
+  component: guardedPage(
+    '/timeboxes/$iterationId',
+    () => import('@/pages/iterations/iteration-detail-page'),
+    'IterationDetailPage',
+  ),
+})
+
 const iterationStatusRoute = createRoute({
   getParentRoute: () => authRoute,
   path: '/iteration-status',
@@ -474,6 +488,7 @@ const routeTree = rootRoute.addChildren([
     forbiddenRoute,
     backlogRoute,
     timeboxesRoute,
+    iterationDetailRoute,
     iterationStatusRoute,
     releasesRoute,
     releaseDetailRoute,

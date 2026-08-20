@@ -22,6 +22,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from '@tanstack/react-router'
+import { useDetailBack } from '@/shared/lib/use-detail-back'
 import { FileText, History, ListTree } from 'lucide-react'
 
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -220,7 +221,7 @@ export function PortfolioDetailPage() {
   // round trip; it is not the guard.
   const blockedByChildren = isEpic && childFeatures.length > 0
 
-  const back = () => void navigate({ to: '/portfolio' })
+  const back = useDetailBack({ to: '/portfolio' })
 
   if (isLoading) return <SkeletonList rows={6} />
   if (!server) return <EmptyState title={t('detail.notFound')} />

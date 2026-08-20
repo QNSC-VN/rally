@@ -24,6 +24,11 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
 }))
 
+// This suite does not exercise back navigation; the hook needs the real router (`useRouter` /
+// `useCanGoBack`), which the mock above deliberately does not provide. Its own behaviour is covered
+// by `shared/lib/use-detail-back.test.tsx`.
+vi.mock('@/shared/lib/use-detail-back', () => ({ useDetailBack: () => vi.fn() }))
+
 vi.mock('@/shared/lib/stores/app-context.store', () => ({
   useAppContext: () => ({ workspace: { workspaceId: 'ws-1', workspaceName: 'QNSC' } }),
 }))

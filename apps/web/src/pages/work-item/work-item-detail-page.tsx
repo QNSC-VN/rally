@@ -30,7 +30,8 @@
  */
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useParams, useNavigate } from '@tanstack/react-router'
+import { useParams } from '@tanstack/react-router'
+import { useDetailBack } from '@/shared/lib/use-detail-back'
 import {
   Bell,
   BellOff,
@@ -160,7 +161,8 @@ function DetailsTab({
 export function WorkItemDetailPage() {
   const { t } = useTranslation('work-items')
   const { itemKey } = useParams({ from: '/auth/item/$itemKey' })
-  const navigate = useNavigate()
+  // Back means back — the Backlog is only where a deep link lands (see `useDetailBack`).
+  const back = useDetailBack({ to: '/backlog' })
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
 
   // P1-10: sidebar collapse — persisted in localStorage so preference survives navigation
@@ -279,7 +281,7 @@ export function WorkItemDetailPage() {
         reason={workItemUnavailableReason(byKeyQuery.isError, byKeyQuery.error)}
         itemKey={itemKey}
         error={byKeyQuery.error}
-        onBack={() => void navigate({ to: '/backlog' })}
+        onBack={back}
       />
     )
   }
@@ -333,7 +335,7 @@ export function WorkItemDetailPage() {
 
   return (
     <DetailLayout
-      onBack={() => void navigate({ to: '/backlog' })}
+      onBack={back}
       // WID-FR-003 / AC 7: collapse returns to the Backlog with this item still selected in the
       // summary panel. `onBack` above is the other gesture — it leaves the item behind.
       //

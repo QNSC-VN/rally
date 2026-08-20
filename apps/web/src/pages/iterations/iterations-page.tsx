@@ -10,6 +10,7 @@
  * bespoke pagination (FRONTEND_COMPONENT_AUDIT §5.2).
  */
 import { useCallback, useMemo, useState, type CSSProperties } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { AlertTriangle, Inbox, Plus, Trash2 } from 'lucide-react'
@@ -28,7 +29,7 @@ import { MetricCard } from '@/shared/ui/metric-card'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
-import { CreateIterationModal, IterationDetail } from './ui/iteration-parts'
+import { CreateIterationModal } from './ui/iteration-parts'
 import { IterationRow } from './ui/iteration-row'
 import { type ColKey, ITERATIONS_COLUMNS } from './model/columns'
 import {
@@ -42,6 +43,7 @@ import {
 
 export function IterationsPage() {
   const { t } = useTranslation('iterations')
+  const navigate = useNavigate()
   const { project } = useAppContext()
   const projectId = project?.projectId
   const { can } = useProjectPermissions(projectId)
@@ -79,7 +81,12 @@ export function IterationsPage() {
     dir: 'asc',
   })
   const [showCreate, setShowCreate] = useState(false)
-  const [detailId, setDetailId] = useState<string | null>(null)
+
+  /** The record route. Page-local state here gave the detail no URL — see the detail page's docblock. */
+  const openIteration = useCallback(
+    (id: string) => void navigate({ to: '/timeboxes/$iterationId', params: { iterationId: id } }),
+    [navigate],
+  )
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -125,10 +132,6 @@ export function IterationsPage() {
         {t('selectProject')}
       </div>
     )
-  }
-
-  if (detailId) {
-    return <IterationDetail id={detailId} canManage={canManage} onBack={() => setDetailId(null)} />
   }
 
   return (
@@ -237,7 +240,7 @@ export function IterationsPage() {
             canManage={canManage}
             colStyleFor={colStyleFor}
             gutter={gutter}
-            onOpen={() => setDetailId(it.id)}
+            onOpen={() => openIteration(it.id)}
           />
         )}
       />
@@ -248,7 +251,7 @@ export function IterationsPage() {
           onClose={() => setShowCreate(false)}
           onCreated={(id) => {
             setShowCreate(false)
-            setDetailId(id)
+            openIteration(id)
           }}
         />
       )}

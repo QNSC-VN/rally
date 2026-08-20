@@ -111,3 +111,37 @@ test.describe('P2.1 Backlog Enhancement', () => {
     await expect(page.getByText(/No backlog items match your filters/i)).toBeVisible()
   })
 })
+
+/**
+ * The in-app Back arrow returns the reader WHERE THEY CAME FROM, not to a fixed list.
+ *
+ * Every detail page hardcoded its own list route in `onBack`, so `/item/$itemKey` went to `/backlog`
+ * no matter the origin. Measured in a browser before the fix: opening an item from Home > My Work, from
+ * Iteration Status and from Quality > Defects all landed on the Backlog — a third place, with different
+ * filters, and from Home (a cross-project surface) a project-scoped grid the reader never chose.
+ *
+ * Home is the origin under test because it is the one where the old destination was most wrong AND the
+ * one the report named. `/backlog` as an origin would pass either way, which is why it is not the case.
+ */
+test.describe('leaving a work-item detail', () => {
+  test('the Back arrow returns to the surface the item was opened from', async ({ page }) => {
+    await loginAndSelectProject(page)
+    await page.goto('/')
+    await settle(page)
+
+    // My Work's ID column opens the item detail.
+    const idCell = page
+      .locator('button')
+      .filter({ has: page.locator('span.font-mono') })
+      .first()
+    await expect(idCell).toBeVisible()
+    await idCell.click()
+    await settle(page)
+    await expect(page).toHaveURL(/\/item\//)
+
+    await page.getByRole('button', { name: 'Back' }).click()
+    await settle(page)
+    // Home, not `/backlog`.
+    await expect(page).toHaveURL(/\/$/)
+  })
+})
