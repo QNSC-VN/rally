@@ -56,7 +56,9 @@ export class EmailDeliveryService {
       })
       .from(emailOutbox)
       .where(or(...predicates))
-      .orderBy(desc(emailOutbox.scheduledAt));
+      // id tiebreak per the query-ordering ratchet: two rows scheduled in the same
+      // tick must not flip which one reads as "latest" on the next UPDATE.
+      .orderBy(desc(emailOutbox.scheduledAt), desc(emailOutbox.id));
 
     const rootOf = (key: string): string => {
       const suffix = key.lastIndexOf(':r');
