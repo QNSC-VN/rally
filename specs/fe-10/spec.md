@@ -13,7 +13,7 @@ The narrowing mechanism already exists in the API layer. The issue is that the S
 ## Solution
 
 Add a scope selector to the create-token form that:
-1. Reads available permission codes from the caller's own permissions (via an API call to fetch the user's resolved permissions), not from the catalogue
+1. Reads available permission codes from the caller's own permissions stored in `auth.store.ts` (which is populated at bootstrap from `/v1/bff/me`)
 2. Excludes any permission whose value contains `:*` (wildcards defeat narrowing)
 3. Allows the user to select zero or more permissions
 4. Explains that selecting none inherits the creator's full permissions
@@ -27,17 +27,14 @@ Additionally, display the scopes on the token list so users can distinguish betw
 
 ## Design Considerations
 
-### Permission Catalogue as Authority
-The permission catalogue (`db/permissions.catalog.ts`) is the single source of truth for valid permission codes. The form reads the frontend mirror (`apps/web/src/shared/config/permissions.ts`) which contains the subset of permissions used for frontend gating. This is the appropriate source because:
-- There is no backend API endpoint to fetch the full catalogue
-- Backend changes are out of scope
-- The frontend mirror contains permissions users understand and use in the application
+### Permission Source
 
-**Scope selector shows ONLY the permissions the caller currently holds, not the whole catalogue.** Scopes can only narrow — the effective set is the owner's permissions intersected with the selection — so offering a permission the user does not hold would produce a token that appears to grant something it can never grant. The form must read the caller's own permissions from the API, not the PERMISSION catalogue object.
+**The scope selector reads ONLY the permissions the caller currently holds, not the whole catalogue.** Scopes can only narrow — the effective set is the owner's permissions intersected with the selection — so offering a permission the user does not hold would produce a token that appears to grant something it can never grant.
 
-If the frontend mirror diverges from the backend catalogue, token creation will fail with a validation error. The UI displays this error clearly so users can report the drift.
+The form reads the caller's own permissions from `auth.store.ts`, which holds `permissions: string[]` for the current user. This store is populated at bootstrap by `auth-bootstrap.ts` from the `/v1/bff/me` endpoint, so the data is present before the modal opens. There is no additional API call needed, no caching question, no invalidation question, and no loading state to manage.
 
 ### Empty Selection vs. Unselected Field
+
 An empty `scopes` array and an absent `scopes` field have different meanings to the API:
 - Absent field: token inherits creator's full permissions
 - Empty array: token has no permissions (effectively useless)
@@ -45,6 +42,7 @@ An empty `scopes` array and an absent `scopes` field have different meanings to 
 The form must omit the field when no permissions are selected, not send an empty array.
 
 ### UI Component for Scope Selection
+
 Use the existing **`SearchableSelect` component** from `@/shared/ui/searchable-select` with the following configuration:
 - `multiple={true}` - enables multi-select mode with checkboxes
 - `variant="field"` - form-style appearance (bordered box, not grid-cell style)
@@ -53,20 +51,24 @@ Use the existing **`SearchableSelect` component** from `@/shared/ui/searchable-s
 - Search box with placeholder "Search permissions…"
 - Auto-groups options into "Selected" / "Available" buckets (built-in behavior)
 
-The permission options come from an API call that fetches the caller's own resolved permissions, not from the `PERMISSION` catalogue object. This ensures the selector only offers permissions the user actually holds — selecting a permission the user does not hold would produce a token that appears to grant something it can never grant. With ~24 permission options (for a user with broad permissions), search makes the selector usable. Individual codes are shown because no human-readable label mapping exists and adding one is out of scope.
+The permission options come from `auth.store.ts`, which already contains the user's resolved permissions. With ~24 permission options (for a user with broad permissions), search makes the selector usable. Individual codes are shown because no human-readable label mapping exists and adding one is out of scope.
 
 ### Wildcard Permissions
+
 **Exclude any permission whose value contains `:*`, not just `workspace:*` by value.** A wildcard scope defeats the narrowing this field exists for, and keying on the pattern rather than one literal means a new wildcard added to the catalogue later is excluded without anyone remembering to come back here.
 
 ### Permission Ordering
+
 Permissions in the dropdown should be ordered alphabetically by their code to make them findable.
 
 **Sort selected scopes alphabetically when displayed.** Selection order carries no meaning, and deterministic rendering is what makes the row assertable in a test and scannable by a person.
 
 ### Backend Compatibility
+
 No backend changes are required. The API already accepts and processes the `scopes` parameter correctly. This is purely a frontend enhancement to expose existing capability.
 
 ### Displaying Scopes in the Token List
+
 Add a new **"Scopes"** column to the token list. **The column should be positioned after the "Name" column and before the "Status" column.** This places identity information together (name, scopes, status) before temporal information (last used, actions).
 
 Display rules (using i18n keys from `settings.json`):
@@ -79,14 +81,17 @@ Display rules (using i18n keys from `settings.json`):
 **Use the existing Tooltip component from `apps/web/src/shared/ui/tooltip.tsx`. Show ALL scopes in the tooltip, not only the overflow:** the tooltip is the only place the full set is legible, and a reader who has to combine what is visible with what is hidden is doing the component's work.
 
 ### Error Handling
-The permission catalogue mirror is a static TypeScript file bundled with the frontend, so there is no runtime fetch and no error handling needed for the catalogue itself. If the file is missing or malformed, the build fails before the app runs.
 
-The only network-dependent operation is the token creation itself. If the API rejects a permission code (because the frontend mirror diverged from the backend catalogue), the error response will indicate which code was invalid. The UI displays this error inline below the scope selector using FormField's `error` prop, which is the convention for field validation everywhere else in this codebase. A toast is for something that happened elsewhere; this is about the field the user is looking at.
+Since permissions are read from `auth.store.ts` (which is populated at bootstrap), there is no network fetch and no loading state for the permission list. The data is present before the modal opens.
+
+The only network-dependent operation is the token creation itself. If the API rejects a permission code (because the store's permissions contain a code the API no longer recognizes), the error response will indicate which code was invalid. The UI displays this error inline below the scope selector using FormField's `error` prop, which is the convention for field validation everywhere else in this codebase. A toast is for something that happened elsewhere; this is about the field the user is looking at.
 
 ### Token Name Length
+
 The `CreateTokenModal` currently enforces `maxLength={80}` on the name field, but the backend API DTO specifies `max(100)`. The DTO is the authority (name: z.string().trim().min(1).max(100)). The maxLength={80} in create-token-modal.tsx is a defect that will be fixed to 100 as part of this story.
 
 ### Search Behavior
+
 The `SearchableSelect` component uses case-insensitive substring matching (`.toLowerCase().includes()`). This default behavior is appropriate for permission codes.
 
 ### Affected Area
@@ -98,7 +103,7 @@ The `SearchableSelect` component uses case-insensitive substring matching (`.toL
 1. User navigates to Settings → API Tokens
 2. User clicks "Create Token"
 3. Form opens with a new "Scopes" section containing a searchable multi-select dropdown
-4. Form fetches the caller's own permissions from the API to populate the dropdown options
+4. Form reads the caller's permissions from `auth.store.ts` to populate the dropdown options
 5. Dropdown displays only permissions the user actually holds, sorted alphabetically
 6. User types to search (e.g., "work") and sees matching permission codes (e.g., `work_item:view`, `work_item:create`)
 7. User selects the permissions the token needs by clicking options
@@ -145,9 +150,11 @@ See `plan.json` for the detailed acceptance criteria with test tags.
 
 None. All design questions have been resolved through the review process:
 
-1. **Permission filtering**: Scope selector shows ONLY the permissions the caller currently holds, not the whole catalogue. The effective set is the owner's permissions intersected with the selection.
+1. **Permission filtering**: Scope selector shows ONLY the permissions the caller currently holds from `auth.store.ts`, not the whole catalogue. The effective set is the owner's permissions intersected with the selection.
 2. **Wildcard exclusion rule**: Exclude any permission whose value contains `:*`, not just `workspace:*` by value.
 3. **Selected scope ordering**: Sort selected scopes alphabetically when displayed.
 4. **Tooltip implementation**: Use the existing Tooltip from `apps/web/src/shared/ui/tooltip.tsx`. Show ALL scopes in the tooltip, not only the overflow.
 5. **Error display location**: Display the error inline below the scope selector using FormField's `error` prop.
 6. **Token name length**: Maximum is 100 characters per the API DTO. The form's `maxLength={80}` is a defect that will be fixed.
+7. **Scope selector component**: Use SearchableSelect from `apps/web/src/shared/ui/searchable-select` with `multiple={true}` and `variant='field'`.
+8. **Permission data source**: Read from `auth.store.ts` (which holds `permissions: string[]`), not from the API or from `permissions.ts`. The data is present before the modal opens, populated at bootstrap from `/v1/bff/me`.
