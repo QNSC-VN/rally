@@ -231,3 +231,56 @@ describe('ProjectAccessList — removing access needs the name typed', () => {
     })
   })
 })
+
+/**
+ * The half of §2.1 the Workspace-Admin team-membership ruling did NOT reverse.
+ *
+ * `project-teams-tab.tsx` now offers a Workspace Admin as a Team lead and a Team member, because the
+ * ruling reversed exactly that. This list is different: it writes `project_members` rows, which is
+ * the assignment the ruling explicitly withholds ("must NOT create or require an Admin/Editor
+ * Project Access assignment"), and migration 0118 deletes any that exist. So the candidate filter
+ * here stays — asserted in BOTH directions, because a test that only proves the Workspace Admin is
+ * absent also passes when the whole list is empty.
+ */
+const WS_ROSTER = [
+  {
+    id: 'wm-1',
+    userId: 'u-ed',
+    displayName: 'Eddie Editor',
+    email: 'eddie@acme.test',
+    status: 'active',
+    roleSlug: null,
+  },
+  {
+    id: 'wm-2',
+    userId: 'u-wa',
+    displayName: 'Wanda Admin',
+    email: 'wanda@acme.test',
+    status: 'active',
+    roleSlug: 'workspace_admin',
+  },
+]
+
+describe('ProjectAccessList — a Workspace Admin is still not a PROJECT ACCESS candidate', () => {
+  beforeEach(() => {
+    mockGET.mockReset()
+    mockPOST.mockReset()
+    mockPOST.mockResolvedValue({ data: {}, error: undefined })
+    mockGET.mockImplementation((path: string) => {
+      if (path === '/v1/projects/{id}/members') return Promise.resolve({ data: [] })
+      if (path === '/v1/projects/{id}/teams') return Promise.resolve({ data: TEAMS })
+      if (path === '/v1/workspaces/{id}/members-with-profile')
+        return Promise.resolve({ data: WS_ROSTER })
+      return Promise.resolve({ data: [] })
+    })
+  })
+
+  it('offers the ordinary member and omits the Workspace Admin', async () => {
+    renderList()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add existing user' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Select a workspace user' }))
+
+    expect(await screen.findByRole('button', { name: 'Eddie Editor' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Wanda Admin' })).toBeNull()
+  })
+})

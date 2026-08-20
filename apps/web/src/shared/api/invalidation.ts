@@ -106,7 +106,21 @@ const PROJECT_ROOTS: readonly QueryKey[] = [
   ['status-map'],
 ]
 // Team Capacity is a projection of Team Status, so a capacity edit there has to refresh it.
-const TEAM_ROOTS: readonly QueryKey[] = [['teams'], ['team-status'], ['reports']]
+//
+// `workspace-members-profile` is here because the User Management roster carries each member's
+// `teams` array — it is a MEMBERSHIP view, and the BA's team-membership ruling requires every
+// membership view to agree after a change ("Team details and other membership views must agree").
+// Its own root sits under `workspace`, so before this a team add/remove refreshed the team's roster
+// and the team list's `memberCount` while the workspace roster kept the old `teams` array: two
+// screens, one fact, one of them stale. It is declared here rather than listed by hand at each call
+// site for the reason this whole module exists — one forgotten root is one stale-cache bug, and
+// there are now three writes (add member, remove member, set project access) that move this fact.
+const TEAM_ROOTS: readonly QueryKey[] = [
+  ['teams'],
+  ['team-status'],
+  ['reports'],
+  ['workspace-members-profile'],
+]
 const WORKSPACE_ROOTS: readonly QueryKey[] = [
   ['workspaces'],
   ['workspace-settings'],

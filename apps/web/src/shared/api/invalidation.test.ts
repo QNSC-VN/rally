@@ -42,4 +42,17 @@ describe('runInvalidation', () => {
     )
     expect(new Set(calls).size).toBe(calls.length)
   })
+  /**
+   * AC6 of the Workspace-Admin team-membership ruling: "Team details and other membership views must
+   * agree after a change." A team add/remove tags `team`, and the User Management roster carries each
+   * member's `teams` array under its OWN root (`workspace-members-profile`), so without this the two
+   * membership views disagreed until something else happened to invalidate the workspace namespace.
+   */
+  it("the team tag reaches the workspace roster, which carries each member's teams array", () => {
+    const keys = INVALIDATION_MAP.team.map((k) => JSON.stringify(k))
+    expect(keys).toContain(JSON.stringify(['workspace-members-profile']))
+    // The team namespace itself covers the roster, the memberships fan-out and `memberCount` by
+    // prefix — `teamKeys.members` / `.projectTeams` all live under `['teams']`.
+    expect(keys).toContain(JSON.stringify(['teams']))
+  })
 })

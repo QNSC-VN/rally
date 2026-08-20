@@ -42,6 +42,18 @@ export interface TeamMember {
   displayName?: string
   email?: string
   avatarUrl?: string | null
+  /**
+   * This roster row is a WORKSPACE ADMIN — render the `Workspace Admin` badge, never an access
+   * level (BA team-membership ruling; `shared/ui/workspace-admin-badge.tsx` carries the reasoning).
+   *
+   * Optional because the field is newer than the committed `shared/api/generated/api.ts`. That costs
+   * nothing here: every type in this block is hand-declared already (the generated schema types the
+   * team responses as `Record<string, never>`, which is why `fetchTeamMembers` casts), so declaring
+   * one more field is the file's existing escape hatch rather than a second one. `undefined` and
+   * `false` mean the same thing to every reader — no badge — so a client that predates the server
+   * field degrades to today's behaviour instead of mislabelling anyone.
+   */
+  isWorkspaceAdmin?: boolean
 }
 
 export interface ProjectMember {

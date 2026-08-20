@@ -434,6 +434,33 @@ Iteration Status total, the Tasks-tab total and the next Burndown snapshot with 
 the service; the other two edit surfaces already did this correctly, and this screen's own UI comment
 described the behaviour it did not have.
 
+## A Workspace Admin may be a TEAM member, and still not a Project user
+
+BA feature, 2026-08-20. This REVERSES half of §2.1 and leaves the other half standing, so read which
+half before touching either.
+
+- **Team membership is operational scope.** Adding a Workspace Admin to a Team writes the
+  `team_members` row and NOTHING else: `grantTeamRosterProjectAccess` runs with
+  `onWorkspaceAdmin: 'skip'`, so RBE-06's `editor` grant — the rule that gives every other roster row
+  project access — does not fire for them. Their authority already comes from the workspace-wide
+  grant, which is why the AC is a claim about what is ABSENT after the write, and why it is asserted
+  over real HTTP in `test/e2e/workspace-admin-team-membership.e2e.spec.ts` rather than against a
+  mocked grant writer.
+- **§2.1 still keeps them off `work.project_members`**, so `selectWorkspaceAdminUserIds` and the
+  project-access candidate list (`projects-access-tab.tsx`) are unchanged. A blank access level on a
+  team roster row is therefore ambiguous, and that is what the badge fixes: the roster carries
+  `isWorkspaceAdmin` per row (`TeamService.listTeamMembersForReader`, one `AccessService`
+  lookup per read, none for an empty roster) and the row renders `Workspace Admin` — never `Admin`
+  or `Editor`, which would state the thing the rule forbids.
+- **Nothing enrolls them automatically.** `createTeam` adds only the `memberUserIds` it is given, and
+  `assertMembers` requires nothing but active workspace membership. Do not add a convenience that
+  seeds every team with the admins.
+- **They were already a valid Project Owner** — `listMemberOptions` unions in `projects.lead_id`
+  precisely because a WA holds no roster row — and a WA on the team is already offered as a Work Item
+  Owner, because `listProjectMemberOptions`' team branch reads `team_members` and applies no admin
+  filter. The SPA was the only thing withholding them: `project-teams-tab.tsx` filtered
+  `roleSlug !== 'workspace_admin'` out of the Team Lead options and the member table.
+
 ## The Owner feed: the TEAM roster decides, and a Team move re-decides it
 
 `GAP-P1-WID-007` was a BA-confirmed P0-adjacent Fail on the 2026-08-17 retest — the Owner dropdown for

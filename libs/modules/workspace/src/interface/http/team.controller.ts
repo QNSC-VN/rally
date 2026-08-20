@@ -90,6 +90,15 @@ function toTeamMemberDto(m: TeamMember) {
     displayName: m.displayName ?? null,
     email: m.email ?? null,
     avatarUrl: m.avatarUrl ?? null,
+    /**
+     * `Workspace Admin` is what this row is BADGED as, and the reason it carries no access level.
+     *
+     * The BA made a Workspace Admin an eligible Team member on 2026-08-20 — operational scope only —
+     * while §2.1 still keeps them off `work.project_members`. So `Admin`/`Editor` is not merely absent
+     * for them, it would be false, and the roster needs to say which case a blank level is.
+     * `false` rather than absent, so a client cannot read "field missing" as "not an admin yet".
+     */
+    isWorkspaceAdmin: m.isWorkspaceAdmin ?? false,
   };
 }
 

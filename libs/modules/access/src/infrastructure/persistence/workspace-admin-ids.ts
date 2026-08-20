@@ -8,12 +8,19 @@ import { workspaceMembers } from '../../../../../../db/schema/workspace';
  * The users whose project authority IS the workspace-wide grant — the ONE home of that
  * predicate (AC-8, §2.1).
  *
- * "A Workspace Admin is not added as a Project user or Team member": their authority comes
+ * "A Workspace Admin is not added as a Project user": their authority comes
  * from the workspace-scoped `workspace_admin` assignment, which the catalogue gives every
  * project-tier code explicitly, so a `work.project_members` row adds them nothing and only
  * misrepresents the model. Nothing anti-joined them anywhere — the seed writes the row and
  * migration 0104 promoted it to `access_level = 'admin'` — so a WA appeared in every roster,
  * in `memberCount`, and as an addable candidate.
+ *
+ * THE "OR TEAM MEMBER" HALF OF THAT SENTENCE IS GONE (BA feature, 2026-08-20). A Workspace Admin is
+ * now an eligible TEAM member — operational scope, and explicitly no project grant — so this predicate
+ * is about `work.project_members` and nothing else. A `team_members` row for a Workspace Admin is
+ * legitimate: the roster BADGES them (`TeamService.listTeamMembersForReader`) rather than filtering
+ * them, and `grantTeamRosterProjectAccess` still skips the RBE-06 grant for them, which is what keeps
+ * the two halves apart.
  *
  * It lives in its own file because THREE readers need it and they must not disagree: the
  * roster (`ProjectMemberDrizzleRepository.listByProject`), the roster's SIZE
