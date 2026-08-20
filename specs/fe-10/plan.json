@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "feature_key": "FE-10",
+  "summary": "Add scope selection to API token creation flow",
+  "out_of_scope": "Backend API changes, permission catalogue modifications, token editing after creation, scope selection for tokens created through other means, human-readable permission labels, wildcard permission selection",
+  "open_questions": [],
+  "criteria": [
+    {
+      "id": "AC-1",
+      "text": "Given the create-token form, When it is opened, Then the available permission codes are listed in a searchable multi-select dropdown, none is selected, and the form explains that selecting none inherits the creator's permissions unchanged"
+    },
+    {
+      "id": "AC-2",
+      "text": "Given some permissions selected, When the token is created, Then the request sends exactly those codes as `scopes` and the created token's scopes match the selection"
+    },
+    {
+      "id": "AC-3",
+      "text": "Given no permissions selected, When the token is created, Then the request omits `scopes` rather than sending an empty array, because an empty array and an absent field mean different things to the API"
+    },
+    {
+      "id": "AC-4",
+      "text": "Given a token that has scopes, When the token list is rendered, Then a Scopes column displays: 'Full access' for unscoped tokens, comma-separated codes for 1-2 scopes, 'X scopes' with tooltip for 3+ scopes"
+    }
+  ],
+  "stories": [
+    {
+      "key": "S-1",
+      "title": "Add scope selection to create-token form",
+      "goal": "Enable users to select permission scopes when creating an API token using a searchable multi-select dropdown that reads from the frontend permission catalogue mirror",
+      "ac_ids": ["AC-1", "AC-2", "AC-3"],
+      "affected_modules": ["apps/web/src/pages/settings/ui/api-tokens/create-token-modal.tsx", "apps/web/src/features/api-tokens/api.ts"],
+      "out_of_scope": "Token list display changes (handled in S-2), backend API changes, wildcard permissions, human-readable labels",
+      "risk_notes": "The frontend permission catalogue mirror may diverge from the backend catalogue. If this happens, token creation will fail with a validation error. The UI must display this error clearly so users can report the drift.",
+      "depends_on": [],
+      "estimated_tasks": 6,
+      "estimated_loc": 220,
+      "token_estimate": 180000
+    },
+    {
+      "key": "S-2",
+      "title": "Display scopes on token list",
+      "goal": "Add a Scopes column to the token list that shows 'Full access' for unscoped tokens, comma-separated codes for 1-2 scopes, or 'X scopes' with a tooltip for 3+ scopes",
+      "ac_ids": ["AC-4"],
+      "affected_modules": ["apps/web/src/pages/settings/ui/api-tokens-tab.tsx"],
+      "out_of_scope": "Create form changes (covered in S-1), backend API changes",
+      "risk_notes": "",
+      "depends_on": ["S-1"],
+      "estimated_tasks": 3,
+      "estimated_loc": 100,
+      "token_estimate": 120000
+    }
+  ]
+}
