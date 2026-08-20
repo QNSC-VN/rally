@@ -503,6 +503,14 @@ export interface ListWorkItemsParams {
   assigneeId?: string
   iterationId?: string
   releaseId?: string
+  /**
+   * Server-side search over key and title (`WorkItemQuerySchema.q`).
+   *
+   * The API has always accepted it and this hook did not forward it, so every caller had to filter the
+   * page it happened to hold. That is what made the Release artifacts picker unable to offer an item
+   * outside its first 100: the search box narrowed 100 rows instead of asking for the matching one.
+   */
+  q?: string
   limit?: number
 }
 
@@ -523,6 +531,7 @@ export function useWorkItems(params: ListWorkItemsParams | null) {
             assigneeId: params.assigneeId,
             iterationId: params.iterationId,
             releaseId: params.releaseId,
+            q: params.q,
             limit: params.limit ?? 100,
           },
         },

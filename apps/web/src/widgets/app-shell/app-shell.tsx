@@ -274,6 +274,29 @@ export function AppShell() {
     await navigate({ to: '/login' })
   }
 
+  /**
+   * Switch the selected project (and optionally its team), landing on Home when the PROJECT changed.
+   *
+   * Selecting only mutated the store before, so the current route stayed open under a context it no
+   * longer belongs to: a work-item detail kept rendering another project's record until something
+   * refetched, and a project-scoped page could sit there denied or empty. Home is the one surface that
+   * is correct for every project, which is why the BA asked for it.
+   *
+   * A TEAM-only change deliberately does NOT navigate. Team is a scope filter — narrowing Iteration
+   * Status or Team Status to another of your teams is the reason to click it, and being thrown to Home
+   * for that would undo the very thing the reader asked for.
+   */
+  function selectProjectContext(
+    next: { projectId: string; projectKey: string; projectName: string },
+    nextTeam: { teamId: string; teamName: string } | null,
+  ) {
+    const projectChanged = project?.projectId !== next.projectId
+    setProject(next)
+    setTeam(nextTeam)
+    closeAll()
+    if (projectChanged) void navigate({ to: '/' })
+  }
+
   function closeAll() {
     setWsOpen(false)
     setUserOpen(false)
@@ -283,7 +306,6 @@ export function AppShell() {
 
   // Close all dropdowns on route change
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     closeAll()
   }, [currentPath])
 
@@ -463,24 +485,18 @@ export function AppShell() {
                           onToggleExpand={() =>
                             setExpandedProjectId((cur) => (cur === p.id ? null : p.id))
                           }
-                          onSelectProject={() => {
-                            setProject({
-                              projectId: p.id,
-                              projectKey: p.key,
-                              projectName: p.name,
-                            })
-                            setTeam(null)
-                            closeAll()
-                          }}
-                          onSelectTeam={(t) => {
-                            setProject({
-                              projectId: p.id,
-                              projectKey: p.key,
-                              projectName: p.name,
-                            })
-                            setTeam(t ? { teamId: t.id, teamName: t.name } : null)
-                            closeAll()
-                          }}
+                          onSelectProject={() =>
+                            selectProjectContext(
+                              { projectId: p.id, projectKey: p.key, projectName: p.name },
+                              null,
+                            )
+                          }
+                          onSelectTeam={(t) =>
+                            selectProjectContext(
+                              { projectId: p.id, projectKey: p.key, projectName: p.name },
+                              t ? { teamId: t.id, teamName: t.name } : null,
+                            )
+                          }
                         />
                       ))}
                       {filteredNavProjects.length === 0 && (

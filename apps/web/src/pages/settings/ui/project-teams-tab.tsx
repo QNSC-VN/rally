@@ -59,6 +59,7 @@ import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { WorkspaceAdminBadge } from '@/shared/ui/workspace-admin-badge'
 import { TeamMemberRoster } from './team-member-roster'
 import { notify } from '@/shared/lib/toast'
+import { suggestKey } from '@/shared/lib/suggest-key'
 import {
   teamMemberAccessOptions,
   type AccessLevel,
@@ -399,7 +400,19 @@ function TeamFormModal({
   const updateTeam = useUpdateTeam(team?.id ?? '')
   const setAccess = useSetProjectAccess(projectId)
   const [name, setName] = useState(team?.name ?? '')
-  const [key, setKey] = useState(team?.key ?? '')
+  /**
+   * What the reader TYPED into Team key, which is not the same as what the field shows.
+   *
+   * The field was required, empty, and advertised `CP` as a placeholder with nothing filling it in —
+   * so creating a team meant inventing a key by hand, and the BA reported the placeholder as a stray
+   * value. It is derived from the name now (`Core Platform` gives `CP`, exactly what the placeholder
+   * promised) and stays editable: a touched value always wins, and clearing the box hands control back
+   * to the suggestion rather than sticking on an empty required field.
+   *
+   * Editing an existing team keeps the stored key and the input disabled — a key is an identity, and
+   * re-deriving it from a rename would silently re-key the team.
+   */
+  const [keyTouched, setKeyTouched] = useState(team?.key ?? '')
   const [leadId, setLeadId] = useState<string | null>(team?.leadId ?? null)
   // Per-user access map: presence of a userId = included; its value = the level that
   // row gets. Replaces the old (memberUserIds[] + one shared memberLevel) shape, which
@@ -429,6 +442,9 @@ function TeamFormModal({
   const eligible = wsMembers.filter((m) => m.status === 'active')
   const isWorkspaceAdminRow = (userId: string) =>
     wsMembers.find((m) => m.userId === userId)?.roleSlug === 'workspace_admin'
+  // `max: 10` is the column's own ceiling (`varchar(10)`), and the server takes `^[A-Z][A-Z0-9]{1,9}$`.
+  const key = keyTouched || (team ? '' : suggestKey(name, { style: 'initials', max: 10 }))
+
   const leadOptions: SelectOption[] = eligible.map((m) => ({
     value: m.userId,
     label: m.displayName ?? m.email ?? m.userId,
@@ -552,7 +568,7 @@ function TeamFormModal({
             value={key}
             disabled={!!team}
             onChange={(e) =>
-              setKey(
+              setKeyTouched(
                 e.target.value
                   .toUpperCase()
                   .replace(/[^A-Z0-9]/g, '')

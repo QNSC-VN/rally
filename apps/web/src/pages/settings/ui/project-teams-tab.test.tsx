@@ -244,6 +244,61 @@ describe('TeamFormModal — a Workspace Admin is a Team candidate, but never a p
     return screen.findByPlaceholderText('e.g. Core Platform')
   }
 
+  /**
+   * Team key auto-fills from the name, and stays the reader's to change (BA report, 2026-08-20).
+   *
+   * The field was required, empty, and showed `CP` as a placeholder with nothing filling it in — the BA
+   * read that placeholder as a stray value, which is the clearest sign it looked like one.
+   */
+  describe('the Team key the form offers', () => {
+    const keyField = () => screen.getByPlaceholderText('CP') as HTMLInputElement
+
+    it('derives from the name as it is typed', async () => {
+      const nameField = await openCreate()
+      expect(keyField().value).toBe('')
+
+      fireEvent.change(nameField, { target: { value: 'Core Platform' } })
+
+      expect(keyField().value).toBe('CP')
+    })
+
+    it('keeps following the name until the reader edits the key', async () => {
+      const nameField = await openCreate()
+      fireEvent.change(nameField, { target: { value: 'Core Platform' } })
+      fireEvent.change(nameField, { target: { value: 'Quality Assurance Team' } })
+
+      expect(keyField().value).toBe('QAT')
+    })
+
+    it('lets a typed key win, and stop following', async () => {
+      const nameField = await openCreate()
+      fireEvent.change(nameField, { target: { value: 'Core Platform' } })
+      fireEvent.change(keyField(), { target: { value: 'PLAT' } })
+      fireEvent.change(nameField, { target: { value: 'Something Else' } })
+
+      expect(keyField().value).toBe('PLAT')
+    })
+
+    it('hands control back to the suggestion when the key is cleared', async () => {
+      // Otherwise clearing the box strands the reader on an empty REQUIRED field with a value they
+      // cannot get back without retyping the name.
+      const nameField = await openCreate()
+      fireEvent.change(nameField, { target: { value: 'Core Platform' } })
+      fireEvent.change(keyField(), { target: { value: 'PLAT' } })
+      fireEvent.change(keyField(), { target: { value: '' } })
+
+      expect(keyField().value).toBe('CP')
+    })
+
+    it('enables Create team on the derived key alone', async () => {
+      const nameField = await openCreate()
+      fireEvent.change(nameField, { target: { value: 'Core Platform' } })
+
+      const submit = screen.getAllByRole('button', { name: 'Create team' }).at(-1)!
+      expect(submit).toBeEnabled()
+    })
+  })
+
   it('offers a Workspace Admin as a Team lead (the reversed half of §2.1)', async () => {
     await openCreate()
     fireEvent.click(await screen.findByRole('button', { name: 'Team lead' }))

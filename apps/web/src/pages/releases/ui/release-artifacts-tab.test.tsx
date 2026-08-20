@@ -71,6 +71,20 @@ const UNSCHEDULED = {
  *
  * `priority: ''` is how the feed says ABSENT: a Feature has no priority column and no Schedule State.
  */
+/**
+ * A work item OUTSIDE the picker's first page. Only a server-side search can surface it, which is what
+ * the BA's "the checkbox sometimes doesn't fetch" turned out to be: the row could not be offered, so it
+ * could not be ticked.
+ */
+const FAR_AWAY = {
+  id: 'wi-99',
+  itemKey: 'US-99',
+  type: 'story',
+  title: 'Past the candidate limit',
+  teamId: null,
+  releaseId: null,
+}
+
 const IN_RELEASE_FEATURE = {
   id: 'pi-1',
   itemKey: 'FE-6',
@@ -121,26 +135,38 @@ describe('ReleaseArtifactsTab', () => {
       response: { status: 200 },
     })
     mockGET.mockReset()
-    mockGET.mockImplementation((url: string) => {
-      if (url === '/v1/releases/{id}/artifacts') {
-        return Promise.resolve({
-          data: {
-            data: [IN_RELEASE, IN_RELEASE_FEATURE],
-            pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 2 },
-          },
-          error: undefined,
-          response: { status: 200 },
-        })
-      }
-      if (url === '/v1/work-items') {
-        return Promise.resolve({
-          data: { data: [IN_RELEASE, UNSCHEDULED, OTHER_RELEASE] },
-          error: undefined,
-          response: { status: 200 },
-        })
-      }
-      return Promise.resolve({ data: undefined, error: undefined, response: { status: 200 } })
-    })
+    mockGET.mockImplementation(
+      (url: string, opts?: { params?: { query?: Record<string, unknown> } }) => {
+        if (url === '/v1/releases/{id}/artifacts') {
+          return Promise.resolve({
+            data: {
+              data: [IN_RELEASE, IN_RELEASE_FEATURE],
+              pageInfo: { hasNextPage: false, nextCursor: null, limit: 50, total: 2 },
+            },
+            error: undefined,
+            response: { status: 200 },
+          })
+        }
+        if (url === '/v1/work-items') {
+          // The server SEARCHES; this mock does too, so a picker that filters in the browser instead of
+          // asking cannot pass the cases below. `FAR_AWAY` is deliberately absent from the unsearched
+          // page — it stands for an item past `CANDIDATE_LIMIT`.
+          const q = (opts?.params?.query?.q as string | undefined)?.toLowerCase()
+          const page = [IN_RELEASE, UNSCHEDULED, OTHER_RELEASE]
+          const data = q
+            ? [...page, FAR_AWAY].filter(
+                (w) => w.itemKey.toLowerCase().includes(q) || w.title.toLowerCase().includes(q),
+              )
+            : page
+          return Promise.resolve({
+            data: { data },
+            error: undefined,
+            response: { status: 200 },
+          })
+        }
+        return Promise.resolve({ data: undefined, error: undefined, response: { status: 200 } })
+      },
+    )
   })
 
   it('renders the assigned artifacts as rows', async () => {
@@ -174,6 +200,86 @@ describe('ReleaseArtifactsTab', () => {
     expect(screen.getByRole('checkbox', { name: 'DE-2 · Not in any release' })).not.toBeChecked()
     // Another release's item is offered, not hidden: assigning it REPLACES that assignment (FR-031).
     expect(screen.getByRole('checkbox', { name: 'US-3 · In another release' })).not.toBeChecked()
+  })
+
+  /**
+   * The picker SEARCHES THE SERVER (BA report, 2026-08-20: "Release checkbox sometimes not fetch when
+   * clicking").
+   *
+   * The candidates are one page of the project's work items, and the modal used to filter that page in
+   * the browser — so an item outside it could never be offered, and therefore never ticked. Typing now
+   * narrows the query instead.
+   */
+  describe('finding an item that is not on the first page', () => {
+    const searchBox = () => screen.getByRole('searchbox')
+
+    it('offers a row only the server could have found', async () => {
+      renderTab()
+      await openPicker()
+      expect(screen.queryByRole('checkbox', { name: /US-99/ })).toBeNull()
+
+      fireEvent.change(searchBox(), { target: { value: 'US-99' } })
+
+      expect(
+        await screen.findByRole('checkbox', { name: 'US-99 · Past the candidate limit' }),
+      ).toBeTruthy()
+    })
+
+    it('asks the server rather than filtering what it holds', async () => {
+      renderTab()
+      await openPicker()
+
+      fireEvent.change(searchBox(), { target: { value: 'limit' } })
+
+      await waitFor(() =>
+        expect(mockGET).toHaveBeenCalledWith(
+          '/v1/work-items',
+          expect.objectContaining({
+            params: expect.objectContaining({ query: expect.objectContaining({ q: 'limit' }) }),
+          }),
+        ),
+      )
+    })
+
+    it('ADDS the found row, and leaves the release’s other members alone', async () => {
+      renderTab()
+      await openPicker()
+      fireEvent.change(searchBox(), { target: { value: 'US-99' } })
+      fireEvent.click(
+        await screen.findByRole('checkbox', { name: 'US-99 · Past the candidate limit' }),
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Save Artifacts' }))
+
+      await waitFor(() => expect(mockPATCH).toHaveBeenCalled())
+      const body = mockPATCH.mock.calls[0][1].body as {
+        itemIds: string[]
+        releaseId: string | null
+      }
+      expect(body.itemIds).toEqual(['wi-99'])
+      expect(body.releaseId).toBe('rel-1')
+    })
+
+    /**
+     * The hazard the search introduced, and the reason MEMBERSHIP is read from an unsearched query:
+     * with one searched feed, untick-then-search dropped the item out of the baseline, so the save
+     * computed `remove: []` and discarded the untick in silence.
+     */
+    it('keeps an untick that happened BEFORE a search', async () => {
+      renderTab()
+      await openPicker()
+      fireEvent.click(screen.getByRole('checkbox', { name: 'US-1 · Already in this release' }))
+
+      fireEvent.change(searchBox(), { target: { value: 'US-99' } })
+      await screen.findByRole('checkbox', { name: 'US-99 · Past the candidate limit' })
+      fireEvent.click(screen.getByRole('button', { name: 'Save Artifacts' }))
+
+      await waitFor(() => expect(mockPATCH).toHaveBeenCalled())
+      const removal = mockPATCH.mock.calls.find(
+        (c) => (c[1].body as { releaseId: string | null }).releaseId === null,
+      )
+      expect(removal).toBeDefined()
+      expect((removal![1].body as { itemIds: string[] }).itemIds).toEqual(['wi-1'])
+    })
   })
 
   it('ADDS an artifact by setting its release, and touches nothing else', async () => {
