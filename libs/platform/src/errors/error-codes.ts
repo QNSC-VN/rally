@@ -82,6 +82,13 @@ export const ErrorCodes = {
   WORK_ITEM_STATE_MIRROR_CONFLICT: 'WORK_ITEM_STATE_MIRROR_CONFLICT',
   WORK_ITEM_NOT_BACKLOG_TYPE: 'WORK_ITEM_NOT_BACKLOG_TYPE',
   WORK_ITEM_EMPTY_SELECTION: 'WORK_ITEM_EMPTY_SELECTION',
+  /**
+   * RETIRED by the BA's ruling of 2026-08-20 — nothing throws it. A defect is deletable (§3.2:81), and
+   * the Phase 3.4 rule it carried is gone; see `WorkItemsService.deleteWorkItem`.
+   *
+   * Kept because this map is append-only and never reuses a code: a client branching on it still
+   * compiles, and it will simply never arrive.
+   */
   DEFECT_DELETE_FORBIDDEN: 'DEFECT_DELETE_FORBIDDEN',
   // Work item relations (F6)
   WORK_ITEM_RELATION_SELF: 'WORK_ITEM_RELATION_SELF',

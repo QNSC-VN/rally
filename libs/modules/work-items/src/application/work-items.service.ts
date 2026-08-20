@@ -1415,14 +1415,22 @@ export class WorkItemsService {
   async deleteWorkItem(actor: JwtPayload, id: string): Promise<void> {
     const item = await this.getWorkItem(actor.workspaceId, id);
     await this.assertTeamScope(actor, item);
-    // BA rule (P3.4): defects are never deleted — they are resolved by moving to
-    // the 'closed' / 'closed_declined' defect state so the audit trail survives.
-    if (item.type === 'defect') {
-      throw new PreconditionFailedException(
-        'DEFECT_DELETE_FORBIDDEN',
-        'Defects cannot be deleted. Resolve the defect by setting its state to Closed or Closed Declined.',
-      );
-    }
+    /**
+     * A DEFECT IS DELETABLE (BA report, 2026-08-20), and this reverses Phase 3.4.
+     *
+     * `DEFECT_DELETE_FORBIDDEN` used to be thrown here for every principal, Workspace Admin included,
+     * on Phase 3.4's rule that a defect is resolved by moving it to `closed` / `closed_declined` "so
+     * the audit trail survives". That was already a mismatch INSIDE the BA's own documents —
+     * §3.2:81 gives `Quality / Defects` the verb `Delete` in all three granted columns — and
+     * `server-role-matrix.e2e.spec.ts` has been recording it as one, unresolved, with a note not to fix
+     * either side without a ruling. The BA reporting "cannot delete defect in Backlog and Iteration
+     * Status" is that ruling, so §3.2:81 wins.
+     *
+     * The audit argument does not survive the reading either way: this is a SOFT delete (`deleted_at`),
+     * so the row and its `activity` history are still there — a deleted defect is invisible, not
+     * erased, and it is recoverable in the database. Nothing about the closed states changes; resolving
+     * a defect remains the ordinary path, and deleting is now available where the matrix said it was.
+     */
     // An `assertTeamScoped` call sat here too, and is gone by the same ruling (2026-08-14).
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     await this.workItemRepo.softDelete(id, actor.workspaceId);

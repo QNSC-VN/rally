@@ -11,6 +11,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
+// `work_item:delete` gates the bulk Delete control, which the route requires and `work_item:edit` does
+// not grant. Permissive here; the control's own tests own the negative case.
+vi.mock('@/features/access/api', () => ({ useProjectPermissions: () => ({ can: () => true }) }))
 
 const recordProject = vi.fn()
 const teamOwnerOptions = vi.fn()

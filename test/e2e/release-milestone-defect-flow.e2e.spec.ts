@@ -319,9 +319,12 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
         workItems.updateWorkItem(actor, defect.id, { defectState: 'open' }),
       ).rejects.toMatchObject({ code: 'WORK_ITEM_INVALID_TRANSITION' });
 
-      // Defects cannot be deleted — they are resolved via state.
-      await expect(workItems.deleteWorkItem(actor, defect.id)).rejects.toMatchObject({
-        code: 'DEFECT_DELETE_FORBIDDEN',
+      // A defect IS deletable since the BA's ruling of 2026-08-20 (§3.2:81 over Phase 3.4), so what
+      // is asserted here now is that resolving by state stays the ordinary path and the delete no
+      // longer refuses. Deleted last, because the row is unreadable afterwards.
+      await workItems.deleteWorkItem(actor, defect.id);
+      await expect(workItems.getWorkItem(actor.workspaceId, defect.id)).rejects.toMatchObject({
+        code: 'WORK_ITEM_NOT_FOUND',
       });
     });
 
