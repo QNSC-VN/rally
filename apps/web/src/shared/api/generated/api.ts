@@ -430,7 +430,8 @@ export interface paths {
     get: operations['TeamController_getTeam']
     put?: never
     post?: never
-    delete?: never
+    /** Delete an archived team that holds no delivery or report history */
+    delete: operations['TeamController_deleteTeam']
     options?: never
     head?: never
     /** Update team */
@@ -6936,6 +6937,47 @@ export interface operations {
       }
       /** @description Not Found */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  TeamController_deleteTeam: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Team deleted */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Precondition Failed — the target is not in a state that allows this */
+      412: {
         headers: {
           [name: string]: unknown
         }

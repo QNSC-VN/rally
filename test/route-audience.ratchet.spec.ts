@@ -364,6 +364,10 @@ const AUDIENCE: Record<string, Audience> = {
   'TeamController.createTeam': 'workspace-admin',
   'TeamController.removeTeamMember': 'workspace-admin',
   'TeamController.updateTeam': 'workspace-admin',
+  // Deleting an archived team is team configuration, so the same audience as create/edit/deactivate —
+  // and the same code, because a new `teams:delete` would reach no existing workspace without a
+  // backfill migration for an audience that cannot differ from this one.
+  'TeamController.deleteTeam': 'workspace-admin',
 
   // ── TeamStatusController ── §5 gives the Editor `Team Status | View` (their own teams' hours)
   // and not the edit. `team_status:edit` is the Admin code.

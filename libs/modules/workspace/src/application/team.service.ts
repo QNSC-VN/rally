@@ -457,6 +457,71 @@ export class TeamService {
     return members.map((m) => ({ ...m, isWorkspaceAdmin: admins.has(m.userId) }));
   }
 
+  /**
+   * Delete an ARCHIVED team that carries no history — the only shape of team delete this product has.
+   *
+   * DB design §488 is "Archive Team does not delete the linked Work Item/Sprint history", and until now
+   * that was implemented as "a team cannot be deleted at all". That left archiving as a one-way door:
+   * an archived team disappeared from every feed (`GET /projects/:id/teams` narrows to active, by
+   * design, so pickers cannot offer it) and nothing could ever remove a team created by mistake. The
+   * product owner asked for delete; the answer is delete WHEN THERE IS NOTHING TO DESTROY, which keeps
+   * §488 intact rather than trading it away.
+   *
+   * TWO REFUSALS, and they are different questions:
+   *   • `TEAM_NOT_ARCHIVED` — delete is an operation on the archive. Archive first, so the destructive
+   *     step is always preceded by a reversible one that already removed the team from every picker.
+   *   • `TEAM_HAS_HISTORY` — the message NAMES the sources and their counts, because "you cannot delete
+   *     this" without saying what holds it is a dead end, and the holder is usually something the admin
+   *     can move (reassign the work items, delete the draft plan) rather than a mystery.
+   *
+   * The guard is not belt-and-braces over a database constraint: half the referencing columns have NO
+   * foreign key and the other half CASCADE. Postgres would let this succeed and quietly take frozen
+   * Burndown history with it. See `countHistoryReferences`.
+   */
+  async deleteTeam(teamId: string, workspaceId: string, actorId: string): Promise<void> {
+    const team = await this.getTeam(teamId, workspaceId);
+
+    if (team.status !== 'archived') {
+      throw new PreconditionFailedException(
+        'TEAM_NOT_ARCHIVED',
+        'Archive this team before deleting it',
+      );
+    }
+
+    const blocking = await this.teamRepo.countHistoryReferences(teamId, workspaceId);
+    if (blocking.length > 0) {
+      const named = blocking.map((b) => `${b.count} ${b.source}`).join(', ');
+      throw new PreconditionFailedException(
+        'TEAM_HAS_HISTORY',
+        `This team still holds ${named}. Move or remove them before deleting it — deleting would ` +
+          'discard recorded delivery and report history.',
+      );
+    }
+
+    // The roster is read BEFORE the delete removes it: those users may hold project access that RBE-06
+    // granted from their membership, so their cached permissions have to be dropped afterwards.
+    const roster = await this.teamMemberRepo.listByTeam(teamId);
+    await this.uow.run(async (tx) => {
+      await this.teamRepo.deleteTeam(teamId, workspaceId, tx);
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.TEAM_DELETED,
+          resourceType: AUDIT_RESOURCE.TEAM,
+          resourceId: teamId,
+          workspaceId,
+          actor: { id: actorId },
+          changes: { before: team },
+        },
+        tx,
+      );
+    });
+    await this.access.invalidateUsers(
+      workspaceId,
+      roster.map((m) => m.userId),
+    );
+    this.logger.log({ teamId, actorId }, 'Team deleted');
+  }
+
   async addTeamMember(
     teamId: string,
     userId: string,

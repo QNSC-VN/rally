@@ -202,6 +202,33 @@ export class TeamController {
     return toTeamDto(team);
   }
 
+  /**
+   * Delete an ARCHIVED team that holds no history (the workspace Archive surface).
+   *
+   * `teams:edit` and not a new `teams:delete` code: §3.1 reserves team configuration for the Workspace
+   * Admin and `teams:*` is workspace-tier, so the audience is already exactly right — and a NEW
+   * permission would reach no existing workspace without a backfill migration (CLAUDE.md,
+   * "Permissions reach a workspace ONCE"), which is a lot of machinery for an audience that cannot
+   * differ from this one.
+   *
+   * 412 rather than 409 for both refusals: the request is well-formed and the caller is allowed, but
+   * the team is in the wrong state for it (`TEAM_NOT_ARCHIVED`, `TEAM_HAS_HISTORY`) — the same shape as
+   * every other precondition in this codebase.
+   */
+  @Delete('teams/:id')
+  @RequirePermission('teams:edit')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Delete an archived team that holds no delivery or report history' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 204, description: 'Team deleted' })
+  @ApiCommonErrors(401, 404, 412)
+  async deleteTeam(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    await this.teamService.deleteTeam(id, user.workspaceId, user.sub);
+  }
+
   // Team member operations
   @Get('teams/:id/members')
   @AuthorizedInService(

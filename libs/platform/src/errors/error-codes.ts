@@ -248,6 +248,13 @@ export const ErrorCodes = {
   TEAM_MEMBER_NOT_FOUND: 'TEAM_MEMBER_NOT_FOUND',
   TEAM_MEMBER_ALREADY_EXISTS: 'TEAM_MEMBER_ALREADY_EXISTS',
   TEAM_MEMBER_NOT_WORKSPACE_MEMBER: 'TEAM_MEMBER_NOT_WORKSPACE_MEMBER',
+  /** Delete is an operation on the ARCHIVE: archive the team first (`TeamService.deleteTeam`). */
+  TEAM_NOT_ARCHIVED: 'TEAM_NOT_ARCHIVED',
+  /**
+   * The team still holds delivery or report history, so deleting it would dangle rows that carry no
+   * foreign key and CASCADE away frozen snapshots (DB design §488). The message names the sources.
+   */
+  TEAM_HAS_HISTORY: 'TEAM_HAS_HISTORY',
 
   // Project teams / members
   PROJECT_TEAM_ALREADY_LINKED: 'PROJECT_TEAM_ALREADY_LINKED',

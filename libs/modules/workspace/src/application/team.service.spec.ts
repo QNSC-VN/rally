@@ -40,6 +40,9 @@ const makeTeamRepo = () => ({
   // set a READER must intersect with to reach the team at all (RBE-08).
   listActiveProjectIds: vi.fn().mockResolvedValue(['proj-1']),
   findBlockingCapacityPlans: vi.fn().mockResolvedValue([]),
+  // Nothing references the team by default, so it is deletable; the guard's own cases say otherwise.
+  countHistoryReferences: vi.fn().mockResolvedValue([]),
+  deleteTeam: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeTeamMemberRepo = () => ({
@@ -494,6 +497,79 @@ describe('TeamService — team reads are scoped to readable projects', () => {
         [],
         expect.anything(),
       );
+    });
+  });
+
+  /**
+   * DELETE, and the two things it refuses (workspace Archive surface).
+   *
+   * Until now a team could only be archived, and archiving was a one-way door: `GET /projects/:id/teams`
+   * narrows to active teams by design, so an archived one was invisible everywhere and nothing could
+   * remove a team created by mistake. Delete now exists, and it is deliberately narrow — DB design §488
+   * ("Archive Team does not delete the linked Work Item/Sprint history") is kept by refusing whenever
+   * there IS history, rather than by refusing always.
+   *
+   * The guard cannot be left to Postgres, which is why it is asserted here: `work_items.team_id`,
+   * `tasks.team_id`, `iterations.team_id` and `portfolio_items.team_id` have no foreign key at all, and
+   * `member_capacity` / `iteration_daily_snapshots` / the two baseline tables are ON DELETE CASCADE. The
+   * database would accept this delete and take frozen report history with it.
+   */
+  describe('deleteTeam', () => {
+    it('refuses an ACTIVE team — delete is an operation on the archive', async () => {
+      teamRepo.findById.mockResolvedValue(mockTeam({ status: 'active' }));
+
+      await expect(service.deleteTeam('team-1', 'ws-1', 'actor-1')).rejects.toMatchObject({
+        code: 'TEAM_NOT_ARCHIVED',
+      });
+      expect(teamRepo.deleteTeam).not.toHaveBeenCalled();
+      // Not even asked: the state check comes first, so a wrong-state request costs no query.
+      expect(teamRepo.countHistoryReferences).not.toHaveBeenCalled();
+    });
+
+    it('refuses an archived team that still holds history, and NAMES what holds it', async () => {
+      teamRepo.findById.mockResolvedValue(mockTeam({ status: 'archived' }));
+      teamRepo.countHistoryReferences.mockResolvedValue([
+        { source: 'work items', count: 3 },
+        { source: 'iterations', count: 1 },
+      ]);
+
+      await expect(service.deleteTeam('team-1', 'ws-1', 'actor-1')).rejects.toMatchObject({
+        code: 'TEAM_HAS_HISTORY',
+        // The counts are the actionable part — "cannot delete" without them is a dead end.
+        message: expect.stringContaining('3 work items, 1 iterations'),
+      });
+      expect(teamRepo.deleteTeam).not.toHaveBeenCalled();
+    });
+
+    it('deletes an archived team with no history', async () => {
+      teamRepo.findById.mockResolvedValue(mockTeam({ status: 'archived' }));
+
+      await service.deleteTeam('team-1', 'ws-1', 'actor-1');
+
+      // The audit row is asserted over real HTTP instead: this file's `AuditProducer` is an inline
+      // mock with no handle, and a destructive action's trail is worth proving against the real
+      // emitter rather than a stub.
+      expect(teamRepo.deleteTeam).toHaveBeenCalledWith('team-1', 'ws-1', expect.anything());
+    });
+
+    it('drops the permission cache of everyone who was on the roster', async () => {
+      // RBE-06 grants project access FROM a roster row, so the members' cached assignments are stale
+      // the moment the team stops existing. Read BEFORE the delete, or there is no roster left to read.
+      teamRepo.findById.mockResolvedValue(mockTeam({ status: 'archived' }));
+      teamMemberRepo.listByTeam.mockResolvedValue([{ userId: 'user-2' }, { userId: 'user-3' }]);
+
+      await service.deleteTeam('team-1', 'ws-1', 'actor-1');
+
+      expect(access.invalidateUsers).toHaveBeenCalledWith('ws-1', ['user-2', 'user-3']);
+    });
+
+    it('refuses a team from another workspace as NOT FOUND, before anything else', async () => {
+      teamRepo.findById.mockResolvedValue(null);
+
+      await expect(service.deleteTeam('foreign', 'ws-1', 'actor-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(teamRepo.deleteTeam).not.toHaveBeenCalled();
     });
   });
 

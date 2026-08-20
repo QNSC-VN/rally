@@ -74,6 +74,7 @@ export const AUDIT_ACTION_OPTIONS: readonly AuditActionOption[] = [
   // ── Teams ──
   { code: 'team.created', group: 'teams' },
   { code: 'team.updated', group: 'teams' },
+  { code: 'team.deleted', group: 'teams' },
   { code: 'team.member.added', group: 'teams' },
   { code: 'team.member.removed', group: 'teams' },
   // ── Workspace configuration ──

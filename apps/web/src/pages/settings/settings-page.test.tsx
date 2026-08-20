@@ -145,6 +145,7 @@ describe('Settings sidebar — an entry the reader lacks is HIDDEN, not padlocke
       'User Management',
       'Integrations',
       'Audit Log',
+      'Archive',
       'Permission Model',
     ]) {
       expect(screen.queryByText(hidden), `${hidden} must be hidden for an Editor`).toBeNull()
@@ -187,7 +188,13 @@ describe('Settings sidebar — an entry the reader lacks is HIDDEN, not padlocke
     renderPage()
     await waitFor(() => expect(screen.getByText('Permission Model')).toBeTruthy())
     expect(screen.queryByTitle('Requires admin role')).toBeNull()
-    for (const hidden of ['Workspace Settings', 'User Management', 'Integrations', 'Audit Log']) {
+    for (const hidden of [
+      'Workspace Settings',
+      'User Management',
+      'Integrations',
+      'Audit Log',
+      'Archive',
+    ]) {
       expect(screen.queryByText(hidden), `${hidden} must be hidden for an Admin`).toBeNull()
     }
   })

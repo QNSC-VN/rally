@@ -17,7 +17,8 @@
     "roles": "Roles & Permissions",
     "integrations": "Integrations",
     "audit": "Audit Log",
-    "apiTokens": "API Tokens"
+    "apiTokens": "API Tokens",
+    "archive": "Archive"
   },
   "comingSoon": "Available in a future release.",
   "profile": {
@@ -454,7 +455,8 @@
     "teams": "Organize people into teams, assign leads and projects.",
     "audit": "Review recent activity and changes across the workspace.",
     "integrations": "Connect GitHub and manage repository sync.",
-    "apiTokens": "Credentials a machine uses on your behalf. Each one carries your permissions and nothing more."
+    "apiTokens": "Credentials a machine uses on your behalf. Each one carries your permissions and nothing more.",
+    "archive": "Archived projects and teams — restore one, or delete it for good."
   },
   "apiTokens": {
     "list": {
@@ -510,6 +512,47 @@
       "copy": "Copy token",
       "usage": "Send it as a bearer token: Authorization: Bearer <token>",
       "done": "I have stored it"
+    }
+  },
+  "archive": {
+    "projectsTitle": "Archived projects",
+    "teamsTitle": "Archived teams",
+    "loading": "Loading the archive…",
+    "loadError": "Could not load the archive",
+    "emptyTitle": "Nothing is archived",
+    "emptyDescription": "Archived projects and teams collect here, where they can be restored or deleted. Archive one from Workspaces & Projects.",
+    "colKey": "Key",
+    "colName": "Name",
+    "colMembers": "Members",
+    "colUpdated": "Last updated",
+    "footnote": "Deleting is permanent. A team can only be deleted while it holds no delivery history; the server refuses and explains itself when it does.",
+    "project": {
+      "restoreAria": "Restore project {{name}}",
+      "deleteAria": "Delete project {{name}}",
+      "restoreTitle": "Restore project",
+      "restoreMessage": "Restore {{name}}? It becomes an active project again and reappears in every project picker.",
+      "restoreConfirm": "Restore project",
+      "restored": "{{name}} restored",
+      "restoreFailed": "Failed to restore the project",
+      "deleteTitle": "Delete project",
+      "deleteMessage": "This removes {{name}} and everything filed under it — work items, iterations, releases and reports. It cannot be undone.",
+      "deleteConfirm": "Delete project",
+      "deleted": "{{name}} deleted",
+      "deleteFailed": "Failed to delete the project"
+    },
+    "team": {
+      "restoreAria": "Restore team {{name}}",
+      "deleteAria": "Delete team {{name}}",
+      "restoreTitle": "Restore team",
+      "restoreMessage": "Restore {{name}}? It becomes available for new membership and reappears in every team picker.",
+      "restoreConfirm": "Restore team",
+      "restored": "{{name}} restored",
+      "restoreFailed": "Failed to restore the team",
+      "deleteTitle": "Delete team",
+      "deleteMessage": "Delete {{name}}? This is allowed only while the team holds no delivery history. Nothing is removed if it still does.",
+      "deleteConfirm": "Delete team",
+      "deleted": "{{name}} deleted",
+      "deleteFailed": "Failed to delete the team"
     }
   }
 }
