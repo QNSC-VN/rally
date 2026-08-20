@@ -65,7 +65,7 @@ export function TabsTrigger({ className, icon, count, children, ...props }: Tabs
       {icon}
       {children}
       {count !== undefined && (
-        <span className="rounded-sm bg-muted px-1 text-ui-2xs font-semibold text-muted-foreground">
+        <span className="rounded-sm bg-muted px-1 text-ui-xs font-semibold text-muted-foreground">
           {count}
         </span>
       )}

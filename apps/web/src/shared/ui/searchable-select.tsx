@@ -355,7 +355,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
           {grouped.map((bucket) => (
             <div key={bucket.name ?? '__ungrouped'}>
               {bucket.name && (
-                <div className="px-3 pt-2 pb-1 text-ui-2xs font-semibold tracking-wider text-foreground-subtle uppercase">
+                <div className="px-3 pt-2 pb-1 text-ui-xs font-semibold tracking-wider text-foreground-subtle uppercase">
                   {bucket.name}
                 </div>
               )}

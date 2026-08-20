@@ -34,7 +34,7 @@ export function EstimateTierBadge({ tier }: { tier: EstimateTier }) {
   const style = TIER_STYLE[tier]
   return (
     <span
-      className="shrink-0 rounded px-1 text-ui-2xs font-semibold uppercase"
+      className="shrink-0 rounded px-1 text-ui-xs font-semibold uppercase"
       style={{ color: style.color, backgroundColor: style.bg }}
       title={t(`tiers.${tier}Hint`)}
     >

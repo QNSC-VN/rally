@@ -49,7 +49,7 @@ export function Calendar({
   })
 
   return (
-    <div className="w-64 select-none p-2">
+    <div className="w-64 p-2 select-none">
       {/* Month title + nav */}
       <div className="flex items-center justify-between px-1 py-1">
         <span className="text-ui-md font-semibold text-primary">{format(month, 'MMMM yyyy')}</span>
@@ -74,7 +74,7 @@ export function Calendar({
       </div>
 
       {/* Weekday header */}
-      <div className="grid grid-cols-7 text-center text-ui-2xs font-semibold text-foreground-subtle">
+      <div className="grid grid-cols-7 text-center text-ui-xs font-semibold text-foreground-subtle">
         {WEEKDAYS.map((w) => (
           <div key={w} className="py-1">
             {w}

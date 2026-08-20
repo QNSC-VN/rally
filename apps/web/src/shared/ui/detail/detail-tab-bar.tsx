@@ -94,7 +94,7 @@ export function DetailTabBar({
               {tab.count !== undefined && (
                 <span
                   className={cn(
-                    'rounded-full px-1.5 text-ui-2xs font-semibold',
+                    'rounded-full px-1.5 text-ui-xs font-semibold',
                     light ? 'bg-surface-subtle text-muted-foreground' : 'bg-white/15 text-white/90',
                   )}
                 >

@@ -36,7 +36,7 @@ export function KeyChip({
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-sm font-mono whitespace-nowrap',
         size === 'sm'
-          ? 'h-4 min-w-8 px-1 text-ui-2xs font-bold'
+          ? 'h-4 min-w-8 px-1 text-ui-xs font-bold'
           : 'h-5 px-1.5 text-ui-xs font-semibold',
         className,
       )}

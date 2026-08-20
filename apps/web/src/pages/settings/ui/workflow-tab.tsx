@@ -208,7 +208,7 @@ export function WorkflowTab() {
               </div>
               <div className="w-16 text-center">
                 {status.isDefault && (
-                  <span className="rounded-full bg-surface-hover px-1.5 py-0.5 text-ui-2xs font-medium tracking-wide text-muted-foreground uppercase">
+                  <span className="rounded-full bg-surface-hover px-1.5 py-0.5 text-ui-xs font-medium tracking-wide text-muted-foreground uppercase">
                     {t('workflow.defaultBadge')}
                   </span>
                 )}

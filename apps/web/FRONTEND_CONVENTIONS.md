@@ -63,10 +63,18 @@ app · pages · widgets · features · entities · shared
   computed/data-driven (a status swatch, a `width:${pct}%`, SVG paint).
 - **No static-colour inline `style={{}}`.** `style={{ color: BRAND.textMuted }}`
   → `className="text-muted-foreground"`. Inline style is for dynamic values only.
-- **Type size comes from the scale.** Use `text-ui-2xs … text-ui-xl` (9–14px,
+- **Type size comes from the scale.** Use `text-ui-xs … text-ui-xl` (11–15px,
   defined in `globals.css @theme`), never arbitrary `text-[11px]`.
-  - 9px `text-ui-2xs` · 10px `text-ui-xs` · 11px `text-ui-sm` · 12px `text-ui-md`
-    · 13px `text-ui-lg` · 14px `text-ui-xl`
+  - 11px `text-ui-xs` · 12px `text-ui-sm` · 13px `text-ui-md` · 14px `text-ui-lg`
+    · 15px `text-ui-xl`
+  - **11px is the floor, and `text-ui-2xs` (9px) no longer exists.** The scale moved
+    up one step on 2026-08-20 — 68% of the app's text had been 11px or smaller — and
+    the token was retired rather than left defined, so it cannot return one class at
+    a time. `type-scale.test.ts` pins the px values, the floor and its absence.
+- **A clickable target is at least 24×24 CSS px** (WCAG 2.5.8 AA). `Button` carries
+  `min-h-[24px]` on every size; a hand-rolled control needs it too. It is a px
+  literal on purpose: `min-h-6` is a rem, and the root is pinned at 14px, so it
+  would resolve to 21px.
 - **Dark mode is automatic** via CSS-var flipping — never write `dark:` variants,
   and never hardcode `bg-white`/`text-white` (use `bg-card`/`bg-input-background`).
 - Compose classes with `cn()` from `shared/lib/utils`.

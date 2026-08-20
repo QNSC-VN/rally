@@ -56,7 +56,7 @@ export function ManageFiltersMenu<K extends string>({ state }: { state: ManageFi
         collisionPadding={8}
         className="flex w-64 flex-col gap-1 rounded border border-border-subtle bg-card p-2 shadow-lg"
       >
-        <p className="px-1 pb-1 text-ui-2xs font-semibold tracking-wide text-muted-foreground uppercase">
+        <p className="px-1 pb-1 text-ui-xs font-semibold tracking-wide text-muted-foreground uppercase">
           {t('manageFilters.heading')}
         </p>
 
