@@ -130,7 +130,7 @@ export function AttachmentBlock({ subject, readOnly = false }: AttachmentBlockPr
         {!isLoading && hasRows && (
           <table className="w-full text-left text-ui-sm">
             <thead>
-              <tr className="border-b border-input bg-surface-hover text-ui-2xs font-semibold tracking-wider text-foreground-subtle uppercase select-none">
+              <tr className="border-b border-input bg-surface-hover text-ui-xs font-semibold tracking-wider text-foreground-subtle uppercase select-none">
                 {!readOnly && <th className="w-8" />}
                 {COLUMN_LABELS.map((label, i) => (
                   <th

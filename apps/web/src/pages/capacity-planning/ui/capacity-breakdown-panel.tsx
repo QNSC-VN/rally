@@ -109,7 +109,7 @@ export function CapacityBreakdownPanel({ plan }: { plan: CapacityPlan }) {
                   <span className="text-ui-md font-semibold text-foreground tabular-nums">
                     {value === null ? EMPTY_VALUE : value}
                   </span>
-                  <span className="text-ui-2xs text-foreground-subtle tabular-nums">
+                  <span className="text-ui-xs text-foreground-subtle tabular-nums">
                     {key === 'capacity'
                       ? value === null
                         ? ''

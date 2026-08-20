@@ -81,7 +81,7 @@ export function NotificationItem({
       {/* Content */}
       <div className="min-w-0 flex-1">
         {showBadge && n.resourceType && (
-          <span className="mb-0.5 inline-block rounded-sm bg-avatar px-1.5 py-0.5 text-ui-2xs font-semibold tracking-wide text-primary uppercase">
+          <span className="mb-0.5 inline-block rounded-sm bg-avatar px-1.5 py-0.5 text-ui-xs font-semibold tracking-wide text-primary uppercase">
             {n.resourceType}
           </span>
         )}

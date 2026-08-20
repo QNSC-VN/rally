@@ -351,7 +351,7 @@ export function AllocateFeatureModal({
           <div className="flex items-center gap-2 border-b border-border-inner pb-1">
             {/* Narrow heading over the primary radios — `w-3.5` matches the control, so the Team column
                 still starts where the pickers do. */}
-            <span className="w-3.5 shrink-0 text-ui-2xs font-semibold text-muted-foreground">
+            <span className="w-3.5 shrink-0 text-ui-xs font-semibold text-muted-foreground">
               {t('allocate.primaryHeading')}
             </span>
             <span className="flex-1 text-ui-xs font-semibold text-muted-foreground">

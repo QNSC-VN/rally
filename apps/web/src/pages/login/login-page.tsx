@@ -230,9 +230,7 @@ export function LoginPage() {
             </div>
             <div>
               <div className="text-ui-xl font-semibold text-foreground">{t('common:appName')}</div>
-              <div className="text-ui-2xs text-foreground-subtle">
-                {t('common:platformTagline')}
-              </div>
+              <div className="text-ui-xs text-foreground-subtle">{t('common:platformTagline')}</div>
             </div>
           </div>
 

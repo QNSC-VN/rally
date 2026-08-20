@@ -324,7 +324,7 @@ export function MilestoneDetailPage() {
                   }
                 />
                 {hasLinkedReleases && (
-                  <p className="text-ui-2xs text-foreground-subtle">
+                  <p className="text-ui-xs text-foreground-subtle">
                     {t('detail.derivedFromReleases')}
                   </p>
                 )}
@@ -343,7 +343,7 @@ export function MilestoneDetailPage() {
                   }
                 />
                 {hasLinkedReleases && (
-                  <p className="text-ui-2xs text-foreground-subtle">
+                  <p className="text-ui-xs text-foreground-subtle">
                     {t('detail.derivedFromReleases')}
                   </p>
                 )}

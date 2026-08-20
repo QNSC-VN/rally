@@ -5,6 +5,7 @@ import { MoreVertical } from 'lucide-react'
 import { AppPopoverContent } from '@/shared/ui/app-popover'
 import { BRAND } from '@/shared/config/brand'
 import { cn } from '@/shared/lib/utils'
+import { TARGET_SQUARE } from '@/shared/ui/target-size'
 
 /**
  * ActionMenu — the shared kebab menu for actions that do not deserve a toolbar button.
@@ -54,6 +55,7 @@ export function ActionMenu({
             type="button"
             aria-label={ariaLabel}
             className={cn(
+              TARGET_SQUARE,
               'rounded p-1.5 transition-colors',
               onDark
                 ? 'text-white hover:bg-white/10'

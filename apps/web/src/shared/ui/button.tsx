@@ -3,11 +3,12 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { Slot } from 'radix-ui'
 
 import { cn } from '@/shared/lib/utils'
+import { TARGET_HEIGHT, TARGET_SQUARE } from '@/shared/ui/target-size'
 
 /**
  * Button — the single source of truth for the app's button styling.
  *
- * Encodes the de-facto enterprise spec (compact 11px, navy primary, 4px radius)
+ * Encodes the de-facto enterprise spec (compact 12px, navy primary, 4px radius)
  * as dark-mode-aware Tailwind classes backed by the semantic design tokens in
  * globals.css. Prefer this over hand-rolled `<button style={{ backgroundColor:
  * BRAND.primary }}>` so button styling stays consistent from a single source.
@@ -20,6 +21,10 @@ import { cn } from '@/shared/lib/utils'
  *  - ghost        borderless — subtle inline actions
  *  - link         inline text link
  * Sizes: sm (toolbar), md (default / modal footer), xs (dense), icon.
+ *
+ * Every size carries the shared pointer-target floor from `target-size.ts` (WCAG 2.5.8 AA). Measured
+ * before it was added, `sm` computed to about 22px tall and `xs` to about 17.5px — both below the
+ * minimum, on the two sizes the toolbars and dense grids use most.
  */
 const buttonVariants = cva(
   'inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded font-semibold whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0',
@@ -37,10 +42,10 @@ const buttonVariants = cva(
         link: 'font-medium text-primary-light underline-offset-4 hover:underline',
       },
       size: {
-        md: 'px-4 py-1.5 text-ui-sm',
-        sm: 'px-3 py-1 text-ui-sm',
-        xs: 'px-2 py-0.5 text-ui-xs',
-        icon: 'p-1',
+        md: `${TARGET_HEIGHT} px-4 py-1.5 text-ui-sm`,
+        sm: `${TARGET_HEIGHT} px-3 py-1 text-ui-sm`,
+        xs: `${TARGET_HEIGHT} px-2 py-0.5 text-ui-xs`,
+        icon: `${TARGET_SQUARE} p-1`,
       },
     },
     defaultVariants: {

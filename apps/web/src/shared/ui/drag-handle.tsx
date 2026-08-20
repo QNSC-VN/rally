@@ -1,5 +1,6 @@
 import { forwardRef } from 'react'
 import { BRAND } from '@/shared/config/brand'
+import { TARGET_HEIGHT } from '@/shared/ui/target-size'
 
 export type DragHandleProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   /** Render an invisible, inert spacer (keeps column alignment when reorder is off). */
@@ -83,7 +84,7 @@ export const DragHandle = forwardRef<HTMLButtonElement, DragHandleProps>(functio
       aria-hidden={disabled || undefined}
       tabIndex={disabled ? -1 : undefined}
       aria-label={disabled ? undefined : (label ?? 'Drag to reorder')}
-      className={`flex w-5 shrink-0 items-center justify-center border-none bg-transparent p-0 ${
+      className={`${TARGET_HEIGHT} flex w-5 shrink-0 items-center justify-center border-none bg-transparent p-0 ${
         disabled
           ? 'cursor-default opacity-0'
           : 'cursor-grab text-muted-foreground opacity-0 transition-opacity duration-100 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current active:cursor-grabbing'

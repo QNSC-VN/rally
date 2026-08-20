@@ -4,6 +4,9 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { PanelRightClose } from 'lucide-react'
 
+import { cn } from '@/shared/lib/utils'
+import { TARGET_SQUARE } from '@/shared/ui/target-size'
+
 import {
   useWorkItem,
   useWorkItemLabels,
@@ -272,7 +275,7 @@ export function DetailSidebar({
           <button
             onClick={onToggleCollapse}
             title="Hide sidebar"
-            className="rounded p-1 transition-colors hover:bg-surface-subtle"
+            className={cn(TARGET_SQUARE, 'rounded transition-colors hover:bg-surface-subtle')}
           >
             <PanelRightClose size={14} className="text-muted-foreground" />
           </button>

@@ -254,7 +254,7 @@ export function HomePage() {
               to={m.path as '/'}
               className={`flex flex-1 flex-col justify-center px-5 py-3 text-left transition-colors hover:bg-surface-hover ${i > 0 ? 'border-l border-border-subtle' : ''}`}
             >
-              <span className="text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
+              <span className="text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase">
                 {m.label}
               </span>
               <span
@@ -303,7 +303,7 @@ export function HomePage() {
             ).map(([cls, label]) => (
               <div
                 key={label}
-                className={`${cls} text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase`}
+                className={`${cls} text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase`}
               >
                 {label}
               </div>
@@ -421,7 +421,7 @@ export function HomePage() {
             ).map(([cls, label]) => (
               <div
                 key={label}
-                className={`${cls} text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase`}
+                className={`${cls} text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase`}
               >
                 {label}
               </div>

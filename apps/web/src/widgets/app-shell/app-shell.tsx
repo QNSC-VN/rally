@@ -399,7 +399,7 @@ export function AppShell() {
                     'Select workspace'}
                 </div>
                 <div
-                  className="max-w-44 truncate text-ui-2xs"
+                  className="max-w-44 truncate text-ui-xs"
                   style={{ color: 'rgba(255,255,255,0.55)' }}
                 >
                   {project ? `${project.projectKey} · ${selectedTeamName}` : 'No project selected'}
@@ -416,7 +416,7 @@ export function AppShell() {
                     <Layers size={14} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
+                    <div className="text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase">
                       Workspace
                     </div>
                     <div className="truncate text-ui-lg font-semibold text-foreground">
@@ -425,7 +425,7 @@ export function AppShell() {
                         '--'}
                     </div>
                   </div>
-                  <span className="rounded-sm bg-success-bg px-1.5 py-0.5 text-ui-2xs font-semibold text-success">
+                  <span className="rounded-sm bg-success-bg px-1.5 py-0.5 text-ui-xs font-semibold text-success">
                     Active
                   </span>
                 </div>
@@ -451,10 +451,10 @@ export function AppShell() {
                 {navProjects.length > 0 && (
                   <div className="px-3 py-2 text-ui-sm text-muted-foreground">
                     <div className="mb-1 flex items-center justify-between">
-                      <div className="text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
+                      <div className="text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase">
                         Projects & Teams
                       </div>
-                      <span className="text-ui-2xs text-foreground-subtle">
+                      <span className="text-ui-xs text-foreground-subtle">
                         {navProjects.length}
                       </span>
                     </div>
@@ -567,7 +567,7 @@ export function AppShell() {
                     {label}
                     {comingSoon ? (
                       <span
-                        className="ml-0.5 rounded-sm px-1 py-px text-ui-2xs font-semibold tracking-wide uppercase"
+                        className="ml-0.5 rounded-sm px-1 py-px text-ui-xs font-semibold tracking-wide uppercase"
                         style={{
                           backgroundColor: 'rgba(255,255,255,0.12)',
                           color: 'rgba(255,255,255,0.5)',
@@ -588,7 +588,7 @@ export function AppShell() {
                   </button>
                   {!comingSoon && openMenu === label && (
                     <div className="absolute top-full left-0 z-50 mt-1 w-44 rounded border border-border bg-card py-1 shadow-lg">
-                      <div className="px-3 py-1.5 text-ui-2xs font-semibold tracking-widest text-foreground-subtle uppercase">
+                      <div className="px-3 py-1.5 text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase">
                         {label}
                       </div>
                       {visibleChildren.map((child) => {
@@ -603,7 +603,7 @@ export function AppShell() {
                               className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui-lg text-foreground"
                             >
                               <span className="flex-1">{child.label}</span>
-                              <span className="rounded-sm bg-border-inner px-1 py-px text-ui-2xs font-semibold tracking-wide text-foreground-subtle uppercase">
+                              <span className="rounded-sm bg-border-inner px-1 py-px text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
                                 Soon
                               </span>
                             </button>
@@ -643,7 +643,7 @@ export function AppShell() {
                 >
                   {label}
                   <span
-                    className="rounded-sm px-1 py-px text-ui-2xs font-semibold tracking-wide uppercase"
+                    className="rounded-sm px-1 py-px text-ui-xs font-semibold tracking-wide uppercase"
                     style={{
                       backgroundColor: 'rgba(255,255,255,0.10)',
                       color: 'rgba(255,255,255,0.45)',
@@ -696,7 +696,7 @@ export function AppShell() {
             >
               <Bell size={14} />
               {unreadCount > 0 && (
-                <span className="absolute top-0.5 right-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-destructive px-0.5 text-ui-2xs leading-none font-bold text-white">
+                <span className="absolute top-0.5 right-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-destructive px-0.5 text-ui-xs leading-none font-bold text-white">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}

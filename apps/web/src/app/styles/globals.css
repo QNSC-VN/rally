@@ -319,26 +319,38 @@
    from one scale (FRONTEND_CONVENTIONS.md §Typography). Namespaced `-ui-` so it
    is purely additive — it never shadows Tailwind's built-in text-xs/sm/… utilities.
 
-     text-ui-2xs  9px   badges, tiny meta
-     text-ui-xs  10px   column headers, captions, dense cells
-     text-ui-sm  11px   default UI text — buttons, most grid cells
-     text-ui-md  12px   body copy, form values
-     text-ui-lg  13px   modal titles, section headings
-     text-ui-xl  14px   page / section titles
+     text-ui-xs  11px   column headers, captions, dense cells
+     text-ui-sm  12px   default UI text — buttons, most grid cells
+     text-ui-md  13px   body copy, form values
+     text-ui-lg  14px   modal titles, section headings
+     text-ui-xl  15px   page / section titles
+
+   RAISED ONE STEP, 2026-08-20, and `text-ui-2xs` (9px) is RETIRED.
+   Measured before the change: 777 sized nodes, of which 68% were 11px or smaller and 34% were 10px or
+   smaller, with 14px — the browser's own default body size — the largest type anywhere outside the login
+   page. Real Rally runs ~12px cells and ~11px headers, so every row sat about a pixel under the product
+   this one is modelled on.
+
+   The ROOT still resolves to 14px deliberately (`html { font-size: 87.5% }`, see below). It shrinks
+   every rem by 12.5%, so RAISING it would grow spacing as well as type — and 47 places pin px heights
+   and widths (`min-h-[34px]`, fixed column widths) that would not grow with them, so grids would
+   tighten and clip. Moving the semantic scale instead touches type only, which is what was too small.
+
+   The px values in the comments below are therefore what a reader on the 16px browser default sees.
+   A reader who has raised their own default gets proportionally more, which is the point of the
+   percentage root — the literal `14px` it replaced discarded that preference outright.
 ──────────────────────────────────────────────────────────────────────────────── */
 @theme {
-  --text-ui-2xs: 0.642857rem; /* 9px */
-  --text-ui-2xs--line-height: 0.857143rem; /* 12px */
-  --text-ui-xs: 0.714286rem; /* 10px */
-  --text-ui-xs--line-height: 1rem; /* 14px */
-  --text-ui-sm: 0.785714rem; /* 11px */
-  --text-ui-sm--line-height: 1.071429rem; /* 15px */
-  --text-ui-md: 0.857143rem; /* 12px */
-  --text-ui-md--line-height: 1.142857rem; /* 16px */
-  --text-ui-lg: 0.928571rem; /* 13px */
-  --text-ui-lg--line-height: 1.285714rem; /* 18px */
-  --text-ui-xl: 1rem; /* 14px */
-  --text-ui-xl--line-height: 1.428571rem; /* 20px */
+  --text-ui-xs: 0.785714rem; /* 11px */
+  --text-ui-xs--line-height: 1.071429rem; /* 15px */
+  --text-ui-sm: 0.857143rem; /* 12px */
+  --text-ui-sm--line-height: 1.142857rem; /* 16px */
+  --text-ui-md: 0.928571rem; /* 13px */
+  --text-ui-md--line-height: 1.285714rem; /* 18px */
+  --text-ui-lg: 1rem; /* 14px */
+  --text-ui-lg--line-height: 1.428571rem; /* 20px */
+  --text-ui-xl: 1.071429rem; /* 15px */
+  --text-ui-xl--line-height: 1.5rem; /* 21px */
 }
 
 @layer base {
@@ -378,7 +390,13 @@
     cursor: not-allowed;
   }
   html {
-    font-size: 14px;
+    /* 87.5% of the reader's own default font size — 14px for the 16px default, so the app renders
+       exactly as it did when this was the literal `14px` it replaced. The percentage is the point: an
+       absolute px root DISCARDS a reader's browser font-size preference entirely (page zoom still
+       worked, the preference did not), and this is the whole app's rem basis, so nothing else could
+       honour it. Sizes given in px — the pointer-target floor in `target-size.ts`, the pinned column
+       widths — deliberately do NOT scale with it; they are CSS-px minimums and layout, not type. */
+    font-size: 87.5%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

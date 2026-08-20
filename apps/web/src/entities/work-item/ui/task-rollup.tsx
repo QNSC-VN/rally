@@ -26,7 +26,7 @@ export function TaskRollup({ estimate, todo, actual }: TaskRollupProps) {
           key={key}
           className={`px-2 py-1.5 text-center bg-surface-hover${i === 0 ? '' : 'border-l border-avatar'}`}
         >
-          <div className="text-ui-2xs font-semibold tracking-wide text-foreground-subtle uppercase">
+          <div className="text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
             {label}
           </div>
           <div className="text-ui-lg font-semibold text-foreground tabular-nums">{values[key]}</div>

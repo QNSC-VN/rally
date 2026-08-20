@@ -157,7 +157,7 @@ export function ColumnFieldsMenu<K extends string>({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {selected.length > 0 && (
             <>
-              <div className="px-1.5 pt-1.5 pb-1 text-ui-2xs font-semibold tracking-wide text-muted-foreground uppercase">
+              <div className="px-1.5 pt-1.5 pb-1 text-ui-xs font-semibold tracking-wide text-muted-foreground uppercase">
                 Selected <span className="text-foreground-subtle">({selected.length})</span>
               </div>
               {selected.map(renderRow)}
@@ -166,7 +166,7 @@ export function ColumnFieldsMenu<K extends string>({
 
           {available.length > 0 && (
             <>
-              <div className="px-1.5 pt-2 pb-1 text-ui-2xs font-semibold tracking-wide text-muted-foreground uppercase">
+              <div className="px-1.5 pt-2 pb-1 text-ui-xs font-semibold tracking-wide text-muted-foreground uppercase">
                 Available <span className="text-foreground-subtle">({available.length})</span>
               </div>
               {available.map(renderRow)}

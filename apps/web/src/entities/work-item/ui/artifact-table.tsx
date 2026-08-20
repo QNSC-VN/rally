@@ -127,7 +127,7 @@ export function ArtifactTable({
   return (
     <table className="w-full text-left">
       <thead>
-        <tr className="border-b border-border-strong bg-surface-hover text-ui-2xs font-semibold tracking-wider uppercase select-none">
+        <tr className="border-b border-border-strong bg-surface-hover text-ui-xs font-semibold tracking-wider uppercase select-none">
           <th className="h-7 w-12 px-3 text-center font-medium text-foreground-subtle">#</th>
           <th className="h-7 w-24 px-3 font-medium text-foreground-subtle">ID</th>
           <th className="h-7 px-3 font-medium text-foreground-subtle">Name</th>
