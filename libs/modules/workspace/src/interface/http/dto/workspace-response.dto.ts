@@ -43,6 +43,23 @@ export const InvitationResponseSchema = z.object({
 
 export class InvitationResponseDto extends createZodDto(InvitationResponseSchema) {}
 
+/**
+ * The response of `POST :id/invitations/:invitationId/link` — a freshly rotated
+ * accept URL the inviter can hand over by any channel (chat, in person), for the
+ * members email cannot reach: an internal colleague behind a mail filter that
+ * quarantines transactional senders, or anyone whose invite keeps landing in junk.
+ * Rotating means the URL in this response is the ONLY live one — a previously
+ * emailed link dies the moment this is issued.
+ */
+export const InvitationLinkResponseSchema = z.object({
+  invitationId: z.string().uuid(),
+  email: z.string().email(),
+  inviteUrl: z.string().url(),
+  expiresAt: z.string().datetime(),
+});
+
+export class InvitationLinkResponseDto extends createZodDto(InvitationLinkResponseSchema) {}
+
 export const WorkspaceSettingsResponseSchema = z.object({
   workspaceId: z.string().uuid(),
   timezone: z.string().nullable(),

@@ -435,6 +435,9 @@ const AUDIENCE: Record<string, Audience> = {
   'WorkspaceController.listMembersWithProfile': 'workspace-admin',
   'WorkspaceController.removeMember': 'workspace-admin',
   'WorkspaceController.resendInvitation': 'workspace-admin',
+  // Same actor and same credential-issuing power as resend — it ROTATES the accept
+  // token and hands it to the inviter — so the same audience decides both.
+  'WorkspaceController.buildInvitationLink': 'workspace-admin',
   'WorkspaceController.updateMember': 'workspace-admin',
   'WorkspaceController.updateSettings': 'workspace-admin',
   'WorkspaceController.updateWorkspace': 'workspace-admin',

@@ -349,6 +349,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/workspaces/{id}/invitations/{invitationId}/link': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Rotate and return the invitation accept URL without emailing — deliver it by any channel */
+    post: operations['WorkspaceController_buildInvitationLink']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/workspaces/{id}/invitations/{invitationId}': {
     parameters: {
       query?: never
@@ -3057,6 +3074,16 @@ export interface components {
       acceptedAt: string | null
       /** Format: date-time */
       createdAt: string
+    }
+    InvitationLinkResponseDto: {
+      /** Format: uuid */
+      invitationId: string
+      /** Format: email */
+      email: string
+      /** Format: uri */
+      inviteUrl: string
+      /** Format: date-time */
+      expiresAt: string
     }
     WorkspaceSettingsResponseDto: {
       /** Format: uuid */
@@ -6600,6 +6627,63 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['InvitationResponseDto']
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Conflict — duplicate record or state conflict */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Too Many Requests — rate limit exceeded. Check Retry-After header. */
+      429: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkspaceController_buildInvitationLink: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: string
+        invitationId: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InvitationLinkResponseDto']
         }
       }
       /** @description Bad Request — validation error or malformed input */

@@ -273,6 +273,19 @@ export const EnvSchema = z
      */
     ENTRA_GUEST_INVITE_ENABLED: booleanish(false),
     /**
+     * Comma-separated list of email domains that are INTERNAL to this deployment's
+     * identity tenant (e.g. `qnsc.vn`). An invited address on one of these domains is
+     * a directory member already — they sign in with the workspace SSO connection —
+     * so `inviteMember` skips the Entra B2B GUEST provisioning queue for them: the
+     * guest relay would only answer the same-tenant collision as "nothing to do",
+     * and making the invitation email wait on that no-op buys nothing. The invitation
+     * itself is unchanged — it is still the authorization grant, and it still emails;
+     * internal domains additionally get the copy-link path, which does not depend on
+     * mail deliverability at all. Empty (default) disables the distinction and every
+     * address is treated as it was before this existed.
+     */
+    INTERNAL_EMAIL_DOMAINS: z.string().default(''),
+    /**
      * Multi-IdP broker: the single app-level OIDC callback shared by every
      * federated connection (the same `/bff/callback` endpoint). Defaults to
      * ENTRA_REDIRECT_URI when unset (the home connection reuses it).
