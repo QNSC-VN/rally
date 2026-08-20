@@ -27,6 +27,7 @@ import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { formatWith } from '@/shared/lib/utils'
 import { useSystemRoles } from '../model/use-system-roles'
+import { memberSelectOption } from '@/shared/ui/owner-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
 
 const AUDIT_DEFAULT_PAGE_SIZE = 50
@@ -162,10 +163,9 @@ export function AuditLogTab() {
   const actorOptions = useMemo(
     () => [
       { value: '', label: t('audit.allActors') },
-      ...members.map((m) => ({
-        value: m.userId,
-        label: m.displayName || m.email || m.userId,
-      })),
+      // Avatars here too: the log's own rows name actors, so a filter that lists them plainly reads as
+      // a different set of people.
+      ...members.map((m) => memberSelectOption(m)),
     ],
     [members, t],
   )

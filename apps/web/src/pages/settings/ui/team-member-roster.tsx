@@ -23,7 +23,7 @@
  *    already hide an archived team, so growing one is a membership nobody can use.
  */
 import { useState } from 'react'
-import { Loader2, ShieldCheck, UserMinus, UserPlus } from 'lucide-react'
+import { Loader2, UserMinus, UserPlus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   useAddTeamMember,
@@ -34,7 +34,7 @@ import {
 } from '@/features/teams/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
-import { OwnerAvatar } from '@/shared/ui/owner-cell'
+import { memberSelectOption, OwnerAvatar } from '@/shared/ui/owner-cell'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
 import { WorkspaceAdminBadge } from '@/shared/ui/workspace-admin-badge'
@@ -190,16 +190,12 @@ function AddTeamMemberControl({
     .filter((m) => m.status === 'active' && !existing.has(m.userId))
     .map((m) => {
       const isWorkspaceAdmin = m.roleSlug === 'workspace_admin'
-      return {
-        value: m.userId,
-        label: m.displayName ?? m.email ?? m.userId,
-        searchText: `${m.displayName ?? ''} ${m.email ?? ''}${
-          isWorkspaceAdmin ? ` ${adminLabel}` : ''
-        }`,
-        ...(isWorkspaceAdmin
-          ? { icon: <ShieldCheck size={12} className="text-primary" aria-hidden /> }
-          : {}),
-      }
+      // Every candidate gets the avatar; a Workspace Admin additionally MATCHES the badge word, so
+      // searching "Workspace Admin" finds them. Previously only they carried a glyph — a shield — which
+      // made an ordinary member look like a row with something missing rather than a different kind.
+      return memberSelectOption(m, {
+        extraSearch: isWorkspaceAdmin ? adminLabel : undefined,
+      })
     })
 
   if (candidates.length === 0) {

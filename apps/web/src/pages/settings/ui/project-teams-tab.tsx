@@ -49,7 +49,7 @@ import {
 import { useWorkspaceMembers, useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
-import { OwnerAvatar } from '@/shared/ui/owner-cell'
+import { memberSelectOption, OwnerAvatar } from '@/shared/ui/owner-cell'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
 import { Button } from '@/shared/ui/button'
@@ -445,10 +445,9 @@ function TeamFormModal({
   // `max: 10` is the column's own ceiling (`varchar(10)`), and the server takes `^[A-Z][A-Z0-9]{1,9}$`.
   const key = keyTouched || (team ? '' : suggestKey(name, { style: 'initials', max: 10 }))
 
-  const leadOptions: SelectOption[] = eligible.map((m) => ({
-    value: m.userId,
-    label: m.displayName ?? m.email ?? m.userId,
-  }))
+  // `memberSelectOption`, so a Team lead carries the same avatar the member table two hundred lines
+  // below already draws for the same person — and so typing an email finds them.
+  const leadOptions: SelectOption[] = eligible.map((m) => memberSelectOption(m))
   const valid = name.trim().length >= 2 && /^[A-Z][A-Z0-9]{1,9}$/.test(key)
 
   /** Toggling a row includes/excludes it. A newly-checked row defaults to its CURRENT
