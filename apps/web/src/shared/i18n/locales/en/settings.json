@@ -446,7 +446,6 @@
     "col": {
       "name": "Name",
       "status": "Status",
-      "scopes": "Scopes",
       "lastUsed": "Last used",
       "prefix": "Prefix",
       "expires": "Expires"
@@ -462,14 +461,6 @@
     "revokeMessage": "Anything using this token stops working on its next request. This cannot be undone — a replacement is a new token.",
     "revoked": "“{{name}}” revoked",
     "revokeFailed": "Could not revoke the token",
-    "scopes": {
-      "fullAccess": "Full access",
-      "noPermissions": "No permissions",
-      "count_one": "{{count}} scope",
-      "count_other": "{{count}} scopes",
-      "tooltipLabel": "Token scopes for {{name}}",
-      "ariaLabel": "Scopes: {{scopes}}"
-    },
     "footnote": "A token inherits your permissions at the moment of every request, so access you lose is access it loses. Send it as a bearer token: Authorization: Bearer rly_…",
     "create": {
       "title": "New API token",
@@ -482,16 +473,11 @@
       "expiryHint": "Every token expires. {{max}} days is the maximum the API accepts.",
       "expiryOption_one": "{{count}} day",
       "expiryOption_other": "{{count}} days",
-      "scopesLabel": "Scopes",
-      "scopesHint": "Search and select permissions to limit this token's capabilities. If none are selected, the token will inherit your full permissions.",
-      "scopesPlaceholder": "Search permissions…",
-      "scopesNoResults": "No permissions match your search",
       "scopeNote": "The token inherits your permissions. It can never do more than you can, and it stops being able to do what you stop being able to do.",
       "cancel": "Cancel",
       "submit": "Create token",
       "pending": "Creating…",
-      "failed": "Could not create the token",
-      "invalidScopeError": "Invalid permission code: {{code}}. The permission catalogue may have changed."
+      "failed": "Could not create the token"
     },
     "created": {
       "title": "Token created",
