@@ -39,7 +39,8 @@ import {
 } from '@/features/teams/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
-import { OwnerAvatar } from '@/shared/ui/owner-cell'
+import { memberSelectOption, OwnerAvatar } from '@/shared/ui/owner-cell'
+import { teamSelectOption } from '@/shared/ui/team-cell'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
 import { WarningIndicator } from '@/shared/ui/warning-indicator'
@@ -326,7 +327,9 @@ function EditorTeamsModal({
   // selectedTeamIds.filter(...))`), then owned by the dialog — `null` means "not seeded
   // yet", which is not the same as "seeded empty" and must not be overwritten later.
   const selected = draft ?? memberTeamIds
-  const options: SelectOption[] = teams.map((tm) => ({ value: tm.id, label: tm.name }))
+  // `teamSelectOption`, so these rows carry the same square avatar `TeamCell` and `TeamSelectField`
+  // draw. A multi-select cannot use that field, which is why the builder is separate from it.
+  const options: SelectOption[] = teams.map((tm) => teamSelectOption(tm))
   const canSave = !isLoading && (selected.length > 0 || teams.length === 0)
 
   /**
@@ -460,12 +463,9 @@ function AddExistingUserModal({
   const candidates = wsMembers.filter(
     (m) => !existingIds.has(m.userId) && m.status === 'active' && m.roleSlug !== 'workspace_admin',
   )
-  const options: SelectOption[] = candidates.map((m) => ({
-    value: m.userId,
-    label: m.displayName ?? m.email ?? m.userId,
-    searchText: `${m.displayName ?? ''} ${m.email ?? ''}`,
-  }))
-  const teamOptions: SelectOption[] = teams.map((tm) => ({ value: tm.id, label: tm.name }))
+  // The shared builders: same avatar as the roster rows a few lines up, same email matching.
+  const options: SelectOption[] = candidates.map((m) => memberSelectOption(m))
+  const teamOptions: SelectOption[] = teams.map((tm) => teamSelectOption(tm))
   // §2.2: an Editor must hold at least one Team — enforced, not merely warned (mockup
   // `canAdd`, :235). Relaxed only when the project has no team to choose.
   const missingTeam =

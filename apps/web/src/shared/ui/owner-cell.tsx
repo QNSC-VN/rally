@@ -33,7 +33,12 @@ export function OwnerAvatar({
     return (
       <img
         src={avatarUrl}
-        alt={name}
+        // DECORATIVE, in both branches. The person's name is always rendered beside this glyph — in a
+        // cell, an option row, a roster line — so naming the image repeats it, and the initials branch
+        // below is worse: it put "WA" into the accessible name of every option, so a picker announced
+        // "WA Wanda Admin" and a test (or a screen-reader user) looking for the person found neither.
+        alt=""
+        aria-hidden
         loading="lazy"
         className={cn('shrink-0 rounded-full object-cover', className)}
         style={{ width: size, height: size }}
@@ -49,6 +54,7 @@ export function OwnerAvatar({
 
   return (
     <span
+      aria-hidden
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-full font-bold',
         className,
@@ -98,6 +104,32 @@ export interface OwnerSelectMember {
 const memberName = (m: OwnerSelectMember) => m.displayName ?? m.email ?? m.userId
 
 /**
+ * ONE person as a dropdown option: label, leading avatar, and searchable email.
+ *
+ * The smallest reusable piece, because `ownerSelectOptions` below is not always the right shape — an
+ * actor FILTER leads with "All actors", an add-member picker offers no empty row, and neither wants
+ * Rally's "Quick Picks" grouping. Those callers each hand-rolled `{ value, label }` instead, so the
+ * same person appeared with a glyph in a list and without one in the dropdown two lines away.
+ *
+ * `searchText` carries the email so typing an address finds someone whose display name does not
+ * contain it — the reason a person picker is a search dropdown at all. `extraSearch` is for a caller
+ * that also wants a badge word to match (a Workspace Admin, say).
+ */
+export function memberSelectOption(
+  m: OwnerSelectMember,
+  { group, extraSearch }: { group?: string; extraSearch?: string } = {},
+): SelectOption {
+  const label = memberName(m)
+  return {
+    value: m.userId,
+    label,
+    icon: <OwnerAvatar name={label} size={16} />,
+    searchText: `${m.displayName ?? ''} ${m.email ?? ''}${extraSearch ? ` ${extraSearch}` : ''}`,
+    ...(group ? { group } : {}),
+  }
+}
+
+/**
  * Grouped options for a person picker (Rally parity): a "Quick Picks" group
  * with "— No Entry —" and the current owner, then an alphabetical "Team
  * Members" group — each with a round {@link OwnerAvatar} glyph. Shared by the
@@ -108,6 +140,8 @@ export function ownerSelectOptions(
   currentId?: string | null,
   currentName?: string | null,
 ): SelectOption[] {
+  // The current owner may not be IN `members` (they can have left the team), so this keeps taking a
+  // bare id + label rather than a member row; `memberSelectOption` covers the rows that are.
   const withAvatar = (value: string, label: string, group: string): SelectOption => ({
     value,
     label,
@@ -124,7 +158,7 @@ export function ownerSelectOptions(
   }
 
   const sorted = [...members].sort((a, b) => memberName(a).localeCompare(memberName(b)))
-  for (const m of sorted) options.push(withAvatar(m.userId, memberName(m), 'Team Members'))
+  for (const m of sorted) options.push(memberSelectOption(m, { group: 'Team Members' }))
 
   return options
 }

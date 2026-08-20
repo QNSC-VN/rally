@@ -34,6 +34,9 @@ export function TeamAvatar({
 
   return (
     <span
+      // DECORATIVE: the team's NAME is always rendered beside this glyph, so the key inside it was
+      // being read as part of the accessible name — a team option announced "TB Team Beta".
+      aria-hidden
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-md font-bold text-white',
         className,
@@ -61,6 +64,26 @@ export function TeamAvatar({
  * made the read-only cell look shrunken beside it, and the top alignment made it sit high in the row.
  * Both are fixed here rather than per-call-site, or the two renderings drift again.
  */
+/**
+ * ONE team as a dropdown option, with its square avatar — the same glyph `TeamCell` and
+ * `TeamSelectField` render.
+ *
+ * `TeamSelectField` already does this for a single-select FORM FIELD; this exists for the callers that
+ * cannot use it (a multi-select team list, a filter with a leading "All teams" row) and were therefore
+ * building `{ value, label }` by hand and losing the avatar.
+ */
+export function teamSelectOption(team: { id: string; name: string; key?: string | null }): {
+  value: string
+  label: string
+  icon: React.ReactNode
+} {
+  return {
+    value: team.id,
+    label: team.name,
+    icon: <TeamAvatar teamKey={team.key ?? null} name={team.name} size={16} />,
+  }
+}
+
 export function TeamCell({
   teamKey,
   name,

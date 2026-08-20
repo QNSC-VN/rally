@@ -73,6 +73,8 @@ import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { PERMISSION } from '@/shared/config/permissions'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { OwnerAvatar } from '@/shared/ui/owner-cell'
+import { teamSelectOption } from '@/shared/ui/team-cell'
+import { KeyChip } from '@/shared/ui/key-chip'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs'
 import { FormField } from '@/shared/ui/form-field'
@@ -438,7 +440,14 @@ export function UserAccessModal({
   )
   const candidates: SelectOption[] = projects
     .filter((p) => !isVisible(p.id))
-    .map((p) => ({ value: p.id, label: `${p.key} · ${p.name}` }))
+    // The key as a CHIP, as every project cell in the app renders it, rather than glued to the name
+    // with a separator this screen invented.
+    .map((p) => ({
+      value: p.id,
+      label: p.name,
+      searchText: `${p.key} ${p.name}`,
+      icon: <KeyChip>{p.key}</KeyChip>,
+    }))
 
   return (
     <AppModal open onClose={onClose} title="Manage Access" width={560}>
@@ -730,7 +739,7 @@ function UserProjectAccessRow({
     onResolve(projectId, baseline)
   }, [isLoading, teamsLoading, signature, baseline, projectId, onResolve])
 
-  const teamOptions: SelectOption[] = teams.map((tm) => ({ value: tm.id, label: tm.name }))
+  const teamOptions: SelectOption[] = teams.map((tm) => teamSelectOption(tm))
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border-subtle p-4">

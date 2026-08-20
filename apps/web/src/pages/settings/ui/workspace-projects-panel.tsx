@@ -55,6 +55,7 @@ import { Input } from '@/shared/ui/input'
 import { Textarea } from '@/shared/ui/textarea'
 import { FormField } from '@/shared/ui/form-field'
 import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
+import { memberSelectOption } from '@/shared/ui/owner-cell'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 
 type TabKey = 'details' | 'users' | 'teams'
@@ -269,9 +270,21 @@ function EditProjectModal({ project, onClose }: { project: Project; onClose: () 
   const [endDate, setEndDate] = useState(project.endDate ?? '')
   const [leadId, setLeadId] = useState<string | null>(project.leadId ?? null)
 
+  /**
+   * A WORKSPACE ADMIN IS A VALID PROJECT OWNER, and this filter said otherwise.
+   *
+   * The 2026-08-20 feature (PR 463) states it as AC3 — "a Workspace Admin who is an eligible active
+   * company user can be selected as Project Owner" — and the server has always agreed:
+   * `WorkspaceMemberRepository.listMemberOptions` unions in `projects.lead_id` precisely BECAUSE a WA
+   * holds no `project_members` row and would otherwise be unnameable. The identical filter on Team lead
+   * was removed with that feature; this twin was missed, so the one screen that edits a project's owner
+   * still withheld them.
+   *
+   * `memberSelectOption` also gives each row the avatar this list renders everywhere else.
+   */
   const leadOptions: SelectOption[] = wsMembers
-    .filter((m) => m.status === 'active' && m.roleSlug !== 'workspace_admin')
-    .map((m) => ({ value: m.userId, label: m.displayName ?? m.email ?? m.userId }))
+    .filter((m) => m.status === 'active')
+    .map((m) => memberSelectOption(m))
 
   function handleSave() {
     update.mutate(
