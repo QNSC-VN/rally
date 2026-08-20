@@ -14,6 +14,7 @@ import { AuditProjectionRelay } from './audit/audit-projection.relay';
 import { SnapshotCronService } from './cron/snapshot.cron';
 import { CleanupCronService } from './cron/cleanup.cron';
 import { EmailRelayService } from './email/email-relay.service';
+import { BounceFeedbackService } from './email/bounce-feedback.service';
 import { NotificationRelayService } from './notifications/notification-relay.service';
 import { ScmWebhookRelayService } from './scm/scm-webhook-relay.service';
 import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
@@ -53,6 +54,7 @@ import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
     AuditProjectionRelay,
     // Email outbox relay → IEmailProvider
     EmailRelayService,
+    BounceFeedbackService,
     // Notification outbox relay → in_app_notifications
     NotificationRelayService,
     // SCM webhook inbox relay → connections/changesets

@@ -987,6 +987,13 @@ module "worker" {
     # The WORKER sends too — the notification relay is its job — so it needs the sender for the
     # same reason the api task does.
     { name = "EMAIL_PROVIDER", value = "ses" },
+    // `try`, not a plain index: the _shared stack owns these outputs, and a PR-time plan runs
+    // against the remote state as it is TODAY — which does not have them yet. Empty until
+    // _shared applies, which is exactly the loop's off state (the worker logs "feedback OFF").
+    // The queue ARN below is CONSTRUCTED instead, same idiom as ses_identity_arn, so the IAM
+    // grant is correct from the first apply and needs no ordering at all.
+    { name = "SES_BOUNCE_CONFIGSET", value = try(data.terraform_remote_state.shared.outputs["ses_bounce_configset_name"], "") },
+    { name = "SES_BOUNCE_QUEUE_URL", value = try(data.terraform_remote_state.shared.outputs["ses_bounce_queue_url"], "") },
     { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
@@ -1888,4 +1895,28 @@ resource "aws_iam_role_policy" "worker_ses_send" {
   name   = "${local.name}-worker-ses-send"
   role   = split("/", module.worker.task_role_arn)[1]
   policy = local.ses_send_policy
+}
+
+# The feedback half of the SES loop: the worker's BounceFeedbackService long-polls the shared
+# bounce queue. Scoped to the ONE queue and the three calls a drain makes — Receive to claim a
+# batch, Delete to acknowledge (which the consumer does whether or not the event matched a row,
+# so an unmatched event can never poison the queue into a retry that cannot succeed), and
+# GetQueueAttributes for the SDK's standard startup probe. No wildcard: a compromised worker
+# must not be able to drain or tamper with any other queue in the account.
+resource "aws_iam_role_policy" "worker_sqs_bounce_feedback" {
+  name = "${local.name}-worker-sqs-bounce-feedback"
+  role = split("/", module.worker.task_role_arn)[1]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+        # Deterministic queue name, so the ARN needs no remote-state round trip — the same
+        # reason ses_identity_arn is constructed. The queue is created in _shared with this name.
+        Resource = "arn:aws:sqs:${var.region}:${data.aws_caller_identity.current.account_id}:rally-ses-bounce-feedback"
+      },
+    ]
+  })
 }

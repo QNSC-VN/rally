@@ -28,7 +28,7 @@ import {
   RateLimit,
   NotFoundException,
 } from '@platform';
-import type { JwtPayload, PagedResult } from '@platform';
+import type { JwtPayload, PagedResult, EmailDeliveryStatus } from '@platform';
 import { AuthPolicy, RequirePermission, AuthorizedInService } from '@modules/access';
 import { CurrentUser } from '@modules/identity/interface/http/decorators/current-user.decorator';
 import { WorkspaceService } from '../../application/workspace.service';
@@ -84,7 +84,9 @@ function toMemberDto(m: WorkspaceMember): MemberResponseDto {
   };
 }
 
-function toInvitationDto(i: WorkspaceInvitation): InvitationResponseDto {
+function toInvitationDto(
+  i: WorkspaceInvitation & { emailDelivery?: EmailDeliveryStatus },
+): InvitationResponseDto {
   return {
     id: i.id,
     workspaceId: i.workspaceId,
@@ -93,6 +95,7 @@ function toInvitationDto(i: WorkspaceInvitation): InvitationResponseDto {
     status: i.status,
     invitedBy: i.invitedBy,
     expiresAt: i.expiresAt.toISOString(),
+    emailDelivery: i.emailDelivery ?? 'unknown',
     resendCount: i.resendCount,
     lastSentAt: i.lastSentAt.toISOString(),
     acceptedBy: i.acceptedBy,

@@ -153,8 +153,25 @@ export const entityRefTypeEnum = pgEnum('entity_ref_type', ['work_item', 'portfo
 
 export const outboxStatusEnum = pgEnum('outbox_status', ['pending', 'published', 'failed']);
 
-/** Status for rows in messaging.email_outbox. */
-export const emailJobStatusEnum = pgEnum('email_job_status', ['pending', 'sent', 'failed']);
+/**
+ * Status for rows in messaging.email_outbox.
+ *
+ * `sent` means ACCEPTED BY THE PROVIDER, not delivered — SES takes the message and
+ * answers 200 before the receiving mail server has said anything. `bounced` and
+ * `complained` are the provider's asynchronous verdicts arriving later over the
+ * feedback loop (SES configuration-set events drained by BounceFeedbackService):
+ * `bounced` = the receiving server rejected it (bad mailbox, spam-policy refusal,
+ * quarantine-as-bounce), `complained` = the recipient marked it spam. They are
+ * terminal overlays on a row already `sent` — the send happened, this is what came
+ * back — which is why the relay never sets them and the feedback consumer always does.
+ */
+export const emailJobStatusEnum = pgEnum('email_job_status', [
+  'pending',
+  'sent',
+  'failed',
+  'bounced',
+  'complained',
+]);
 
 /** Status for rows in messaging.notification_outbox. */
 export const notificationJobStatusEnum = pgEnum('notification_job_status', [

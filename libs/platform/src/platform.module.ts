@@ -25,6 +25,7 @@ import { OutboxService } from './outbox/outbox.service';
 import { AuditProducer } from './audit/audit-producer.service';
 import { EmailService } from './email/email.service';
 import { EmailSchedulerService } from './email/email-scheduler.service';
+import { EmailDeliveryService } from './email/email-delivery.service';
 import { EMAIL_PROVIDER } from './email/email.provider';
 import { SesEmailProvider } from './email/providers/ses.provider';
 import { DevEmailProvider } from './email/providers/dev.provider';
@@ -115,6 +116,7 @@ import { StorageService } from './storage/storage.service';
     },
     EmailService,
     EmailSchedulerService,
+    EmailDeliveryService,
     NotificationSchedulerService,
     NotificationPubSubService,
     IdempotencyInterceptor,
@@ -139,6 +141,7 @@ import { StorageService } from './storage/storage.service';
     AuditProducer,
     EmailService,
     EmailSchedulerService,
+    EmailDeliveryService,
     NotificationSchedulerService,
     NotificationPubSubService,
     IdempotencyInterceptor,

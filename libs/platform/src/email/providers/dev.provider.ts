@@ -7,7 +7,7 @@
  * Set EMAIL_PROVIDER=ses or EMAIL_PROVIDER=resend to use a real provider.
  */
 import { Injectable, Logger } from '@nestjs/common';
-import type { IEmailProvider, EmailPayload } from '../email.provider';
+import type { IEmailProvider, EmailPayload, EmailSendResult } from '../email.provider';
 import { AppConfigService } from '../../config';
 
 @Injectable()
@@ -17,7 +17,7 @@ export class DevEmailProvider implements IEmailProvider {
   constructor(private readonly config: AppConfigService) {}
 
   // eslint-disable-next-line @typescript-eslint/require-await
-  async send(payload: EmailPayload): Promise<void> {
+  async send(payload: EmailPayload): Promise<EmailSendResult> {
     const fields: Record<string, unknown> = {
       to: payload.to,
       from: payload.from,
@@ -34,5 +34,7 @@ export class DevEmailProvider implements IEmailProvider {
       fields,
       '[DEV EMAIL] Would send email — set EMAIL_PROVIDER=ses|resend to use a real transport',
     );
+
+    return { messageId: null };
   }
 }

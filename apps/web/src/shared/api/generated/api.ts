@@ -3067,6 +3067,8 @@ export interface components {
       invitedBy: string
       /** Format: date-time */
       expiresAt: string
+      /** @enum {string} */
+      emailDelivery: 'sent' | 'bounced' | 'complained' | 'failed' | 'unknown'
       resendCount: number
       /** Format: date-time */
       lastSentAt: string

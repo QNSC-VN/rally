@@ -20,7 +20,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { EMAIL_PROVIDER } from './email.provider';
-import type { IEmailProvider } from './email.provider';
+import type { IEmailProvider, EmailSendResult } from './email.provider';
 import { renderEmailTemplate } from './templates';
 import type { EmailTemplateName, EmailTemplateVars } from './templates';
 import { ResilienceService, ResiliencePreset } from '../resilience';
@@ -45,20 +45,23 @@ export class EmailService {
    *
    * Throws after all retries fail so the relay can increment attempts and
    * retry on the next outbox tick (coarse-grained, minutes-level recovery).
+   *
+   * Returns the provider's message id (see EmailSendResult) so the relay can persist it
+   * at acceptance — that id is the feedback loop's only exact match key.
    */
   async sendTemplate<K extends EmailTemplateName>(
     to: string,
     template: K,
     vars: EmailTemplateVars[K],
     idempotencyKey?: string,
-  ): Promise<void> {
+  ): Promise<EmailSendResult> {
     const rendered = renderEmailTemplate(template, vars);
     const key = idempotencyKey ?? randomUUID();
     this.logger.log(
       { to, template, subject: rendered.subject, category: rendered.category },
       'Dispatching email',
     );
-    await this.resilience.execute(
+    return this.resilience.execute(
       'email.provider.send',
       () =>
         this.provider.send({
