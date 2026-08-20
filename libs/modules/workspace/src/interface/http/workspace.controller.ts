@@ -47,6 +47,7 @@ import {
   MemberOptionResponseDto,
   MemberWithProfileResponseDto,
   InvitationResponseDto,
+  InvitationLinkResponseDto,
   WorkspaceSettingsResponseDto,
 } from './dto/workspace-response.dto';
 import type {
@@ -441,6 +442,40 @@ export class WorkspaceController {
     this.assertActive(user, id);
     const invitation = await this.workspaceService.resendInvitation(id, invitationId, user.sub);
     return toInvitationDto(invitation);
+  }
+
+  // ── Copy invitation link ───────────────────────────────────────────────────
+  // Same guard and rate class as resend — the token ROTATES, so this endpoint is a
+  // credential-issuing action and not a free read — but nothing is emailed: the URL
+  // is handed to the inviter to deliver over whatever channel reaches the member.
+  // The members this exists for are internal-domain colleagues whose mail path is
+  // unreliable (tenant filters quarantine transactional senders) — see
+  // WorkspaceService.buildInvitationLink for the rotation and cooldown semantics.
+
+  @Post(':id/invitations/:invitationId/link')
+  @RequirePermission('users:invite')
+  @RateLimit('STRICT')
+  @ApiOperation({
+    summary:
+      'Rotate and return the invitation accept URL without emailing — deliver it by any channel',
+  })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiParam({ name: 'invitationId', type: 'string', format: 'uuid' })
+  @ApiResponse({ status: 200, type: InvitationLinkResponseDto })
+  @ApiCommonErrors(400, 401, 404, 409)
+  async buildInvitationLink(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('invitationId', ParseUUIDPipe) invitationId: string,
+  ): Promise<InvitationLinkResponseDto> {
+    this.assertActive(user, id);
+    const link = await this.workspaceService.buildInvitationLink(id, invitationId, user.sub);
+    return {
+      invitationId: link.invitationId,
+      email: link.email,
+      inviteUrl: link.inviteUrl,
+      expiresAt: link.expiresAt.toISOString(),
+    };
   }
 
   // ── Cancel invitation ──────────────────────────────────────────────────────

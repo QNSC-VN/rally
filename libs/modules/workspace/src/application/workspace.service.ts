@@ -495,6 +495,54 @@ export class WorkspaceService {
   }
 
   /**
+  /**
+   * Whether `email` sits on one of INTERNAL_EMAIL_DOMAINS — the deployment's own tenant
+   * domains, whose users are directory members that sign in over the workspace SSO
+   * connection rather than provisioned B2B guests. Exact-domain match, case-insensitive;
+   * subdomains are deliberately NOT matched (an address on `partner.qnsc.vn` is a different
+   * administrative reality from one on `qnsc.vn`, and guessing otherwise provisions the
+   * wrong identity). Empty list = the distinction is off and every address is external.
+   */
+  private isInternalEmail(email: string): boolean {
+    const configured = this.config.get('INTERNAL_EMAIL_DOMAINS') ?? '';
+    if (!configured.trim()) {
+      return false;
+    }
+    const domain = email.toLowerCase().trim().split('@').pop();
+    if (!domain) {
+      return false;
+    }
+    return configured
+      .split(',')
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean)
+      .includes(domain);
+  }
+
+  /**
+   * The guard shared by resend and copy-link: load the invitation, prove it belongs to
+   * this workspace, and prove it is still rotatable (`pending`, or `expired` and being
+   * revived). Both callers rotate the token, so both must refuse anything the acceptance
+   * path would not honour anyway.
+   */
+  private async loadRotatableInvitation(
+    workspaceId: string,
+    invitationId: string,
+  ): Promise<WorkspaceInvitation> {
+    const invitation = await this.invitationRepo.findById(invitationId);
+    if (!invitation || invitation.workspaceId !== workspaceId) {
+      throw new NotFoundException('INVITATION_NOT_FOUND', 'Invitation not found');
+    }
+    if (invitation.status !== 'pending' && invitation.status !== 'expired') {
+      throw new PreconditionFailedException(
+        'INVITATION_NOT_PENDING',
+        'Only a pending or expired invitation can be resent or re-linked',
+      );
+    }
+    return invitation;
+  }
+
+  /**
    * Enqueue the transactional invitation email (shared by create + resend).
    * `idempotencyKey` MUST be unique per send — email_outbox dedups on it — so
    * create passes the invitation id and resend passes `${id}:r${n}`.
@@ -654,12 +702,24 @@ export class WorkspaceService {
        * whoever KNOWS the guest is ready: the relay, in the same transaction that marks the row
        * `sent`. Ordering, not tuning — a faster cron would only shorten the window.
        */
-      const provisioningQueued = await this.guestInviteScheduler.schedule(tx, {
-        invitationId: inv.id,
-        workspaceId,
-        email: normalizedEmail,
-        inviteToken: rawToken,
-      });
+      /**
+       * INTERNAL domains are skipped on purpose. An address on this deployment's own tenant
+       * domain (INTERNAL_EMAIL_DOMAINS) is a directory member — they sign in with the
+       * workspace SSO connection — so the B2B guest queue has nothing to provision: Graph
+       * answers the same-tenant collision as "nothing to do" and the relay resolves instantly,
+       * which means gating the invitation email on it buys nothing while adding a hop. The
+       * invitation itself is unchanged and still emails; internal members additionally have
+       * the copy-link route, which does not depend on mail at all.
+       */
+      const internalMember = this.isInternalEmail(normalizedEmail);
+      const provisioningQueued =
+        !internalMember &&
+        (await this.guestInviteScheduler.schedule(tx, {
+          invitationId: inv.id,
+          workspaceId,
+          email: normalizedEmail,
+          inviteToken: rawToken,
+        }));
 
       /**
        * Flag OFF — nothing was enqueued, so no relay pass will ever schedule this email and it has
@@ -715,16 +775,7 @@ export class WorkspaceService {
   ): Promise<WorkspaceInvitation> {
     const workspace = await this.getWorkspace(workspaceId);
 
-    const invitation = await this.invitationRepo.findById(invitationId);
-    if (!invitation || invitation.workspaceId !== workspaceId) {
-      throw new NotFoundException('INVITATION_NOT_FOUND', 'Invitation not found');
-    }
-    if (invitation.status !== 'pending' && invitation.status !== 'expired') {
-      throw new PreconditionFailedException(
-        'INVITATION_NOT_PENDING',
-        'Only a pending or expired invitation can be resent',
-      );
-    }
+    const invitation = await this.loadRotatableInvitation(workspaceId, invitationId);
     if (Date.now() - invitation.lastSentAt.getTime() < WorkspaceService.RESEND_COOLDOWN_MS) {
       throw new PreconditionFailedException(
         'INVITATION_RESEND_TOO_SOON',
@@ -770,11 +821,15 @@ export class WorkspaceService {
        * time a resend is even permitted. Resend is therefore also the manual escape hatch for an
        * invitee whose provisioning failed.
        */
-      await this.guestInviteScheduler.schedule(tx, {
-        invitationId: inv.id,
-        workspaceId,
-        email: inv.email,
-      });
+      // Same internal-domain skip as inviteMember — a directory member has nothing to
+      // provision, and Resend's enqueue here is otherwise a guaranteed no-op row write.
+      if (!this.isInternalEmail(inv.email)) {
+        await this.guestInviteScheduler.schedule(tx, {
+          invitationId: inv.id,
+          workspaceId,
+          email: inv.email,
+        });
+      }
 
       await this.audit.emit(
         {
@@ -796,6 +851,72 @@ export class WorkspaceService {
       'Invitation resent',
     );
     return updated;
+  }
+
+  /**
+   * Mint a fresh accept URL for a pending invitation WITHOUT emailing anything — the
+   * channel is the inviter's (chat, in person), not ours. Exists for the members mail
+   * cannot reach: an internal colleague behind a tenant filter that quarantines
+   * transactional senders, or any invitee whose link keeps landing in junk.
+   *
+   * ROTATES, like resend, because there must only ever be one live token: the URL in
+   * the response is the only valid one from the moment it is issued, and any link
+   * emailed earlier dies with it. Deliberate differences from resend:
+   *   - NO cooldown — nothing is sent, so there is no mail-storm surface to damp;
+   *   - `lastSentAt` is PRESERVED (the cooldown that governs actual emails must not
+   *     trip because someone copied a link);
+   *   - `resendCount` still increments — it counts token rotations, and that is what
+   *     happened;
+   *   - no guest-provisioning enqueue — the invitee authenticates through whatever
+   *     path invited them, and a copy-link is precisely how an INTERNAL member (never
+   *     provisioned) reaches acceptance.
+   */
+  @Span('workspace.buildInvitationLink')
+  async buildInvitationLink(
+    workspaceId: string,
+    invitationId: string,
+    actorId: string,
+  ): Promise<{ invitationId: string; email: string; inviteUrl: string; expiresAt: Date }> {
+    await this.getWorkspace(workspaceId);
+    const invitation = await this.loadRotatableInvitation(workspaceId, invitationId);
+
+    const { rawToken, tokenHash } = this.mintInviteToken();
+    const expiresAt = addDays(this.config.get('INVITATION_TTL_DAYS'));
+
+    const inv = await this.uow.run(async (tx) => {
+      const rotated = await this.invitationRepo.rotateForResend(
+        invitationId,
+        {
+          tokenHash,
+          expiresAt,
+          // Preserve lastSentAt: copying a link is not a send, and the resend cooldown
+          // exists to rate SENDING. rotateForResend takes the value to write, so pass
+          // the row's own back rather than a fresh now().
+          lastSentAt: invitation.lastSentAt,
+        },
+        tx,
+      );
+
+      await this.audit.emit(
+        {
+          action: AUDIT_ACTION.WORKSPACE_INVITATION_RESENT,
+          resourceType: AUDIT_RESOURCE.WORKSPACE_INVITATION,
+          resourceId: rotated.id,
+          workspaceId,
+          actor: { id: actorId },
+          changes: {
+            after: { email: rotated.email, resendCount: rotated.resendCount, via: 'copy-link' },
+          },
+        },
+        tx,
+      );
+
+      return rotated;
+    });
+
+    const inviteUrl = `${this.config.get('APP_BASE_URL')}/accept-invitation?token=${rawToken}`;
+    this.logger.log({ invitationId, actorId, email: inv.email }, 'Invitation link copied');
+    return { invitationId: inv.id, email: inv.email, inviteUrl, expiresAt: inv.expiresAt };
   }
 
   async listInvitations(workspaceId: string): Promise<WorkspaceInvitation[]> {

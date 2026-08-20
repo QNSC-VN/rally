@@ -135,15 +135,14 @@ const makeSettingsRepo = (): Mocked<IWorkspaceSettingsRepository> => ({
   upsert: vi.fn(),
 });
 
-const makeConfig = () => ({
-  get: vi.fn((key: string) => {
-    const vals: Record<string, unknown> = {
-      APP_BASE_URL: 'http://localhost:5173',
-      INVITATION_TTL_DAYS: 7,
-    };
-    return vals[key];
-  }),
-});
+/** `vals` is mutable so a spec can switch a setting on for one test (`config.vals.X = …`). */
+const makeConfig = () => {
+  const vals: Record<string, unknown> = {
+    APP_BASE_URL: 'http://localhost:5173',
+    INVITATION_TTL_DAYS: 7,
+  };
+  return { vals, get: vi.fn((key: string) => vals[key]) };
+};
 
 const makeEmailScheduler = () => ({
   schedule: vi.fn().mockResolvedValue(undefined),
@@ -192,6 +191,7 @@ describe('WorkspaceService', () => {
   let guestInviteScheduler: ReturnType<typeof makeGuestInviteScheduler>;
   let access: ReturnType<typeof makeAccessService>;
   let uow: ReturnType<typeof makeUow>;
+  let config: ReturnType<typeof makeConfig>;
 
   /**
    * Offboarding revokes a departing member's machine credentials: cache invalidation makes the principal
@@ -208,6 +208,7 @@ describe('WorkspaceService', () => {
     guestInviteScheduler = makeGuestInviteScheduler();
     access = makeAccessService();
     uow = makeUow();
+    config = makeConfig();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -217,7 +218,7 @@ describe('WorkspaceService', () => {
         { provide: TEAM_MEMBER_REPOSITORY, useValue: { setTeamsForUser: vi.fn() } },
         { provide: WORKSPACE_INVITATION_REPOSITORY, useValue: invitationRepo },
         { provide: WORKSPACE_SETTINGS_REPOSITORY, useValue: settingsRepo },
-        { provide: AppConfigService, useValue: makeConfig() },
+        { provide: AppConfigService, useValue: config },
         { provide: EmailSchedulerService, useValue: emailScheduler },
         { provide: UnitOfWork, useValue: uow },
         { provide: AuditProducer, useValue: { emit: vi.fn().mockResolvedValue(undefined) } },
@@ -714,6 +715,119 @@ describe('WorkspaceService', () => {
         { inviteToken?: string },
       ];
       expect(opts.inviteToken).toMatch(/^[\w-]{20,}$/);
+    });
+  });
+
+  // ── internal domains + copy-link ────────────────────────────────────────────
+
+  describe('inviteMember — internal email domains', () => {
+    beforeEach(() => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+      invitationRepo.create.mockResolvedValue(mockInvitation());
+      guestInviteScheduler.schedule.mockResolvedValue(true);
+      config.vals.INTERNAL_EMAIL_DOMAINS = 'qnsc.vn, Example.COM';
+    });
+
+    it('skips the guest queue for an internal address and emails INLINE, flag on', async () => {
+      // A directory member has nothing to provision — the same-tenant Graph collision the relay
+      // resolves as "nothing to do" — so the invitation must not wait on that hop.
+      await service.inviteMember('ws-1', 'namnh@qnsc.vn', undefined, 'actor-1');
+
+      expect(guestInviteScheduler.schedule).not.toHaveBeenCalled();
+      expect(emailScheduler.schedule).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'namnh@qnsc.vn', template: 'workspace-invitation' }),
+        expect.anything(),
+      );
+    });
+
+    it('matches the domain case-insensitively and across the comma list', async () => {
+      await service.inviteMember('ws-1', 'Somebody@Example.com', undefined, 'actor-1');
+      expect(guestInviteScheduler.schedule).not.toHaveBeenCalled();
+    });
+
+    it('does NOT match a subdomain of an internal domain', async () => {
+      // `partner.qnsc.vn` is a different administrative reality; guessing otherwise would
+      // provision the wrong identity kind for the invitee.
+      await service.inviteMember('ws-1', 'x@partner.qnsc.vn', undefined, 'actor-1');
+      expect(guestInviteScheduler.schedule).toHaveBeenCalledOnce();
+    });
+
+    it('still enqueues the guest queue for an external address', async () => {
+      await service.inviteMember('ws-1', 'bob@example.org', undefined, 'actor-1');
+      expect(guestInviteScheduler.schedule).toHaveBeenCalledOnce();
+    });
+
+    it('resend also skips the guest enqueue for an internal address', async () => {
+      invitationRepo.findById.mockResolvedValue(
+        mockInvitation({ email: 'namnh@qnsc.vn', lastSentAt: new Date(Date.now() - 120_000) }),
+      );
+      invitationRepo.rotateForResend.mockResolvedValue(
+        mockInvitation({ email: 'namnh@qnsc.vn', resendCount: 1 }),
+      );
+
+      await service.resendInvitation('ws-1', 'inv-1', 'actor-1');
+
+      expect(guestInviteScheduler.schedule).not.toHaveBeenCalled();
+      expect(emailScheduler.schedule).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'namnh@qnsc.vn' }),
+        expect.anything(),
+      );
+    });
+  });
+
+  describe('buildInvitationLink (copy-link)', () => {
+    beforeEach(() => {
+      workspaceRepo.findById.mockResolvedValue(mockWorkspace());
+    });
+
+    it('rotates the token and returns the accept URL WITHOUT emailing', async () => {
+      const originalSentAt = new Date(Date.now() - 120_000);
+      invitationRepo.findById.mockResolvedValue(
+        mockInvitation({ email: 'namnh@qnsc.vn', lastSentAt: originalSentAt }),
+      );
+      invitationRepo.rotateForResend.mockResolvedValue(
+        mockInvitation({ email: 'namnh@qnsc.vn', resendCount: 1, lastSentAt: originalSentAt }),
+      );
+
+      const link = await service.buildInvitationLink('ws-1', 'inv-1', 'actor-1');
+
+      expect(link.inviteUrl).toMatch(/^http:\/\/localhost:5173\/accept-invitation\?token=.+$/);
+      expect(link.email).toBe('namnh@qnsc.vn');
+      expect(emailScheduler.schedule).not.toHaveBeenCalled();
+    });
+
+    it('PRESERVES lastSentAt so the resend cooldown does not trip on a copy', async () => {
+      // Copying a link is not a send; the cooldown rate SENDS. rotateForResend takes the
+      // value to write, so this is where a fresh now() would leak in.
+      const originalSentAt = new Date(Date.now() - 5_000);
+      invitationRepo.findById.mockResolvedValue(mockInvitation({ lastSentAt: originalSentAt }));
+      invitationRepo.rotateForResend.mockResolvedValue(
+        mockInvitation({ resendCount: 1, lastSentAt: originalSentAt }),
+      );
+
+      await service.buildInvitationLink('ws-1', 'inv-1', 'actor-1');
+
+      expect(invitationRepo.rotateForResend).toHaveBeenCalledWith(
+        'inv-1',
+        expect.objectContaining({ lastSentAt: originalSentAt }),
+        expect.anything(),
+      );
+    });
+
+    it('refuses anything but pending or expired', async () => {
+      invitationRepo.findById.mockResolvedValue(mockInvitation({ status: 'accepted' }));
+
+      await expect(service.buildInvitationLink('ws-1', 'inv-1', 'actor-1')).rejects.toThrow(
+        PreconditionFailedException,
+      );
+    });
+
+    it('refuses an invitation from another workspace', async () => {
+      invitationRepo.findById.mockResolvedValue(mockInvitation({ workspaceId: 'ws-other' }));
+
+      await expect(service.buildInvitationLink('ws-1', 'inv-1', 'actor-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
