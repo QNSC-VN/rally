@@ -532,6 +532,38 @@ iteration_id`). Before this, `createTask` inherited once at birth and nothing lo
   P1-04); `getScopedTaskHours` resolves `coalesce(task, parent, iteration)` deliberately. Only the
   Iteration is contractually derived.
 
+## The archive is a place, and deleting from it is guarded
+
+Archiving used to be a ONE-WAY DOOR with no room behind it. `GET /projects/:id/teams` narrows to
+`teams.status = 'active'` deliberately (so no picker offers an archived team), and that was the only
+teams feed the SPA used — so an archived team was invisible everywhere, including the Teams tab that
+renders a Status column and a Restore action for it. Archived PROJECTS were better off: the list query
+never filtered status, so only `listHealthByWorkspace` (the Home widget, correctly) hides them.
+
+- **`DELETE /teams/:id` exists now, and refuses twice.** `TEAM_NOT_ARCHIVED` — delete is an operation on
+  the archive, so the destructive step is always preceded by a reversible one that already removed the
+  team from every picker. `TEAM_HAS_HISTORY` — and it NAMES the sources and counts, because "you cannot
+  delete this" without saying what holds it is a dead end, and the holder is usually something the admin
+  can move.
+- **The guard is not belt-and-braces over a database constraint; it is the ONLY thing standing there.**
+  `work_items.team_id`, `tasks.team_id`, `iterations.team_id` and `portfolio_items.team_id` carry **no
+  foreign key** to `teams`, so a delete leaves them pointing at a row that is gone — silently, since
+  every reader resolves the team name by join and simply renders nothing. The columns that DO have one
+  are worse in the other direction: `member_capacity`, `iteration_daily_snapshots`,
+  `iteration_team_baselines` and `release_team_targets` are `ON DELETE CASCADE`, so Postgres would
+  accept the delete and take frozen report history with it. That is exactly what §488 exists to stop, so
+  the rule is delete ONLY when there is nothing to destroy — §488 kept, rather than traded away.
+- **`team_members` and `project_teams` are CLEANED, not counted.** They describe the team rather than
+  delivery history, and they have no foreign key either — so `deleteTeam` removes them in the same
+  transaction or `listByTeam` would keep returning members of a team that no longer exists.
+- **Deleting drops the roster's permission cache.** RBE-06 grants project access FROM a roster row, so
+  those users' cached assignments are stale the moment the team stops existing. The roster is read
+  BEFORE the delete, or there is nothing left to read.
+- **A project delete from the archive is a DECLARED DIVERGENCE from `P0-PRJ-008`**, which says an
+  archived project offers Restore ONLY. The product owner asked for delete on 2026-08-20 and it reuses
+  the existing soft delete (`deleted_at`), so it is reversible in the database and invisible in the app.
+  Teams have no soft delete, which is why their rule is the strict one above.
+
 ## An archived Team keeps its hours
 
 "Archive Team does not delete the linked Work Item/Sprint history" (DB design §488), so Team Capacity

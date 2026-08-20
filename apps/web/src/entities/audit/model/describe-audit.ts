@@ -262,6 +262,9 @@ const ACTION_TEMPLATES: Record<string, (c: RenderCtx) => string> = {
   // ── Teams ──
   'team.created': (c) => `Created team ${entityRef(c)}`,
   'team.updated': describeTeamUpdate,
+  // Names the team from the `before` snapshot, because the row is gone — an id would resolve to
+  // nothing, which is the one case where the audit trail is the only remaining record of it.
+  'team.deleted': (c) => `Deleted team ${c.before.name ?? entityRef(c)}`,
   'team.member.added': (c) =>
     `Assigned ${c.user(c.after.userId)} to the ${c.team(c.after.teamId)} team`,
   'team.member.removed': (c) =>

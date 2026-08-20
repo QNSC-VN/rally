@@ -5,7 +5,7 @@
 import { useMemo } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/http-client'
-import { apiErrorMessage } from '@/shared/api/api-error'
+import { ApiError, apiErrorMessage } from '@/shared/api/api-error'
 import type { AccessLevel } from '@/shared/config/access-levels'
 
 // ── Types (generated schema uses Record<string,never> for team types) ─────────
@@ -365,6 +365,38 @@ export function useUpdateTeam(id: string) {
     },
     onSuccess: (team) => qc.setQueryData(teamKeys.detail(id), team),
     meta: { invalidates: ['team'] },
+  })
+}
+
+/**
+ * `DELETE /v1/teams/{id}` — remove an ARCHIVED team that holds no delivery history.
+ *
+ * The one destructive team write, and the server decides whether it is allowed. Two refusals, both
+ * `412`, and the SPA must not pre-empt either:
+ *
+ *  • `TEAM_NOT_ARCHIVED` — delete is an operation on the archive, so a team is archived first. This
+ *    hook is only reachable from `Settings > Archive`, where every row is archived by construction.
+ *  • `TEAM_HAS_HISTORY` — work items, tasks, iterations, portfolio items, capacity rows or frozen
+ *    report snapshots still name this team. The MESSAGE names them and their counts, which is the
+ *    only actionable part of the refusal, so a caller must render `error.message` rather than a
+ *    generic failure line. Nothing on the client can compute this answer — half the referencing
+ *    columns carry no foreign key — so there is no "is it deletable?" flag to gate the button on and
+ *    the action is offered unconditionally.
+ *
+ * Throws {@link ApiError} rather than a bare `Error`: the message is what a reader needs and the
+ * CODE is what a surface branches on, and TanStack hands `onError` only the thrown value.
+ */
+export function useDeleteTeam() {
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error, response } = await apiClient.DELETE('/v1/teams/{id}', {
+        params: { path: { id } },
+      })
+      if (error) throw new ApiError(error, response.status)
+    },
+    // 'project' as well as 'team': a deleted team takes its `project_teams` links with it, so the
+    // project tree, the per-project Teams tab and every project row's `teamCount` are all stale.
+    meta: { invalidates: ['team', 'project'] },
   })
 }
 

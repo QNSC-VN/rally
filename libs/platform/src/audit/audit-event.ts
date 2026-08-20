@@ -43,6 +43,12 @@ export const AUDIT_ACTION = {
   // ── Teams ──
   TEAM_CREATED: 'team.created',
   TEAM_UPDATED: 'team.updated',
+  /**
+   * A team ROW removed, which only an archived team with no delivery or report history can be
+   * (`TeamService.deleteTeam`). Distinct from `team.updated` carrying `status: archived`: archiving is
+   * reversible and keeps every reference, this is the row and its roster ceasing to exist.
+   */
+  TEAM_DELETED: 'team.deleted',
   TEAM_MEMBER_ADDED: 'team.member.added',
   TEAM_MEMBER_REMOVED: 'team.member.removed',
 } as const;

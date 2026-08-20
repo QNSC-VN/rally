@@ -28,7 +28,12 @@ export const CurrentUser = createParamDecorator((_: unknown, ctx: ExecutionConte
 
 // ── Swagger error-response shortcuts ────────────────────────────────────────
 
-type HttpErrorCode = 400 | 401 | 403 | 404 | 409 | 422 | 429;
+/**
+ * 412 is here because `PreconditionFailedException` is this codebase's most common refusal — the state
+ * of the target is wrong for a request that is otherwise well-formed and authorized — and the union
+ * omitted it, so those routes had to document themselves as 422 or say nothing.
+ */
+type HttpErrorCode = 400 | 401 | 403 | 404 | 409 | 412 | 422 | 429;
 
 const HTTP_ERROR_DESCRIPTIONS: Record<HttpErrorCode, string> = {
   400: 'Bad Request — validation error or malformed input',
@@ -36,6 +41,7 @@ const HTTP_ERROR_DESCRIPTIONS: Record<HttpErrorCode, string> = {
   403: 'Forbidden — insufficient permissions',
   404: 'Not Found',
   409: 'Conflict — duplicate record or state conflict',
+  412: 'Precondition Failed — the target is not in a state that allows this',
   422: 'Unprocessable — business rule violation',
   429: 'Too Many Requests — rate limit exceeded',
 };

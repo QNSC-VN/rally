@@ -222,4 +222,63 @@ export class TeamDrizzleRepository implements ITeamRepository {
       .returning();
     return rows[0];
   }
+
+  /**
+   * One statement, one row per source that still points at this team. See the port for WHY each source
+   * is here: half of them have no foreign key (so a delete dangles them) and the other half cascade
+   * (so a delete destroys frozen report history).
+   *
+   * Raw SQL rather than a builder because this is a UNION of counts over eight unrelated tables, and
+   * the shape is the point — a reader has to be able to see at a glance that nothing was left out.
+   * Zero rows are filtered in SQL so the caller's "is it empty?" is the whole check.
+   */
+  async countHistoryReferences(
+    teamId: string,
+    workspaceId: string,
+  ): Promise<Array<{ source: string; count: number }>> {
+    const rows = await this.db.execute<{ source: string; count: number }>(sql`
+      select source, count from (
+        select 'work items' as source, count(*)::int as count
+          from work.work_items where team_id = ${teamId} and workspace_id = ${workspaceId}
+        union all
+        select 'tasks', count(*)::int
+          from work.tasks where team_id = ${teamId} and workspace_id = ${workspaceId}
+        union all
+        select 'iterations', count(*)::int
+          from work.iterations where team_id = ${teamId} and workspace_id = ${workspaceId}
+        union all
+        select 'portfolio items', count(*)::int
+          from work.portfolio_items where team_id = ${teamId} and workspace_id = ${workspaceId}
+        union all
+        select 'capacity plans', count(*)::int
+          from work.capacity_plan_teams where team_id = ${teamId}
+        union all
+        select 'capacity allocations', count(*)::int
+          from work.capacity_plan_allocations where team_id = ${teamId}
+        union all
+        select 'member capacity rows', count(*)::int
+          from work.member_capacity where team_id = ${teamId}
+        union all
+        select 'recorded report history', count(*)::int
+          from work.iteration_daily_snapshots where team_id = ${teamId}
+      ) counts
+      where count > 0
+      order by source
+    `);
+    return rows.rows;
+  }
+
+  /**
+   * Deletes the team, its roster and its project links, in that caller's transaction.
+   *
+   * Roster and links first: neither carries a foreign key to `teams`, so the database would leave both
+   * behind pointing at nothing. Order matters only for readability here — there is no constraint to
+   * satisfy, which is precisely the hazard.
+   */
+  async deleteTeam(teamId: string, workspaceId: string, tx?: DbExecutor): Promise<void> {
+    const exec = tx ?? this.db;
+    await exec.delete(teamMembers).where(eq(teamMembers.teamId, teamId));
+    await exec.delete(projectTeams).where(eq(projectTeams.teamId, teamId));
+    await exec.delete(teams).where(and(eq(teams.id, teamId), eq(teams.workspaceId, workspaceId)));
+  }
 }

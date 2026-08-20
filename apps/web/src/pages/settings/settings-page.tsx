@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Plug,
   FileText,
+  Archive,
   Lock,
 } from 'lucide-react'
 import { BRAND } from '@/shared/config/brand'
@@ -28,6 +29,7 @@ import { WorkspaceProjectsPanel } from './ui/workspace-projects-panel'
 import { MyPermissionsTab } from './ui/my-permissions-tab'
 import { ApiTokensTab } from './ui/api-tokens-tab'
 import { PermissionModelTab } from './ui/permission-model-tab'
+import { ArchiveTab } from './ui/archive-tab'
 // NotificationsTab is intentionally NOT wired into the sidebar: Notification
 // Preferences is Future Backlog (BA decision 2026-08-06, C6). Phase 4 ships fixed
 // in-app notifications only; user-configurable preferences stay out of scope. The
@@ -99,6 +101,18 @@ const SIDEBAR: SettingsGroup[] = [
         requires: PERMISSION.SCM_MANAGE,
       },
       { key: 'audit', label: 'nav.audit', icon: FileText, requires: PERMISSION.AUDIT_VIEW },
+      {
+        key: 'archive',
+        // `workspace:view`, the same code `Workspace Settings` takes: this is the ADMINISTRATIVE
+        // view of archived Projects and Teams, and `workspace:*` is admin-reserved, so the entry is
+        // Workspace Admin's alone — which is also who holds the `workspace:edit` that
+        // `PATCH/DELETE /projects/:id` requires and the `teams:edit` that `PATCH /teams/:id` does.
+        // Deliberately NOT `workspace:edit`: gating VISIBILITY on a write code is the mistake §3.1
+        // records for `projects-access`, and the read here is a read.
+        label: 'nav.archive',
+        icon: Archive,
+        requires: PERMISSION.WORKSPACE_VIEW,
+      },
       {
         key: 'permission-model',
         label: 'Permission Model',
@@ -212,6 +226,8 @@ export function SettingsPage() {
       <WorkspaceSettingsTab />
     ) : activeKey === 'audit' ? (
       <AuditLogTab />
+    ) : activeKey === 'archive' ? (
+      <ArchiveTab />
     ) : activeKey === 'projects-access' ? (
       <WorkspaceProjectsPanel />
     ) : activeKey === 'permission-model' ? (
