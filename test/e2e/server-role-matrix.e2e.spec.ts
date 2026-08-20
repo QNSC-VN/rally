@@ -856,24 +856,34 @@ describe('server role matrix (e2e)', () => {
     );
 
     /**
-     * DELETE — and this is a MISMATCH INSIDE THE BA, not an authorization defect, so it is asserted
-     * exactly as measured rather than weakened or skipped.
+     * DELETE — the mismatch this block used to record is RESOLVED (BA report, 2026-08-20).
      *
-     * §3.2:81 gives `Quality / Defects` the verb `Delete` in all three granted columns. Phase 3.4
-     * says the opposite, and the server implements Phase 3.4: `WorkItemsService.deleteWorkItem`
-     * throws `DEFECT_DELETE_FORBIDDEN` ("Defects cannot be deleted. Resolve the defect by setting its
-     * state to Closed or Closed Declined") for EVERY principal, Workspace Admin included.
+     * §3.2:81 gives `Quality / Defects` the verb `Delete` in all three granted columns; Phase 3.4 said
+     * the opposite and the server implemented Phase 3.4, refusing every principal with
+     * `DEFECT_DELETE_FORBIDDEN`. This block measured that and said so, with a note not to fix either
+     * side without a ruling. The BA reporting "cannot delete defect in Backlog and Iteration Status"
+     * IS the ruling: §3.2:81 wins, and the refusal is gone.
      *
-     * So the AUTHORIZATION boundary is right — 412 for the three granted levels means the guard let
-     * them through and the lifecycle rule refused, 403 for No Access means the guard refused — while
-     * the §3.2:81 cell advertises a capability no role has. A tester following the matrix will look
-     * for a Delete on a Defect and find none. Recorded for the BA; do not "fix" either side here.
+     * So the expectation is now the ordinary authorization one — the three granted levels delete, No
+     * Access is refused — and a tester following the matrix finds the Delete the matrix promises.
+     */
+    /**
+     * A THROWAWAY defect per role, not the seeded one. The delete succeeds now, so probing
+     * `SEEDED.nxp.defectId` would consume a fixture other specs read — the leak this file's own
+     * comments warn about. Created on Team Alpha, which the Editor principal is on, so what is measured
+     * is AUTHORIZATION rather than the Project-Backlog team rule.
      */
     const deleteStatuses: Partial<Record<Role, number>> = {};
     for (const role of ROLES) {
-      deleteStatuses[role] = (
-        await request(role, 'DELETE', `/work-items/${SEEDED.nxp.defectId}`)
-      ).statusCode;
+      const created = await request('wa', 'POST', '/work-items', {
+        projectId: NXP,
+        type: 'defect',
+        title: `role matrix delete probe ${randomUUID().slice(0, 8)}`,
+        teamId: TEAM,
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      const probeId = (JSON.parse(created.body) as { id: string }).id;
+      deleteStatuses[role] = (await request(role, 'DELETE', `/work-items/${probeId}`)).statusCode;
     }
     MATRIX.push({
       srs: '§3.2:81',
@@ -884,17 +894,16 @@ describe('server role matrix (e2e)', () => {
       expected: EDITOR_UP,
       measured: deleteStatuses,
       mismatches: [
-        '§3.2:81 grants Delete; Phase 3.4 DEFECT_DELETE_FORBIDDEN refuses it to everyone',
+        // Resolved 2026-08-20: the row is measured against `EDITOR_UP` like every other verb now.
       ],
     });
     for (const role of ['wa', 'admin', 'editor'] as const) {
-      expect(
-        deleteStatuses[role],
-        `a granted level must pass the GUARD and be refused by the lifecycle rule, not by authorization`,
-      ).toBe(412);
+      expect(deleteStatuses[role], `${role} holds work_item:delete and §3.2:81 grants it`).toBe(
+        204,
+      );
     }
     expect(deleteStatuses.none, 'No Access is refused by the guard').toBe(403);
-    // …and the row is still there, which is what makes the probe safe to run on the fixture.
+    // The seeded defect is untouched: every probe above deleted a row it created.
     expect((await request('wa', 'GET', `/work-items/${SEEDED.nxp.defectId}`)).statusCode).toBe(200);
   });
 

@@ -17,6 +17,7 @@ import {
 } from '@/features/work-items/api'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
 import { useProjectMemberOptions, useProjectTeams, useTeamOwnerOptions } from '@/features/teams/api'
+import { useProjectPermissions } from '@/features/access/api'
 import {
   ScheduleState,
   SCHEDULE_STATE_LABEL,
@@ -108,6 +109,10 @@ export function TasksTab({
   const selection = useRowSelection(tasks)
   // Tasks inherit their parent's project; team/owner names are resolved for display.
   const { data: teams = [] } = useProjectTeams(projectId)
+  // `work_item:delete` is what `DELETE /work-items/:id` requires, and it is NOT `work_item:edit`:
+  // offering Delete to a caller who holds only the edit code sends them through a destructive confirm
+  // to a refusal.
+  const { can } = useProjectPermissions(projectId)
   // The ASSIGNEE feed, not the administrative roster (Admin-only, §3.1:71): every Task row resolves
   // its owner NAME from this list, and §3.2:81 gives an Editor the Task. A 403 defaulted to `[]` made
   // each row read `--` with an empty owner picker.
@@ -333,6 +338,7 @@ export function TasksTab({
         bulkActions={(sel) =>
           readOnly ? null : (
             <BulkDeleteCopy
+              canDelete={can('work_item:delete')}
               selection={sel}
               projectId={projectId}
               onCopy={copySelected}

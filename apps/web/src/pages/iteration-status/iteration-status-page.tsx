@@ -538,6 +538,7 @@ export function IterationStatusPage() {
             canEdit
               ? (sel) => (
                   <BulkDeleteCopy
+                    canDelete={can('work_item:delete')}
                     selection={sel}
                     projectId={projectId ?? ''}
                     onCopy={copySelected}

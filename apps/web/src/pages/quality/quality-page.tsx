@@ -404,6 +404,7 @@ export function QualityPage() {
           bulkActions={(sel) =>
             canManage ? (
               <BulkDeleteCopy
+                canDelete={can('work_item:delete')}
                 selection={sel}
                 projectId={project?.projectId ?? ''}
                 onCopy={copySelected}

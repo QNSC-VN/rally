@@ -1268,15 +1268,23 @@ describe('WorkItemsService', () => {
       await expect(service.deleteWorkItem(mockActor, 'missing')).rejects.toThrow(NotFoundException);
     });
 
-    it('refuses to delete a defect (BA P3.4 — resolve via Closed state instead)', async () => {
+    /**
+     * INVERTED by the BA's ruling of 2026-08-20 ("cannot delete defect in Backlog and Iteration
+     * Status"). Phase 3.4 refused this for every principal; §3.2:81 gives `Quality / Defects` the verb
+     * `Delete` in all three granted columns, and `server-role-matrix.e2e.spec.ts` had been recording
+     * the pair as an unresolved mismatch inside the BA's own documents.
+     *
+     * The audit argument that carried the old rule does not decide it: this is a SOFT delete, so the
+     * row and its activity history survive and the defect is invisible rather than erased.
+     */
+    it('DELETES a defect — §3.2:81 over Phase 3.4', async () => {
       workItemRepo.findById.mockResolvedValue(
         mockWorkItem({ type: 'defect', defectState: 'open' }),
       );
 
-      await expect(service.deleteWorkItem(mockActor, 'wi-1')).rejects.toThrow(
-        PreconditionFailedException,
-      );
-      expect(workItemRepo.softDelete).not.toHaveBeenCalled();
+      await service.deleteWorkItem(mockActor, 'wi-1');
+
+      expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1', 'ws-1');
     });
   });
 

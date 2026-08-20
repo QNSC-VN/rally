@@ -362,6 +362,7 @@ export function BacklogPage() {
                   />
                   <BulkDeleteCopy
                     selection={sel}
+                    canDelete={can('work_item:delete')}
                     projectId={projectId!}
                     onCopy={copySelected}
                     copyPending={createItem.isPending}
