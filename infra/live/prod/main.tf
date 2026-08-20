@@ -99,8 +99,8 @@ module "stack" {
   # qnsc.vn is the company tenant: those users are directory members on SSO, not B2B
   # guests — see the variable's own description for what this skips and unlocks.
   internal_email_domains = "qnsc.vn"
-  entra_client_id = var.entra_client_id
-  github_app_id   = var.github_app_id
+  entra_client_id        = var.entra_client_id
+  github_app_id          = var.github_app_id
 
   // 90 days is the SOC 2 minimum; the recovery window keeps a mistaken destroy
   // recoverable.

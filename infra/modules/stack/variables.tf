@@ -201,8 +201,8 @@ variable "internal_email_domains" {
     is the cohort a receiving filter is most likely to quarantine as spoofed. Empty
     string = the distinction is off and every address is treated as external.
   EOT
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
 }
 
 variable "entra_guest_invite_enabled" {

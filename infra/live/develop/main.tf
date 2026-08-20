@@ -106,7 +106,7 @@ module "stack" {
   # qnsc.vn is the company tenant: those users are directory members on SSO, not B2B
   # guests — see the variable's own description for what this skips and unlocks.
   internal_email_domains = "qnsc.vn"
-  platform_admin_emails      = var.platform_admin_emails
+  platform_admin_emails  = var.platform_admin_emails
 
   entra_tenant_id = var.entra_tenant_id
   entra_client_id = var.entra_client_id
