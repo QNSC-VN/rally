@@ -30,6 +30,7 @@ import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { cn } from '@/shared/lib/utils'
+import { TARGET_SQUARE } from '@/shared/ui/target-size'
 import { BRAND } from '@/shared/config/brand'
 
 // ── AppModal ──────────────────────────────────────────────────────────────────
@@ -108,7 +109,7 @@ export function AppModal({
 
             <DialogPrimitive.Close asChild>
               <button
-                className="rounded p-0.5 transition-colors hover:bg-border-inner"
+                className={cn(TARGET_SQUARE, 'rounded transition-colors hover:bg-border-inner')}
                 aria-label="Close"
                 style={{ color: BRAND.textMuted }}
               >

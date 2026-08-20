@@ -71,10 +71,19 @@ app · pages · widgets · features · entities · shared
     up one step on 2026-08-20 — 68% of the app's text had been 11px or smaller — and
     the token was retired rather than left defined, so it cannot return one class at
     a time. `type-scale.test.ts` pins the px values, the floor and its absence.
-- **A clickable target is at least 24×24 CSS px** (WCAG 2.5.8 AA). `Button` carries
-  `min-h-[24px]` on every size; a hand-rolled control needs it too. It is a px
-  literal on purpose: `min-h-6` is a rem, and the root is pinned at 14px, so it
-  would resolve to 21px.
+- **A clickable target is at least 24×24 CSS px** (WCAG 2.5.8 AA), and the floor is
+  defined ONCE in `shared/ui/target-size.ts`. Compose `TARGET_SQUARE` on an icon-only
+  control and `TARGET_HEIGHT` on a labelled one — never write the literal again;
+  `type-scale.test.ts` fails if a second copy appears in `shared/ui`. `Button` and
+  `IconButton` already carry it, so reaching for a primitive gets it for free.
+  - It is a px literal inside that module on purpose: `min-h-6` is a rem, and the root
+    resolves to 14px, so it would land at 21px — under the floor it exists to hold.
+  - `TARGET_HEIGHT` alone is right where 2.5.8's SPACING exception already applies (the
+    drag grip and expand chevron in a 34px grid row). Widening those would move every
+    grid's gutter to satisfy a criterion that is already met.
+- **The root font size is `87.5%`, never a px value** (`globals.css`). A percentage
+  scales with the reader's own browser font-size preference; an absolute px root
+  discards it, which is what the literal `14px` here used to do.
 - **Dark mode is automatic** via CSS-var flipping — never write `dark:` variants,
   and never hardcode `bg-white`/`text-white` (use `bg-card`/`bg-input-background`).
 - Compose classes with `cn()` from `shared/lib/utils`.

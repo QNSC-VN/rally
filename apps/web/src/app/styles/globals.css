@@ -331,14 +331,14 @@
    page. Real Rally runs ~12px cells and ~11px headers, so every row sat about a pixel under the product
    this one is modelled on.
 
-   The ROOT stays 14px deliberately. `html { font-size: 14px }` already shrinks every rem by 12.5%, so
-   raising it would grow SPACING as well as type — and 38 places pin px heights and widths
-   (`min-h-[34px]`, fixed column widths) that would not grow with it, so grids would tighten and clip.
-   Moving the semantic scale instead touches type only, which is what was too small.
+   The ROOT still resolves to 14px deliberately (`html { font-size: 87.5% }`, see below). It shrinks
+   every rem by 12.5%, so RAISING it would grow spacing as well as type — and 47 places pin px heights
+   and widths (`min-h-[34px]`, fixed column widths) that would not grow with them, so grids would
+   tighten and clip. Moving the semantic scale instead touches type only, which is what was too small.
 
-   Left for a separate decision: the px root also means a reader's own browser font-size preference is
-   ignored (page zoom still works). Fixing that is a `rem` root plus a pass over those 38 pinned
-   values.
+   The px values in the comments below are therefore what a reader on the 16px browser default sees.
+   A reader who has raised their own default gets proportionally more, which is the point of the
+   percentage root — the literal `14px` it replaced discarded that preference outright.
 ──────────────────────────────────────────────────────────────────────────────── */
 @theme {
   --text-ui-xs: 0.785714rem; /* 11px */
@@ -390,7 +390,13 @@
     cursor: not-allowed;
   }
   html {
-    font-size: 14px;
+    /* 87.5% of the reader's own default font size — 14px for the 16px default, so the app renders
+       exactly as it did when this was the literal `14px` it replaced. The percentage is the point: an
+       absolute px root DISCARDS a reader's browser font-size preference entirely (page zoom still
+       worked, the preference did not), and this is the whole app's rem basis, so nothing else could
+       honour it. Sizes given in px — the pointer-target floor in `target-size.ts`, the pinned column
+       widths — deliberately do NOT scale with it; they are CSS-px minimums and layout, not type. */
+    font-size: 87.5%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

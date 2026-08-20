@@ -1,5 +1,8 @@
 import { ChevronDown } from 'lucide-react'
 
+import { cn } from '@/shared/lib/utils'
+import { TARGET_HEIGHT } from '@/shared/ui/target-size'
+
 /**
  * The disclosure chevron on a grid row that hides child rows.
  *
@@ -58,7 +61,10 @@ export function RowExpandToggle({
         e.stopPropagation()
         onToggle()
       }}
-      className="flex shrink-0 cursor-pointer items-center border-none bg-transparent p-0 text-muted-foreground"
+      className={cn(
+        TARGET_HEIGHT,
+        'flex shrink-0 cursor-pointer items-center border-none bg-transparent p-0 text-muted-foreground',
+      )}
     >
       <ChevronDown
         size={12}

@@ -1,6 +1,8 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { InlineSelect } from '@/shared/ui/native-select'
+import { TARGET_SQUARE } from '@/shared/ui/target-size'
+import { cn } from '@/shared/lib/utils'
 import { BRAND } from '@/shared/config/brand'
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
@@ -73,7 +75,7 @@ export function PaginationFooter({
           aria-label="Previous page"
           disabled={!hasPrevPage}
           onClick={onPrevPage}
-          className="rounded p-1.5 disabled:opacity-35"
+          className={cn(TARGET_SQUARE, 'rounded disabled:opacity-35')}
           style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
         >
           <ChevronLeft size={13} />
@@ -83,7 +85,7 @@ export function PaginationFooter({
           aria-label="Next page"
           disabled={!hasNextPage}
           onClick={onNextPage}
-          className="rounded p-1.5 disabled:opacity-35"
+          className={cn(TARGET_SQUARE, 'rounded disabled:opacity-35')}
           style={{ border: `1px solid ${BRAND.border}`, color: BRAND.textSecondary }}
         >
           <ChevronRight size={13} />
