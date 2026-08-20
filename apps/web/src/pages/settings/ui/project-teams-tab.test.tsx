@@ -175,3 +175,135 @@ describe('ProjectTeamsTab — restore is CONFIRMED but not typed', () => {
     expect(mockPATCH).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * The BA's Workspace-Admin team-membership ruling — the FE half, and the half of §2.1 it did NOT
+ * reverse.
+ *
+ * A Workspace Admin may now be manually added to an ACTIVE Team and be that Team's Lead, so this
+ * modal no longer filters `roleSlug === 'workspace_admin'` out of `eligible`. What still holds is
+ * that they hold no `project_members` row: team membership is operational scope only and "must NOT
+ * create or require an Admin/Editor Project Access assignment".
+ *
+ * The payload assertion is the one that matters. Everything else here is visible on screen and would
+ * be noticed; a stray `POST /v1/projects/{id}/members` for a Workspace Admin is invisible — it
+ * succeeds, shows nothing, and `AccessService.effectiveAssignments` turns the row into a live
+ * Project Admin grant the moment that user is demoted. Reinstating the old `filter` fails the two
+ * candidate tests; dropping the `level === null` skip in `syncMemberAccess` fails only that one.
+ */
+const WS_ROSTER = [
+  {
+    id: 'wm-1',
+    userId: 'u-ed',
+    displayName: 'Eddie Editor',
+    email: 'eddie@acme.test',
+    status: 'active',
+    roleSlug: null,
+  },
+  {
+    id: 'wm-2',
+    userId: 'u-wa',
+    displayName: 'Wanda Admin',
+    email: 'wanda@acme.test',
+    status: 'active',
+    roleSlug: 'workspace_admin',
+  },
+]
+
+describe('TeamFormModal — a Workspace Admin is a Team candidate, but never a project_members row', () => {
+  const mockPOST = apiClient.POST as ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    mockGET.mockReset()
+    mockPOST.mockReset()
+    mockPOST.mockResolvedValue({ data: { id: 'team-new' }, error: undefined })
+    mockGET.mockImplementation((path: string) => {
+      if (path === '/v1/projects/{id}/teams') return Promise.resolve({ data: LINKS })
+      if (path === '/v1/workspaces/{id}/members-with-profile')
+        return Promise.resolve({ data: WS_ROSTER })
+      if (path === '/v1/workspaces/{id}/member-options')
+        return Promise.resolve({
+          data: WS_ROSTER.map((m) => ({
+            userId: m.userId,
+            displayName: m.displayName,
+            email: m.email,
+            avatarUrl: null,
+            assignable: true,
+          })),
+        })
+      if (path === '/v1/projects/{id}/members') return Promise.resolve({ data: [] })
+      return Promise.resolve({ data: [] })
+    })
+  })
+
+  async function openCreate() {
+    renderTab()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add team' }))
+    // Both the modal title and its submit read `Create team`, so address the FIELD that only the
+    // open modal has.
+    return screen.findByPlaceholderText('e.g. Core Platform')
+  }
+
+  it('offers a Workspace Admin as a Team lead (the reversed half of §2.1)', async () => {
+    await openCreate()
+    fireEvent.click(await screen.findByRole('button', { name: 'Team lead' }))
+    expect(await screen.findByRole('button', { name: 'Wanda Admin' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Eddie Editor' })).toBeTruthy()
+  })
+
+  it('offers a Workspace Admin as a Team MEMBER candidate', async () => {
+    await openCreate()
+    expect(
+      await screen.findByRole('checkbox', { name: 'Add Wanda Admin to this team' }),
+    ).toBeTruthy()
+  })
+
+  it('shows the Workspace Admin badge and NO access-level select on that row, even when checked', async () => {
+    await openCreate()
+    const row = await screen.findByRole('checkbox', { name: 'Add Wanda Admin to this team' })
+    fireEvent.click(row)
+
+    // The badge stands where a level would be, and the level select never appears for this row.
+    expect(screen.getAllByText('Workspace Admin').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Access level for Wanda Admin' })).toBeNull()
+
+    // Contrast: an ordinary member DOES get one once checked, so the absence above is about the
+    // Workspace Admin and not about the checkbox failing to register.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Add Eddie Editor to this team' }))
+    expect(
+      await screen.findByRole('button', { name: 'Access level for Eddie Editor' }),
+    ).toBeTruthy()
+  })
+
+  it('adds the Workspace Admin to the team but OMITS them from the project-access sync', async () => {
+    await openCreate()
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Add Wanda Admin to this team' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Add Eddie Editor to this team' }))
+    fireEvent.change(screen.getByPlaceholderText('e.g. Core Platform'), {
+      target: { value: 'Core Platform' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('CP'), { target: { value: 'CP' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create team' }))
+
+    await waitFor(() =>
+      expect(mockPOST.mock.calls.some((c) => c[0] === '/v1/workspaces/{workspaceId}/teams')).toBe(
+        true,
+      ),
+    )
+
+    // Team membership: BOTH, because a Workspace Admin may now hold one.
+    const create = mockPOST.mock.calls.find((c) => c[0] === '/v1/workspaces/{workspaceId}/teams')!
+    expect((create[1].body as { memberUserIds: string[] }).memberUserIds.sort()).toEqual([
+      'u-ed',
+      'u-wa',
+    ])
+
+    // Project access: the Editor ONLY. A `POST /v1/projects/{id}/members` naming `u-wa` is the row
+    // §2.1 forbids and migration 0118 deletes.
+    await waitFor(() =>
+      expect(mockPOST.mock.calls.some((c) => c[0] === '/v1/projects/{id}/members')).toBe(true),
+    )
+    const accessCalls = mockPOST.mock.calls.filter((c) => c[0] === '/v1/projects/{id}/members')
+    expect(accessCalls.map((c) => (c[1].body as { userId: string }).userId)).toEqual(['u-ed'])
+  })
+})

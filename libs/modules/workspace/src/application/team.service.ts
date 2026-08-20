@@ -434,7 +434,27 @@ export class TeamService {
   ): Promise<TeamMember[]> {
     await this.getTeam(teamId, workspaceId);
     await this.assertTeamReadable(teamId, workspaceId, actorId);
-    return this.teamMemberRepo.listByTeam(teamId);
+    return this.withWorkspaceAdminFlag(workspaceId, await this.teamMemberRepo.listByTeam(teamId));
+  }
+
+  /**
+   * Label the rows that hold the workspace-wide grant (BA feature, 2026-08-20).
+   *
+   * A Workspace Admin may now be a Team member, and §2.1 still keeps them off `project_members` — so
+   * their roster row has no access level to show and must read `Workspace Admin` rather than `Admin`
+   * or `Editor`. The flag is resolved here, once per read, rather than joined into the repository
+   * query: "who holds the workspace grant" is an AUTHORIZATION fact with one home in `AccessService`,
+   * and a second expression of it in SQL is the drift this repo keeps re-learning.
+   *
+   * One extra query per roster read, and none at all for an empty roster.
+   */
+  private async withWorkspaceAdminFlag(
+    workspaceId: string,
+    members: TeamMember[],
+  ): Promise<TeamMember[]> {
+    if (members.length === 0) return members;
+    const admins = new Set(await this.access.listWorkspaceAdminIds(workspaceId));
+    return members.map((m) => ({ ...m, isWorkspaceAdmin: admins.has(m.userId) }));
   }
 
   async addTeamMember(
@@ -498,7 +518,14 @@ export class TeamService {
     });
     await this.access.invalidateUsers(workspaceId, toInvalidate);
     this.logger.log({ teamId, userId }, 'Team member added');
-    return member;
+    // Flagged on the way back out, so the row the client renders immediately after the write says the
+    // same thing as the roster it will re-fetch. `toInvalidate` is EMPTY for a Workspace Admin — the
+    // roster grant is skipped for them (§2.1), which is AC1's "no Admin or Editor Project Access
+    // assignment is created or required".
+    return {
+      ...member,
+      isWorkspaceAdmin: await this.access.isWorkspaceAdmin(workspaceId, userId),
+    };
   }
 
   async removeTeamMember(

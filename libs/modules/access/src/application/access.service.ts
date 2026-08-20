@@ -276,6 +276,19 @@ export class AccessService {
    * `onWorkspaceAdmin` on {@link grantProjectAccess}. Takes an executor so it can be asked inside
    * a transaction that has just written the user's `workspace_members` row.
    */
+  /**
+   * Every Workspace Admin in one workspace — the plural of {@link isWorkspaceAdmin}, for a caller that
+   * has a LIST to label rather than one user to check.
+   *
+   * A team roster needs this since the BA made a Workspace Admin an eligible Team member (2026-08-20):
+   * the row is badged `Workspace Admin` instead of an access level, and asking per row would be one
+   * query per member. Delegates to the same repository method `isWorkspaceAdmin` uses, so there is
+   * still one home for "who holds the workspace grant".
+   */
+  async listWorkspaceAdminIds(workspaceId: string, exec?: DbExecutor): Promise<string[]> {
+    return this.projectAccessRepo.listWorkspaceAdminUserIds(workspaceId, exec);
+  }
+
   async isWorkspaceAdmin(workspaceId: string, userId: string, exec?: DbExecutor): Promise<boolean> {
     const admins = await this.projectAccessRepo.listWorkspaceAdminUserIds(workspaceId, exec);
     return admins.includes(userId);

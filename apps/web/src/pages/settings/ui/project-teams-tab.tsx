@@ -7,6 +7,31 @@
  * Reuses the team hooks (useCreateTeam / useUpdateTeam / useProjectTeams). Team lead
  * candidates come from the workspace roster. A team cannot be deleted — only
  * deactivated (history preserved), per SRS §488.
+ *
+ * ── §2.1 AND A WORKSPACE ADMIN: ONE HALF REVERSED, ONE HALF UNCHANGED ────────────────────────
+ *
+ * This file used to exclude a Workspace Admin from the Team lead options and the Members & Access
+ * table outright, on the reading that "a Workspace Admin is company-level only — not a Team lead or
+ * member candidate (§2)". **The BA has REVERSED exactly that.** A Workspace Admin may now be
+ * MANUALLY added to and removed from one or more ACTIVE Teams, may be selected as that Team's Team
+ * Lead and as a Work Item Owner within it, and may be a Project Owner. Never automatically: there is
+ * no auto-enrolment anywhere, which is why the membership is a checkbox and a pick and never a
+ * consequence of holding the role.
+ *
+ * **What did NOT reverse is the `project_members` half, and it is the correctness point of the whole
+ * change.** §2.1 still keeps a Workspace Admin out of `project_members` — migration 0118 deletes
+ * those rows, `AccessService.effectiveAssignments` would read one as a live Project Admin grant, and
+ * the ruling states the reversal as OPERATIONAL scope only: team membership "must NOT create or
+ * require an Admin/Editor Project Access assignment, and must not change their permissions". So:
+ *
+ *   • a Workspace Admin IS an eligible Team lead and an eligible Team member (reversed);
+ *   • a Workspace Admin row offers NO access-level select and is EXCLUDED from the
+ *     `useSetProjectAccess` sync — it renders the `Workspace Admin` badge instead (unchanged half);
+ *   • `projects-access-tab.tsx`'s PROJECT ACCESS candidate list still filters them out entirely
+ *     (also unchanged) — that list adds `project_members` rows and nothing else.
+ *
+ * The old reasoning is kept above rather than deleted because the two halves are one sentence in the
+ * SRS, and the next reader of §2.1 will have to know which half a ruling moved.
  */
 import { useState } from 'react'
 import { Loader2, Plus, Pencil, Archive, RotateCcw } from 'lucide-react'
@@ -31,6 +56,8 @@ import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { FormField } from '@/shared/ui/form-field'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
+import { WorkspaceAdminBadge } from '@/shared/ui/workspace-admin-badge'
+import { TeamMemberRoster } from './team-member-roster'
 import { notify } from '@/shared/lib/toast'
 import {
   teamMemberAccessOptions,
@@ -278,7 +305,9 @@ export function TeamDetail({
   workspaceId: string | undefined
   isWA: boolean
 }) {
-  const { data: members = [], isLoading } = useTeamMembers(team.id)
+  // The COUNT only — the roster itself (and its add/remove controls) is `TeamMemberRoster`, which
+  // owns the same `teamKeys.members` cache entry, so the two cannot disagree about the membership.
+  const { data: members = [] } = useTeamMembers(team.id)
   // Display-only, so the picker feed — see the note on the row above.
   const { data: wsMembers = [] } = useWorkspaceMemberOptions(workspaceId)
   const [editing, setEditing] = useState(false)
@@ -323,37 +352,7 @@ export function TeamDetail({
         ))}
       </div>
 
-      <p className="mb-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
-        Team members
-      </p>
-      {isLoading ? (
-        <div className="flex items-center gap-2 py-3 text-ui-sm text-foreground-subtle">
-          <Loader2 size={13} className="animate-spin" /> Loading members…
-        </div>
-      ) : members.length === 0 ? (
-        <div className="rounded-lg border border-border-subtle px-4 py-6 text-center text-ui-sm text-foreground-subtle">
-          No members in this team yet.
-        </div>
-      ) : (
-        <div className="rounded-lg border border-border-subtle">
-          {members.map((m) => (
-            <div
-              key={m.id}
-              className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 last:border-b-0"
-            >
-              <OwnerAvatar name={m.displayName ?? m.email ?? m.userId} size={20} />
-              <span className="truncate text-ui-sm font-medium text-foreground">
-                {m.displayName ?? m.email ?? '--'}
-              </span>
-              {m.email && (
-                <span className="ml-auto truncate text-ui-xs text-foreground-subtle">
-                  {m.email}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      <TeamMemberRoster team={team} workspaceId={workspaceId} isWA={isWA} />
 
       {editing && (
         <TeamFormModal
@@ -385,10 +384,14 @@ function TeamFormModal({
   team: Team | null
   onClose: () => void
 }) {
-  // The administrative roster ON PURPOSE: this modal filters `roleSlug !== 'workspace_admin'` out of
-  // the eligible list (§2.1 — a WA is never a Team member), and `roleSlug` exists only on that feed.
-  // Creating or editing a Team is a Workspace Admin action anyway, so the `workspace:view` gate costs
-  // nothing here. Do not "align" this with the two display-only lookups above.
+  const { t } = useTranslation('settings')
+  // The administrative roster ON PURPOSE, and it still is after the reversal — the modal no longer
+  // filters a Workspace Admin OUT of the eligible list, but it still has to KNOW which rows are one,
+  // because those rows get the badge and are excluded from the project-access sync. `roleSlug` exists
+  // only on this feed. Creating or editing a Team is a Workspace Admin action anyway, so the
+  // `workspace:view` gate costs nothing here. Do not "align" this with the two display-only lookups
+  // above: they carry no role, so a picker fed from them could not tell a Workspace Admin apart and
+  // would write the `project_members` row §2.1 forbids.
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
   // Existing project members — only needed on create, to sync access for selected members.
   const { data: projectMembers = [] } = useProjectMembers(team ? undefined : projectId)
@@ -406,13 +409,26 @@ function TeamFormModal({
    * Team members are Admin or Editor only — never Viewer (SRS §5.3, and Rally removes team
    * membership on demotion to viewer). Deliberately NOT `AccessLevel`: see
    * `TEAM_MEMBER_ACCESS_LEVELS`.
+   *
+   * `null` is a THIRD state and it is the reversal's load-bearing detail: "this row is a team
+   * member, and NO project access level is to be written for it" — a Workspace Admin. It is not
+   * `'No Access'` and not the absence of a key: the key's presence is what puts the user in
+   * `memberUserIds`, and the value is what {@link syncMemberAccess} decides to write. Collapsing the
+   * two would either drop the Workspace Admin's membership or write them a `project_members` row.
    */
-  const [memberAccess, setMemberAccess] = useState<Record<string, TeamMemberAccessLevel>>({})
+  const [memberAccess, setMemberAccess] = useState<Record<string, TeamMemberAccessLevel | null>>({})
 
-  // Workspace Admin is company-level only — not a Team lead or member candidate (§2).
-  const eligible = wsMembers.filter(
-    (m) => m.status === 'active' && m.roleSlug !== 'workspace_admin',
-  )
+  /**
+   * Every ACTIVE workspace member, Workspace Admins INCLUDED — the reversed half of §2.1 (see the
+   * file docblock). The exclusion that used to live on this line
+   * (`m.roleSlug !== 'workspace_admin'`) removed a Workspace Admin from BOTH the Team Lead options
+   * and this table, which is precisely what the ruling reverses: they may be a Team member and that
+   * Team's Lead. `status === 'active'` stays — the ruling's own "an active company user" — and the
+   * `project_members` half of §2.1 is enforced per ROW below, not by hiding the row.
+   */
+  const eligible = wsMembers.filter((m) => m.status === 'active')
+  const isWorkspaceAdminRow = (userId: string) =>
+    wsMembers.find((m) => m.userId === userId)?.roleSlug === 'workspace_admin'
   const leadOptions: SelectOption[] = eligible.map((m) => ({
     value: m.userId,
     label: m.displayName ?? m.email ?? m.userId,
@@ -421,12 +437,18 @@ function TeamFormModal({
 
   /** Toggling a row includes/excludes it. A newly-checked row defaults to its CURRENT
    *  project access level (mockup: Priya Nair, already Admin, shows "Admin" once
-   *  checked) or 'editor' when it has none yet — never a blanket shared default. */
+   *  checked) or 'editor' when it has none yet — never a blanket shared default.
+   *
+   *  A WORKSPACE ADMIN row takes `null`: it joins the team (the key is present) and no level is
+   *  ever chosen for it. That is decided HERE rather than at the write, so no future edit to
+   *  `syncMemberAccess` can reintroduce the level by defaulting an absent value. */
   function toggleMemberRow(userId: string, currentLevel: AccessLevel | null) {
     setMemberAccess((prev) => {
       const next = { ...prev }
       if (userId in next) {
         delete next[userId]
+      } else if (isWorkspaceAdminRow(userId)) {
+        next[userId] = null
       } else {
         // A Viewer joining a team is PROMOTED to Editor, not carried across as a Viewer. Team
         // membership only means anything for someone who can write — it is the boundary an Editor's
@@ -460,9 +482,18 @@ function TeamFormModal({
    * `memberUserIds` and implied a level for each (`teamRosterAccessLevel`), so an Editor landing in
    * this loop already satisfies §2.2 — this call is only correcting the LEVEL, and sending a team set
    * would let a level correction silently reshape the membership the team creation just established.
+   *
+   * **A `null` level is SKIPPED, and that is the one line the whole Workspace-Admin reversal turns
+   * on.** `POST /projects/{id}/members` upserts a `project_members` row, so sending a Workspace
+   * Admin here would write back exactly the row migration 0118 deletes and §2.1 forbids — and it
+   * would not stay dormant: `AccessService.effectiveAssignments` synthesizes a project grant FROM
+   * that table, so it becomes a live Project Admin grant the moment the user is demoted, on a row no
+   * roster displays. The membership itself is already written by `POST /v1/teams` from
+   * `memberUserIds`, which is why skipping the level loses nothing.
    */
   async function syncMemberAccess() {
     for (const [uid, level] of Object.entries(memberAccess)) {
+      if (level === null) continue
       const existing = projectMembers.find((pm) => pm.userId === uid)
       if (existing?.accessLevel === level) continue
       await setAccess.mutateAsync({ userId: uid, accessLevel: level })
@@ -546,9 +577,9 @@ function TeamFormModal({
           <FormField
             label={
               <div className="flex items-center justify-between gap-2">
-                <span>Members & access</span>
+                <span>{t('teams.membersAndAccess')}</span>
                 <span className="text-ui-xs font-normal text-foreground-subtle">
-                  Admin joins All Teams; Editor joins this Team.
+                  {t('teams.membersAndAccessHint')}
                 </span>
               </div>
             }
@@ -556,9 +587,9 @@ function TeamFormModal({
             <div className="rounded-lg border border-border-subtle">
               <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover px-3 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
                 <span className="w-5" />
-                <span className="flex-1">User</span>
-                <span className="w-20 text-center">Current</span>
-                <span className="w-32 text-center">New access</span>
+                <span className="flex-1">{t('teams.colUser')}</span>
+                <span className="w-20 text-center">{t('teams.colCurrentAccess')}</span>
+                <span className="w-32 text-center">{t('teams.colNewAccess')}</span>
               </div>
               <div className="max-h-56 overflow-y-auto">
                 {eligible.map((m) => {
@@ -566,6 +597,7 @@ function TeamFormModal({
                     projectMembers.find((pm) => pm.userId === m.userId)?.accessLevel ?? null
                   const checked = m.userId in memberAccess
                   const label = m.displayName ?? m.email ?? m.userId
+                  const isWorkspaceAdmin = m.roleSlug === 'workspace_admin'
                   return (
                     <div
                       key={m.userId}
@@ -582,19 +614,36 @@ function TeamFormModal({
                         <OwnerAvatar name={label} size={20} />
                         <span className="truncate text-ui-sm text-foreground">{label}</span>
                       </span>
-                      <span className="w-20 text-center text-ui-xs text-foreground-subtle">
-                        {currentLevel ? (
+                      {/* The badge stands where the level would be — the ruling's "never as Admin
+                          or Editor". For a Workspace Admin `currentLevel` is null by construction
+                          (§2.1 keeps them out of `project_members`), so printing `No Access` here
+                          would state the opposite of the truth about the most privileged principal
+                          in the workspace. */}
+                      <span className="flex w-20 justify-center text-center text-ui-xs text-foreground-subtle">
+                        {isWorkspaceAdmin ? (
+                          <WorkspaceAdminBadge />
+                        ) : currentLevel ? (
                           <span className="capitalize">{currentLevel}</span>
                         ) : (
-                          'No Access'
+                          t('teams.memberNoAccess')
                         )}
                       </span>
                       <span className="w-32">
-                        {checked ? (
+                        {isWorkspaceAdmin ? (
+                          /* No select, deliberately: `canEdit={false}` on a level picker is one
+                             prop away from `true`, and there is no state in which writing this row
+                             a level is legal. Same reasoning as the deleted `ProjectSelectCell`. */
+                          <span
+                            className="block text-center text-ui-xs text-foreground-subtle"
+                            title={t('teams.memberNoLevelWrittenHint')}
+                          >
+                            {t('teams.memberNoLevelWritten')}
+                          </span>
+                        ) : checked ? (
                           <SearchableSelect
                             variant="field"
                             dense
-                            value={memberAccess[m.userId]}
+                            value={memberAccess[m.userId] ?? ''}
                             ariaLabel={`Access level for ${label}`}
                             options={teamMemberAccessOptions}
                             onChange={(v) =>
@@ -603,7 +652,7 @@ function TeamFormModal({
                           />
                         ) : (
                           <span className="block text-center text-ui-xs text-foreground-subtle opacity-60">
-                            Not added
+                            {t('teams.memberNotAdded')}
                           </span>
                         )}
                       </span>

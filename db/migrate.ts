@@ -12,7 +12,10 @@ try {
 
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { sql } from 'drizzle-orm';
 import { Pool } from 'pg';
+import { createHash } from 'crypto';
+import fs from 'fs';
 import path from 'path';
 import { seed, seedSystemRoles, seedTenantBootstrap } from './seeds/seed';
 import { pgOptions } from './pg-ssl';
@@ -33,10 +36,100 @@ try {
 const pool = new Pool({ ...pgOptions(url), max: 1 });
 const db = drizzle(pool);
 
+/**
+ * Prove every migration in the journal actually RAN — because "Migrations applied" does not.
+ *
+ * Drizzle records the journal's `when` as `created_at` and applies only entries past the newest
+ * recorded value. So a file whose `when` is not strictly greater than its predecessor's — two branches
+ * numbering in parallel, a copied timestamp, an abandoned branch migration applied on this database
+ * first — is SKIPPED, silently, and the run still reports success. CLAUDE.md has documented the manual
+ * recovery for a while ("verify with `select count(*) from drizzle.__drizzle_migrations` against the
+ * journal's entry count"); this makes it automatic, because a manual check nobody is prompted to run is
+ * the one that gets skipped exactly when it matters.
+ *
+ * It bit for real: `0125_api_tokens` never created `identity.api_tokens` on a developer database whose
+ * `0125` slot was already taken by a discarded branch file carrying the same `when`. Seven e2e specs
+ * failed with `relation "identity.api_tokens" does not exist`, which reads as broken code rather than
+ * an unapplied migration.
+ *
+ * TWO SIGNALS, AND THEY DESERVE DIFFERENT ANSWERS — the first version of this failed on both and was
+ * unusable locally, because it flagged five files whose objects plainly existed:
+ *
+ *   • NO ROW at an entry's `when` → the file may never have run, OR it ran and was recorded under a
+ *     different timestamp (a renumbered journal does exactly that; CLAUDE.md notes two historical
+ *     pairs whose `when` values are non-ascending and which ARE applied).
+ *   • A row at that `when` whose HASH is not the file's → the file was edited after it ran (ordinary
+ *     on a long-lived developer database, harmless in CI, which always starts empty), OR its slot is
+ *     occupied by a DIFFERENT file and the real one was skipped, which is the incident above.
+ *
+ * WARNS, NEVER FAILS, and that is a deliberate retreat from the first version. Both signals above are
+ * ambiguous from here, and a hard failure on either broke `pnpm db:migrate` on a real developer
+ * database for five files whose objects plainly existed. A gate that cries wolf gets bypassed, and a
+ * bypassed gate protects nothing — whereas a named file and a specific question ("do its objects
+ * exist?") is exactly what the silent success failed to give anyone. Proving it properly means
+ * diffing the live schema against the migrations, which is a different tool and a different change.
+ *
+ * Hashes are compared rather than counted: a count matches by coincidence whenever an abandoned branch
+ * row occupies a real one's slot, which is precisely the case that produced the incident and precisely
+ * the one a count cannot see. Drizzle hashes the file's raw text.
+ *
+ * It REPORTS; it never repairs. Applying a stranded file out of order is a decision about a database
+ * that may not be a developer's, and the safe recovery differs between a laptop (recreate it) and a
+ * deployed environment (apply the one file, deliberately, having read it).
+ */
+async function assertNoStrandedMigrations(folder: string): Promise<void> {
+  const journalPath = path.join(folder, 'meta', '_journal.json');
+  const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8')) as {
+    entries: Array<{ tag: string; when: number }>;
+  };
+
+  const recorded = await db.execute<{ created_at: string; hash: string }>(
+    sql`select created_at, hash from drizzle.__drizzle_migrations`,
+  );
+  // `created_at` is a bigint column, so the driver hands it back as a string.
+  const hashByWhen = new Map(recorded.rows.map((r) => [String(r.created_at), r.hash]));
+
+  const missing: string[] = [];
+  const mismatched: string[] = [];
+  for (const entry of journal.entries) {
+    const file = path.join(folder, `${entry.tag}.sql`);
+    if (!fs.existsSync(file)) continue;
+    const recordedHash = hashByWhen.get(String(entry.when));
+    if (recordedHash === undefined) {
+      missing.push(`${entry.tag} (when=${entry.when})`);
+      continue;
+    }
+    const hash = createHash('sha256').update(fs.readFileSync(file, 'utf8')).digest('hex');
+    if (hash !== recordedHash) mismatched.push(`${entry.tag} (when=${entry.when})`);
+  }
+
+  if (mismatched.length > 0) {
+    console.warn(
+      `⚠️   ${mismatched.length} migration(s) recorded with a DIFFERENT hash than the file on disk: ` +
+        `${mismatched.join(', ')}. Either the file was edited after it ran (harmless), or its ` +
+        'timestamp slot belongs to another file and this one never ran — check that the objects it ' +
+        'creates actually exist before trusting this database.',
+    );
+  }
+  if (missing.length > 0) {
+    console.warn(
+      `⚠️   ${missing.length} migration(s) in the journal have NO recorded row at their own ` +
+        `timestamp: ${missing.join(', ')}. Drizzle applies only entries past the newest recorded ` +
+        '`when`, so a non-ascending or duplicated timestamp strands a file while the run still ' +
+        'reports success — check that the objects each one creates exist, and recreate the database ' +
+        'or apply the file by hand if they do not.',
+    );
+  }
+}
+
 async function run() {
   try {
     console.log('Running migrations...');
-    await migrate(db, { migrationsFolder: path.join(__dirname, 'migrations') });
+    const migrationsFolder = path.join(__dirname, 'migrations');
+    await migrate(db, { migrationsFolder });
+    // Before the seeds, so a stranded schema change is named ahead of the failure it would otherwise
+    // cause against a table that was never created.
+    await assertNoStrandedMigrations(migrationsFolder);
     console.log('✅  Migrations applied');
 
     // Seed uses the app connection, not the migration URL (admin role).

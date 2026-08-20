@@ -451,7 +451,12 @@ function AddExistingUserModal({
   const [level, setLevel] = useState<AccessLevel>(TEAM_SCOPED_LEVEL)
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([])
 
-  // Workspace Admin is company-level only — never a Project member candidate (§2).
+  // Workspace Admin is company-level only — never a Project member candidate (§2). This filter
+  // SURVIVED the BA's Workspace-Admin team-membership ruling, which reversed the identical-looking
+  // one in `project-teams-tab.tsx`: that one gated TEAM membership, which is now allowed, while this
+  // one gates the `project_members` row the ruling still withholds ("must NOT create or require an
+  // Admin/Editor Project Access assignment"; migration 0118 deletes any that exist). Two filters,
+  // one sentence of §2.1, and only one of them moved — do not "align" them.
   const candidates = wsMembers.filter(
     (m) => !existingIds.has(m.userId) && m.status === 'active' && m.roleSlug !== 'workspace_admin',
   )

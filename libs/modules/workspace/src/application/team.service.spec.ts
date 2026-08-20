@@ -62,6 +62,10 @@ const makeAccessService = () => ({
   // default so the write tests above are unaffected; `[]` means NOTHING, and that these are two
   // different answers is what the read tests assert.
   listReadableProjectIds: vi.fn().mockResolvedValue(null),
+  // Who holds the workspace grant, for the roster badge (BA feature 2026-08-20). Nobody by default,
+  // so the tests about a Workspace Admin on a Team have to say so.
+  listWorkspaceAdminIds: vi.fn().mockResolvedValue([]),
+  isWorkspaceAdmin: vi.fn().mockResolvedValue(false),
 });
 
 const makeWorkspaceRepo = () => ({
@@ -408,6 +412,89 @@ describe('TeamService — team reads are scoped to readable projects', () => {
     await expect(service.listTeamMembersForReader('team-beta', 'ws-1', 'editor-1')).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  /**
+   * A WORKSPACE ADMIN MAY BE A TEAM MEMBER (BA feature, 2026-08-20).
+   *
+   * This reverses half of §2.1. Team membership is OPERATIONAL scope: it must not create or require a
+   * project-access assignment, and it must not change what the admin may do. The other half stands —
+   * a Workspace Admin still holds no `work.project_members` row — which is exactly why their roster
+   * row has no access level and has to be badged instead.
+   */
+  describe('a Workspace Admin on a Team', () => {
+    beforeEach(() => {
+      access.listWorkspaceAdminIds.mockResolvedValue(['wa-1']);
+      access.isWorkspaceAdmin.mockResolvedValue(true);
+    });
+
+    it('badges the roster row rather than leaving a blank level to guess at (AC1)', async () => {
+      teamMemberRepo.listByTeam.mockResolvedValue([
+        { id: 'tm-1', userId: 'wa-1', teamId: 'team-1', status: 'active' },
+        { id: 'tm-2', userId: 'user-2', teamId: 'team-1', status: 'active' },
+      ]);
+
+      const roster = await service.listTeamMembersForReader('team-1', 'ws-1', 'actor-1');
+
+      expect(roster.find((m) => m.userId === 'wa-1')?.isWorkspaceAdmin).toBe(true);
+      // `false`, not absent: a client must not have to read "field missing" as "not an admin".
+      expect(roster.find((m) => m.userId === 'user-2')?.isWorkspaceAdmin).toBe(false);
+    });
+
+    it('asks who the admins are ONCE, not once per row', async () => {
+      teamMemberRepo.listByTeam.mockResolvedValue([
+        { id: 'tm-1', userId: 'wa-1', teamId: 'team-1', status: 'active' },
+        { id: 'tm-2', userId: 'user-2', teamId: 'team-1', status: 'active' },
+        { id: 'tm-3', userId: 'user-3', teamId: 'team-1', status: 'active' },
+      ]);
+
+      await service.listTeamMembersForReader('team-1', 'ws-1', 'actor-1');
+
+      expect(access.listWorkspaceAdminIds).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks nothing at all for an empty roster', async () => {
+      teamMemberRepo.listByTeam.mockResolvedValue([]);
+
+      await service.listTeamMembersForReader('team-1', 'ws-1', 'actor-1');
+
+      expect(access.listWorkspaceAdminIds).not.toHaveBeenCalled();
+    });
+
+    it('creates NO project-access assignment when adding them (AC1/AC4)', async () => {
+      teamRepo.listActiveProjectIds.mockResolvedValue(['proj-1']);
+
+      await service.addTeamMember('team-1', 'wa-1', 'ws-1', 'actor-1');
+
+      expect(teamMemberRepo.addMember).toHaveBeenCalled();
+      // The roster grant runs, and it is the grant writer that skips a Workspace Admin — asserted on
+      // the CONTRACT it is called with, because deciding it here would be a second copy of §2.1.
+      expect(access.grantProjectAccess).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'wa-1', onWorkspaceAdmin: 'skip' }),
+        expect.anything(),
+      );
+    });
+
+    it('returns the new row already badged, so the screen and the next read agree (AC6)', async () => {
+      const member = await service.addTeamMember('team-1', 'wa-1', 'ws-1', 'actor-1');
+
+      expect(member.isWorkspaceAdmin).toBe(true);
+    });
+
+    it('adds nobody implicitly — a new Team gets only the members it names (AC2)', async () => {
+      await service.createTeam(
+        'ws-1',
+        { name: 'Team Gamma', key: 'TG', projectIds: ['proj-1'], memberUserIds: [] },
+        'actor-1',
+      );
+
+      expect(teamMemberRepo.setMembers).toHaveBeenCalledWith(
+        'ws-1',
+        expect.any(String),
+        [],
+        expect.anything(),
+      );
+    });
   });
 
   it('leaves the unscoped listTeams alone — it is the internal validation helper', async () => {

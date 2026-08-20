@@ -37,6 +37,17 @@ export interface TeamMember {
   displayName?: string | null;
   email?: string | null;
   avatarUrl?: string | null;
+  /**
+   * Whether this member holds the workspace-wide grant, so the roster can badge them
+   * `Workspace Admin` rather than an access level (BA feature, 2026-08-20).
+   *
+   * A Workspace Admin may now be a TEAM member — operational scope only — while §2.1 still keeps them
+   * off `work.project_members`. So a roster row for them carries no access level to show, and showing
+   * `Admin` or `Editor` would state the thing the BA's rule forbids. Resolved per QUERY rather than
+   * stored: the grant lives in `user_role_assignments`, and a duplicated boolean would be a second
+   * source for a fact that changes when someone is promoted.
+   */
+  isWorkspaceAdmin?: boolean;
 }
 
 export interface CreateTeamInput {
