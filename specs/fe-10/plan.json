@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "feature_key": "FE-10",
+  "summary": "Add scope selection to API token creation flow",
+  "out_of_scope": "Backend API changes, permission catalogue modifications, token editing after creation, scope selection for tokens created through other means, human-readable permission labels, wildcard permission selection",
+  "open_questions": [],
+  "criteria": [
+    {
+      "id": "AC-1",
+      "text": "Given the create-token form, When it is opened, Then the available permission codes are listed in a searchable multi-select dropdown, none is selected, and the form explains that selecting none inherits the creator's permissions unchanged"
+    },
+    {
+      "id": "AC-2",
+      "text": "Given some permissions selected, When the token is created, Then the request sends exactly those codes as `scopes` and the created token's scopes match the selection"
+    },
+    {
+      "id": "AC-3",
+      "text": "Given no permissions selected, When the token is created, Then the request omits `scopes` rather than sending an empty array, because an empty array and an absent field mean different things to the API"
+    },
+    {
+      "id": "AC-4",
+      "text": "Given a token that has scopes, When the token list is rendered, Then a Scopes column displays: 'Full access' for unscoped tokens, comma-separated codes for 1-2 scopes, 'X scopes' with tooltip for 3+ scopes"
+    }
+  ],
+  "stories": [
+    {
+      "key": "S-1",
+      "title": "Add scope selection to create-token form",
+      "goal": "Enable users to select permission scopes when creating an API token using a searchable multi-select dropdown that reads the caller's permissions from auth.store.ts (populated at bootstrap from /v1/bff/me), and fix the token name maxLength defect from 80 to 100 to match the API DTO",
+      "ac_ids": ["AC-1", "AC-2", "AC-3"],
+      "affected_modules": ["apps/web/src/pages/settings/ui/api-tokens/create-token-modal.tsx", "apps/web/src/features/api-tokens/api.ts", "apps/web/src/shared/lib/stores/auth.store.ts"],
+      "out_of_scope": "Token list display changes (handled in S-2), backend API changes, wildcard permissions (excluded by containing ':*'), human-readable labels, fetching permissions from the API (data is already in auth.store.ts)",
+      "risk_notes": "If the API rejects a permission code because the store's permissions contain a code the API no longer recognizes, token creation will fail. The UI must display this error clearly so users can report the issue.",
+      "depends_on": [],
+      "estimated_tasks": 5,
+      "estimated_loc": 180,
+      "token_estimate": 150000
+    },
+    {
+      "key": "S-2",
+      "title": "Display scopes on token list",
+      "goal": "Add a Scopes column to the token list that shows 'Full access' for unscoped tokens, comma-separated codes for 1-2 scopes, or 'X scopes' with a Tooltip from apps/web/src/shared/ui/tooltip.tsx showing ALL scopes for 3+ scopes",
+      "ac_ids": ["AC-4"],
+      "affected_modules": ["apps/web/src/pages/settings/ui/api-tokens-tab.tsx", "apps/web/src/shared/ui/tooltip.tsx"],
+      "out_of_scope": "Create form changes (covered in S-1), backend API changes",
+      "risk_notes": "",
+      "depends_on": ["S-1"],
+      "estimated_tasks": 3,
+      "estimated_loc": 100,
+      "token_estimate": 120000
+    }
+  ]
+}
