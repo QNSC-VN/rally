@@ -987,8 +987,13 @@ module "worker" {
     # The WORKER sends too — the notification relay is its job — so it needs the sender for the
     # same reason the api task does.
     { name = "EMAIL_PROVIDER", value = "ses" },
-    { name = "SES_BOUNCE_CONFIGSET", value = data.terraform_remote_state.shared.outputs["ses_bounce_configset_name"] },
-    { name = "SES_BOUNCE_QUEUE_URL", value = data.terraform_remote_state.shared.outputs["ses_bounce_queue_url"] },
+    // `try`, not a plain index: the _shared stack owns these outputs, and a PR-time plan runs
+    // against the remote state as it is TODAY — which does not have them yet. Empty until
+    // _shared applies, which is exactly the loop's off state (the worker logs "feedback OFF").
+    // The queue ARN below is CONSTRUCTED instead, same idiom as ses_identity_arn, so the IAM
+    // grant is correct from the first apply and needs no ordering at all.
+    { name = "SES_BOUNCE_CONFIGSET", value = try(data.terraform_remote_state.shared.outputs["ses_bounce_configset_name"], "") },
+    { name = "SES_BOUNCE_QUEUE_URL", value = try(data.terraform_remote_state.shared.outputs["ses_bounce_queue_url"], "") },
     { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
@@ -1906,9 +1911,11 @@ resource "aws_iam_role_policy" "worker_sqs_bounce_feedback" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
-        Resource = data.terraform_remote_state.shared.outputs["ses_bounce_queue_arn"]
+        Effect = "Allow"
+        Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+        # Deterministic queue name, so the ARN needs no remote-state round trip — the same
+        # reason ses_identity_arn is constructed. The queue is created in _shared with this name.
+        Resource = "arn:aws:sqs:${var.region}:${data.aws_caller_identity.current.account_id}:rally-ses-bounce-feedback"
       },
     ]
   })
