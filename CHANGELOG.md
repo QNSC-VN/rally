@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.7.2](https://github.com/QNSC-VN/rally/compare/v0.7.1...v0.7.2) (2026-08-20)
+
+
+### ✨ Features
+
+* **auth:** mint API tokens for machine clients ([#456](https://github.com/QNSC-VN/rally/issues/456)) ([5e2bc0d](https://github.com/QNSC-VN/rally/commit/5e2bc0d83fbf2b6c57855de1f485f271320fef29))
+* **email:** surface SES bounce and complaint verdicts on the rows that sent them ([#468](https://github.com/QNSC-VN/rally/issues/468)) ([c74ffec](https://github.com/QNSC-VN/rally/commit/c74ffecfc340b63354bd2b51a6a7cb78a955c8a0))
+* **infra:** move rally develop's shutdown from 19:00 back to midnight ([#459](https://github.com/QNSC-VN/rally/issues/459)) ([ae3c31a](https://github.com/QNSC-VN/rally/commit/ae3c31a123ca48cb2827b8136132a2b098995da4))
+* **settings:** give the archive a place, and a guarded delete ([#465](https://github.com/QNSC-VN/rally/issues/465)) ([45c29a6](https://github.com/QNSC-VN/rally/commit/45c29a6b5cf98570b7f70980b133607d51e28dfb))
+* **teams:** let a Workspace Admin be a Team member, badged not levelled ([#463](https://github.com/QNSC-VN/rally/issues/463)) ([11821b1](https://github.com/QNSC-VN/rally/commit/11821b199437df0a8518b30097292f198edb33e4))
+* **web:** manage API tokens in Settings ([#460](https://github.com/QNSC-VN/rally/issues/460)) ([7514cf8](https://github.com/QNSC-VN/rally/commit/7514cf8337ddbe7fcf42da704e8c486e19f92483))
+* **workspace:** internal-domain members + copy-invitation-link ([#466](https://github.com/QNSC-VN/rally/issues/466)) ([630977f](https://github.com/QNSC-VN/rally/commit/630977f819f6d953f23a82e9ed88f33a60e34318))
+
+
+### 🐛 Bug Fixes
+
+* **delivery:** make a defect deletable, and stop a refusal reading as a broken button ([#469](https://github.com/QNSC-VN/rally/issues/469)) ([f8ea70c](https://github.com/QNSC-VN/rally/commit/f8ea70cd72a06650b6a8ae5b391918a219ccc9e9))
+* **web:** a 405 that never worked, a picker that could not offer, and two more ([#467](https://github.com/QNSC-VN/rally/issues/467)) ([d62a1aa](https://github.com/QNSC-VN/rally/commit/d62a1aa1581f1c91028517a59b9c5ec8451d23f8))
+* **web:** raise the UI type scale, honour font-size preference, hold a 24px target floor ([#471](https://github.com/QNSC-VN/rally/issues/471)) ([e2ab702](https://github.com/QNSC-VN/rally/commit/e2ab7025661c2ad98964dc41eb693ca4f822c19d))
+* **web:** return the reader where they came from when leaving a detail ([#472](https://github.com/QNSC-VN/rally/issues/472)) ([fc0bc1a](https://github.com/QNSC-VN/rally/commit/fc0bc1a0562c84a879cc5811577510ec540160a3))
+
+
+### ♻️ Refactors
+
+* **settings:** one builder per person and team dropdown, and two leaky glyphs ([#470](https://github.com/QNSC-VN/rally/issues/470)) ([df459ee](https://github.com/QNSC-VN/rally/commit/df459eebc6f42c14714ce4a1745415ec31bc29c9))
+
 ## [0.7.1](https://github.com/QNSC-VN/rally/compare/v0.7.0...v0.7.1) (2026-08-18)
 
 
