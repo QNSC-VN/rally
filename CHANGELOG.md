@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/QNSC-VN/rally/compare/v0.7.2...v0.7.3) (2026-08-21)
+
+
+### 🐛 Bug Fixes
+
+* **worker:** import ApiTokensModule — the worker crash-loops at boot without it ([#473](https://github.com/QNSC-VN/rally/issues/473)) ([30659c8](https://github.com/QNSC-VN/rally/commit/30659c8ebec8c1b7509a67d9fba2f6366876ca5f))
+
 ## [0.7.2](https://github.com/QNSC-VN/rally/compare/v0.7.1...v0.7.2) (2026-08-20)
 
 
