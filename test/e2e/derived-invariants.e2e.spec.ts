@@ -9,6 +9,9 @@
  *   • "Target Start Date EQUALS the earliest `startDate` among linked Releases and Target End Date
  *     EQUALS the latest `releaseDate`" (P3-MS-FR-011/012, Milestones SRS §73). An equality, not a
  *     recalculation step.
+ *
+ * A THIRD rule joined them for the same reason: a parent's Schedule State follows its tasks, and only
+ * two of that rule's three triggers were built. See the `task state drives the parent` block below.
  */
 import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -187,6 +190,151 @@ describe('derived invariants (e2e)', () => {
     const listed = page.data.find((m) => m.id === milestone.id);
     expect(listed?.targetStartDate).toBe('2026-05-11');
     expect(listed?.targetEndDate).toBe('2026-06-19');
+  });
+
+  /**
+   * The parent's Schedule State is DERIVED FROM THE TASK SET, Rally's own rule:
+   *
+   *   all Defined → `Defined`   ·   all Completed → `Completed`   ·   otherwise → `In Progress`
+   *
+   * It arrived here as three per-event triggers and only two were ever built — `TASK-FR-016` states
+   * all-Completed and reopen; a task STARTING was cited in the service's comment as Rally's behaviour
+   * and never implemented, so a Story read `Defined` with a task under it In-Progress. Reported from
+   * develop on 2026-08-22 as "the roll-up stopped working"; it had never worked for that trigger.
+   * Reconciling from the set is what makes a missing trigger impossible, and Broadcom's page names two
+   * cases no transition trigger could ever have caught — both are CREATES.
+   *
+   * Every case asserts the STORED parent state, because that is what every grid, report and burndown
+   * reads — not the response of the call that changed the task.
+   */
+  describe('parent Schedule State is derived from the task set', () => {
+    const parentState = async (id: string) => {
+      const row = await db.execute<{ schedule_state: string }>(
+        sql`select schedule_state from work.work_items where id = ${id}::uuid`,
+      );
+      return row.rows[0].schedule_state;
+    };
+
+    async function story(
+      scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted',
+    ) {
+      return items.createWorkItem(actor, SEEDED.nxp.projectId, 'story', `Derived ${uniqueKey()}`, {
+        scheduleState,
+      });
+    }
+    const addTask = (parentId: string) =>
+      items.createTask(actor, parentId, `Derived task ${uniqueKey()}`);
+    const setTask = (id: string, scheduleState: 'defined' | 'in_progress' | 'completed') =>
+      items.updateWorkItem(actor, id, { scheduleState });
+
+    it('walks the whole lifecycle with two tasks', async () => {
+      const parent = await story('defined');
+      const a = await addTask(parent.id);
+      const b = await addTask(parent.id);
+      // Both tasks are born Defined, so "all Defined" holds and the parent stays there.
+      expect(await parentState(parent.id)).toBe('defined');
+
+      await setTask(a.id, 'in_progress');
+      expect(await parentState(parent.id)).toBe('in_progress');
+
+      // One of two Completed is a MIX, not a completion (BA revision 2026-07-19).
+      await setTask(a.id, 'completed');
+      expect(await parentState(parent.id)).toBe('in_progress');
+
+      await setTask(b.id, 'completed');
+      expect(await parentState(parent.id)).toBe('completed');
+
+      // Reopening one is `TASK-FR-016`'s second trigger, and falls out of the same rule.
+      await setTask(b.id, 'in_progress');
+      expect(await parentState(parent.id)).toBe('in_progress');
+    });
+
+    it('returns the parent to Defined when every task is Defined again', async () => {
+      // The rule Rally states first and no trigger expressed at all: the parent walks BACK.
+      const parent = await story('defined');
+      const task = await addTask(parent.id);
+      await setTask(task.id, 'in_progress');
+      expect(await parentState(parent.id)).toBe('in_progress');
+
+      await setTask(task.id, 'defined');
+      expect(await parentState(parent.id)).toBe('defined');
+    });
+
+    it('starts a parent in idea as soon as a task exists', async () => {
+      // Broadcom: "adding a task to a story in Idea will make the story Defined." A CREATE, so no
+      // transition trigger could have caught it.
+      const parent = await story('idea');
+      await addTask(parent.id);
+      expect(await parentState(parent.id)).toBe('defined');
+    });
+
+    it('reopens a Completed parent when a task is ADDED to it', async () => {
+      // Broadcom: "adding a task to a story in Completed will make the story In Progress."
+      const parent = await story('completed');
+      await addTask(parent.id);
+      expect(await parentState(parent.id)).toBe('defined');
+    });
+
+    it('completes a parent when its last OPEN task is deleted', async () => {
+      // Deleting the last open task leaves an all-Completed set, so it completes the parent exactly as
+      // completing that task would have. A delete, so again no transition trigger applied.
+      const parent = await story('defined');
+      const done = await addTask(parent.id);
+      const open = await addTask(parent.id);
+      await setTask(done.id, 'completed');
+      await setTask(open.id, 'in_progress');
+      expect(await parentState(parent.id)).toBe('in_progress');
+
+      await items.deleteWorkItem(actor, open.id);
+      expect(await parentState(parent.id)).toBe('completed');
+    });
+
+    it('leaves a parent with no live tasks alone', async () => {
+      // Nothing to derive from, so the DELETE itself must move nothing: a Story whose last task was
+      // removed keeps the state that set left it in.
+      //
+      // Note what happens on the way there, because it is Rally's rule and not a bug: adding a single
+      // Defined task to an `in_progress` Story makes the set all-Defined, so the parent legitimately
+      // becomes `Defined` at CREATE time. The assertion is therefore "unchanged by the delete", read
+      // against the state immediately before it, not against the state the Story started in.
+      const parent = await story('in_progress');
+      const only = await addTask(parent.id);
+      const beforeDelete = await parentState(parent.id);
+      expect(beforeDelete).toBe('defined');
+
+      await items.deleteWorkItem(actor, only.id);
+      expect(await parentState(parent.id)).toBe(beforeDelete);
+    });
+
+    it('reconciles an ACCEPTED parent too — it is not exempt', async () => {
+      // `P3-TS-FR-041`, BA-confirmed 2026-07-24: a parent moves back "from ANY at-or-past-completed
+      // state — `completed`, `accepted` OR `release`". Guarding a sign-off here reads as the safer
+      // choice and would have contradicted that ruling and its unit test, so the set-derived rule
+      // keeps it. Reversing it means exempting those states in `reconcileParentScheduleState`.
+      const parent = await story('accepted');
+      const task = await addTask(parent.id);
+      // One Defined task is an all-Defined set, so the Story is no longer signed-off work.
+      expect(await parentState(parent.id)).toBe('defined');
+
+      await setTask(task.id, 'in_progress');
+      expect(await parentState(parent.id)).toBe('in_progress');
+    });
+
+    it('records each automatic change in the parent activity log', async () => {
+      // `auto: true` is how a reader tells a roll-up from a manual edit, and the first thing to check
+      // when the rule is reported as not firing.
+      const parent = await story('defined');
+      const task = await addTask(parent.id);
+      await setTask(task.id, 'in_progress');
+
+      const rows = await db.execute<{ metadata: { auto?: boolean } }>(
+        sql`select metadata from work.activity_logs
+            where entity_id = ${parent.id}::uuid
+              and action = 'work_item.schedule_state_changed'`,
+      );
+      expect(rows.rows.length).toBe(1);
+      expect(rows.rows[0].metadata.auto).toBe(true);
+    });
   });
 
   it('leaves a milestone with NO linked release manually dated', async () => {
