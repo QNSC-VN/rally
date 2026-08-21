@@ -211,8 +211,12 @@ export class BounceFeedbackService implements OnModuleInit, OnModuleDestroy {
     if (updated.length === 0) {
       // Pre-0126 row (no id stored), an event for another configuration set, or a row a
       // duplicate already marked. All are expected; none are retryable.
+      // `diagnostic` rides along on the no-match line too: the cross-environment case
+      // (the OTHER worker's database holds the row) is real, and the SMTP refusal text is
+      // the one fact that names the receiving server's actual reason. Dropping it here is
+      // how the 2026-08-21 investigation lost the answer on its first pass through.
       this.logger.log(
-        { messageId, eventType: event.eventType },
+        { messageId, eventType: event.eventType, diagnostic },
         'Bounce feedback: event matched no sent row',
       );
       return;

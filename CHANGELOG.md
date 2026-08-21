@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.7.5](https://github.com/QNSC-VN/rally/compare/v0.7.4...v0.7.5) (2026-08-21)
+
+
+### 🐛 Bug Fixes
+
+* **worker:** keep the SMTP diagnostic when a bounce matches no row ([#478](https://github.com/QNSC-VN/rally/issues/478)) ([fd465d7](https://github.com/QNSC-VN/rally/commit/fd465d701ed8816c514c188db7bd37fc061e0778))
+
+## [0.7.4](https://github.com/QNSC-VN/rally/compare/v0.7.3...v0.7.4) (2026-08-21)
+
+
+### 🐛 Bug Fixes
+
+* **infra:** allow the SES configuration-set ARN the tagged sends touch ([#476](https://github.com/QNSC-VN/rally/issues/476)) ([93e8649](https://github.com/QNSC-VN/rally/commit/93e8649f0779cefeec6ef3c43d76c92438a5b7bf))
+* **infra:** the SQS queue policy the SNS-to-SQS delivery always needed ([#475](https://github.com/QNSC-VN/rally/issues/475)) ([775cff0](https://github.com/QNSC-VN/rally/commit/775cff01a9f873756901ae42b6ee7d3a8c352bb7))
+
+## [0.7.3](https://github.com/QNSC-VN/rally/compare/v0.7.2...v0.7.3) (2026-08-21)
+
+
+### 🐛 Bug Fixes
+
+* **worker:** import ApiTokensModule — the worker crash-loops at boot without it ([#473](https://github.com/QNSC-VN/rally/issues/473)) ([30659c8](https://github.com/QNSC-VN/rally/commit/30659c8ebec8c1b7509a67d9fba2f6366876ca5f))
+
 ## [0.7.2](https://github.com/QNSC-VN/rally/compare/v0.7.1...v0.7.2) (2026-08-20)
 
 

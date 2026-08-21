@@ -1871,9 +1871,14 @@ locals {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["ses:SendEmail", "ses:SendRawEmail"]
-        Resource = local.ses_identity_arn
+        Effect = "Allow"
+        Action = ["ses:SendEmail", "ses:SendRawEmail"]
+        # BOTH resources, or a send that names a configuration set is denied on the
+        # config-set ARN even with the identity allowed: SES evaluates EVERY resource the
+        # request touches. Found live — worker emails failed with AccessDenied on
+        # 'configuration-set/rally-email-feedback' the moment #468 tagged sends with it,
+        # opening the email circuit breaker in both environments.
+        Resource = [local.ses_identity_arn, "arn:aws:ses:${var.region}:${data.aws_caller_identity.current.account_id}:configuration-set/rally-email-feedback"]
         Condition = {
           StringEquals = { "ses:FromAddress" = var.mail_from_email }
         }
