@@ -397,6 +397,33 @@ resource "aws_sns_topic_subscription" "ses_bounce_to_sqs" {
   endpoint  = aws_sqs_queue.ses_bounce_feedback.arn
 }
 
+# THE DELIVERY HALF of that subscription — without it the subscription shows Confirmed
+# and every event still dies silently between the two services. SNS delivering to SQS is
+# authorized by the QUEUE's policy, not by the subscription's existence: aws_sns_topic_subscription
+# creates and confirms the subscription (same-account, owner credentials), but each published
+# event is a separate cross-service call that SQS checks against this policy. Diagnosed live:
+# SNS publish succeeded, NumberOfNotificationsFailed stayed zero, and the queue never received —
+# a black hole with every green light on. Scoped to the one topic, so no other publisher can
+# use this queue even if the subscription list grows.
+resource "aws_sqs_queue_policy" "ses_bounce_feedback" {
+  queue_url = aws_sqs_queue.ses_bounce_feedback.url
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "sns.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.ses_bounce_feedback.arn
+        Condition = {
+          ArnEquals = { "aws:SourceArn" = aws_sns_topic.ses_bounce_events.arn }
+        }
+      },
+    ]
+  })
+}
+
 output "ses_bounce_configset_name" {
   value       = aws_sesv2_configuration_set.email_feedback.configuration_set_name
   description = "Configuration set every SES send is tagged with, so bounce/complaint events reach the feedback queue."
