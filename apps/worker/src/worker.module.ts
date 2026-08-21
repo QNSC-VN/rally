@@ -14,6 +14,7 @@ import { AuditProjectionRelay } from './audit/audit-projection.relay';
 import { SnapshotCronService } from './cron/snapshot.cron';
 import { CleanupCronService } from './cron/cleanup.cron';
 import { EmailRelayService } from './email/email-relay.service';
+import { ApiTokensModule } from '@modules/api-tokens';
 import { BounceFeedbackService } from './email/bounce-feedback.service';
 import { NotificationRelayService } from './notifications/notification-relay.service';
 import { ScmWebhookRelayService } from './scm/scm-webhook-relay.service';
@@ -42,6 +43,15 @@ import { ScmBackfillRelayService } from './scm/scm-backfill-relay.service';
     }),
     ScheduleModule.forRoot(),
     PlatformModule,
+
+    // `WorkspaceService` (reached transitively through the module graph) injects
+    // `ApiTokensService` to revoke tokens on member removal, and the module is @Global — but a
+    // @Global module still has to be INSTANTIATED somewhere in the process. The API's root module
+    // imports it; the worker resolved it only by module-init order, and inserting
+    // EmailDeliveryService into the same constructor flipped that order and crash-looped the
+    // worker at boot ("ApiTokensService at index [12]"). Import it here so the worker says what it
+    // needs instead of relying on the graph's incidental shape.
+    ApiTokensModule,
 
     // Contexts with relays / cron jobs
     AuditModule,
