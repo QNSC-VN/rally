@@ -495,6 +495,37 @@ Four things are now true, and each was a separate defect:
 **And the Owner is never defaulted to the current user** (AC7). A change that did exactly that was
 reverted on this branch: `Unassigned` is the default the BA states three times.
 
+## A parent's Schedule State follows its TASKS, and the rule has THREE triggers
+
+`TASK-FR-016` states two, and for a long time only those two existed:
+
+- **All child Tasks Completed** promotes the parent Story/Defect to `Completed` — never a downgrade, so
+  a parent already at `accepted`/`release` is left alone.
+- **Any Task reopened** (leaving `completed`) pulls the parent back to `in_progress`, overriding a
+  manual promotion. `Accepted` is NOT exempt (BA-confirmed 2026-07-24).
+
+The third is **a Task STARTING**: moving a Task to `In-Progress` promotes a parent sitting at
+`idea`/`defined`. It was missing until 2026-08-22, reported from develop as "the roll-up stopped
+working" — it had never worked, which is why nothing regressed and no test caught it. The symptom was a
+Story reading `Defined` while a Task under it was In-Progress: a state real Rally cannot be in, and the
+first thing a reader checks to answer "is anyone working on this?".
+
+- **It is a DECLARED READING, not a stated AC.** `TASK-FR-016` names only the other two; the service's
+  own comment had cited Rally's rule ("otherwise → In Progress") since it was written while
+  implementing half of it. The BA has been asked to add the sentence. If they refuse it, this trigger
+  is the one to remove — the other two are specified.
+- **Promotion only, via `isNotYetStartedScheduleState`** (`db/schema/enums.ts`). That predicate exists
+  rather than reusing `OPEN_SCHEDULE_STATES` because `in_progress` is open but already started, so it is
+  the one open state this must not touch. Pulling a maturer state back belongs to the reopen trigger,
+  which fires on a different event.
+- **A manual parent edit still wins** until a Task starts after it, which is what `TASK-FR-016`'s
+  "User vẫn có thể đổi parent status thủ công" allows.
+- All three triggers live in `WorkItemsService.updateWorkItem` and reach every surface, because Team
+  Status' own task route delegates there and the three SPA controls (Tasks tab, Iteration Status nested
+  row, Team Status) all send `PATCH /v1/work-items/:id`. Pinned in
+  `test/e2e/derived-invariants.e2e.spec.ts`, which asserts the STORED parent state — what every grid,
+  report and burndown reads — not the response of the call that changed the Task.
+
 ## Task hours are THREE independent fields
 
 `Estimate`, `To Do` and `Actual` never derive from each other (Portfolio SRS:141-147), with exactly

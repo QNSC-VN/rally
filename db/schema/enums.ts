@@ -451,6 +451,19 @@ export const ACCEPTED_SCHEDULE_STATES = [
   'release',
 ] as const satisfies readonly WorkItemScheduleState[];
 
+/**
+ * Schedule states a work item sits in BEFORE anyone has started it.
+ *
+ * Narrower than {@link OPEN_SCHEDULE_STATES} on purpose, and the difference is the whole point:
+ * `in_progress` is open but already started, so it is the one open state the task START roll-up must
+ * NOT touch (see `WorkItemsService`'s `taskTransitioningToStarted`). Kept beside the other groupings
+ * so "open" and "not yet started" cannot silently drift into each other.
+ */
+export const NOT_YET_STARTED_STATES = [
+  'idea',
+  'defined',
+] as const satisfies readonly WorkItemScheduleState[];
+
 /** Schedule states that are still open / in-flight (not yet completed). */
 export const OPEN_SCHEDULE_STATES = [
   'idea',
@@ -540,6 +553,10 @@ export const OPEN_DEFECT_SCHEDULE_STATES = [
 
 /** D2 workflow-board category that counts as "done" for board + burndown/velocity. */
 export const WORKFLOW_DONE_CATEGORY = 'done' as const satisfies WorkflowStatusCategory;
+
+/** Type guard: has nobody started this item yet? The task START roll-up's promotion gate. */
+export const isNotYetStartedScheduleState = (s: WorkItemScheduleState): boolean =>
+  (NOT_YET_STARTED_STATES as readonly WorkItemScheduleState[]).includes(s);
 
 /** Type guard: is this schedule state counted as completed for roll-ups? */
 export const isCompletedScheduleState = (s: WorkItemScheduleState): boolean =>

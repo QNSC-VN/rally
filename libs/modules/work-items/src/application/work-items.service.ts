@@ -27,6 +27,7 @@ import { PERMISSION, permissionGrants } from '@shared-kernel';
 import {
   isAcceptedScheduleState,
   isCompletedScheduleState,
+  isNotYetStartedScheduleState,
   type DefectState,
 } from '../../../../../db/schema/enums';
 import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
@@ -1169,6 +1170,16 @@ export class WorkItemsService {
       item.scheduleState === 'completed' &&
       input.scheduleState !== undefined &&
       !isCompletedScheduleState(input.scheduleState);
+    /**
+     * FORWARD START roll-up: a task beginning work starts its parent.
+     *
+     * `isNotYetStartedScheduleState` rather than a `!isCompletedScheduleState` check, because the parent
+     * must only be PROMOTED: `in_progress` is already correct, and `completed`/`accepted`/`release`
+     * are maturer states this must never pull back — pulling one back is the reverse roll-up's job,
+     * and it fires on a different trigger (a task LEAVING Completed).
+     */
+    const taskTransitioningToStarted =
+      isTask && input.scheduleState === 'in_progress' && item.scheduleState !== 'in_progress';
 
     // Real-Rally task time: Estimate and Actuals are independent, user-owned
     // values — never derived/overwritten. A task reaching a done state has no
@@ -1281,6 +1292,57 @@ export class WorkItemsService {
             this.logger.log(
               { iterationId },
               'Iteration auto-accepted — all assigned Story/Defect items are accepted',
+            );
+          }
+        }
+      }
+
+      // ── Start the parent US/DE when a task begins work ──
+      /**
+       * Real Rally keeps a parent's Schedule State consistent with its tasks, and the comment on the
+       * reverse roll-up below has cited that rule ("otherwise → In Progress") since it was written —
+       * but only two of the three triggers were ever implemented. So a Story sat at `Defined` while a
+       * task under it was In-Progress, which is the state Rally cannot be in, and the one a reader
+       * checking "is anyone working on this?" reads first.
+       *
+       * `TASK-FR-016` names only the other two (all Tasks Completed → Completed; a Task reopened →
+       * In-Progress), so this is a DECLARED READING of Rally's behaviour rather than a stated AC, and
+       * the BA has been asked to add the sentence. It is safe to run on every task start because it
+       * only ever moves `idea|defined → in_progress`: it cannot reverse an acceptance, and it cannot
+       * fight a manual parent edit that TASK-FR-016 explicitly still allows — the manual state wins
+       * for as long as no task starts after it.
+       */
+      if (taskTransitioningToStarted && item.parentId) {
+        const parentBefore = await this.workItemRepo.findById(item.parentId, actor.workspaceId, tx);
+        if (parentBefore && isNotYetStartedScheduleState(parentBefore.scheduleState)) {
+          await this.workItemRepo.update(
+            item.parentId,
+            { scheduleState: 'in_progress', updatedBy: actor.sub },
+            actor.workspaceId,
+            tx,
+          );
+          const freshParent = await this.workItemRepo.findById(
+            item.parentId,
+            actor.workspaceId,
+            tx,
+          );
+          if (freshParent) {
+            await this.appendMany(
+              [
+                this.buildActivityInput(
+                  freshParent,
+                  'work_item',
+                  actor.sub,
+                  'work_item.schedule_state_changed',
+                  {
+                    field: 'scheduleState',
+                    old: parentBefore.scheduleState,
+                    new: 'in_progress',
+                  },
+                  { auto: true },
+                ),
+              ],
+              tx,
             );
           }
         }

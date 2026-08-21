@@ -9,6 +9,9 @@
  *   • "Target Start Date EQUALS the earliest `startDate` among linked Releases and Target End Date
  *     EQUALS the latest `releaseDate`" (P3-MS-FR-011/012, Milestones SRS §73). An equality, not a
  *     recalculation step.
+ *
+ * A THIRD rule joined them for the same reason: a parent's Schedule State follows its tasks, and only
+ * two of that rule's three triggers were built. See the `task state drives the parent` block below.
  */
 import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -187,6 +190,102 @@ describe('derived invariants (e2e)', () => {
     const listed = page.data.find((m) => m.id === milestone.id);
     expect(listed?.targetStartDate).toBe('2026-05-11');
     expect(listed?.targetEndDate).toBe('2026-06-19');
+  });
+
+  /**
+   * The parent's Schedule State follows its TASKS, and the rule has three triggers.
+   *
+   * `TASK-FR-016` states two — all Tasks Completed promotes the parent to `Completed`, any Task
+   * reopened pulls it back to `In-Progress` — and both were built. The third, a task STARTING, was
+   * cited in the service's own comment as Rally's behaviour ("otherwise → In Progress") and never
+   * implemented, so a Story stayed `Defined` while a task under it was In-Progress: the one state
+   * Rally cannot be in, and the first thing a reader checks to answer "is anyone working on this?".
+   * Reported from the dev environment on 2026-08-22 as "the roll-up stopped working"; it had never
+   * worked for that trigger, which is why nothing regressed and no test caught it.
+   *
+   * Each case asserts the STORED parent state after a task write, because that is what every grid,
+   * report and burndown reads — not the response of the call that changed the task.
+   */
+  describe('task state drives the parent', () => {
+    async function storyWithTasks(
+      scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted',
+      taskCount = 1,
+    ) {
+      const story = await items.createWorkItem(
+        actor,
+        SEEDED.nxp.projectId,
+        'story',
+        `Roll-up parent ${uniqueKey()}`,
+        { scheduleState },
+      );
+      const tasks = [];
+      for (let i = 0; i < taskCount; i++) {
+        tasks.push(await items.createTask(actor, story.id, `Roll-up task ${i} ${uniqueKey()}`));
+      }
+      return { story, tasks };
+    }
+
+    const parentState = async (id: string) => {
+      const row = await db.execute<{ schedule_state: string }>(
+        sql`select schedule_state from work.work_items where id = ${id}::uuid`,
+      );
+      return row.rows[0].schedule_state;
+    };
+
+    it.each(['idea', 'defined'] as const)(
+      'starting a task starts a parent in %s',
+      async (initial) => {
+        const { story, tasks } = await storyWithTasks(initial);
+        await items.updateWorkItem(actor, tasks[0].id, { scheduleState: 'in_progress' });
+        expect(await parentState(story.id)).toBe('in_progress');
+      },
+    );
+
+    it.each(['completed', 'accepted'] as const)(
+      'starting a task does NOT pull a parent back from %s',
+      async (initial) => {
+        // Promotion only. Pulling a maturer state back is the REOPEN trigger's job, and it fires on a
+        // different event — a task LEAVING Completed — so this one must never do it.
+        const { story, tasks } = await storyWithTasks(initial);
+        await items.updateWorkItem(actor, tasks[0].id, { scheduleState: 'in_progress' });
+        expect(await parentState(story.id)).toBe(initial);
+      },
+    );
+
+    it('walks the whole lifecycle with two tasks', async () => {
+      const { story, tasks } = await storyWithTasks('defined', 2);
+      expect(await parentState(story.id)).toBe('defined');
+
+      await items.updateWorkItem(actor, tasks[0].id, { scheduleState: 'in_progress' });
+      expect(await parentState(story.id)).toBe('in_progress');
+
+      // One of two Completed must NOT complete the parent (BA revision 2026-07-19).
+      await items.updateWorkItem(actor, tasks[0].id, { scheduleState: 'completed' });
+      expect(await parentState(story.id)).toBe('in_progress');
+
+      await items.updateWorkItem(actor, tasks[1].id, { scheduleState: 'completed' });
+      expect(await parentState(story.id)).toBe('completed');
+
+      // Reopening one pulls it back — TASK-FR-016's second trigger.
+      await items.updateWorkItem(actor, tasks[1].id, { scheduleState: 'in_progress' });
+      expect(await parentState(story.id)).toBe('in_progress');
+    });
+
+    it('records the automatic change in the parent activity log', async () => {
+      // The roll-up is the only writer here, so an entry flagged `auto` is how a reader tells this
+      // apart from someone editing the Story by hand — and it is the first thing to check when the
+      // rule is reported as not firing.
+      const { story, tasks } = await storyWithTasks('defined');
+      await items.updateWorkItem(actor, tasks[0].id, { scheduleState: 'in_progress' });
+
+      const rows = await db.execute<{ metadata: { auto?: boolean } }>(
+        sql`select metadata from work.activity_logs
+            where entity_id = ${story.id}::uuid
+              and action = 'work_item.schedule_state_changed'`,
+      );
+      expect(rows.rows.length).toBe(1);
+      expect(rows.rows[0].metadata.auto).toBe(true);
+    });
   });
 
   it('leaves a milestone with NO linked release manually dated', async () => {
