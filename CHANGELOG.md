@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.5](https://github.com/QNSC-VN/rally/compare/v0.7.4...v0.7.5) (2026-08-21)
+
+
+### 🐛 Bug Fixes
+
+* **worker:** keep the SMTP diagnostic when a bounce matches no row ([#478](https://github.com/QNSC-VN/rally/issues/478)) ([fd465d7](https://github.com/QNSC-VN/rally/commit/fd465d701ed8816c514c188db7bd37fc061e0778))
+
 ## [0.7.4](https://github.com/QNSC-VN/rally/compare/v0.7.3...v0.7.4) (2026-08-21)
 
 
