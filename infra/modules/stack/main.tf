@@ -992,8 +992,8 @@ module "worker" {
     // _shared applies, which is exactly the loop's off state (the worker logs "feedback OFF").
     // The queue ARN below is CONSTRUCTED instead, same idiom as ses_identity_arn, so the IAM
     // grant is correct from the first apply and needs no ordering at all.
-    { name = "SES_BOUNCE_CONFIGSET", value = try(data.terraform_remote_state.shared.outputs["ses_bounce_configset_name"], "") },
-    { name = "SES_BOUNCE_QUEUE_URL", value = try(data.terraform_remote_state.shared.outputs["ses_bounce_queue_url"], "") },
+    { name = "SES_BOUNCE_CONFIGSET", value = aws_sesv2_configuration_set.email_feedback.configuration_set_name },
+    { name = "SES_BOUNCE_QUEUE_URL", value = aws_sqs_queue.ses_bounce_feedback.url },
     { name = "MAIL_FROM_EMAIL", value = var.mail_from_email },
     { name = "LOG_LEVEL", value = "info" },
     { name = "LOG_PRETTY", value = "false" },
@@ -1902,6 +1902,79 @@ resource "aws_iam_role_policy" "worker_ses_send" {
   policy = local.ses_send_policy
 }
 
+
+# ── SES asynchronous feedback, PER ENVIRONMENT ───────────────────────────────
+#
+# The loop's whole point is that a verdict lands on the row that sent it, in the
+# DATABASE that sent it — so the queue an environment drains must be its own. The
+# first cut of this lived in _shared with one config set, topic and queue for both
+# environments, and both workers long-polled that one queue: whichever polled first
+# consumed the event, and when it was the other environment's worker the verdict
+# logged "matched no sent row" in one database while the sending row stayed bare in
+# the other. Observed live twice on 2026-08-21. The SES IDENTITY above this comment
+# stays shared — it is one-per-account-and-region — but a configuration set is an
+# ordinary named resource and each environment owns its own chain end to end.
+#
+# EXPAND FIRST: the shared chain is removed from _shared in the change AFTER this
+# one deploys (the repo's own #394 rule — removing infrastructure running code still
+# uses needs the deploy first). Until then both chains exist and the workers, on
+# their new task definitions, use only their own.
+#
+# The queue policy is the delivery half: aws_sns_topic_subscription confirms the
+# subscription, but each published event is a separate cross-service call that SQS
+# authorizes against this policy — without it every verdict dies between the two
+# services while every metric reads green. Also diagnosed live, same day.
+resource "aws_sesv2_configuration_set" "email_feedback" {
+  # `configuration_set_name`, not `name`: the pinned provider predates the rename.
+  configuration_set_name = "${local.name}-email-feedback"
+}
+
+resource "aws_sns_topic" "ses_bounce_events" {
+  name = "${local.name}-ses-bounce-events"
+}
+
+resource "aws_sesv2_configuration_set_event_destination" "bounces" {
+  configuration_set_name = aws_sesv2_configuration_set.email_feedback.configuration_set_name
+  event_destination_name = "bounce-complaints-to-sqs"
+
+  event_destination {
+    enabled              = true
+    matching_event_types = ["BOUNCE", "COMPLAINT"]
+    sns_destination {
+      topic_arn = aws_sns_topic.ses_bounce_events.arn
+    }
+  }
+}
+
+resource "aws_sqs_queue" "ses_bounce_feedback" {
+  name = "${local.name}-ses-bounce-feedback"
+}
+
+resource "aws_sqs_queue_policy" "ses_bounce_feedback" {
+  queue_url = aws_sqs_queue.ses_bounce_feedback.url
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "sns.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.ses_bounce_feedback.arn
+        Condition = {
+          ArnEquals = { "aws:SourceArn" = aws_sns_topic.ses_bounce_events.arn }
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_sns_topic_subscription" "ses_bounce_to_sqs" {
+  topic_arn = aws_sns_topic.ses_bounce_events.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.ses_bounce_feedback.arn
+}
+
 # The feedback half of the SES loop: the worker's BounceFeedbackService long-polls the shared
 # bounce queue. Scoped to the ONE queue and the three calls a drain makes — Receive to claim a
 # batch, Delete to acknowledge (which the consumer does whether or not the event matched a row,
@@ -1920,7 +1993,7 @@ resource "aws_iam_role_policy" "worker_sqs_bounce_feedback" {
         Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
         # Deterministic queue name, so the ARN needs no remote-state round trip — the same
         # reason ses_identity_arn is constructed. The queue is created in _shared with this name.
-        Resource = "arn:aws:sqs:${var.region}:${data.aws_caller_identity.current.account_id}:rally-ses-bounce-feedback"
+        Resource = aws_sqs_queue.ses_bounce_feedback.arn
       },
     ]
   })
