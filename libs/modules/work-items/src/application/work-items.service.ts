@@ -27,7 +27,6 @@ import { PERMISSION, permissionGrants } from '@shared-kernel';
 import {
   isAcceptedScheduleState,
   isCompletedScheduleState,
-  isNotYetStartedScheduleState,
   type DefectState,
 } from '../../../../../db/schema/enums';
 import { NotificationSchedulerService } from '@platform/notifications/notification-scheduler.service';
@@ -588,6 +587,16 @@ export class WorkItemsService {
            * the row that actually committed.
            */
           await this.notifyAssignee(actor, created, tx);
+
+          /**
+           * A new task changes the SET the parent is derived from, and Rally says so in its own
+           * examples: "adding a task to a story in Idea will make the story Defined" and "adding a
+           * task to a story in Completed will make the story In Progress". No trigger covered either,
+           * because both are CREATES and every trigger keyed on a state transition.
+           */
+          if (isTask && created.parentId) {
+            await this.reconcileParentScheduleState(actor, created.parentId, tx);
+          }
 
           return created;
         });
@@ -1162,24 +1171,8 @@ export class WorkItemsService {
     }
 
     const isTask = item.type === 'task';
-    const taskTransitioningToComplete =
-      isTask && input.scheduleState === 'completed' && item.scheduleState !== 'completed';
-    // Reverse roll-up (BR-TASK-02): a task leaving Completed reopens its parent.
-    const taskTransitioningFromComplete =
-      isTask &&
-      item.scheduleState === 'completed' &&
-      input.scheduleState !== undefined &&
-      !isCompletedScheduleState(input.scheduleState);
-    /**
-     * FORWARD START roll-up: a task beginning work starts its parent.
-     *
-     * `isNotYetStartedScheduleState` rather than a `!isCompletedScheduleState` check, because the parent
-     * must only be PROMOTED: `in_progress` is already correct, and `completed`/`accepted`/`release`
-     * are maturer states this must never pull back — pulling one back is the reverse roll-up's job,
-     * and it fires on a different trigger (a task LEAVING Completed).
-     */
-    const taskTransitioningToStarted =
-      isTask && input.scheduleState === 'in_progress' && item.scheduleState !== 'in_progress';
+    // The parent's own state is reconciled from the whole task set after the write (see
+    // `reconcileParentScheduleState`); no per-transition flag decides it any more.
 
     // Real-Rally task time: Estimate and Actuals are independent, user-owned
     // values — never derived/overwritten. A task reaching a done state has no
@@ -1297,149 +1290,14 @@ export class WorkItemsService {
         }
       }
 
-      // ── Start the parent US/DE when a task begins work ──
       /**
-       * Real Rally keeps a parent's Schedule State consistent with its tasks, and the comment on the
-       * reverse roll-up below has cited that rule ("otherwise → In Progress") since it was written —
-       * but only two of the three triggers were ever implemented. So a Story sat at `Defined` while a
-       * task under it was In-Progress, which is the state Rally cannot be in, and the one a reader
-       * checking "is anyone working on this?" reads first.
-       *
-       * `TASK-FR-016` names only the other two (all Tasks Completed → Completed; a Task reopened →
-       * In-Progress), so this is a DECLARED READING of Rally's behaviour rather than a stated AC, and
-       * the BA has been asked to add the sentence. It is safe to run on every task start because it
-       * only ever moves `idea|defined → in_progress`: it cannot reverse an acceptance, and it cannot
-       * fight a manual parent edit that TASK-FR-016 explicitly still allows — the manual state wins
-       * for as long as no task starts after it.
+       * The parent Story/Defect's Schedule State is DERIVED FROM ITS TASKS, and it is reconciled from
+       * the whole set rather than nudged by whichever transition happened. See
+       * {@link reconcileParentScheduleState}: three separate trigger branches lived here, one per
+       * event, and that shape is what let a third trigger go missing for a year.
        */
-      if (taskTransitioningToStarted && item.parentId) {
-        const parentBefore = await this.workItemRepo.findById(item.parentId, actor.workspaceId, tx);
-        if (parentBefore && isNotYetStartedScheduleState(parentBefore.scheduleState)) {
-          await this.workItemRepo.update(
-            item.parentId,
-            { scheduleState: 'in_progress', updatedBy: actor.sub },
-            actor.workspaceId,
-            tx,
-          );
-          const freshParent = await this.workItemRepo.findById(
-            item.parentId,
-            actor.workspaceId,
-            tx,
-          );
-          if (freshParent) {
-            await this.appendMany(
-              [
-                this.buildActivityInput(
-                  freshParent,
-                  'work_item',
-                  actor.sub,
-                  'work_item.schedule_state_changed',
-                  {
-                    field: 'scheduleState',
-                    old: parentBefore.scheduleState,
-                    new: 'in_progress',
-                  },
-                  { auto: true },
-                ),
-              ],
-              tx,
-            );
-          }
-        }
-      }
-
-      // ── Auto-complete parent US/DE when ALL tasks are completed ──
-      // NOTE: We use input.scheduleState (not updated.scheduleState) because the
-      // repo's update() re-fetches via this.db (pool), not the transaction tx,
-      // so updated.scheduleState may still reflect the old state.
-      if (taskTransitioningToComplete && item.parentId) {
-        const allDone = await this.workItemRepo.areAllTasksComplete(
-          item.parentId,
-          actor.workspaceId,
-          tx,
-        );
-        if (allDone) {
-          // Capture parent's old state before updating (use tx for consistency)
-          const parentBefore = await this.workItemRepo.findById(
-            item.parentId,
-            actor.workspaceId,
-            tx,
-          );
-          // Only advance a parent that is still open — never DOWNGRADE a parent
-          // already at a more mature terminal (accepted/release) back to completed.
-          if (parentBefore && !isCompletedScheduleState(parentBefore.scheduleState)) {
-            await this.workItemRepo.update(
-              item.parentId,
-              { scheduleState: 'completed', updatedBy: actor.sub },
-              actor.workspaceId,
-              tx,
-            );
-            // Log the automatic parent state change
-            const freshParent = await this.workItemRepo.findById(
-              item.parentId,
-              actor.workspaceId,
-              tx,
-            );
-            if (freshParent) {
-              await this.appendMany(
-                [
-                  this.buildActivityInput(
-                    freshParent,
-                    'work_item',
-                    actor.sub,
-                    'work_item.schedule_state_changed',
-                    { field: 'scheduleState', old: parentBefore.scheduleState, new: 'completed' },
-                    { auto: true },
-                  ),
-                ],
-                tx,
-              );
-            }
-          }
-        }
-      }
-
-      // ── Reverse roll-up (BR-TASK-02 / P3-TS-FR-041): reopening a child task
-      // moves its parent back to In-Progress from ANY at-or-past-completed state
-      // — `completed`, `accepted` OR `release`. Real Rally keeps the parent's
-      // Schedule State consistent with its tasks ("otherwise → In Progress") and
-      // overrides a manual promotion, so `Accepted` is NOT exempt (BA-confirmed
-      // 2026-07-24, superseding the earlier F3 accepted-exempt guard). The repo
-      // mirrors Flow State too.
-      if (taskTransitioningFromComplete && item.parentId) {
-        const parentBefore = await this.workItemRepo.findById(item.parentId, actor.workspaceId, tx);
-        if (parentBefore && isCompletedScheduleState(parentBefore.scheduleState)) {
-          await this.workItemRepo.update(
-            item.parentId,
-            { scheduleState: 'in_progress', updatedBy: actor.sub },
-            actor.workspaceId,
-            tx,
-          );
-          const freshParent = await this.workItemRepo.findById(
-            item.parentId,
-            actor.workspaceId,
-            tx,
-          );
-          if (freshParent) {
-            await this.appendMany(
-              [
-                this.buildActivityInput(
-                  freshParent,
-                  'work_item',
-                  actor.sub,
-                  'work_item.schedule_state_changed',
-                  {
-                    field: 'scheduleState',
-                    old: parentBefore.scheduleState,
-                    new: 'in_progress',
-                  },
-                  { auto: true },
-                ),
-              ],
-              tx,
-            );
-          }
-        }
+      if (isTask && item.parentId && input.scheduleState !== undefined) {
+        await this.reconcileParentScheduleState(actor, item.parentId, tx);
       }
 
       // ── F7 notifications ──
@@ -1474,6 +1332,88 @@ export class WorkItemsService {
   // ── Delete ────────────────────────────────────────────────────────────────
 
   @Span('work-items.delete')
+
+  /**
+   * Reconcile a parent Story/Defect's Schedule State from the CURRENT state of its live tasks.
+   *
+   * Rally derives the parent from the whole task SET, not from whichever transition just happened
+   * (Broadcom, "Task State Updates Parent Schedule State"):
+   *
+   *   • all tasks `Defined`   → parent `Defined`
+   *   • all tasks `Completed` → parent `Completed`
+   *   • otherwise             → parent `In Progress`
+   *
+   * WHY A RECOMPUTE AND NOT MORE TRIGGERS. This replaced three per-event branches — all-complete,
+   * task-reopened, task-started — and that shape is the defect: `TASK-FR-016` states the first two, the
+   * third was only ever a comment quoting Rally, and a Story sat at `Defined` with a task under it
+   * In-Progress for as long as the code existed. A set-derived rule has no third trigger to forget, and
+   * it picks up the two cases no trigger covered at all: Rally's own examples "adding a task to a story
+   * in Idea will make the story Defined" and "adding a task to a story in Completed will make the story
+   * In Progress" are task CREATES, and deleting the last open task is a DELETE.
+   *
+   * `accepted` AND `release` ARE RECONCILED LIKE ANY OTHER STATE, and this was very nearly built the
+   * other way. Guarding a sign-off reads as the safe choice — Broadcom's page is silent on those two
+   * states, so the literal rule un-accepts a Story because somebody added a task. The repo had already
+   * decided it: `P3-TS-FR-041`, BA-confirmed 2026-07-24, moves a parent back "from ANY at-or-past-
+   * completed state — `completed`, `accepted` OR `release`" when a child task reopens, and
+   * `work-items.service.spec.ts` has asserted exactly that since. A guard here would have contradicted
+   * a confirmed rule and its own test, so the set-derived form keeps the ruling instead of quietly
+   * narrowing it. Reversing it later means exempting those states HERE and retiring that case.
+   *
+   * ONE DELIBERATE DIVERGENCE FROM RALLY, recorded in CLAUDE.md and put to the BA: Rally gates the
+   * whole behaviour behind a project/subscription `Auto State Updates` setting, which is how it
+   * reconciles automation with `TASK-FR-016`'s "user may still change the parent status manually". We
+   * have no such switch, so a manual parent state survives only until the next task write. If the BA
+   * wants the manual edit to win, that switch is the answer, not weakening this rule.
+   *
+   * A parent with NO live tasks is left untouched: there is nothing to derive from, and a Story whose
+   * last task was deleted must not be pulled back to `Defined` on that evidence.
+   */
+  private async reconcileParentScheduleState(
+    actor: JwtPayload,
+    parentId: string,
+    tx?: DbExecutor,
+  ): Promise<void> {
+    const counts = await this.workItemRepo.taskStateCounts(parentId, actor.workspaceId, tx);
+    if (counts.total === 0) return;
+
+    const parent = await this.workItemRepo.findById(parentId, actor.workspaceId, tx);
+    if (!parent) return;
+
+    const derived: WorkItemScheduleState =
+      counts.completed === counts.total
+        ? 'completed'
+        : counts.defined === counts.total
+          ? 'defined'
+          : 'in_progress';
+    if (derived === parent.scheduleState) return;
+
+    await this.workItemRepo.update(
+      parentId,
+      { scheduleState: derived, updatedBy: actor.sub },
+      actor.workspaceId,
+      tx,
+    );
+    const fresh = await this.workItemRepo.findById(parentId, actor.workspaceId, tx);
+    if (fresh) {
+      // `auto: true` is how a reader tells a roll-up from someone editing the Story by hand, and the
+      // first thing to check when the rule is reported as not firing.
+      await this.appendMany(
+        [
+          this.buildActivityInput(
+            fresh,
+            'work_item',
+            actor.sub,
+            'work_item.schedule_state_changed',
+            { field: 'scheduleState', old: parent.scheduleState, new: derived },
+            { auto: true },
+          ),
+        ],
+        tx,
+      );
+    }
+  }
+
   async deleteWorkItem(actor: JwtPayload, id: string): Promise<void> {
     const item = await this.getWorkItem(actor.workspaceId, id);
     await this.assertTeamScope(actor, item);
@@ -1499,6 +1439,12 @@ export class WorkItemsService {
     // Remove this item's F6 relations so no dangling links survive the delete
     // (the relations table has no FK/cascade to work_items).
     await this.relationRepo.deleteForItem(id, actor.workspaceId);
+    // Deleting a task changes the set its parent is derived from — deleting the last OPEN one
+    // completes the parent, exactly as completing it would have. Runs after the delete, so the census
+    // counts live rows only.
+    if (item.type === 'task' && item.parentId) {
+      await this.reconcileParentScheduleState(actor, item.parentId);
+    }
     this.logger.log({ workItemId: id }, 'Work item soft-deleted');
   }
 

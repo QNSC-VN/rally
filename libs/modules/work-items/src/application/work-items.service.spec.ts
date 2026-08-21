@@ -124,7 +124,10 @@ const makeWorkItemRepo = () => ({
   listLabels: vi.fn(),
   listMilestones: vi.fn().mockResolvedValue([]),
   setMilestones: vi.fn().mockResolvedValue(undefined),
-  areAllTasksComplete: vi.fn().mockResolvedValue(false),
+  // The parent Schedule State is DERIVED FROM THE TASK SET (`reconcileParentScheduleState`), so the
+  // default census is "one task, still Defined" — a parent whose set says nothing has started. Cases
+  // that care about the roll-up override it.
+  taskStateCounts: vi.fn().mockResolvedValue({ total: 1, defined: 1, completed: 0 }),
   autoAcceptIterationIfComplete: vi.fn().mockResolvedValue(false),
   // The two Home aggregates. Both take the `listReadableProjectIds` sentinel as their last argument
   // — see the `Home aggregates` describe block at the bottom of this file for why that matters.
@@ -1043,6 +1046,8 @@ describe('WorkItemsService', () => {
       workItemRepo.findById.mockImplementation((id: string) =>
         Promise.resolve(id === 'parent-1' ? parent : task),
       );
+      // One task, started: not all-Defined, not all-Completed, so the set derives In-Progress.
+      workItemRepo.taskStateCounts.mockResolvedValue({ total: 1, defined: 0, completed: 0 });
       workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
 
       await service.updateWorkItem(mockActor, 'task-1', { scheduleState: 'in_progress' });
@@ -1066,6 +1071,9 @@ describe('WorkItemsService', () => {
       workItemRepo.findById.mockImplementation((id: string) =>
         Promise.resolve(id === 'parent-1' ? parent : task),
       );
+      // The reopened task IS the set: one task, started — neither all-Defined nor all-Completed, so
+      // the derived parent state is In-Progress.
+      workItemRepo.taskStateCounts.mockResolvedValue({ total: 1, defined: 0, completed: 0 });
       workItemRepo.update.mockResolvedValue(mockWorkItem({ id: 'task-1', type: 'task' }));
 
       await service.updateWorkItem(mockActor, 'task-1', { scheduleState: 'in_progress' });

@@ -157,14 +157,18 @@ export interface IWorkItemRepository {
     teamScoped: ProjectTeamScope[],
   ): Promise<WorkspaceSummary>;
   /**
-   * Check whether ALL non-deleted child tasks of a parent are in 'completed' state.
-   * Returns true if the parent has zero tasks (nothing to block completion).
+   * Census of a parent's LIVE child task states, for the parent schedule-state reconciliation.
+   *
+   * A census rather than the `areAllTasksComplete` boolean it replaced: Rally derives the parent from
+   * the whole set — all Defined, all Completed, otherwise In Progress — so "are they all complete"
+   * cannot answer two of the three cases. `total` is 0 for a parent with no tasks, which the caller
+   * treats as "nothing to derive from" rather than as an empty truth.
    */
-  areAllTasksComplete(
+  taskStateCounts(
     parentId: string,
     workspaceId: string,
     executor?: DbExecutor,
-  ): Promise<boolean>;
+  ): Promise<{ total: number; defined: number; completed: number }>;
   /**
    * BA F1 — auto-accept an iteration when EVERY assigned Story/Defect is in an
    * accepted state and there is at least one such item. Idempotent: only a

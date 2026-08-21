@@ -703,16 +703,17 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     return rows[0]?.rank ?? null;
   }
 
-  async areAllTasksComplete(
+  async taskStateCounts(
     parentId: string,
     workspaceId: string,
     executor?: DbExecutor,
-  ): Promise<boolean> {
+  ): Promise<{ total: number; defined: number; completed: number }> {
     const exec = executor ?? this.db;
     const rows = await exec
       .select({
-        count: sql<number>`count(*)::int`,
-        allDone: sql<boolean>`bool_and(state = 'completed')`,
+        total: sql<number>`count(*)::int`,
+        defined: sql<number>`count(*) filter (where state = 'defined')::int`,
+        completed: sql<number>`count(*) filter (where state = 'completed')::int`,
       })
       .from(tasks)
       .where(
@@ -723,9 +724,12 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         ),
       );
     const r = rows[0];
-    // If there are no tasks, return true (nothing blocks parent completion).
-    if (!r || Number(r.count) === 0) return true;
-    return r.allDone === true;
+    if (!r) return { total: 0, defined: 0, completed: 0 };
+    return {
+      total: Number(r.total),
+      defined: Number(r.defined),
+      completed: Number(r.completed),
+    };
   }
 
   async autoAcceptIterationIfComplete(
