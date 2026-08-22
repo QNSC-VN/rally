@@ -218,11 +218,17 @@ describe('derived invariants (e2e)', () => {
      * the loss is silent — the item is visibly Released while the sprint's velocity is short by its
      * points, which reads as a reporting bug rather than a missing timestamp.
      */
+    /**
+     * `db.execute` is RAW SQL, so a `timestamptz` arrives as the driver gives it — a string here,
+     * not the `Date` the query builder would have mapped it to. Coerced once, so the comparison
+     * below is between two instants rather than between two representations.
+     */
     async function acceptedDateOf(id: string): Promise<Date | null> {
-      const rows = await db.execute<{ accepted_date: Date | null }>(
+      const rows = await db.execute<{ accepted_date: string | Date | null }>(
         sql`select accepted_date from work.work_items where id = ${id}::uuid`,
       );
-      return rows.rows[0].accepted_date;
+      const value = rows.rows[0].accepted_date;
+      return value === null ? null : new Date(value);
     }
 
     it('stamps a story moved straight from Defined to Release', async () => {
