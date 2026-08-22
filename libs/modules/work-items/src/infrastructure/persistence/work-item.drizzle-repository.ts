@@ -1,19 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import {
   and,
-  eq,
-  isNull,
-  or,
-  ilike,
-  inArray,
-  notInArray,
-  sql,
   asc,
   desc,
+  eq,
+  getTableColumns,
+  ilike,
+  inArray,
+  isNull,
+  notInArray,
+  or,
+  sql,
   type AnyColumn,
   type SQL,
 } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { alias, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { InjectDrizzle, buildPageResult, keysetCondition } from '@platform';
 import type { DrizzleDB, DbExecutor, CursorPayload, PagedResult } from '@platform';
 import {
@@ -29,6 +30,7 @@ import {
   projects,
   workflowStatuses,
 } from '../../../../../../db/schema/work';
+import { users } from '../../../../../../db/schema/identity';
 import type {
   DefectSeverity,
   DefectEnvironment,
@@ -473,9 +475,12 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       conditions.push(keysetCondition(workItems.createdAt, workItems.id, cursor));
     }
 
+    const names = this.ownerNameJoins(workItems.assigneeId, workItems.devOwnerId);
     const rows = await this.db
-      .select()
+      .select({ ...getTableColumns(workItems), ...names.columns })
       .from(workItems)
+      .leftJoin(names.assigneeUser, eq(names.assigneeUser.id, workItems.assigneeId))
+      .leftJoin(names.devOwnerUser, eq(names.devOwnerUser.id, workItems.devOwnerId))
       .where(and(...conditions))
       .orderBy(desc(workItems.createdAt), asc(workItems.id))
       .limit(limit + 1);
@@ -539,9 +544,12 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       conditions.push(keysetCondition(sort.column, workItems.id, cursor));
     }
 
+    const backlogNames = this.ownerNameJoins(workItems.assigneeId, workItems.devOwnerId);
     const rows = await this.db
-      .select()
+      .select({ ...getTableColumns(workItems), ...backlogNames.columns })
       .from(workItems)
+      .leftJoin(backlogNames.assigneeUser, eq(backlogNames.assigneeUser.id, workItems.assigneeId))
+      .leftJoin(backlogNames.devOwnerUser, eq(backlogNames.devOwnerUser.id, workItems.devOwnerId))
       .where(and(...conditions))
       .orderBy(orderDir(sort.column), asc(workItems.id))
       .limit(limit + 1);
@@ -612,6 +620,41 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
    * iteration are LEFT-joined: with an unrestricted caller no predicate is added, so the joins can
    * never change which rows come back.
    */
+  /**
+   * OWNER AND DEV OWNER NAMES for a grid row, joined here rather than resolved by the client.
+   *
+   * Every picker feed narrows on purpose — `GET /projects/:id/member-options` excludes Workspace
+   * Admins (AC-16: not assignable owners) and the workspace directory narrows a non-admin caller to
+   * the members and leads of their own readable projects. A Workspace Admin holds no
+   * `project_members` row at all (§2.1, migration 0118), so a row they own had NO name source: the
+   * column read `No Entry` while the id sat in the database, and an absent name is indistinguishable
+   * from an unset field. Reported 2026-08-22 by an Editor; the same gap hits a Workspace Admin on any
+   * surface that consults only the project feed.
+   *
+   * A name is a property of the ROW, not of whom the reader may assign — which is why Portfolio,
+   * Releases, Milestones and Quality already carry theirs. The feeds keep narrowing; naming moves
+   * here. LEFT joins on `users` directly, so a deactivated or departed owner is still NAMED: the row
+   * states who owns it, which stays true.
+   */
+  private ownerNameJoins(assigneeCol: AnyPgColumn, devOwnerCol: AnyPgColumn) {
+    const assigneeUser = alias(users, 'wi_assignee');
+    const devOwnerUser = alias(users, 'wi_dev_owner');
+    return {
+      assigneeUser,
+      devOwnerUser,
+      assigneeCol,
+      devOwnerCol,
+      columns: {
+        assigneeName: sql<
+          string | null
+        >`coalesce(${assigneeUser.displayName}, ${assigneeUser.email})`,
+        devOwnerName: sql<
+          string | null
+        >`coalesce(${devOwnerUser.displayName}, ${devOwnerUser.email})`,
+      },
+    };
+  }
+
   private taskTeamJoins() {
     const parent = alias(workItems, 'task_parent');
     const iteration = alias(iterations, 'task_iteration');
@@ -630,6 +673,11 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     const { parent, iteration, resolvedTeam } = this.taskTeamJoins();
     const team = this.resolvedTeamConditions(teamScope, resolvedTeam);
     if (team === null) return [];
+    // A task's owner is named the same way a story's is: the Tasks tab reads only the project feed,
+    // which excludes Workspace Admins, so a WA-owned task read `No Entry` for every role. `work.tasks`
+    // has no `dev_owner_id` column — the projection below already nulls that id — so only the assignee
+    // is joined and `devOwnerName` stays null with it.
+    const taskAssignee = alias(users, 'task_assignee');
     const rows = await this.db
       .select({
         id: tasks.id,
@@ -644,6 +692,10 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         flowState: tasks.state,
         priority: sql<string>`'normal'`.as('priority'),
         assigneeId: tasks.assigneeId,
+        assigneeName: sql<
+          string | null
+        >`coalesce(${taskAssignee.displayName}, ${taskAssignee.email})`,
+        devOwnerName: sql<string | null>`null`.as('dev_owner_name'),
         reporterId: sql<string | null>`null`.as('reporter_id'),
         parentId: tasks.parentId,
         teamId: tasks.teamId,
@@ -677,6 +729,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       .from(tasks)
       .leftJoin(parent, eq(parent.id, tasks.parentId))
       .leftJoin(iteration, eq(iteration.id, tasks.iterationId))
+      .leftJoin(taskAssignee, eq(taskAssignee.id, tasks.assigneeId))
       .where(
         and(
           eq(tasks.parentId, parentId),

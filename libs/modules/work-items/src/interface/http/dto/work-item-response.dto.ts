@@ -14,6 +14,14 @@ export const WorkItemResponseSchema = z.object({
   flowState: z.string(),
   priority: z.string(),
   assigneeId: z.string().uuid().nullable(),
+  assigneeName: z
+    .string()
+    .nullable()
+    .describe(
+      'Owner display name, joined server-side on the grid reads. A picker feed cannot name a ' +
+        'Workspace Admin (no project_members row, §2.1), so the row carries its own name.',
+    ),
+  devOwnerName: z.string().nullable(),
   reporterId: z.string().uuid().nullable(),
   parentId: z.string().uuid().nullable(),
   teamId: z.string().uuid().nullable(),

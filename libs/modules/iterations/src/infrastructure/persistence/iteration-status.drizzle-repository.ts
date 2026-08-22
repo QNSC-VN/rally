@@ -10,6 +10,7 @@ import {
   milestoneArtifacts,
   portfolioItems,
 } from '../../../../../../db/schema/work';
+import { users } from '../../../../../../db/schema/identity';
 import { acceptedScheduleStatesSql } from '../../../../../../db/schema/enums';
 import { UNASSIGNED_FILTER } from '@modules/work-items';
 import type {
@@ -264,6 +265,30 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
     const featureKey = featureItem.itemKey;
     const featureTitle = featureItem.name;
 
+    /**
+     * OWNER AND DEV OWNER NAMES, joined here rather than resolved by the client.
+     *
+     * The grid used to hold ids only and look the name up in a PICKER feed, and both feeds narrow on
+     * purpose: `GET /projects/:id/member-options` excludes Workspace Admins (AC-16 — they are not
+     * assignable owners), and the workspace directory narrows a non-admin caller to the members and
+     * leads of their own readable projects. A Workspace Admin holds no `project_members` row at all
+     * (§2.1, migration 0118), so an item they own had no name source: the column read `No Entry` for an
+     * Editor while the value sat in the database, and an absent name is indistinguishable from an unset
+     * field. Reported 2026-08-22; reproduced with an Editor whose projects name no admin as lead.
+     *
+     * A name is a property of the ROW, not of what the reader may assign — which is why the four
+     * modules that already do this (Portfolio, Releases, Milestones, Quality) all carry it. The picker
+     * feeds keep narrowing; only naming moves.
+     */
+    const assigneeUser = alias(users, 'u_assignee');
+    const devOwnerUser = alias(users, 'u_dev_owner');
+    const assigneeName = sql<
+      string | null
+    >`coalesce(${assigneeUser.displayName}, ${assigneeUser.email})`;
+    const devOwnerName = sql<
+      string | null
+    >`coalesce(${devOwnerUser.displayName}, ${devOwnerUser.email})`;
+
     // Child-defect rollup — Rally "Defects" (count) + "Defect Status" (open summary).
     const defectCount = sql<number>`(
       select count(*)::int from ${workItems} d
@@ -318,7 +343,9 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         blockedReason: workItems.blockedReason,
         planEstimate: sql<number | null>`${workItems.storyPoints}::float8`,
         assigneeId: workItems.assigneeId,
+        assigneeName,
         devOwnerId: workItems.devOwnerId,
+        devOwnerName,
         rank: workItems.rank,
         taskEstimate,
         toDo,
@@ -339,6 +366,11 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
         featureItem,
         and(eq(featureItem.id, workItems.featureId), isNull(featureItem.archivedAt)),
       )
+      // LEFT joins, and on the user table directly: an owner who has left the workspace or been
+      // deactivated must still be NAMED (the row states who owns it, which is true regardless), the
+      // same reason `member-options` returns inactive members.
+      .leftJoin(assigneeUser, eq(assigneeUser.id, workItems.assigneeId))
+      .leftJoin(devOwnerUser, eq(devOwnerUser.id, workItems.devOwnerId))
       .where(and(...conditions))
       // `id` is the tiebreaker that makes this total rather than partial. Without
       // it, rows sharing a rank come back in physical-tuple order, which changes
@@ -362,7 +394,9 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
       taskTotal: Number(r.taskTotal ?? 0),
       taskDone: Number(r.taskDone ?? 0),
       assigneeId: r.assigneeId,
+      assigneeName: r.assigneeName,
       devOwnerId: r.devOwnerId,
+      devOwnerName: r.devOwnerName,
       rank: r.rank,
       featureId: r.featureId,
       featureKey: r.featureKey,

@@ -590,6 +590,38 @@ half before touching either.
   filter. The SPA was the only thing withholding them: `project-teams-tab.tsx` filtered
   `roleSlug !== 'workspace_admin'` out of the Team Lead options and the member table.
 
+## A NAME belongs to the ROW; a picker feed can never be its source
+
+Reported 2026-08-22: an Editor read `No Entry` / `Unassigned` in Iteration Status' Owner and Dev Owner
+columns for items that WERE assigned. Not a permission fault — the grids carried ids only and resolved
+the name client-side from a PICKER feed, and every picker feed narrows on purpose:
+
+- `GET /projects/:id/member-options` **excludes Workspace Admins** (AC-16: not assignable owners), so it
+  can never name one — for ANY role.
+- `GET /workspaces/:id/member-options` narrows a non-admin caller to the members and the `lead_id`s of
+  their own readable projects (`listMemberOptions`).
+
+A Workspace Admin holds no `work.project_members` row at all (§2.1, migration 0118), so an item they
+own had no name source in either feed. **A Workspace Admin reader never saw it** because
+`listReadableProjectIds` returns `null` — unrestricted — so their directory is the whole workspace; and
+the seeded case hides it too, because every seeded project's `lead_id` IS the admin, which the
+directory's second source picks up. Reproduce with an Editor whose projects name no admin as lead.
+
+- **The read models join the name now** — `ownerNameJoins` in `WorkItemDrizzleRepository` (`listByProject`,
+  `listBacklog`, `listTasksByParent`) and the iteration-status projection. Portfolio, Releases,
+  Milestones and Quality already did this; work items were the last module resolving a name on the
+  client, which is why they were the only ones with the bug.
+- **The client prefers the row and keeps the feed as fallback.** `item.assigneeName ?? map lookup`, on
+  Iteration Status, Backlog and the Tasks tab.
+- **NAMING moved; OFFERING did not.** The feeds still narrow — `WID-FR-016`/AC-16 forbid widening an
+  Owner dropdown to unrelated workspace users — and `owner-name-resolution.e2e.spec.ts` asserts both
+  halves, so a later "simplification" that names from the offer list fails.
+- **`work.tasks` has no `dev_owner_id`**, so a task's `devOwnerName` is null by construction, beside the
+  id the projection already nulls.
+- **Blank-name reports are usually this, not persistence.** An absent name and an unset field render
+  identically, which is what made `GAP-P2-IS-004` look like a save that did not stick. Check whether the
+  owner is a Workspace Admin before hunting the write path.
+
 ## The Owner feed: the TEAM roster decides, and a Team move re-decides it
 
 `GAP-P1-WID-007` was a BA-confirmed P0-adjacent Fail on the 2026-08-17 retest — the Owner dropdown for

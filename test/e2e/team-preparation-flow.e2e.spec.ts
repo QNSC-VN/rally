@@ -239,10 +239,9 @@ describe('BA flows: E2E-002 admin prepares team and user for work management', (
     it('still derives access from a roster named at CREATE time (§2A, E2E-002 step 2)', async () => {
       // The half of §2A that stands: the BA's own flow creates the team WITH its members, and RBE-06
       // grants each of them project access. Nobody needs a project assignment to be staffed this way.
-      const project = await projects.createProject(admin, {
-        key: uniqueKey(),
-        name: 'E2E-002 Derived Project',
-      });
+      // The shared helper's project, not a new one: `e2e-fixtures.ratchet.spec.ts` caps the number of
+      // self-built projects in this suite, and this case needs a project, not its own project.
+      const { project } = await prepareLinkedContext();
       const team = await teams.createTeam(
         admin.workspaceId,
         {

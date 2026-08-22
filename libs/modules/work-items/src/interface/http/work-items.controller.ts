@@ -88,6 +88,10 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
     flowState: w.flowState,
     priority: w.priority,
     assigneeId: w.assigneeId,
+    // `?? null`, never omitted: only the grid reads join these, and a missing key would make the
+    // response shape depend on which query answered.
+    assigneeName: w.assigneeName ?? null,
+    devOwnerName: w.devOwnerName ?? null,
     reporterId: w.reporterId,
     parentId: w.parentId,
     teamId: w.teamId,

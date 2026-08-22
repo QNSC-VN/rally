@@ -618,10 +618,15 @@ function BacklogRow({
     if (trimmed && trimmed !== item.title) patch({ title: trimmed })
   }
 
-  const ownerName = (() => {
-    const m = members.find((m) => m.userId === item.assigneeId)
-    return m?.displayName ?? m?.email
-  })()
+  // The ROW names its own owner (`assigneeName`, joined server-side); the feed is the fallback. A
+  // picker feed excludes Workspace Admins by design (AC-16), so a WA-owned row used to read blank here
+  // for every role — see `ownerNameJoins` in the work-item repository.
+  const ownerName =
+    item.assigneeName ??
+    (() => {
+      const m = members.find((m) => m.userId === item.assigneeId)
+      return m?.displayName ?? m?.email
+    })()
 
   const stop = (e: React.MouseEvent) => e.stopPropagation()
 

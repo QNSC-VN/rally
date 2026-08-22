@@ -3363,6 +3363,9 @@ export interface components {
       flowState: string
       priority: string
       assigneeId: string | null
+      /** @description Owner display name, joined server-side on the grid reads. A picker feed cannot name a Workspace Admin (no project_members row, §2.1), so the row carries its own name. */
+      assigneeName: string | null
+      devOwnerName: string | null
       reporterId: string | null
       parentId: string | null
       teamId: string | null
@@ -3951,7 +3954,10 @@ export interface components {
         taskTotal: number
         taskDone: number
         assigneeId: string | null
+        /** @description Owner display name, joined server-side — a picker feed cannot name a Workspace Admin */
+        assigneeName: string | null
         devOwnerId: string | null
+        devOwnerName: string | null
         rank: string
         featureId: string | null
         featureKey: string | null

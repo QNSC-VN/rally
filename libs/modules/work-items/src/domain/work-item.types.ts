@@ -26,6 +26,19 @@ export interface WorkItem {
   flowState: WorkItemScheduleState;
   priority: WorkItemPriority;
   assigneeId: string | null;
+  /**
+   * Owner display name, joined by the GRID queries (`listByProject`, `listBacklog`,
+   * `listTasksByParent`) and undefined elsewhere.
+   *
+   * Optional because it is a read-model convenience, not a column: the write paths neither accept nor
+   * return it. It exists because every picker feed narrows — a Workspace Admin holds no
+   * `project_members` row (§2.1) and is excluded from the project feed by AC-16 — so a client that
+   * resolves the name from a feed cannot name them, and an absent name looks exactly like an unset
+   * field. See `ownerNameJoins`.
+   */
+  assigneeName?: string | null;
+  /** As `assigneeName`, for the Dev Owner column. */
+  devOwnerName?: string | null;
   reporterId: string | null;
   parentId: string | null;
   teamId: string | null;
