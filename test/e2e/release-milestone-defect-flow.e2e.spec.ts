@@ -13,6 +13,9 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { sql } from 'drizzle-orm';
+import { DRIZZLE } from '@platform';
+import type { DrizzleDB } from '@platform';
 import { IterationsService } from '@modules/iterations';
 import { MilestonesService } from '@modules/milestones';
 import { ProjectsService } from '@modules/projects';
@@ -30,6 +33,7 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
   let milestones: MilestonesService;
   let iterations: IterationsService;
   let teams: TeamService;
+  let db: DrizzleDB;
   const actor = adminActor();
 
   beforeAll(async () => {
@@ -40,6 +44,7 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
     milestones = app.get(MilestonesService);
     iterations = app.get(IterationsService);
     teams = app.get(TeamService);
+    db = app.get<DrizzleDB>(DRIZZLE);
   });
 
   afterAll(async () => {
@@ -284,7 +289,7 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
 
   // ── E2E-015: quality defect lifecycle shares the backlog source ─────────────
   describe('E2E-015 defect lifecycle', () => {
-    it('creates a parentless defect, walks the valid state machine, and forbids delete', async () => {
+    it('creates a parentless defect, walks the valid state machine, and deletes it', async () => {
       const project = await projects.createProject(actor, {
         key: uniqueKey(),
         name: 'Defect Lifecycle',
@@ -326,6 +331,49 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
       await expect(workItems.getWorkItem(actor.workspaceId, defect.id)).rejects.toMatchObject({
         code: 'WORK_ITEM_NOT_FOUND',
       });
+    });
+
+    it('a soft delete CASCADES NOTHING and records the actor (P3-QA-FR-020)', async () => {
+      /**
+       * "Soft delete retains child Tasks, attachments, comments and relations, records the
+       * actor/action and performs no physical cascade delete" — and §187 spells the second half out:
+       * "Successful delete sets `work_items.deleted_at` and writes an activity/audit event with actor
+       * and Defect ID."
+       *
+       * The relation half was a real cascade: the service deleted the defect's relation rows so no
+       * link dangled on the OTHER item. `listForItem` already hides a relation whose other end is
+       * soft-deleted, so nothing dangled either way — the cascade only made the delete partly
+       * irreversible. Asserted from the SURVIVING item, because the deleted one is unreadable.
+       */
+      const project = await projects.createProject(actor, {
+        key: uniqueKey(),
+        name: 'Defect Soft Delete',
+      });
+      const story = await workItems.createWorkItem(actor, project.id, 'story', 'Survivor story');
+      const defect = await workItems.createWorkItem(actor, project.id, 'defect', 'Linked defect');
+      await workItems.linkWorkItem(actor, defect.id, story.id, 'relates_to');
+
+      // The premise: the link is visible from both ends before the delete.
+      expect((await workItems.listRelations(actor, story.id)).length).toBe(1);
+
+      await workItems.deleteWorkItem(actor, defect.id);
+
+      // The surviving item shows no link — `listForItem` filters a soft-deleted other end — while the
+      // ROW itself is still there, which is what makes the delete reversible in the database.
+      expect(await workItems.listRelations(actor, story.id)).toEqual([]);
+      const relationRows = await db.execute<{ count: number }>(
+        sql`select count(*)::int as count from work.work_item_relations
+            where source_item_id = ${defect.id}::uuid or target_item_id = ${defect.id}::uuid`,
+      );
+      expect(relationRows.rows[0].count).toBe(1);
+
+      // And the delete named its actor, in the item's own history.
+      const logged = await db.execute<{ actor_id: string }>(
+        sql`select actor_id from work.activity_logs
+            where entity_id = ${defect.id}::uuid and action = 'work_item.deleted'`,
+      );
+      expect(logged.rows).toHaveLength(1);
+      expect(logged.rows[0].actor_id).toBe(actor.sub);
     });
 
     it('declines a defect after triage (Open → Closed Declined) and treats it as terminal', async () => {

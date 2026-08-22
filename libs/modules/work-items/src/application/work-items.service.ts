@@ -1499,9 +1499,32 @@ export class WorkItemsService {
     // An `assertTeamScoped` call sat here too, and is gone by the same ruling (2026-08-14).
     await this.assertProjectWritable(actor.workspaceId, item.projectId);
     await this.workItemRepo.softDelete(id, actor.workspaceId);
-    // Remove this item's F6 relations so no dangling links survive the delete
-    // (the relations table has no FK/cascade to work_items).
-    await this.relationRepo.deleteForItem(id, actor.workspaceId);
+    /**
+     * The delete RECORDS ITSELF, and it RETAINS everything hanging off the row.
+     *
+     * `P3-QA-FR-020`: "Soft delete retains child Tasks, attachments, comments and relations, records
+     * the actor/action and performs no physical cascade delete."
+     *
+     * Relations used to be physically deleted here, to stop a dangling link surviving on the OTHER
+     * item — but `WorkItemRelationDrizzleRepository.listForItem` already filters
+     * `isNull(other.deletedAt)` in BOTH directions, so the read hides them anyway. The cascade was
+     * therefore doing nothing a reader could see, while making the soft delete PARTLY
+     * irreversible: restoring the row in the database brought back a defect whose links were gone
+     * for good. Retaining them is what makes `deleted_at` the only thing a delete changes.
+     *
+     * The activity row is the "records the actor/action" half. `activity_logs.action` is a free
+     * varchar, so this needs no migration, and the entry lands in the item's own Revision History —
+     * which the item keeps, because nothing here erases history either.
+     */
+    await this.appendMany([
+      this.buildActivityInput(
+        item,
+        item.type === 'task' ? 'task' : 'work_item',
+        actor.sub,
+        item.type === 'task' ? 'task.deleted' : 'work_item.deleted',
+        null,
+      ),
+    ]);
     // Deleting a task changes the set its parent is derived from — deleting the last OPEN one
     // completes the parent, exactly as completing it would have. Runs after the delete, so the census
     // counts live rows only.
