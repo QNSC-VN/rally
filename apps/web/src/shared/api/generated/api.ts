@@ -3566,6 +3566,8 @@ export interface components {
       /** Format: uuid */
       assigneeId?: string
       /** Format: uuid */
+      devOwnerId?: string
+      /** Format: uuid */
       teamId?: string
       estimateHours?: number
       todoHours?: number
@@ -8407,6 +8409,7 @@ export interface operations {
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
         assigneeId?: string | 'unassigned'
+        devOwnerId?: string | 'unassigned'
         teamId?: string
         iterationId?: string
         releaseId?: string
@@ -8535,6 +8538,7 @@ export interface operations {
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
         assigneeId?: string | 'unassigned'
+        devOwnerId?: string | 'unassigned'
         teamId?: string
         iterationId?: string
         releaseId?: string
@@ -11487,6 +11491,7 @@ export interface operations {
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         isBlocked?: 'true' | 'false'
         assigneeId?: string | 'unassigned'
+        devOwnerId?: string | 'unassigned'
         itemKey?: string
         title?: string
         planEstimate?: '' | string

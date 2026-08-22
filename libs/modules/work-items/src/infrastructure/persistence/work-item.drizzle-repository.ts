@@ -380,6 +380,13 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           : eq(workItems.assigneeId, filters.assigneeId),
       );
     }
+    if (filters.devOwnerId) {
+      conditions.push(
+        filters.devOwnerId === UNASSIGNED_FILTER
+          ? isNull(workItems.devOwnerId)
+          : eq(workItems.devOwnerId, filters.devOwnerId),
+      );
+    }
     if (filters.teamId) {
       conditions.push(eq(workItems.teamId, filters.teamId));
     }
@@ -674,10 +681,9 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
     const team = this.resolvedTeamConditions(teamScope, resolvedTeam);
     if (team === null) return [];
     // A task's owner is named the same way a story's is: the Tasks tab reads only the project feed,
-    // which excludes Workspace Admins, so a WA-owned task read `No Entry` for every role. `work.tasks`
-    // has no `dev_owner_id` column — the projection below already nulls that id — so only the assignee
-    // is joined and `devOwnerName` stays null with it.
-    const taskAssignee = alias(users, 'task_assignee');
+    // which excludes Workspace Admins, so a WA-owned task read `No Entry` for every role. Both
+    // responsibilities are joined now — `work.tasks.dev_owner_id` exists as of migration 0127.
+    const taskNames = this.ownerNameJoins(tasks.assigneeId, tasks.devOwnerId);
     const rows = await this.db
       .select({
         id: tasks.id,
@@ -692,10 +698,7 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         flowState: tasks.state,
         priority: sql<string>`'normal'`.as('priority'),
         assigneeId: tasks.assigneeId,
-        assigneeName: sql<
-          string | null
-        >`coalesce(${taskAssignee.displayName}, ${taskAssignee.email})`,
-        devOwnerName: sql<string | null>`null`.as('dev_owner_name'),
+        ...taskNames.columns,
         reporterId: sql<string | null>`null`.as('reporter_id'),
         parentId: tasks.parentId,
         teamId: tasks.teamId,
@@ -722,14 +725,15 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         foundInReleaseId: sql<string | null>`null`.as('found_in_release_id'),
         rootCause: sql<string | null>`null`.as('root_cause'),
         resolution: sql<string | null>`null`.as('resolution'),
-        devOwnerId: sql<string | null>`null`.as('dev_owner_id'),
+        devOwnerId: tasks.devOwnerId,
         defectState: sql<string | null>`null`.as('defect_state'),
         fixedInBuild: sql<string | null>`null`.as('fixed_in_build'),
       })
       .from(tasks)
       .leftJoin(parent, eq(parent.id, tasks.parentId))
       .leftJoin(iteration, eq(iteration.id, tasks.iterationId))
-      .leftJoin(taskAssignee, eq(taskAssignee.id, tasks.assigneeId))
+      .leftJoin(taskNames.assigneeUser, eq(taskNames.assigneeUser.id, tasks.assigneeId))
+      .leftJoin(taskNames.devOwnerUser, eq(taskNames.devOwnerUser.id, tasks.devOwnerId))
       .where(
         and(
           eq(tasks.parentId, parentId),
@@ -1095,6 +1099,9 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
           description: input.description,
           state: SCHEDULE_STATE_TO_TASK_STATE[input.scheduleState ?? 'defined'],
           assigneeId: input.assigneeId,
+          // Its own column since migration 0127. Offered at birth like `assigneeId`, and never copied
+          // from it — the BA forbids reusing `assignee_id` for this responsibility.
+          devOwnerId: input.devOwnerId,
           teamId: input.teamId,
           iterationId: input.iterationId,
           estimateHours: input.estimateHours,
@@ -1132,6 +1139,9 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
               : 'defined',
         priority: 'normal',
         assigneeId: t.assigneeId,
+        // Echoed back, or the create response reports `null` for a value it just wrote — the shape
+        // this method returns is what the client renders immediately after the POST.
+        devOwnerId: t.devOwnerId,
         reporterId: null,
         parentId: t.parentId,
         teamId: t.teamId,
@@ -1158,7 +1168,6 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
         foundInReleaseId: null,
         rootCause: null,
         resolution: null,
-        devOwnerId: null,
         defectState: null,
         fixedInBuild: null,
       };
@@ -1241,6 +1250,9 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       if (taskMirroredState !== undefined)
         setFields.state = SCHEDULE_STATE_TO_TASK_STATE[taskMirroredState];
       if (input.assigneeId !== undefined) setFields.assigneeId = input.assigneeId;
+      // Its own column since migration 0127; it used to have nowhere to go, so a Dev Owner set on a
+      // task was accepted by the API and silently dropped.
+      if (input.devOwnerId !== undefined) setFields.devOwnerId = input.devOwnerId;
       if (input.teamId !== undefined) setFields.teamId = input.teamId;
       if (input.iterationId !== undefined) setFields.iterationId = input.iterationId;
       if (input.estimateHours !== undefined) setFields.estimateHours = input.estimateHours;

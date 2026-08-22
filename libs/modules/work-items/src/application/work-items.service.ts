@@ -624,7 +624,8 @@ export class WorkItemsService {
            * notification — and inside the retry loop, so a duplicate-key retry re-emits with
            * the row that actually committed.
            */
-          await this.notifyAssignee(actor, created, tx);
+          await this.notifyAssignment(actor, created, created.assigneeId, tx);
+          await this.notifyAssignment(actor, created, created.devOwnerId, tx);
 
           /**
            * A new task changes the SET the parent is derived from, and Rally says so in its own
@@ -691,6 +692,7 @@ export class WorkItemsService {
       description?: string;
       state?: string;
       assigneeId?: string;
+      devOwnerId?: string;
       teamId?: string;
       // No `iterationId`: a Task inherits it through its parent (P1-TASK-011), so passing one is a
       // compile error rather than a runtime refusal. `teamId` stays — a Task's team only DEFAULTS to
@@ -1358,16 +1360,26 @@ export class WorkItemsService {
       // permission checks) reads already-committed data off the pool; only
       // the outbox insert itself needs the transaction.
 
-      // Assignment: notify (and auto-watch) the new assignee.
-      const assigneeChanged =
-        input.assigneeId !== undefined &&
-        !!updated.assigneeId &&
-        updated.assigneeId !== item.assigneeId;
-      if (assigneeChanged && updated.assigneeId) {
+      /**
+       * Assignment: notify (and auto-watch) whoever was NEWLY named — Owner or Dev Owner.
+       *
+       * `P4-NOTIF-DC-012` covers both fields, so both are checked the same way and through one loop:
+       * a third responsibility later cannot pick up only half of the behaviour, which is how Dev Owner
+       * came to notify nobody at all.
+       */
+      const newlyAssigned = (
+        [
+          [input.assigneeId, updated.assigneeId, item.assigneeId],
+          [input.devOwnerId, updated.devOwnerId, item.devOwnerId],
+        ] as const
+      )
+        .filter(([patched, next, before]) => patched !== undefined && !!next && next !== before)
+        .map(([, next]) => next as string);
+      for (const recipientId of [...new Set(newlyAssigned)]) {
         await this.watcherRepo
-          .watch(updated.id, updated.assigneeId, actor.workspaceId)
+          .watch(updated.id, recipientId, actor.workspaceId)
           .catch(() => undefined);
-        await this.notifyAssignee(actor, updated, tx);
+        await this.notifyAssignment(actor, updated, recipientId, tx);
       }
 
       // NOTE: schedule-state changes intentionally do NOT notify. The Phase 4.1
@@ -1538,6 +1550,11 @@ export class WorkItemsService {
    * Two rules are enforced here rather than at either call site, so a third write path cannot
    * lose one of them:
    *
+   *   • BOTH RESPONSIBILITIES notify, on a Story, a Defect AND a Task. `P4-NOTIF-DC-012` (BA
+   *     `c42df59`, 2026-08-22): an assignment notification is created when the user "is newly assigned
+   *     as `Owner` or `Dev Owner` of a US/DE/Task". One template and one business event for both, per
+   *     `P4-NOTIF-DC-015` — "inline edit and Detail Page assignment use the same
+   *     assignment-notification business event" — so the surface never changes what the recipient gets.
    *   • the ACTOR is never notified of their own assignment. Self-assignment is the normal way
    *     someone picks up work, and a notification about a click you just made is noise.
    *   • FR-019 applies to an ASSIGNMENT, not only to a mention. The assignee is validated as an
@@ -1551,12 +1568,17 @@ export class WorkItemsService {
    * notification would be worse than not sending one. The assignment stands; the notification does
    * not.
    */
-  private async notifyAssignee(actor: JwtPayload, item: WorkItem, tx: DbExecutor): Promise<void> {
-    if (!item.assigneeId) return;
+  private async notifyAssignment(
+    actor: JwtPayload,
+    item: WorkItem,
+    recipientId: string | null | undefined,
+    tx: DbExecutor,
+  ): Promise<void> {
+    if (!recipientId) return;
     const notifiable = await this.filterByProjectAccess(
       item.workspaceId,
       item.projectId,
-      item.assigneeId === actor.sub ? [] : [item.assigneeId],
+      recipientId === actor.sub ? [] : [recipientId],
     );
     if (notifiable.length === 0) return;
     await this.emitWorkItemNotification(
@@ -1565,7 +1587,9 @@ export class WorkItemsService {
       actor.sub,
       notifiable,
       { itemKey: item.itemKey, itemTitle: item.title, projectId: item.projectId },
-      item.assigneeId,
+      // The RECIPIENT is the discriminator, not the Owner field: it makes the notification unique per
+      // person, so one patch naming the same user as both Owner and Dev Owner tells them once.
+      recipientId,
       tx,
     );
   }

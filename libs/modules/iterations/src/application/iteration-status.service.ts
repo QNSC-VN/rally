@@ -139,6 +139,7 @@ export class IterationStatusService {
       type: WorkItemType;
       title: string;
       assigneeId?: string;
+      devOwnerId?: string;
       planEstimate?: string;
       teamId?: string;
     },
@@ -171,6 +172,7 @@ export class IterationStatusService {
          */
         teamId: input.teamId ?? iteration.teamId ?? undefined,
         assigneeId: input.assigneeId,
+        devOwnerId: input.devOwnerId,
         storyPoints: input.planEstimate,
         iterationId,
         // scheduleState defaults to 'defined' in the work-items service (SRS §9.4).

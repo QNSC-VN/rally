@@ -202,6 +202,7 @@ export class WorkItemsController {
         scheduleState: query.scheduleState,
         priority: query.priority,
         assigneeId: query.assigneeId,
+        devOwnerId: query.devOwnerId,
         teamId: query.teamId,
         iterationId: query.iterationId,
         releaseId: query.releaseId,
@@ -238,6 +239,7 @@ export class WorkItemsController {
         scheduleState: query.scheduleState,
         priority: query.priority,
         assigneeId: query.assigneeId,
+        devOwnerId: query.devOwnerId,
         teamId: query.teamId,
         iterationId: query.iterationId,
         releaseId: query.releaseId,
@@ -598,6 +600,7 @@ export class WorkItemsController {
       description: dto.description,
       state: dto.state,
       assigneeId: dto.assigneeId,
+      devOwnerId: dto.devOwnerId,
       teamId: dto.teamId,
       // No iteration: it comes from the parent (P1-TASK-011). `CreateTaskSchema` does not
       // carry the field, and the service refuses one.

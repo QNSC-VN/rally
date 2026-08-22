@@ -92,6 +92,8 @@ export interface IterationStatusFilters {
    * Owner filters mean the same thing (P2-IS §5: "inherit Phase 2.1 patterns").
    */
   assigneeId?: string;
+  /** Dev Owner, filtered exactly like Owner including the UNASSIGNED sentinel (`P2-IS-FR-024`). */
+  devOwnerId?: string;
   /**
    * Manage Filters text/number column predicates (P2-IS-FR-022/023/024).
    * Each is a SERVER predicate, so a match past the first page is still found.

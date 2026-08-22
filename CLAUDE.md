@@ -598,6 +598,32 @@ half before touching either.
   filter. The SPA was the only thing withholding them: `project-teams-tab.tsx` filtered
   `roleSlug !== 'workspace_admin'` out of the Team Lead options and the member table.
 
+## Dev Owner is a SECOND responsibility, on a Task as well as a Story
+
+`work_items.dev_owner_id` has existed since Phase 3.4; `work.tasks.dev_owner_id` arrived with
+migration 0127, and until then the API ACCEPTED a `devOwnerId` on a task and dropped it silently —
+the worst of the three possible behaviours. BA `c42df59` (2026-08-22) makes the field first-class:
+`P2-BL-FR-012A`, `P2-IS-FR-032B`, `WID-FR-016` and `P4-NOTIF-DC-012`.
+
+- **Rally has NO Dev Owner field at all** — not on a Task, not on a User Story (verified against
+  Broadcom's own field references). One `Owner` per artifact, and a second responsibility would be a
+  CUSTOM field there. So there is no parity to check here: the BA's spec IS the design.
+- **Same candidate source as Owner, independent persistence.** Both fields read
+  `assignmentCandidates` and both are validated by `assertAssignable`; a Dev Owner patch never
+  writes `assigneeId`, which is the one thing the BA states twice ("must not reuse or overwrite").
+- **`P4-NOTIF-DC-012` covers BOTH fields and Tasks**, so `notifyAssignment` takes the recipient rather
+  than reading `item.assigneeId`, and the update path loops the two fields through one rule — a third
+  responsibility later cannot pick up half the behaviour, which is how Dev Owner came to notify
+  nobody. The RECIPIENT is the notification's discriminator, so one patch naming the same person as
+  both Owner and Dev Owner tells them once.
+- **Sorting by owner or Dev Owner is NOT implemented**, though the BA lists both in `sortBy`. The
+  grids are keyset-paginated on `(column, id)` and a name lives on a JOINED table, so sorting by it
+  means name-based keyset sorting for both fields — its own change. The alternative, sorting by the
+  uuid, is what `COLUMN_SORT_FIELD`'s own comment already refuses.
+- **`work.tasks` has no `dev_owner_id` FK**, matching `assignee_id` beside it: eligibility depends on
+  the project AND the team, which no constraint can express, and a user delete must not cascade into
+  delivery history.
+
 ## ONE assignment-eligibility rule, for Owner and for Dev Owner
 
 `ProjectsService.assignmentCandidates` is the only expression of it, read by the picker feed

@@ -25,6 +25,7 @@ export type ColumnKey =
   | 'priority'
   | 'estimate'
   | 'owner'
+  | 'devOwner'
   | 'release'
   | 'iteration'
 
@@ -37,6 +38,7 @@ export const COLUMN_MINS: Record<ColumnKey, number> = {
   priority: 80,
   estimate: 44,
   owner: 90,
+  devOwner: 90,
   release: 100,
   iteration: 100,
 }
@@ -50,6 +52,7 @@ export const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
   priority: 96,
   estimate: 52,
   owner: 120,
+  devOwner: 120,
   release: 160,
   iteration: 140,
 }
@@ -63,6 +66,7 @@ export const COLUMN_LABELS: Record<ColumnKey, string> = {
   priority: 'Priority',
   estimate: 'Est.',
   owner: 'Owner',
+  devOwner: 'Dev Owner',
   release: 'Release',
   iteration: 'Iteration',
 }
@@ -79,6 +83,9 @@ export const COLUMNS: ColumnKey[] = [
   'priority',
   'estimate',
   'owner',
+  // `P2-BL-FR-012A` (BA 2026-08-22): Dev Owner is an optional column beside Owner, inline
+  // editable, sharing Owner's candidate source and persisting independently.
+  'devOwner',
   'release',
   'iteration',
 ]

@@ -25,7 +25,14 @@ import { AuthService } from '@qnsc-vn/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
-import { DEVELOPER_ID, NXP_ITER_CURRENT_ID, NXP_STORY_1_ID } from '../../db/seeds/constants';
+import {
+  DEVELOPER_ID,
+  NXP_ITER_CURRENT_ID,
+  NXP_STORY_1_ID,
+  SEED_PROJECTS,
+} from '../../db/seeds/constants';
+
+const NXP_PROJECT_ID = SEED_PROJECTS[0].id;
 
 describe('Dev Owner persistence (GAP-P2-IS-004)', () => {
   let app: NestFastifyApplication;
@@ -45,8 +52,11 @@ describe('Dev Owner persistence (GAP-P2-IS-004)', () => {
     await app?.close();
   });
 
-  const authed = (method: 'GET' | 'PATCH', url: string, payload?: Record<string, unknown>) =>
-    app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
+  const authed = (
+    method: 'GET' | 'PATCH' | 'POST',
+    url: string,
+    payload?: Record<string, unknown>,
+  ) => app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload });
 
   it('writes Dev Owner, returns it, and still returns it on a fresh read', async () => {
     const patch = await authed('PATCH', `/work-items/${NXP_STORY_1_ID}`, {
@@ -94,5 +104,52 @@ describe('Dev Owner persistence (GAP-P2-IS-004)', () => {
 
     expect(again.statusCode).toBe(200);
     expect(again.json().devOwnerId).toBe(DEVELOPER_ID);
+  });
+  /**
+   * DEV OWNER ON A TASK — migration 0127, and the half that could not exist before it.
+   *
+   * `work.tasks` had no `dev_owner_id`, so `listTasksByParent` projected `null` for the id: the API
+   * accepted a `devOwnerId` on a task and dropped it silently, which is the worst of the three
+   * possible behaviours (accepted, lost, no error). `P4-NOTIF-DC-012` names Tasks explicitly, so the
+   * field has to be real there before a notification can be about it.
+   */
+  it('persists Dev Owner on a TASK and returns it on the Tasks feed', async () => {
+    const created = await authed('POST', `/work-items/${NXP_STORY_1_ID}/tasks`, {
+      title: `Dev owner task ${Date.now()}`,
+      devOwnerId: DEVELOPER_ID,
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json().devOwnerId).toBe(DEVELOPER_ID);
+
+    // The reload, through the feed the Tasks tab actually reads.
+    const tasks = await authed('GET', `/work-items/${NXP_STORY_1_ID}/tasks`);
+    expect(tasks.statusCode).toBe(200);
+    const row = tasks.json().find((t) => t.id === created.json().id);
+    expect(row?.devOwnerId).toBe(DEVELOPER_ID);
+    // And NAMED, so the grid does not depend on a picker feed carrying the person.
+    expect(row?.devOwnerName).toBeTruthy();
+  });
+
+  it('filters the Backlog by Dev Owner, including the unassigned sentinel', async () => {
+    await authed('PATCH', `/work-items/${NXP_STORY_1_ID}`, { devOwnerId: DEVELOPER_ID });
+
+    const mine = await authed(
+      'GET',
+      `/work-items?projectId=${NXP_PROJECT_ID}&devOwnerId=${DEVELOPER_ID}&limit=100`,
+    );
+    expect(mine.statusCode, mine.body).toBe(200);
+    const ids = (mine.json().data as Array<{ id: string }>).map((r) => r.id);
+    expect(ids).toContain(NXP_STORY_1_ID);
+
+    // `unassigned` is a SENTINEL, not a user id: SQL equality never matches NULL, so a filter built
+    // as `dev_owner_id = 'unassigned'` would return nothing at all.
+    const unassigned = await authed(
+      'GET',
+      `/work-items?projectId=${NXP_PROJECT_ID}&devOwnerId=unassigned&limit=100`,
+    );
+    expect(unassigned.statusCode).toBe(200);
+    expect((unassigned.json().data as Array<{ id: string }>).map((r) => r.id)).not.toContain(
+      NXP_STORY_1_ID,
+    );
   });
 });

@@ -784,6 +784,25 @@ function BacklogRow({
         />
       </div>
 
+      {/* Dev Owner — the SECOND responsibility, inline like Owner (`P2-BL-FR-012A`) */}
+      <div
+        className="flex shrink-0 items-center overflow-hidden px-0"
+        style={colStyles.devOwner}
+        onClick={stop}
+      >
+        <OwnerSelectCell
+          /* Same candidate feed as Owner — the BA states one source for both (`WID-FR-016`) — and the
+             same name-from-the-row rule, so a Dev Owner the picker cannot offer is still named. They
+             persist INDEPENDENTLY: this patch never touches `assigneeId`. */
+          ownerName={item.devOwnerName ?? undefined}
+          assigneeId={item.devOwnerId}
+          members={members}
+          canEdit={canEdit}
+          onChange={(id) => patch({ devOwnerId: id })}
+          ariaLabel={`Dev owner for ${item.itemKey}`}
+        />
+      </div>
+
       {/* Release — shared SearchableSelect */}
       <div
         className="flex shrink-0 items-center overflow-hidden px-0"

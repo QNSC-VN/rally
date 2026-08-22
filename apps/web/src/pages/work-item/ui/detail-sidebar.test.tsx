@@ -12,7 +12,7 @@
  * `useProjectMemberOptions` for its OPTIONS, or onto `useAppContext` for the project, the import
  * simply is not there and the test fails hard instead of quietly rendering a wider list.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
@@ -129,6 +129,41 @@ function openOptions(label: string): string[] {
 }
 
 const has = (options: string[], text: string) => options.some((o) => o.includes(text))
+
+/**
+ * DEV OWNER IS A SECOND, INDEPENDENT RESPONSIBILITY (`WID-FR-007` / `WID-FR-016`, BA `c42df59`).
+ *
+ * "Owner và Dev Owner là hai trách nhiệm độc lập. Cả hai dùng cùng candidate source theo Project/Team;
+ * đổi Dev Owner không được ghi đè Owner." The sidebar had no Dev Owner field at all, so the value
+ * could be read on a grid and never set from the record it belongs to.
+ */
+describe('DetailSidebar — Dev Owner', () => {
+  beforeEach(setup)
+
+  it('offers the SAME candidates as Owner', () => {
+    render(<DetailSidebar item={item()} onUpdate={vi.fn()} updating={false} readOnly={false} />)
+
+    // One candidate source for both fields, so the two option lists must agree.
+    expect(openOptions('Owner')).toEqual(openOptions('Dev Owner'))
+  })
+
+  it('patches only devOwnerId, never the Owner beside it', () => {
+    const onUpdate = vi.fn()
+    render(<DetailSidebar item={item()} onUpdate={onUpdate} updating={false} readOnly={false} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dev Owner' }))
+    const list = screen.getByRole('dialog')
+    fireEvent.click(
+      within(list)
+        .getAllByRole('button')
+        .find((b) => b.textContent?.includes('Alice Smith'))!,
+    )
+
+    expect(onUpdate).toHaveBeenCalledWith({ devOwnerId: 'alice' })
+    // "đổi Dev Owner không được ghi đè Owner" — asserted, because one shared handler would.
+    expect(onUpdate.mock.calls.every((c) => !('assigneeId' in (c[0] as object)))).toBe(true)
+  })
+})
 
 describe('DetailSidebar — Owner options are team-scoped (GAP-P1-WID-007)', () => {
   it("offers the item's TEAM members, not every project member", () => {

@@ -601,6 +601,66 @@ describe('WorkItemsService', () => {
    * candidate list and the validation are one rule now (`ProjectsService.assertAssignable`), and these
    * cases pin that the write CONSULTS it — with the reporter deliberately outside it.
    */
+  /**
+   * DEV OWNER NOTIFIES LIKE OWNER, on a Story, a Defect and a Task (`P4-NOTIF-DC-012`, BA `c42df59`).
+   *
+   * "An assignment notification is created when the signed-in user is newly assigned as `Owner` or
+   * `Dev Owner` of a US/DE/Task." Only the Owner half existed, so naming somebody Dev Owner told them
+   * nothing at all — and `work.tasks` had no `dev_owner_id` to name them in (migration 0127).
+   */
+  describe('assignment notifications cover both responsibilities', () => {
+    beforeEach(() => {
+      // The recipient can see the project. FR-019's filter has its own cases; here it must not be
+      // what makes the assertion pass or fail.
+      accessService.getProjectPermissions.mockResolvedValue(['work_item:view']);
+    });
+
+    it('notifies a NEW Dev Owner on update', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ devOwnerId: null }));
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ devOwnerId: 'u-dev' }));
+
+      await service.updateWorkItem(mockActor, 'wi-1', { devOwnerId: 'u-dev' });
+
+      // Asserted on the payload alone: the second argument is the open transaction, which is
+      // `undefined` on some paths and `expect.anything()` refuses that.
+      const payloads = notificationScheduler.schedule.mock.calls.map((c: unknown[]) => c[0]);
+      expect(payloads).toEqual([
+        expect.objectContaining({ template: 'WORK_ITEM_ASSIGNED', recipientId: 'u-dev' }),
+      ]);
+    });
+
+    it('tells one person ONCE when they are named as both', async () => {
+      // The recipient is the discriminator, not the field — otherwise a single patch would send the
+      // same person two notifications for one action.
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ assigneeId: null, devOwnerId: null }));
+      workItemRepo.update.mockResolvedValue(
+        mockWorkItem({ assigneeId: 'u-dev', devOwnerId: 'u-dev' }),
+      );
+
+      await service.updateWorkItem(mockActor, 'wi-1', {
+        assigneeId: 'u-dev',
+        devOwnerId: 'u-dev',
+      });
+
+      const assignedCalls = notificationScheduler.schedule.mock.calls.filter(
+        (c: unknown[]) => (c[0] as { template?: string }).template === 'WORK_ITEM_ASSIGNED',
+      );
+      expect(assignedCalls).toHaveLength(1);
+    });
+
+    it('does NOT notify when the Dev Owner is unchanged', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ devOwnerId: 'u-dev' }));
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ devOwnerId: 'u-dev' }));
+
+      await service.updateWorkItem(mockActor, 'wi-1', { devOwnerId: 'u-dev' });
+
+      const templates = notificationScheduler.schedule.mock.calls.map(
+        (c: unknown[]) => (c[0] as { template?: string }).template,
+      );
+      expect(templates).not.toContain('WORK_ITEM_ASSIGNED');
+    });
+  });
+
   describe('the assignment rule reaches the write path', () => {
     it('asserts Owner and Dev Owner against the project/team, and not the reporter', async () => {
       // `team-1` has to be LINKED for the write to reach the assignment rule at all.

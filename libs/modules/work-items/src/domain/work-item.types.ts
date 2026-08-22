@@ -92,6 +92,13 @@ export interface WorkItemFilters {
    * sentinel matches work items with no owner (assignee IS NULL).
    */
   assigneeId?: string;
+  /**
+   * Filter by Dev Owner, the same way as {@link WorkItemFilters.assigneeId} including the
+   * {@link UNASSIGNED_FILTER} sentinel — `P2-BL-FR-004` and `P2-IS-FR-024` (BA `c42df59`) add Dev
+   * Owner beside Owner in both grids' filter sets. Independent of `assigneeId`: an item can be
+   * narrowed by either or both.
+   */
+  devOwnerId?: string;
   teamId?: string;
   iterationId?: string;
   releaseId?: string;

@@ -31,6 +31,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { NotificationsService, NotificationPreferencesService } from '@modules/notifications';
 import { ProjectsService } from '@modules/projects';
+import { TeamService } from '@modules/workspace';
 import { WorkItemsService } from '@modules/work-items';
 import { DRIZZLE, type DrizzleDB } from '@platform';
 
@@ -56,6 +57,7 @@ const freshRecipient = () => randomUUID();
 describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
   let projects: ProjectsService;
+  let teams: TeamService;
   let workItems: WorkItemsService;
   let notifications: NotificationsService;
   let db: DrizzleDB;
@@ -64,6 +66,7 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
   beforeAll(async () => {
     app = await bootRallyApp();
     projects = app.get(ProjectsService);
+    teams = app.get(TeamService);
     workItems = app.get(WorkItemsService);
     notifications = app.get(NotificationsService);
     db = app.get<DrizzleDB>(DRIZZLE);
@@ -96,11 +99,23 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
       // but its creator can read, and the producer drops a recipient without `work_item:view` on it
       // (FR-019). Without this the assertion below passed only while the notification path ignored
       // access entirely — it would be measuring the leak, not the contract.
-      // `admin`, not `editor`: since the BA's assignment rule (`c42df59`, 2026-08-22) an Editor is
-      // assignable only inside an assigned Team, and this project has none — so an Editor grant would
-      // make the WRITE refuse and this spec would be measuring eligibility instead of notifications.
-      // The level is irrelevant to the contract under test; `work_item:view` is what FR-019 turns on.
-      await grantProjectAccess(app, DEVELOPER_ID, project.id, 'admin');
+      // `editor`, NOT `admin`, and the level matters for a reason that has nothing to do with this
+      // spec: `admin` carries `portfolio:view`, so granting it to the SEEDED Editor makes
+      // `listReadableProjectIds('portfolio:view')` non-empty for them for the rest of the run — and
+      // `authz-cluster.e2e.spec.ts` asserts the opposite premise ("readable is empty, and that branch
+      // is checked first"), so it failed only in FULL runs and passed alone. A shared fixture is not a
+      // scratch pad; the narrower grant leaks nothing.
+      //
+      // With `editor` the assignment rule (`c42df59`, 2026-08-22) needs the item to carry a Team the
+      // recipient belongs to, so the fixture builds one instead of widening the grant.
+      await grantProjectAccess(app, DEVELOPER_ID, project.id, 'editor');
+      const team = await teams.createTeam(
+        admin.workspaceId,
+        { name: `Notify Team ${uniqueKey('T')}`, key: uniqueKey('T'), projectIds: [project.id] },
+        admin.sub,
+      );
+      await teams.addTeamMember(team.id, DEVELOPER_ID, admin.workspaceId, admin.sub);
+      await workItems.updateWorkItem(admin, story.id, { teamId: team.id });
 
       await workItems.updateWorkItem(admin, story.id, { assigneeId: DEVELOPER_ID });
 

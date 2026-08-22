@@ -192,6 +192,13 @@ export class IterationStatusDrizzleRepository implements IIterationStatusReposit
           : eq(workItems.assigneeId, filters.assigneeId),
       );
     }
+    if (filters.devOwnerId) {
+      conditions.push(
+        filters.devOwnerId === UNASSIGNED_FILTER
+          ? isNull(workItems.devOwnerId)
+          : eq(workItems.devOwnerId, filters.devOwnerId),
+      );
+    }
     if (filters.q) {
       const term = filters.q.trim();
       if (term) {
