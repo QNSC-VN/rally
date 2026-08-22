@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.6](https://github.com/QNSC-VN/rally/compare/v0.7.5...v0.7.6) (2026-08-22)
+
+
+### ✨ Features
+
+* **infra:** per-environment email feedback chains — verdicts land in the database that sent them ([#480](https://github.com/QNSC-VN/rally/issues/480)) ([72c8464](https://github.com/QNSC-VN/rally/commit/72c8464b14ca664ff8a682d2c9abac0c016bd97e))
+
+
+### 🐛 Bug Fixes
+
+* **work-items:** derive the parent Schedule State from its task set, as Rally does ([#482](https://github.com/QNSC-VN/rally/issues/482)) ([b4a75d2](https://github.com/QNSC-VN/rally/commit/b4a75d227e7c7b83ca8dbd39e2900eaba33d06d3))
+* **work-items:** feed the Parent Story picker from the write's rule, not the Backlog's ([#484](https://github.com/QNSC-VN/rally/issues/484)) ([929590e](https://github.com/QNSC-VN/rally/commit/929590ece683e3c834e96de44519d42b96dbd1ea))
+* **workspace,projects:** staff a Team from its Project, and show the Workspace Admin on it ([#483](https://github.com/QNSC-VN/rally/issues/483)) ([50954ad](https://github.com/QNSC-VN/rally/commit/50954ad2b7d237ebf5f712e4851229681efb9678))
+
 ## [0.7.5](https://github.com/QNSC-VN/rally/compare/v0.7.4...v0.7.5) (2026-08-21)
 
 
