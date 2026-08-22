@@ -90,6 +90,46 @@ const renderRow = (
     />,
   )
 
+/**
+ * The ROW names its own owner (2026-08-22).
+ *
+ * The cases below prove the FALLBACK still works — a name found in the directory map. These prove the
+ * primary path: `assigneeName` / `devOwnerName` come joined on the read model, so the cell no longer
+ * depends on any feed containing the person. That is what was broken for an Editor: the project feed
+ * excludes Workspace Admins (AC-16) and the workspace directory narrows a non-admin to their own
+ * projects' members and leads, so a WA owner was in NEITHER and the cell read `No Entry` while the id
+ * was in the database.
+ */
+describe('StatusRow — the row names its own owner', () => {
+  it('renders the names the row carries, with nothing in the map', () => {
+    renderRow(
+      {
+        assigneeId: WA.userId,
+        assigneeName: 'Wanda From Row',
+        devOwnerId: WA.userId,
+        devOwnerName: 'Devon From Row',
+      },
+      { names: [], offers: [] },
+    )
+
+    expect(screen.getByText('Wanda From Row')).toBeTruthy()
+    expect(screen.getByText('Devon From Row')).toBeTruthy()
+  })
+
+  it('names an owner the map does not carry, without widening the picker', () => {
+    // The pair the fix has to keep apart: the row NAMES anyone, the offer feed still narrows.
+    // (An owner who IS in the offer feed is labelled by the select itself, so this case uses one who
+    // is not — which is the reported case anyway.)
+    renderRow(
+      { assigneeId: WA.userId, assigneeName: 'Wanda From Row' },
+      { names: [], offers: [ALICE] },
+    )
+
+    expect(screen.getByText('Wanda From Row')).toBeTruthy()
+    expect(screen.queryByText('Workspace Admin')).toBeNull()
+  })
+})
+
 describe('StatusRow — Dev Owner survives a reload on screen (GAP-P2-IS-004)', () => {
   it('names a Dev Owner the project OFFER feed does not carry', () => {
     renderRow({ devOwnerId: WA.userId })

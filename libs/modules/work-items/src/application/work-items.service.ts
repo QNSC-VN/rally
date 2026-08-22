@@ -502,6 +502,8 @@ export class WorkItemsService {
       releaseId: opts.releaseId ?? null,
       foundInReleaseId: opts.foundInReleaseId ?? null,
       memberIds: [opts.assigneeId, opts.reporterId, opts.devOwnerId],
+      // Owner and Dev Owner go through the shared assignment rule as well; the reporter does not.
+      assignableIds: [opts.assigneeId, opts.devOwnerId],
     });
     // An `AccessService.assertTeamScoped` call sat here (and on update and delete). Team scope was
     // deleted as an authorization boundary by ruling — see that method's former home in
@@ -622,7 +624,8 @@ export class WorkItemsService {
            * notification — and inside the retry loop, so a duplicate-key retry re-emits with
            * the row that actually committed.
            */
-          await this.notifyAssignee(actor, created, tx);
+          await this.notifyAssignment(actor, created, created.assigneeId, tx);
+          await this.notifyAssignment(actor, created, created.devOwnerId, tx);
 
           /**
            * A new task changes the SET the parent is derived from, and Rally says so in its own
@@ -689,6 +692,7 @@ export class WorkItemsService {
       description?: string;
       state?: string;
       assigneeId?: string;
+      devOwnerId?: string;
       teamId?: string;
       // No `iterationId`: a Task inherits it through its parent (P1-TASK-011), so passing one is a
       // compile error rather than a runtime refusal. `teamId` stays — a Task's team only DEFAULTS to
@@ -1150,14 +1154,18 @@ export class WorkItemsService {
     const effectiveIterationId =
       input.iterationId ?? (input.teamId !== undefined ? item.iterationId : null);
     const changedMemberIds: Array<string | null | undefined> = [];
+    // Owner and Dev Owner also go through the shared assignment rule; a reporter does not.
+    const changedAssignableIds: Array<string | null | undefined> = [];
     if (input.assigneeId && input.assigneeId !== item.assigneeId) {
       changedMemberIds.push(input.assigneeId);
+      changedAssignableIds.push(input.assigneeId);
     }
     if (input.reporterId && input.reporterId !== item.reporterId) {
       changedMemberIds.push(input.reporterId);
     }
     if (input.devOwnerId && input.devOwnerId !== item.devOwnerId) {
       changedMemberIds.push(input.devOwnerId);
+      changedAssignableIds.push(input.devOwnerId);
     }
     await this.assertAssignmentScope(
       actor.workspaceId,
@@ -1168,6 +1176,7 @@ export class WorkItemsService {
         releaseId: input.releaseId ?? null,
         foundInReleaseId: input.foundInReleaseId ?? null,
         memberIds: changedMemberIds,
+        assignableIds: changedAssignableIds,
       },
       { validateTeamLink: Boolean(input.teamId) },
     );
@@ -1351,16 +1360,26 @@ export class WorkItemsService {
       // permission checks) reads already-committed data off the pool; only
       // the outbox insert itself needs the transaction.
 
-      // Assignment: notify (and auto-watch) the new assignee.
-      const assigneeChanged =
-        input.assigneeId !== undefined &&
-        !!updated.assigneeId &&
-        updated.assigneeId !== item.assigneeId;
-      if (assigneeChanged && updated.assigneeId) {
+      /**
+       * Assignment: notify (and auto-watch) whoever was NEWLY named — Owner or Dev Owner.
+       *
+       * `P4-NOTIF-DC-012` covers both fields, so both are checked the same way and through one loop:
+       * a third responsibility later cannot pick up only half of the behaviour, which is how Dev Owner
+       * came to notify nobody at all.
+       */
+      const newlyAssigned = (
+        [
+          [input.assigneeId, updated.assigneeId, item.assigneeId],
+          [input.devOwnerId, updated.devOwnerId, item.devOwnerId],
+        ] as const
+      )
+        .filter(([patched, next, before]) => patched !== undefined && !!next && next !== before)
+        .map(([, next]) => next as string);
+      for (const recipientId of [...new Set(newlyAssigned)]) {
         await this.watcherRepo
-          .watch(updated.id, updated.assigneeId, actor.workspaceId)
+          .watch(updated.id, recipientId, actor.workspaceId)
           .catch(() => undefined);
-        await this.notifyAssignee(actor, updated, tx);
+        await this.notifyAssignment(actor, updated, recipientId, tx);
       }
 
       // NOTE: schedule-state changes intentionally do NOT notify. The Phase 4.1
@@ -1531,6 +1550,11 @@ export class WorkItemsService {
    * Two rules are enforced here rather than at either call site, so a third write path cannot
    * lose one of them:
    *
+   *   • BOTH RESPONSIBILITIES notify, on a Story, a Defect AND a Task. `P4-NOTIF-DC-012` (BA
+   *     `c42df59`, 2026-08-22): an assignment notification is created when the user "is newly assigned
+   *     as `Owner` or `Dev Owner` of a US/DE/Task". One template and one business event for both, per
+   *     `P4-NOTIF-DC-015` — "inline edit and Detail Page assignment use the same
+   *     assignment-notification business event" — so the surface never changes what the recipient gets.
    *   • the ACTOR is never notified of their own assignment. Self-assignment is the normal way
    *     someone picks up work, and a notification about a click you just made is noise.
    *   • FR-019 applies to an ASSIGNMENT, not only to a mention. The assignee is validated as an
@@ -1544,12 +1568,17 @@ export class WorkItemsService {
    * notification would be worse than not sending one. The assignment stands; the notification does
    * not.
    */
-  private async notifyAssignee(actor: JwtPayload, item: WorkItem, tx: DbExecutor): Promise<void> {
-    if (!item.assigneeId) return;
+  private async notifyAssignment(
+    actor: JwtPayload,
+    item: WorkItem,
+    recipientId: string | null | undefined,
+    tx: DbExecutor,
+  ): Promise<void> {
+    if (!recipientId) return;
     const notifiable = await this.filterByProjectAccess(
       item.workspaceId,
       item.projectId,
-      item.assigneeId === actor.sub ? [] : [item.assigneeId],
+      recipientId === actor.sub ? [] : [recipientId],
     );
     if (notifiable.length === 0) return;
     await this.emitWorkItemNotification(
@@ -1558,7 +1587,9 @@ export class WorkItemsService {
       actor.sub,
       notifiable,
       { itemKey: item.itemKey, itemTitle: item.title, projectId: item.projectId },
-      item.assigneeId,
+      // The RECIPIENT is the discriminator, not the Owner field: it makes the notification unique per
+      // person, so one patch naming the same user as both Owner and Dev Owner tells them once.
+      recipientId,
       tx,
     );
   }
@@ -2269,6 +2300,8 @@ export class WorkItemsService {
       releaseId?: string | null;
       foundInReleaseId?: string | null;
       memberIds?: Array<string | null | undefined>;
+      /** Owner / Dev Owner — the subset the shared assignment rule applies to. */
+      assignableIds?: Array<string | null | undefined>;
     },
     opts: { validateTeamLink?: boolean } = {},
   ): Promise<void> {
@@ -2298,6 +2331,29 @@ export class WorkItemsService {
     ];
     for (const userId of memberIds) {
       await this.projectsService.assertWorkspaceMember(workspaceId, userId);
+    }
+    /**
+     * OWNER AND DEV OWNER ALSO SATISFY THE ASSIGNMENT RULE, not just workspace membership.
+     *
+     * The BA states the candidate list and the validation as one rule (`c42df59`, 2026-08-22): with a
+     * Team, an active Project Admin, an Editor assigned to THAT team, or a Workspace Admin who is a
+     * member of it; with no Team, a Project Admin only. Until now the write checked only that the
+     * person was an active member of the workspace — two orders of magnitude wider than the picker,
+     * so any user id in the body was accepted for work no picker would have offered them.
+     *
+     * `reporterId` is deliberately NOT included: a reporter records who raised the item, not who may
+     * be given it, and narrowing it would refuse a legitimate filer.
+     */
+    const assignableIds = [
+      ...new Set((scope.assignableIds ?? []).filter((id): id is string => Boolean(id))),
+    ];
+    for (const userId of assignableIds) {
+      await this.projectsService.assertAssignable(
+        workspaceId,
+        scope.projectId,
+        scope.teamId ?? null,
+        userId,
+      );
     }
   }
 

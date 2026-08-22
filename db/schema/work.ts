@@ -1128,6 +1128,17 @@ export const tasks = workSchema.table(
     notes: text('notes'),
     state: taskStateEnum('state').notNull().default('defined'),
     assigneeId: uuid('assignee_id'),
+    /**
+     * The SECOND responsibility, independent of `assignee_id` (migration 0127).
+     *
+     * BA `c42df59` (2026-08-22) makes `Dev Owner` first-class on a Task as well as a Story/Defect —
+     * `P4-NOTIF-DC-012` notifies on "Owner **or** Dev Owner of a US/DE/**Task**". Nullable, no FK and
+     * no default, exactly like `assignee_id` beside it: eligibility depends on the project AND the
+     * team, which the service decides (`ProjectsService.assertAssignable`), and an unset value is
+     * `No Entry` rather than a placeholder. Never derived from `assignee_id` — the BA forbids reusing
+     * it and a copy would give every task an owner nobody chose.
+     */
+    devOwnerId: uuid('dev_owner_id'),
     teamId: uuid('team_id'),
     /**
      * A maintained MIRROR of the parent's iteration (`trg_task_iteration_from_parent`), with its own

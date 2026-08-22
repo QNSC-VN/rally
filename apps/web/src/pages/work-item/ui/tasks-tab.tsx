@@ -500,7 +500,9 @@ function TaskRow({
   const owner =
     members.find((m) => m.userId === task.assigneeId) ??
     ownerOptions.find((m) => m.userId === task.assigneeId)
-  const ownerName = owner ? (owner.displayName ?? owner.email ?? null) : null
+  // The row's own `assigneeName` wins: both feeds above exclude Workspace Admins (AC-16), so a task
+  // they own read `No Entry` while the id was saved.
+  const ownerName = task.assigneeName ?? (owner ? (owner.displayName ?? owner.email ?? null) : null)
 
   const numInput =
     'w-16 rounded border border-input bg-card px-1 py-0.5 text-right font-mono text-ui-md focus:outline-none'

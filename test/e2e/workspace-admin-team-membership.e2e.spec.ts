@@ -22,7 +22,7 @@
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService } from '@qnsc-vn/identity';
+import { AuthService, EntraTokenVerifier, type EntraClaims } from '@qnsc-vn/identity';
 import { AccessService } from '@modules/access';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -59,15 +59,32 @@ describe('a Workspace Admin as a Team member', () => {
   const userIdsOf = (body: unknown): string[] =>
     (body as Array<{ userId: string }>).map((m) => m.userId);
 
-  /** The rows §2.1 keeps a Workspace Admin off, read through the API that reports them. */
-  const projectAccessRows = async (): Promise<Array<{ userId: string }>> => {
+  /**
+   * The Project `Users & Permissions` roster as served.
+   *
+   * Since 2026-08-21 it CONTAINS the Workspace Admin — as a synthesized, read-only row flagged
+   * `isWorkspaceAdmin` — so presence here no longer says anything about §2.1. The rule is now checked
+   * two ways: the row must carry the flag and no access level, and
+   * `AccessService.getProjectAccessLevel` must still resolve `null` (no `work.project_members` record).
+   */
+  const projectAccessRows = async (): Promise<
+    Array<{ userId: string; isWorkspaceAdmin?: boolean; accessLevel: string | null }>
+  > => {
     const res = await as('GET', `/projects/${NXP}/members`);
     expect(res.statusCode).toBe(200);
     return res.json();
   };
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      // So this file can JIT-provision an outsider through `ssoLogin` — the only path that creates a
+      // workspace member with NO project access, which is the candidate the refusal is about. Same
+      // override `directory-team-authz.e2e.spec.ts` uses.
+      .overrideProvider(EntraTokenVerifier)
+      .useValue({
+        verify: async (idToken: string): Promise<EntraClaims> => JSON.parse(idToken) as EntraClaims,
+      })
+      .compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
@@ -119,9 +136,60 @@ describe('a Workspace Admin as a Team member', () => {
 
     // RBE-06 grants `editor` from a roster row for everyone else; for a Workspace Admin the grant
     // writer skips, because §2.1 says they are not a Project user. This is the assertion that the
-    // reversal did not take the other half with it.
-    expect((await projectAccessRows()).map((r) => r.userId)).not.toContain(ADMIN_USER_ID);
+    // reversal did not take the other half with it — and it is now made on the LEVEL, not on absence
+    // from the roster, because the roster displays them on purpose (see `projectAccessRows`).
+    const row = (await projectAccessRows()).find((r) => r.userId === ADMIN_USER_ID);
+    expect(row?.isWorkspaceAdmin).toBe(true);
+    expect(row?.accessLevel).toBeNull();
     expect(await access.getProjectAccessLevel(WORKSPACE_ID, ADMIN_USER_ID, NXP)).toBeNull();
+  });
+
+  /**
+   * A team roster row is project-scoped work, so the candidate must already belong to a project the
+   * team serves (BA report 2026-08-21: "Backend validation must also reject adding a user who does not
+   * belong to the Project"). The picker was narrowed in the same change; this is the half a narrowed
+   * picker cannot provide.
+   */
+  it("refuses a workspace user who belongs to none of the team's projects", async () => {
+    /**
+     * A JIT-provisioned SSO principal is the honest outsider — `devLogin` cannot be used, it refuses
+     * an address with no account ("No active account exists for this email"). `ssoLogin` provisions
+     * the user and its workspace membership, and under the 3-level model grants no project access at
+     * all, so this is a legitimate workspace member with nothing in `work.project_members`: exactly
+     * the candidate the BA found being offered. A fresh address per run, never a shared fixture —
+     * `work.project_members` survives to the next reset, so touching a seeded user is a lasting edit
+     * other specs measure.
+     */
+    const label = `team-outsider-${randomUUID().slice(0, 8)}`;
+    const login = await app.get(AuthService).ssoLogin(
+      JSON.stringify({
+        oid: `${label}-${randomUUID()}`,
+        email: `${label}@qnsc.vn`,
+        displayName: 'E2E outsider',
+        externalTenantId: 'dev-tenant',
+        roles: [],
+      }),
+      '127.0.0.1',
+    );
+    const outsiderId = JSON.parse(
+      Buffer.from(login.accessToken.split('.')[1], 'base64url').toString(),
+    ).sub as string;
+    expect(await access.getProjectAccessLevel(WORKSPACE_ID, outsiderId, NXP)).toBeNull();
+
+    const res = await as('POST', `/teams/${teamId}/members`, { userId: outsiderId });
+
+    expect(res.statusCode).toBe(412);
+    expect(res.json().error.code).toBe('TEAM_MEMBER_NOT_PROJECT_MEMBER');
+    // And nothing was written on the way to the refusal.
+    expect((await roster()).map((m) => m.userId)).not.toContain(outsiderId);
+  });
+
+  it('admits a Workspace Admin, who holds no project row at all', async () => {
+    // The refusal above must not catch the principals §2.1 keeps off `project_members` — otherwise it
+    // would close the only path to this file's own feature.
+    const res = await as('POST', `/teams/${teamId}/members`, { userId: ADMIN_USER_ID });
+
+    expect([201, 409]).toContain(res.statusCode);
   });
 
   it('keeps full Workspace authority while on the Team (AC4)', async () => {

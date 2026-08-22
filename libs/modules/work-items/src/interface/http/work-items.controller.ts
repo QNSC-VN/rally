@@ -88,6 +88,10 @@ function toWorkItemDto(w: WorkItem): WorkItemResponseDto {
     flowState: w.flowState,
     priority: w.priority,
     assigneeId: w.assigneeId,
+    // `?? null`, never omitted: only the grid reads join these, and a missing key would make the
+    // response shape depend on which query answered.
+    assigneeName: w.assigneeName ?? null,
+    devOwnerName: w.devOwnerName ?? null,
     reporterId: w.reporterId,
     parentId: w.parentId,
     teamId: w.teamId,
@@ -198,6 +202,7 @@ export class WorkItemsController {
         scheduleState: query.scheduleState,
         priority: query.priority,
         assigneeId: query.assigneeId,
+        devOwnerId: query.devOwnerId,
         teamId: query.teamId,
         iterationId: query.iterationId,
         releaseId: query.releaseId,
@@ -234,6 +239,7 @@ export class WorkItemsController {
         scheduleState: query.scheduleState,
         priority: query.priority,
         assigneeId: query.assigneeId,
+        devOwnerId: query.devOwnerId,
         teamId: query.teamId,
         iterationId: query.iterationId,
         releaseId: query.releaseId,
@@ -594,6 +600,7 @@ export class WorkItemsController {
       description: dto.description,
       state: dto.state,
       assigneeId: dto.assigneeId,
+      devOwnerId: dto.devOwnerId,
       teamId: dto.teamId,
       // No iteration: it comes from the parent (P1-TASK-011). `CreateTaskSchema` does not
       // carry the field, and the service refuses one.

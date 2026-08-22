@@ -141,6 +141,7 @@ function toProjectMemberDto(m: ProjectMember): ProjectMemberResponseDto {
     email: m.email ?? null,
     avatarUrl: m.avatarUrl ?? null,
     teamCount: m.teamCount ?? 0,
+    isWorkspaceAdmin: m.isWorkspaceAdmin ?? false,
   };
 }
 

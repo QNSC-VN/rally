@@ -70,6 +70,14 @@ export interface ProjectMember {
   updatedAt: string
   /** Active team_members rows for Teams linked to this project — 0 means an Editor has no scope to act in. */
   teamCount: number
+  /**
+   * TRUE for the SYNTHESIZED, read-only Workspace Admin row (BA report 2026-08-21).
+   *
+   * No `work.project_members` record exists behind it, it is excluded from `memberCount`, and it
+   * carries no Access Level control and no Remove. Branch on THIS, never on `accessLevel === null` —
+   * a null level already means "team-derived row" on a real member.
+   */
+  isWorkspaceAdmin?: boolean
 }
 
 /**
@@ -289,13 +297,13 @@ export function useTeamOwnerOptions(
 }
 
 /**
- * The ADMINISTRATIVE roster: access level, status and team count per member.
+ * The full administrative roster AS SERVED: real `project_members` rows plus the synthesized,
+ * read-only Workspace Admin rows.
  *
- * Workspace Admin / Project Admin only (§3.1:71). For an owner picker or an owner NAME, use
- * {@link useProjectMemberOptions} — this one 403s for an Editor, and a caller that defaults the error
- * to `[]` will render every owned item as unassigned.
+ * Workspace Admin / Project Admin only (§3.1:71). Use this only where the BA's system row belongs —
+ * Project `Users & Permissions`. Everywhere else use {@link useProjectMembers}, which drops it.
  */
-export function useProjectMembers(projectId: string | undefined) {
+export function useProjectAccessRoster(projectId: string | undefined) {
   return useQuery({
     queryKey: teamKeys.projectMembers(projectId ?? ''),
     queryFn: async () => {
@@ -309,6 +317,26 @@ export function useProjectMembers(projectId: string | undefined) {
     enabled: !!projectId,
     staleTime: 60_000,
   })
+}
+
+/**
+ * The ADMINISTRATIVE roster of real MEMBERS: access level, status and team count per member.
+ *
+ * Workspace Admin / Project Admin only (§3.1:71). For an owner picker or an owner NAME, use
+ * {@link useProjectMemberOptions} — this one 403s for an Editor, and a caller that defaults the error
+ * to `[]` will render every owned item as unassigned.
+ *
+ * Drops the synthesized Workspace Admin rows the endpoint now returns, so every existing caller keeps
+ * the population it was written against: this feed backs member COUNTS and two owner pickers, and §2.1
+ * still says a Workspace Admin is not a Project member. One shared query key with
+ * {@link useProjectAccessRoster} — same request, two projections — so the split costs no extra fetch.
+ */
+export function useProjectMembers(projectId: string | undefined) {
+  const roster = useProjectAccessRoster(projectId)
+  return {
+    ...roster,
+    data: roster.data?.filter((m) => !m.isWorkspaceAdmin),
+  }
 }
 
 // ── Mutations ─────────────────────────────────────────────────────────────────

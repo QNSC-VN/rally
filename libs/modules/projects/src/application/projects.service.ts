@@ -1037,7 +1037,53 @@ export class ProjectsService {
     // otherwise reappear through the second branch.
     const admins = await this.workspaceAdminIds(workspaceId);
     const members = await this.projectMemberRepo.listByProject(projectId);
-    return members.filter((m) => !admins.has(m.userId));
+    const real = members.filter((m) => !admins.has(m.userId));
+
+    /**
+     * Then the Workspace Admins are added BACK, as synthesized read-only rows.
+     *
+     * BA report 2026-08-21: "Every Project Users & Permissions list always displays the active
+     * Workspace Admin as a system-generated, read-only row … independent of Project Access and Team
+     * membership … No project_members record is created and the row is excluded from Project-member
+     * metrics." Before this the screen read "No members in this project yet." on a project whose only
+     * authority was a WA, which is the least true sentence available: the person reading it was
+     * usually that admin.
+     *
+     * This REVERSES one SRS sentence and keeps the rest. §5.2:138 says "Workspace Admin is excluded
+     * from rows and candidates" — rows now include them, CANDIDATES still do not
+     * (`listProjectMemberOptions` and the Add-Existing-User feed are untouched), and §2.1's "not added
+     * as a Project user" is intact because nothing is written.
+     *
+     * The filter above is not redundant: it drops any REAL row a WA might still hold — a pre-0118
+     * leftover, or one a seed wrote back — so the person appears exactly once, and as the synthesized
+     * row rather than as a member with an editable access level.
+     *
+     * `accessLevel: null` is deliberately NOT how a caller should recognise these: a null level
+     * already means "team-derived row" elsewhere in this module. `isWorkspaceAdmin` is the flag.
+     */
+    const now = new Date();
+    const synthesized: ProjectMember[] = (
+      await this.projectMemberRepo.listWorkspaceAdminProfiles(workspaceId)
+    ).map((a) => ({
+      // Its own userId: the response schema types `id` as a uuid, and a synthesized row has no
+      // `project_members` id to give. Nothing addresses it — `PATCH`/`DELETE :id/members/*` resolve a
+      // real row and 404 — and no client may branch on this value: `isWorkspaceAdmin` is the flag.
+      id: a.userId,
+      workspaceId,
+      projectId,
+      userId: a.userId,
+      accessLevel: null,
+      status: 'active',
+      joinedAt: now,
+      updatedAt: now,
+      displayName: a.displayName,
+      email: a.email,
+      avatarUrl: a.avatarUrl,
+      teamCount: 0,
+      isWorkspaceAdmin: true,
+    }));
+
+    return [...synthesized, ...real];
   }
 
   /**
@@ -1109,20 +1155,141 @@ export class ProjectsService {
     }>
   > {
     await this.getProject(workspaceId, projectId);
-    // The team branch is decided by the team roster alone (see the ruling above), so it asks for no
-    // admin set at all rather than computing one it must not apply.
-    const excluded = teamId ? new Set<string>() : await this.workspaceAdminIds(workspaceId);
-    const members = teamId
-      ? await this.teamRosterOptionSource(workspaceId, projectId, teamId)
-      : await this.projectMemberRepo.listByProject(projectId);
-    return members
-      .filter((m) => !excluded.has(m.userId) && m.status === 'active')
-      .map((m) => ({
-        userId: m.userId,
-        displayName: m.displayName ?? null,
-        email: m.email ?? null,
-        avatarUrl: m.avatarUrl ?? null,
-      }));
+    const rows = await this.assignmentCandidates(workspaceId, projectId, teamId ?? null);
+    return rows.map((m) => ({
+      userId: m.userId,
+      displayName: m.displayName ?? null,
+      email: m.email ?? null,
+      avatarUrl: m.avatarUrl ?? null,
+    }));
+  }
+
+  /** The Workspace Admins as picker rows — profile from the same query the synthesized roster uses. */
+  private async workspaceAdminOptionRows(
+    workspaceId: string,
+    ids: Set<string>,
+  ): Promise<
+    Array<{
+      userId: string;
+      displayName?: string | null;
+      email?: string | null;
+      avatarUrl?: string | null;
+    }>
+  > {
+    if (ids.size === 0) return [];
+    return (await this.projectMemberRepo.listWorkspaceAdminProfiles(workspaceId)).filter((a) =>
+      ids.has(a.userId),
+    );
+  }
+
+  /**
+   * The WRITE side of {@link listProjectMemberOptions}'s rule — the same population, asserted.
+   *
+   * "`assigneeId` … With a selected Team: active Project Admin, active Editor assigned to that Team,
+   * or active WA member of that Team. With blank Team: active Project Admin only" — and `devOwnerId`
+   * "uses the same candidate and validation rule as `assigneeId`" (BA `c42df59`). One method for both
+   * so a picker cannot offer what the write refuses, or the write accept what no picker offered: the
+   * property this repo keeps re-learning.
+   */
+  async assertAssignable(
+    workspaceId: string,
+    projectId: string,
+    teamId: string | null,
+    userId: string,
+  ): Promise<void> {
+    const candidates = await this.assignmentCandidates(workspaceId, projectId, teamId);
+    if (!candidates.some((c) => c.userId === userId)) {
+      throw new PreconditionFailedException(
+        'WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE',
+        teamId
+          ? 'The selected user is not eligible in this project and team'
+          : 'Only a Project Admin can be assigned while no Team is selected',
+      );
+    }
+  }
+
+  /**
+   * THE ONE ASSIGNMENT-ELIGIBILITY RULE, for `Owner` and for `Dev Owner`.
+   *
+   * The BA states it as one source used by both fields (`c42df59`, 2026-08-22 — `WID-FR-017`,
+   * `WIC-FR-006A`, and the Project/Team assignment addendum):
+   *
+   *   • a Team is selected  → active **Admin** of the project (project-wide), active **Editor**
+   *     assigned to THAT team, and an active **Workspace Admin** who is a member of that team
+   *   • no Team selected    → active **Admin** only; Editors and WA team members are NOT offered
+   *   • `Team Lead` has no bypass — a lead is an ordinary member here
+   *
+   * Two things it replaces, and both were wrong in a way that showed on screen. The team branch read
+   * `team_members` ALONE, so a project Admin who is not on the team was withheld even though their
+   * authority spans every team (§3.1's `All Teams`). The project-wide branch offered every member,
+   * so with no Team chosen an Editor was offered as Owner for work their own team scope would then
+   * refuse them.
+   *
+   * The Workspace Admin case is why the level and the roster are read separately rather than joined:
+   * a WA holds NO `project_members` row at all (§2.1, migration 0118), so they can only be recognised
+   * by the admin predicate, and they qualify only through the team roster.
+   */
+  private async assignmentCandidates(
+    workspaceId: string,
+    projectId: string,
+    teamId: string | null,
+  ): Promise<
+    Array<{
+      userId: string;
+      displayName?: string | null;
+      email?: string | null;
+      avatarUrl?: string | null;
+    }>
+  > {
+    const workspaceAdmins = await this.workspaceAdminIds(workspaceId);
+    const members = (await this.projectMemberRepo.listByProject(projectId)).filter(
+      (m) => m.status === 'active' && !workspaceAdmins.has(m.userId),
+    );
+    // Project Admins, in every branch: their authority is All Teams (§3.1), so a Team filter must not
+    // narrow them out.
+    const admins = members.filter((m) => m.accessLevel === 'admin');
+    if (!teamId) {
+      /**
+       * WITH NO TEAM: project Admins, plus WORKSPACE Admins — a DECLARED READING.
+       *
+       * `WIC-FR-006A` says "With blank Team, Editor/WA **Team members** are not offered", which reads
+       * as excluding the TEAM-DERIVED qualification rather than the principal: a Workspace Admin has
+       * project authority by the workspace grant and holds no `project_members` row to be an "Admin"
+       * row with (§2.1). The team-scope ruling points the same way — team-less work IS the Project
+       * Backlog, "accessible only to Workspace Admin and Project Admin" — so the people who may own it
+       * are exactly those two.
+       *
+       * Excluding them would also refuse the ordinary case the same commit encourages: a Workspace
+       * Admin filing backlog work and being defaulted as its Owner (`WIC-FR-006`). Put to the BA; if
+       * they mean the narrow reading, this branch drops the second half and nothing else changes.
+       */
+      return [...admins, ...(await this.workspaceAdminOptionRows(workspaceId, workspaceAdmins))];
+    }
+
+    const roster = (await this.teamRosterOptionSource(workspaceId, projectId, teamId)).filter(
+      (m) => m.status === 'active',
+    );
+    const rosterIds = new Set(roster.map((m) => m.userId));
+    // Editors qualify through the SELECTED team only, and a Workspace Admin through the roster alone —
+    // they have no level to qualify with.
+    const editorsOnTeam = members.filter(
+      (m) => m.accessLevel === 'editor' && rosterIds.has(m.userId),
+    );
+    const adminsOnWorkspace = roster.filter((m) => workspaceAdmins.has(m.userId));
+
+    const byUser = new Map<
+      string,
+      {
+        userId: string;
+        displayName?: string | null;
+        email?: string | null;
+        avatarUrl?: string | null;
+      }
+    >();
+    for (const m of [...admins, ...editorsOnTeam, ...adminsOnWorkspace]) {
+      if (!byUser.has(m.userId)) byUser.set(m.userId, m);
+    }
+    return [...byUser.values()];
   }
 
   /**

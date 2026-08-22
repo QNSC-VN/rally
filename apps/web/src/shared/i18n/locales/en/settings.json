@@ -339,6 +339,8 @@
     "addMemberPlaceholder": "Select a user to add",
     "addMemberSearch": "Search users",
     "addMemberNoCandidates": "Every active workspace user is already in this team.",
+    "addMemberModalTitle": "Add member to {{team}}",
+    "addMemberConfirm": "Add to team",
     "addMemberAdded": "{{name}} added to {{team}}",
     "addMemberError": "Failed to add the member",
     "removeMember": "Remove from team",

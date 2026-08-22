@@ -116,9 +116,44 @@ describe('TeamService — team membership and its project access', () => {
     service = module.get(TeamService);
   });
 
-  it('adds a member who is an active workspace member', async () => {
+  it('adds a member who is an active workspace member AND belongs to the project', async () => {
+    // Both halves are preconditions since 2026-08-21: the workspace one is the tenant boundary, the
+    // project one is the BA's ("reject adding a user who does not belong to the Project").
+    access.getProjectAccessLevel.mockResolvedValue('editor');
+
     await service.addTeamMember('team-1', 'user-2', 'ws-1', 'actor-1');
+
     expect(workspaceMemberRepo.isMember).toHaveBeenCalledWith('ws-1', 'user-2');
+    expect(teamMemberRepo.addMember).toHaveBeenCalled();
+  });
+
+  it("rejects a workspace member who belongs to none of the team's projects", async () => {
+    // The default fixture is exactly this candidate: an active workspace member holding no level.
+    await expect(service.addTeamMember('team-1', 'outsider', 'ws-1', 'actor-1')).rejects.toThrow(
+      PreconditionFailedException,
+    );
+    expect(teamMemberRepo.addMember).not.toHaveBeenCalled();
+  });
+
+  it('admits a WORKSPACE ADMIN, who holds no project level by design', async () => {
+    // §2.1 keeps them off `work.project_members`, so a project-membership test would exclude exactly
+    // the principals the 2026-08-20 Workspace-Admin-on-a-Team feature exists for.
+    access.isWorkspaceAdmin.mockResolvedValue(true);
+
+    await service.addTeamMember('team-1', 'wa-1', 'ws-1', 'actor-1');
+
+    expect(teamMemberRepo.addMember).toHaveBeenCalled();
+    // And no project access is written for them either — `PM-FR-021` retired the roster grant, so
+    // §2.1's "no project_members row" now holds because nothing writes one at all.
+    expect(access.grantProjectAccess).not.toHaveBeenCalled();
+  });
+
+  it('admits anyone when the team has NO active project link', async () => {
+    // There is no project to be outside of, and refusing would make such a team unstaffable.
+    teamRepo.listActiveProjectIds.mockResolvedValue([]);
+
+    await service.addTeamMember('team-1', 'user-2', 'ws-1', 'actor-1');
+
     expect(teamMemberRepo.addMember).toHaveBeenCalled();
   });
 
@@ -146,137 +181,59 @@ describe('TeamService — team membership and its project access', () => {
    * one caller, and any other caller of `POST /v1/teams` produced a team member of a project they
    * could not open.
    */
-  describe('a team roster row grants project access (RBE-06)', () => {
-    it('grants every selected member on every linked project when a team is created', async () => {
+  /**
+   * RBE-06 IS RETIRED — a team roster row grants NOTHING (`PM-FR-021`, BA 2026-08-22).
+   *
+   * "Adding or removing a Team member never creates or changes Project Access." This block used to
+   * assert the opposite rule on all three writes (create, edit, add-member), each granting `editor`
+   * from a roster row and never demoting an existing Admin. The same commit makes Team candidates
+   * users who ALREADY hold Admin or Editor on the project, so a grant here would hand access to
+   * exactly the users the candidate rule says must arrive with it — and it finishes reversing
+   * Phase 1 §2A, whose other half `addTeamMember` had already reversed.
+   *
+   * The cases are inverted rather than deleted: what mattered was that a roster write DID something to
+   * project access, so the assertion that it does nothing belongs in the same place.
+   */
+  describe('a team roster row grants NO project access (PM-FR-021)', () => {
+    it('writes no grant when a team is created with members', async () => {
       await service.createTeam(
         'ws-1',
         { name: 'Platform', key: 'PLT', projectIds: ['proj-1'], memberUserIds: ['user-2'] },
         'actor-1',
       );
 
-      expect(access.grantProjectAccess).toHaveBeenCalledWith(
-        {
-          workspaceId: 'ws-1',
-          projectId: 'proj-1',
-          userId: 'user-2',
-          accessLevel: 'editor',
-          actorId: 'actor-1',
-          onWorkspaceAdmin: 'skip',
-        },
-        uow.tx,
-      );
+      expect(access.grantProjectAccess).not.toHaveBeenCalled();
     });
 
-    it('grants in the SAME transaction as the roster row it follows from', async () => {
-      // A grant that committed separately could survive a rolled-back team, or be lost while the
-      // roster row stood — either way the two sources disagree, which is what AC-9 forbids.
-      await service.createTeam(
-        'ws-1',
-        { name: 'Platform', key: 'PLT', projectIds: ['proj-1'], memberUserIds: ['user-2'] },
-        'actor-1',
-      );
-      expect(access.grantProjectAccess).toHaveBeenCalledWith(expect.anything(), uow.tx);
-    });
-
-    it('invalidates the granted users AFTER the transaction commits', async () => {
-      await service.createTeam(
-        'ws-1',
-        { name: 'Platform', key: 'PLT', projectIds: ['proj-1'], memberUserIds: ['user-2'] },
-        'actor-1',
-      );
-      expect(access.invalidateUsers).toHaveBeenCalledWith('ws-1', ['user-2']);
-    });
-
-    it('never DEMOTES an existing Admin to the team-scoped level', async () => {
-      // Being added to a team says nothing about the project authority someone was separately
-      // given, and narrowing it as a side effect of a roster edit would revoke access silently.
-      access.getProjectAccessLevel.mockResolvedValue('admin');
-
-      await service.createTeam(
-        'ws-1',
-        { name: 'Platform', key: 'PLT', projectIds: ['proj-1'], memberUserIds: ['user-2'] },
-        'actor-1',
-      );
-
-      expect(access.grantProjectAccess).toHaveBeenCalledWith(
-        expect.objectContaining({ accessLevel: 'admin' }),
-        uow.tx,
-      );
-    });
-
-    it('never IMPLIES Admin for a member who holds no level', async () => {
-      // `assertTeamScoped` scopes only `editor`, and Admin is All Teams by definition — so implying
-      // Admin from one team's roster would grant authority over every team in the project.
-      await service.createTeam(
-        'ws-1',
-        { name: 'Platform', key: 'PLT', projectIds: ['proj-1'], memberUserIds: ['user-2'] },
-        'actor-1',
-      );
-      expect(access.grantProjectAccess).not.toHaveBeenCalledWith(
-        expect.objectContaining({ accessLevel: 'admin' }),
-        expect.anything(),
-      );
-    });
-
-    it('grants on addTeamMember too, scoped to the team’s linked projects', async () => {
-      teamRepo.listActiveProjectIds.mockResolvedValue(['proj-1', 'proj-2']);
+    it('writes no grant when a member is added to an existing team', async () => {
+      access.getProjectAccessLevel.mockResolvedValue('editor');
 
       await service.addTeamMember('team-1', 'user-2', 'ws-1', 'actor-1');
 
-      expect(access.grantProjectAccess).toHaveBeenCalledTimes(2);
-      expect(access.grantProjectAccess).toHaveBeenCalledWith(
-        expect.objectContaining({ projectId: 'proj-2', userId: 'user-2' }),
-        uow.tx,
-      );
+      expect(access.grantProjectAccess).not.toHaveBeenCalled();
     });
 
-    it('grants the team’s CURRENT roster when a project link is added by an edit', async () => {
-      // A rule stated as a condition over membership cannot be a hook on one write — the same
-      // lesson `derived-invariants.e2e.spec.ts` records for iteration auto-accept.
-      teamMemberRepo.listByTeam.mockResolvedValue([{ userId: 'user-9' }]);
+    it('writes no grant when an edit adds a project link or a member', async () => {
+      teamRepo.listActiveProjectIds.mockResolvedValue(['proj-1', 'proj-2']);
 
-      await service.updateTeam('team-1', { projectIds: ['proj-7'] }, 'ws-1', 'actor-1');
+      await service.updateTeam('team-1', { memberUserIds: ['user-2'] }, 'ws-1', 'actor-1');
 
-      expect(access.grantProjectAccess).toHaveBeenCalledWith(
-        expect.objectContaining({ projectId: 'proj-7', userId: 'user-9' }),
-        uow.tx,
-      );
+      expect(access.grantProjectAccess).not.toHaveBeenCalled();
     });
 
-    it('writes nothing for a member who is a Workspace Admin, and does not refuse the team', async () => {
-      // §2.1 keeps a WA off project rosters; refusing here would make a team uncreatable because
-      // one selected member happens to be an admin of this workspace.
-      access.grantProjectAccess.mockResolvedValue(null);
+    it('does not touch the permission cache at all', async () => {
+      // It used to invalidate the users it had just granted. With no grant there is nothing stale:
+      // the assignment cache is keyed on `project_members`, which this write never reaches, and team
+      // SCOPE is read live from `team_members` (`AccessService.listScopedTeamIds`).
+      access.getProjectAccessLevel.mockResolvedValue('editor');
 
-      await expect(
-        service.createTeam(
-          'ws-1',
-          { name: 'Platform', key: 'PLT', projectIds: ['proj-1'], memberUserIds: ['wa-1'] },
-          'actor-1',
-        ),
-      ).resolves.toBeTruthy();
+      await service.addTeamMember('team-1', 'user-2', 'ws-1', 'actor-1');
 
-      expect(access.invalidateUsers).toHaveBeenCalledWith('ws-1', []);
+      expect(access.invalidateUsers).not.toHaveBeenCalled();
     });
   });
 });
 
-/**
- * TEAM READS ARE SCOPED, NOT MERELY DENIED (RBE-08 / PRJ-07).
- *
- * `GET /workspaces/:id/teams`, `GET /teams/:id` and `GET /teams/:id/members` carried no
- * `@RequirePermission` at all, and `PolicyGuard` ALLOWS a handler with no policy metadata — so every
- * team's name, key, lead and member count, the name and key of every project it links to, and the
- * roster's display names AND EMAILS were readable by any authenticated caller: unscoped for an
- * Editor, unhidden for a No Access principal. §3.1 makes "View Project Details and Teams" a
- * per-Project row.
- *
- * The check lives in the service because no decorator can express it: a team is reached through its
- * project LINKS and may have several, so there is no single project id to resolve, and the list's
- * `null` (unrestricted) versus `[]` (nothing) sentinels are two different answers a scope descriptor
- * cannot carry. Both directions are asserted here — a fix that only proved the denial would pass
- * while having 403'd every Editor's team picker.
- */
 describe('TeamService — team reads are scoped to readable projects', () => {
   let service: TeamService;
   let teamRepo: ReturnType<typeof makeTeamRepo>;
@@ -470,12 +427,10 @@ describe('TeamService — team reads are scoped to readable projects', () => {
       await service.addTeamMember('team-1', 'wa-1', 'ws-1', 'actor-1');
 
       expect(teamMemberRepo.addMember).toHaveBeenCalled();
-      // The roster grant runs, and it is the grant writer that skips a Workspace Admin — asserted on
-      // the CONTRACT it is called with, because deciding it here would be a second copy of §2.1.
-      expect(access.grantProjectAccess).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'wa-1', onWorkspaceAdmin: 'skip' }),
-        expect.anything(),
-      );
+      // Nothing is written at all now. This used to assert the grant writer was CALLED with
+      // `onWorkspaceAdmin: 'skip'` — §2.1 enforced inside the grant. `PM-FR-021` removed the grant
+      // itself, so the absence is total and no longer depends on that parameter.
+      expect(access.grantProjectAccess).not.toHaveBeenCalled();
     });
 
     it('returns the new row already badged, so the screen and the next read agree (AC6)', async () => {

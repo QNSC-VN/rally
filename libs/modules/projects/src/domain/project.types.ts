@@ -218,6 +218,15 @@ export interface ProjectMember {
    * the other joined-from-users fields above are already handled.
    */
   teamCount?: number;
+  /**
+   * TRUE for the SYNTHESIZED Workspace Admin row, which is not a `work.project_members` record.
+   *
+   * The Project `Users & Permissions` list shows every active Workspace Admin as a system-generated,
+   * read-only row (BA report 2026-08-21): fixed badge, no Access Level control, no Remove. §2.1 still
+   * keeps them OFF `work.project_members`, so the row is composed on read and `memberCount` — counted
+   * from the table — is unaffected. Undefined on every real row.
+   */
+  isWorkspaceAdmin?: boolean;
 }
 
 // `AddProjectMemberInput` is gone with the write it described: creating a grant is

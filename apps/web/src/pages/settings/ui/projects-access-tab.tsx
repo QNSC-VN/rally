@@ -31,7 +31,7 @@ import { useTranslation } from 'react-i18next'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useMutation } from '@tanstack/react-query'
 import {
-  useProjectMembers,
+  useProjectAccessRoster,
   useSetProjectAccess,
   useProjectTeams,
   useUserTeamMemberships,
@@ -44,6 +44,7 @@ import { teamSelectOption } from '@/shared/ui/team-cell'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
 import { WarningIndicator } from '@/shared/ui/warning-indicator'
+import { WorkspaceAdminBadge } from '@/shared/ui/workspace-admin-badge'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -73,7 +74,7 @@ function memberLabel(m: ProjectMember): string {
 export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA: boolean }) {
   const { t } = useTranslation('settings')
   const workspaceId = useAppContext((s) => s.workspace?.workspaceId)
-  const { data: members = [], isLoading } = useProjectMembers(projectId)
+  const { data: members = [], isLoading } = useProjectAccessRoster(projectId)
   const setAccess = useSetProjectAccess(projectId)
   const [removeTarget, setRemoveTarget] = useState<ProjectMember | null>(null)
   const [editorTarget, setEditorTarget] = useState<ProjectMember | null>(null)
@@ -203,7 +204,12 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
                         : []
                     }
                   />
-                  {m.accessLevel && isWA ? (
+                  {m.isWorkspaceAdmin ? (
+                    /* A system row: the authority is the workspace-wide grant, so there is no level
+                       to choose and nothing to remove. Stating it as the badge rather than as an
+                       Access Level keeps §2.1 readable — this person holds no project row. */
+                    <WorkspaceAdminBadge />
+                  ) : m.accessLevel && isWA ? (
                     <SearchableSelect
                       variant="cell"
                       value={m.accessLevel}
@@ -221,21 +227,25 @@ export function ProjectAccessList({ projectId, isWA }: { projectId: string; isWA
                     offering a picker (mockup `WorkspaceProjectsPanel.tsx`:472). Rendered
                     for a read-only reader too — that reader is the one with no dropdown
                     to infer it from. */}
-                {grantsAllTeams(m.accessLevel) && (
+                {!m.isWorkspaceAdmin && grantsAllTeams(m.accessLevel) && (
                   <span className="text-ui-xs text-foreground-subtle">{t('access.allTeams')}</span>
                 )}
               </div>
               {isWA && (
                 <div className="w-8 text-center">
-                  <IconButton
-                    size="sm"
-                    aria-label="Remove access"
-                    title="Remove access (No Access)"
-                    onClick={() => setRemoveTarget(m)}
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <Trash2 size={13} />
-                  </IconButton>
+                  {/* Nothing to remove on a system row — there is no `project_members` record, and the
+                      route would 404. The cell stays for column alignment. */}
+                  {m.isWorkspaceAdmin ? null : (
+                    <IconButton
+                      size="sm"
+                      aria-label="Remove access"
+                      title="Remove access (No Access)"
+                      onClick={() => setRemoveTarget(m)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 size={13} />
+                    </IconButton>
+                  )}
                 </div>
               )}
             </div>

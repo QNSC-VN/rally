@@ -26,6 +26,19 @@ export interface WorkItem {
   flowState: WorkItemScheduleState;
   priority: WorkItemPriority;
   assigneeId: string | null;
+  /**
+   * Owner display name, joined by the GRID queries (`listByProject`, `listBacklog`,
+   * `listTasksByParent`) and undefined elsewhere.
+   *
+   * Optional because it is a read-model convenience, not a column: the write paths neither accept nor
+   * return it. It exists because every picker feed narrows — a Workspace Admin holds no
+   * `project_members` row (§2.1) and is excluded from the project feed by AC-16 — so a client that
+   * resolves the name from a feed cannot name them, and an absent name looks exactly like an unset
+   * field. See `ownerNameJoins`.
+   */
+  assigneeName?: string | null;
+  /** As `assigneeName`, for the Dev Owner column. */
+  devOwnerName?: string | null;
   reporterId: string | null;
   parentId: string | null;
   teamId: string | null;
@@ -79,6 +92,13 @@ export interface WorkItemFilters {
    * sentinel matches work items with no owner (assignee IS NULL).
    */
   assigneeId?: string;
+  /**
+   * Filter by Dev Owner, the same way as {@link WorkItemFilters.assigneeId} including the
+   * {@link UNASSIGNED_FILTER} sentinel — `P2-BL-FR-004` and `P2-IS-FR-024` (BA `c42df59`) add Dev
+   * Owner beside Owner in both grids' filter sets. Independent of `assigneeId`: an item can be
+   * narrowed by either or both.
+   */
+  devOwnerId?: string;
   teamId?: string;
   iterationId?: string;
   releaseId?: string;

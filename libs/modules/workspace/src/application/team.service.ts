@@ -11,7 +11,7 @@ import {
   AUDIT_RESOURCE,
 } from '@platform';
 import type { DrizzleTx } from '@platform';
-import { AccessService, teamRosterAccessLevel } from '@modules/access';
+import { AccessService } from '@modules/access';
 import { ITeamRepository, TEAM_REPOSITORY } from '../domain/ports/team.repository';
 import {
   ITeamMemberRepository,
@@ -149,69 +149,28 @@ export class TeamService {
     return unique;
   }
 
+  /** Validate every member id is an active workspace member; returns the deduped set. */
   /**
-   * A team roster row implies per-Project access — RBE-06, P4-RBAC-010, and §5's closing sentence
-   * (AC-9) that all three journeys update the same source.
+   * A TEAM LEAD IS AN OPERATIONAL TEAM MEMBER (`PM-FR-021` / AC15, BA 2026-08-22).
    *
-   * Before this, `work.team_members` was written here with NO project grant, and the SPA
-   * COMPENSATED: `project-teams-tab.tsx` follows its `POST /v1/teams` with a `POST
-   * /projects/{id}/members` per selected member. So the rule held for exactly one caller. Any other
-   * caller of `POST /v1/teams` — a script, the API directly, a future surface — produced a team
-   * member of a project they cannot open, which is the same shape of defect as a rule implemented
-   * as one write's hook (see `derived-invariants.e2e.spec.ts`).
+   * "Team Lead must be an active Team member. The Team Lead label grants no separate Project
+   * permission or Work Item Owner eligibility", and the same commit's addendum states it as an
+   * identity rather than a check: "An active Team Lead is an operational Team member." So naming a
+   * lead ENROLS them instead of being refused — the stricter reading would make "create a team with a
+   * lead" impossible in one call, and the BA's own journey names a lead while creating.
    *
-   * THE LEVEL IS RESOLVED, NEVER LITERAL. {@link teamRosterAccessLevel} is the rule and it lives in
-   * the access module beside the checks that consume it:
-   *   * `admin` is the one level a roster row must never IMPLY. team membership was only ever scoped for
-   *     `editor`, and `grantsAllTeams` means an Admin needs no `team_members` row at all — so
-   *     implying Admin would turn one team's membership into authority over every team in the
-   *     project, the opposite of what a team assignment says.
-   *   * An existing Admin is never DEMOTED. Being added to a team says nothing about the project
-   *     authority someone was separately given, and narrowing it as a side effect of a roster edit
-   *     would revoke access with nothing on screen to say so. The SPA already encodes exactly this
-   *     (`currentLevel === 'admin' ? 'admin' : 'editor'`); the backend reuses the rule rather than
-   *     re-deriving it.
-   *
-   * Runs INSIDE the caller's transaction — which is why `grantProjectAccess` takes one: its
-   * active-workspace-member check has to see the rows this transaction is writing, and
-   * `UnitOfWork.run` is `db.transaction`, which does not nest. Returns the users to invalidate,
-   * because a grant applied inside a transaction cannot know when that transaction committed.
+   * Returns the roster the caller should write. `null` clears the lead and adds nobody. The lead still
+   * has to be eligible for the team's projects, which `assertTeamMemberEligible` decides — enrolment
+   * must not become the way around the candidate rule.
    */
-  private async grantTeamRosterProjectAccess(
-    tx: DrizzleTx,
-    workspaceId: string,
-    projectIds: readonly string[],
-    memberUserIds: readonly string[],
-    actorId: string,
-  ): Promise<string[]> {
-    const granted = new Set<string>();
-    for (const projectId of projectIds) {
-      for (const userId of memberUserIds) {
-        // The level the user holds BEFORE this roster edit. Read outside the transaction on
-        // purpose: it is a fact about prior state, and this transaction has not granted anything to
-        // this user on this project yet.
-        const current = await this.access.getProjectAccessLevel(workspaceId, userId, projectId);
-        const grant = await this.access.grantProjectAccess(
-          {
-            workspaceId,
-            projectId,
-            userId,
-            accessLevel: teamRosterAccessLevel(current),
-            actorId,
-            // A Workspace Admin already has every project (§2.1 keeps them off project rosters), so
-            // writing nothing is correct — and refusing would make a team uncreatable because one
-            // selected member happens to be an admin of this workspace.
-            onWorkspaceAdmin: 'skip',
-          },
-          tx,
-        );
-        if (grant) granted.add(userId);
-      }
-    }
-    return [...granted];
+  private leadInclusiveRoster(
+    leadId: string | null | undefined,
+    rosterUserIds: readonly string[],
+  ): string[] {
+    if (!leadId || rosterUserIds.includes(leadId)) return [...rosterUserIds];
+    return [...rosterUserIds, leadId];
   }
 
-  /** Validate every member id is an active workspace member; returns the deduped set. */
   private async assertMembers(workspaceId: string, memberUserIds: string[]): Promise<string[]> {
     const unique = [...new Set(memberUserIds)];
     for (const userId of unique) {
@@ -253,10 +212,12 @@ export class TeamService {
     }
 
     const projectIds = await this.assertProjectsExist(workspaceId, input.projectIds ?? []);
-    const memberUserIds = await this.assertMembers(workspaceId, input.memberUserIds ?? []);
+    const memberUserIds = await this.assertMembers(
+      workspaceId,
+      this.leadInclusiveRoster(input.leadId, input.memberUserIds ?? []),
+    );
 
     const teamId = uuidv7();
-    let toInvalidate: string[] = [];
     const team = await this.uow.run(async (tx) => {
       const created = await this.teamRepo.create(
         {
@@ -274,14 +235,6 @@ export class TeamService {
       }
       await this.teamRepo.setProjectLinks(workspaceId, teamId, projectIds, tx);
       await this.teamMemberRepo.setMembers(workspaceId, teamId, memberUserIds, tx);
-      // RBE-06 — a roster row implies project access. See `grantTeamRosterProjectAccess`.
-      toInvalidate = await this.grantTeamRosterProjectAccess(
-        tx,
-        workspaceId,
-        projectIds,
-        memberUserIds,
-        actorId,
-      );
       await this.audit.emit(
         {
           action: AUDIT_ACTION.TEAM_CREATED,
@@ -298,7 +251,6 @@ export class TeamService {
 
     // After commit, matching `assignRole`: invalidating first lets a concurrent request repopulate
     // the cache from pre-commit state, which is the staleness the cache exists to remove.
-    await this.access.invalidateUsers(workspaceId, toInvalidate);
     this.logger.log({ teamId: team.id, workspaceId }, 'Team created');
     return team;
   }
@@ -330,7 +282,7 @@ export class TeamService {
       input.projectIds !== undefined
         ? await this.assertProjectsExist(workspaceId, input.projectIds)
         : undefined;
-    const memberUserIds =
+    let memberUserIds =
       input.memberUserIds !== undefined
         ? await this.assertMembers(workspaceId, input.memberUserIds)
         : undefined;
@@ -352,7 +304,22 @@ export class TeamService {
       }
     }
 
-    let toInvalidate: string[] = [];
+    /**
+     * The lead stays on the roster this patch LEAVES BEHIND.
+     *
+     * `memberUserIds` is a REPLACEMENT, so a patch that sets a new lead, or one that rewrites the
+     * roster without mentioning the lead, would otherwise leave a lead who is not a member. Both
+     * directions resolve to the same rule, so both are handled here rather than at the two writes.
+     */
+    const nextLeadId = input.leadId !== undefined ? input.leadId : team.leadId;
+    if (memberUserIds !== undefined) {
+      memberUserIds = this.leadInclusiveRoster(nextLeadId, memberUserIds);
+    } else if (input.leadId) {
+      const roster = (await this.teamMemberRepo.listByTeam(id)).map((m) => m.userId);
+      if (!roster.includes(input.leadId))
+        memberUserIds = this.leadInclusiveRoster(input.leadId, roster);
+    }
+
     const updated = await this.uow.run(async (tx) => {
       const after = await this.teamRepo.update(
         id,
@@ -370,28 +337,6 @@ export class TeamService {
       if (memberUserIds !== undefined) {
         await this.teamMemberRepo.setMembers(workspaceId, id, memberUserIds, tx);
       }
-      /**
-       * RBE-06 on the EDIT path too, and for the reason `derived-invariants.e2e.spec.ts` records:
-       * a rule stated as a condition over membership cannot be implemented as a hook on one
-       * particular write. A member added by editing a team, or an existing member reached by
-       * linking a new project, is in exactly the state `createTeam` now refuses to leave anyone in.
-       *
-       * The roster is taken from the patch when it supplied one and from the stored rows otherwise,
-       * so linking a project grants the team's CURRENT members — and likewise a new member gets the
-       * team's current projects. Adding access only, never removing: `setMembers` and
-       * `setProjectLinks` are replacements, but a project grant is not a team's to revoke (it may
-       * have been given for other reasons entirely, on the Users & Permissions screen).
-       */
-      const rosterUserIds =
-        memberUserIds ?? (await this.teamMemberRepo.listByTeam(id)).map((m) => m.userId);
-      const linkedProjectIds = projectIds ?? (await this.teamRepo.listActiveProjectIds(id));
-      toInvalidate = await this.grantTeamRosterProjectAccess(
-        tx,
-        workspaceId,
-        linkedProjectIds,
-        rosterUserIds,
-        actorId,
-      );
       await this.audit.emit(
         {
           action: AUDIT_ACTION.TEAM_UPDATED,
@@ -405,7 +350,6 @@ export class TeamService {
       );
       return after;
     });
-    await this.access.invalidateUsers(workspaceId, toInvalidate);
     return updated;
   }
 
@@ -541,6 +485,39 @@ export class TeamService {
       );
     }
 
+    /**
+     * A team roster row is PROJECT-SCOPED work, so the candidate must already belong to a project the
+     * team serves (BA report 2026-08-21: "Backend validation must also reject adding a user who does
+     * not belong to the Project").
+     *
+     * Checked against ANY actively linked project, not every one: a team can serve several projects
+     * and `POST /teams/:id/members` carries none, so "every" would make a multi-project team almost
+     * unstaffable and would refuse adds that are legitimate on the screen the reader is looking at.
+     *
+     * A WORKSPACE ADMIN passes with no `project_members` row of their own. That absence is §2.1 and
+     * migration 0118, not a missing grant — their authority is the workspace-wide one, which is why
+     * `grantTeamRosterProjectAccess` skips them below and why the Project `Users & Permissions` list
+     * shows them as a synthesized row. Excluding them here would remove the only path to the
+     * Workspace-Admin-on-a-Team feature (2026-08-20) that the same BA asked for.
+     *
+     * A team with NO active project link admits any active workspace member: there is no project to
+     * be outside of, and refusing would make such a team permanently unstaffable.
+     */
+    const linkedProjectIds = await this.teamRepo.listActiveProjectIds(teamId);
+    if (linkedProjectIds.length > 0 && !(await this.access.isWorkspaceAdmin(workspaceId, userId))) {
+      const levels = await Promise.all(
+        linkedProjectIds.map((projectId) =>
+          this.access.getProjectAccessLevel(workspaceId, userId, projectId),
+        ),
+      );
+      if (levels.every((level) => level === null)) {
+        throw new PreconditionFailedException(
+          'TEAM_MEMBER_NOT_PROJECT_MEMBER',
+          "User does not belong to any of this team's projects",
+        );
+      }
+    }
+
     const existing = await this.teamMemberRepo.findMember(teamId, userId);
     if (existing) {
       throw new ConflictException(
@@ -550,7 +527,6 @@ export class TeamService {
     }
 
     const memberId = uuidv7();
-    let toInvalidate: string[] = [];
     const member = await this.uow.run(async (tx) => {
       const created = await this.teamMemberRepo.addMember(
         memberId,
@@ -558,15 +534,6 @@ export class TeamService {
         teamId,
         userId,
         tx,
-      );
-      // RBE-06 — the same rule as `createTeam`, on the third write that can add a roster row.
-      // Its scope is the team's currently-linked projects.
-      toInvalidate = await this.grantTeamRosterProjectAccess(
-        tx,
-        workspaceId,
-        await this.teamRepo.listActiveProjectIds(teamId),
-        [userId],
-        actorId,
       );
       await this.audit.emit(
         {
@@ -581,12 +548,11 @@ export class TeamService {
       );
       return created;
     });
-    await this.access.invalidateUsers(workspaceId, toInvalidate);
     this.logger.log({ teamId, userId }, 'Team member added');
     // Flagged on the way back out, so the row the client renders immediately after the write says the
-    // same thing as the roster it will re-fetch. `toInvalidate` is EMPTY for a Workspace Admin — the
-    // roster grant is skipped for them (§2.1), which is AC1's "no Admin or Editor Project Access
-    // assignment is created or required".
+    // same thing as the roster it will re-fetch. Nothing is invalidated: `PM-FR-021` means this write
+    // touches no assignment, and team SCOPE is read live from `team_members` (`listScopedTeamIds`),
+    // never from the assignment cache.
     return {
       ...member,
       isWorkspaceAdmin: await this.access.isWorkspaceAdmin(workspaceId, userId),

@@ -522,6 +522,55 @@ Iteration Status total, the Tasks-tab total and the next Burndown snapshot with 
 the service; the other two edit surfaces already did this correctly, and this screen's own UI comment
 described the behaviour it did not have.
 
+## A Team roster is staffed FROM the project, and the Workspace Admin is a row on it
+
+Two BA findings of 2026-08-21, and both reverse a sentence that is still in the SRS. Read which
+sentence before touching either.
+
+- **A team member must already hold access to one of the team's projects** (`TEAM_MEMBER_NOT_PROJECT_MEMBER`,
+  `TeamService.addTeamMember`). The Add-member control was an inline popover over every active
+  WORKSPACE user, so on a project with no members of its own it still offered all four workspace users
+  — "users who do not belong to Project X are exposed as Team member candidates". It is an `Add` button
+  and a `SelectionModal` now, and the candidates are the project's members plus active Workspace
+  Admins, minus the existing roster.
+  - **This REVERSES Phase 1 SRS §2A's "User project access is derived from team membership", and the
+    BA has since finished the reversal.** `PM-FR-021` (`c42df59`, 2026-08-22) states it outright:
+    "Adding or removing a Team member never creates or changes Project Access." So **RBE-06 IS
+    RETIRED** — `grantTeamRosterProjectAccess` and `teamRosterAccessLevel` are gone, from all three
+    writes (create, edit, add-member), and the team form no longer sets an access level at all
+    ("Project Access is read-only in this flow"). Access comes first, then membership; the candidate
+    rule is what guarantees a member already has it.
+  - **Nothing is invalidated by a roster write any more.** The assignment cache is keyed on
+    `project_members`, which these writes no longer touch, and team SCOPE is read live from
+    `team_members` (`AccessService.listScopedTeamIds`) rather than from the cache.
+  - **A TEAM LEAD IS ENROLLED, not refused.** `PM-FR-021`/AC15 say a lead "must be an active Team
+    member", and the same commit's addendum states it as an identity — "an active Team Lead is an
+    operational Team member". Refusing would make "create a team with a lead" impossible in one call,
+    which the BA's own E2E-002 journey does, so `leadInclusiveRoster` adds the lead to the roster on
+    create and on any patch that moves either side. The lead still passes the candidate rule; enrolment
+    is not a way around it. The SPA offers only ticked/rostered members as lead.
+  - **A WORKSPACE ADMIN is admitted with no project row at all**, by the `isWorkspaceAdmin`
+    short-circuit. §2.1 keeps them off `work.project_members`, so a membership test would exclude
+    exactly the principals the 2026-08-20 feature below exists for.
+  - **The check is against ANY actively linked project, not every one.** A team can serve several and
+    `POST /teams/:id/members` carries no project, so "every" would make a multi-project team almost
+    unstaffable. A team with NO active link admits any active workspace member: there is no project to
+    be outside of.
+- **Project `Users & Permissions` always shows the active Workspace Admins**, as synthesized read-only
+  rows (`ProjectsService.listProjectMembers`, `isWorkspaceAdmin` on the row). The screen used to read
+  "No members in this project yet." on a project whose only authority was a WA — the least true
+  sentence available, since the reader was usually that admin.
+  - **This reverses §5.2:138 "Workspace Admin is excluded from rows and candidates" — the ROWS half
+    only.** Candidates still exclude them (`Add Existing User`, `listProjectMemberOptions`), nothing is
+    written to `work.project_members`, and `memberCount` counts the table so it does not move.
+  - **The real row is still filtered first**, so a pre-0118 leftover or a seed-written row cannot
+    appear as an editable member beside the system row. The person shows once.
+  - **`isWorkspaceAdmin` is the flag to branch on, never `accessLevel === null`** — a null level
+    already means "team-derived row" on a real member.
+  - **`useProjectMembers` drops those rows and `useProjectAccessRoster` keeps them.** One query key,
+    two projections: six other call sites (two owner pickers among them) were written against real
+    members and §2.1 still says a WA is not one.
+
 ## A Workspace Admin may be a TEAM member, and still not a Project user
 
 BA feature, 2026-08-20. This REVERSES half of §2.1 and leaves the other half standing, so read which
@@ -548,6 +597,100 @@ half before touching either.
   Owner, because `listProjectMemberOptions`' team branch reads `team_members` and applies no admin
   filter. The SPA was the only thing withholding them: `project-teams-tab.tsx` filtered
   `roleSlug !== 'workspace_admin'` out of the Team Lead options and the member table.
+
+## Dev Owner is a SECOND responsibility, on a Task as well as a Story
+
+`work_items.dev_owner_id` has existed since Phase 3.4; `work.tasks.dev_owner_id` arrived with
+migration 0127, and until then the API ACCEPTED a `devOwnerId` on a task and dropped it silently —
+the worst of the three possible behaviours. BA `c42df59` (2026-08-22) makes the field first-class:
+`P2-BL-FR-012A`, `P2-IS-FR-032B`, `WID-FR-016` and `P4-NOTIF-DC-012`.
+
+- **Rally has NO Dev Owner field at all** — not on a Task, not on a User Story (verified against
+  Broadcom's own field references). One `Owner` per artifact, and a second responsibility would be a
+  CUSTOM field there. So there is no parity to check here: the BA's spec IS the design.
+- **Same candidate source as Owner, independent persistence.** Both fields read
+  `assignmentCandidates` and both are validated by `assertAssignable`; a Dev Owner patch never
+  writes `assigneeId`, which is the one thing the BA states twice ("must not reuse or overwrite").
+- **`P4-NOTIF-DC-012` covers BOTH fields and Tasks**, so `notifyAssignment` takes the recipient rather
+  than reading `item.assigneeId`, and the update path loops the two fields through one rule — a third
+  responsibility later cannot pick up half the behaviour, which is how Dev Owner came to notify
+  nobody. The RECIPIENT is the notification's discriminator, so one patch naming the same person as
+  both Owner and Dev Owner tells them once.
+- **Sorting by owner or Dev Owner is NOT implemented**, though the BA lists both in `sortBy`. The
+  grids are keyset-paginated on `(column, id)` and a name lives on a JOINED table, so sorting by it
+  means name-based keyset sorting for both fields — its own change. The alternative, sorting by the
+  uuid, is what `COLUMN_SORT_FIELD`'s own comment already refuses.
+- **`work.tasks` has no `dev_owner_id` FK**, matching `assignee_id` beside it: eligibility depends on
+  the project AND the team, which no constraint can express, and a user delete must not cascade into
+  delivery history.
+
+## ONE assignment-eligibility rule, for Owner and for Dev Owner
+
+`ProjectsService.assignmentCandidates` is the only expression of it, read by the picker feed
+(`listProjectMemberOptions`) and by the write (`assertAssignable`, `WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE`).
+BA `c42df59` (2026-08-22) states it once and points both fields at it — `WID-FR-017`, `WIC-FR-006A`,
+and the Project/Team assignment addendum:
+
+| selected Team | offered |
+|---|---|
+| a Team | project `admin` (project-wide) + `editor` assigned to THAT team + Workspace Admin on its roster |
+| none | project `admin` + Workspace Admin |
+
+- **Two things it replaced, both visible on screen.** The team branch read `team_members` ALONE, so a
+  project Admin who is not on the team was withheld even though §3.1 gives Admin All Teams. The
+  project-wide branch offered every member, so with no Team chosen an Editor could be made Owner of
+  work their own team scope would then refuse them.
+- **The WRITE now applies it too.** It used to check only `assertWorkspaceMember` — orders of magnitude
+  wider than the picker, so any user id in the body was accepted for work no picker would have offered.
+  `reporterId` is deliberately OUTSIDE the rule: a reporter records who raised the item, not who may be
+  given it.
+- **The no-Team branch including Workspace Admins is a DECLARED READING.** `WIC-FR-006A` says "with
+  blank Team, Editor/WA **Team members** are not offered", which reads as excluding the team-derived
+  qualification rather than the principal — and team-less work IS the Project Backlog, whose audience
+  the team-scope ruling already fixes at Workspace Admin plus Project Admin. Excluding them would also
+  refuse the case the same commit encourages: a WA filing backlog work and being defaulted as its
+  Owner. If the BA means the narrow reading, drop the second half of that branch and nothing else
+  changes.
+- **Owner defaults to the CURRENT USER when the feed offers them** (`WIC-FR-006`), which reverses
+  `GAP-P1-WID-007`/P6-TC-007's "default to Unassigned" — and Rally agrees ("defaults to the user who
+  creates the defect"). The gate is what makes it safe: the old defect seeded the creator
+  UNCONDITIONALLY, which is how a Task inherited an owner nobody chose. The default is DERIVED, never
+  stored — an effect writing it into state cascades renders, and it has to follow every Team change.
+- **A fixture that assigns an owner now needs a Team** (or an admin). Four e2e specs had to change,
+  and that is the rule working: `manage-filters`, `notification-flow`, `team-status-relation-render`
+  and `project-delivery-flow` were all assigning an Editor to team-less work.
+
+## A NAME belongs to the ROW; a picker feed can never be its source
+
+Reported 2026-08-22: an Editor read `No Entry` / `Unassigned` in Iteration Status' Owner and Dev Owner
+columns for items that WERE assigned. Not a permission fault — the grids carried ids only and resolved
+the name client-side from a PICKER feed, and every picker feed narrows on purpose:
+
+- `GET /projects/:id/member-options` **excludes Workspace Admins** (AC-16: not assignable owners), so it
+  can never name one — for ANY role.
+- `GET /workspaces/:id/member-options` narrows a non-admin caller to the members and the `lead_id`s of
+  their own readable projects (`listMemberOptions`).
+
+A Workspace Admin holds no `work.project_members` row at all (§2.1, migration 0118), so an item they
+own had no name source in either feed. **A Workspace Admin reader never saw it** because
+`listReadableProjectIds` returns `null` — unrestricted — so their directory is the whole workspace; and
+the seeded case hides it too, because every seeded project's `lead_id` IS the admin, which the
+directory's second source picks up. Reproduce with an Editor whose projects name no admin as lead.
+
+- **The read models join the name now** — `ownerNameJoins` in `WorkItemDrizzleRepository` (`listByProject`,
+  `listBacklog`, `listTasksByParent`) and the iteration-status projection. Portfolio, Releases,
+  Milestones and Quality already did this; work items were the last module resolving a name on the
+  client, which is why they were the only ones with the bug.
+- **The client prefers the row and keeps the feed as fallback.** `item.assigneeName ?? map lookup`, on
+  Iteration Status, Backlog and the Tasks tab.
+- **NAMING moved; OFFERING did not.** The feeds still narrow — `WID-FR-016`/AC-16 forbid widening an
+  Owner dropdown to unrelated workspace users — and `owner-name-resolution.e2e.spec.ts` asserts both
+  halves, so a later "simplification" that names from the offer list fails.
+- **`work.tasks` has no `dev_owner_id`**, so a task's `devOwnerName` is null by construction, beside the
+  id the projection already nulls.
+- **Blank-name reports are usually this, not persistence.** An absent name and an unset field render
+  identically, which is what made `GAP-P2-IS-004` look like a save that did not stick. Check whether the
+  owner is a Workspace Admin before hunting the write path.
 
 ## The Owner feed: the TEAM roster decides, and a Team move re-decides it
 

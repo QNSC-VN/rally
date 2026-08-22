@@ -32,7 +32,14 @@ export const IterationStatusItemSchema = z.object({
   taskTotal: z.number().int(),
   taskDone: z.number().int(),
   assigneeId: z.string().uuid().nullable(),
+  assigneeName: z
+    .string()
+    .nullable()
+    .describe(
+      'Owner display name, joined server-side — a picker feed cannot name a Workspace Admin',
+    ),
   devOwnerId: z.string().uuid().nullable(),
+  devOwnerName: z.string().nullable(),
   rank: z.string(),
   featureId: z.string().uuid().nullable(),
   featureKey: z.string().nullable(),

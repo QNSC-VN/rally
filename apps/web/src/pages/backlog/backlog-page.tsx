@@ -618,10 +618,15 @@ function BacklogRow({
     if (trimmed && trimmed !== item.title) patch({ title: trimmed })
   }
 
-  const ownerName = (() => {
-    const m = members.find((m) => m.userId === item.assigneeId)
-    return m?.displayName ?? m?.email
-  })()
+  // The ROW names its own owner (`assigneeName`, joined server-side); the feed is the fallback. A
+  // picker feed excludes Workspace Admins by design (AC-16), so a WA-owned row used to read blank here
+  // for every role — see `ownerNameJoins` in the work-item repository.
+  const ownerName =
+    item.assigneeName ??
+    (() => {
+      const m = members.find((m) => m.userId === item.assigneeId)
+      return m?.displayName ?? m?.email
+    })()
 
   const stop = (e: React.MouseEvent) => e.stopPropagation()
 
@@ -776,6 +781,25 @@ function BacklogRow({
           members={members}
           canEdit={canEdit}
           onChange={(id) => patch({ assigneeId: id })}
+        />
+      </div>
+
+      {/* Dev Owner — the SECOND responsibility, inline like Owner (`P2-BL-FR-012A`) */}
+      <div
+        className="flex shrink-0 items-center overflow-hidden px-0"
+        style={colStyles.devOwner}
+        onClick={stop}
+      >
+        <OwnerSelectCell
+          /* Same candidate feed as Owner — the BA states one source for both (`WID-FR-016`) — and the
+             same name-from-the-row rule, so a Dev Owner the picker cannot offer is still named. They
+             persist INDEPENDENTLY: this patch never touches `assigneeId`. */
+          ownerName={item.devOwnerName ?? undefined}
+          assigneeId={item.devOwnerId}
+          members={members}
+          canEdit={canEdit}
+          onChange={(id) => patch({ devOwnerId: id })}
+          ariaLabel={`Dev owner for ${item.itemKey}`}
         />
       </div>
 

@@ -43,12 +43,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ProjectsService } from '@modules/projects';
 import { WorkItemsService } from '@modules/work-items';
+import { AccessService } from '@modules/access';
 import { TeamService } from '@modules/workspace';
 
 import {
   ADMIN_USER_ID,
   ALL,
   DEVELOPER_ID,
+  VIEWER_ID,
   adminActor,
   bootRallyApp,
   uniqueKey,
@@ -59,6 +61,8 @@ describe('BA flows: E2E-002 admin prepares team and user for work management', (
   let projects: ProjectsService;
   let teams: TeamService;
   let workItems: WorkItemsService;
+  /** Grants the project access the 2026-08-21 rule now requires BEFORE a roster row. */
+  let access: AccessService;
 
   const admin = adminActor();
 
@@ -67,6 +71,7 @@ describe('BA flows: E2E-002 admin prepares team and user for work management', (
     projects = app.get(ProjectsService);
     teams = app.get(TeamService);
     workItems = app.get(WorkItemsService);
+    access = app.get(AccessService);
   });
 
   afterAll(async () => {
@@ -176,9 +181,49 @@ describe('BA flows: E2E-002 admin prepares team and user for work management', (
     });
   });
 
-  describe('step 3 — user project access derives from team membership (SRS §2A)', () => {
-    it('adds a workspace user to the team without assigning the project directly', async () => {
+  /**
+   * ORDER REVERSED, 2026-08-21 — read this before "fixing" either half.
+   *
+   * §2A says "User project access is derived from team membership", and this block used to prove it by
+   * adding a workspace user with NO project access straight to a linked team. The BA's report of
+   * 2026-08-21 states the opposite for that write: the Add Member modal "lists only active users who
+   * already belong to the selected Project", and "Backend validation must also reject adding a user
+   * who does not belong to the Project" (`TEAM_MEMBER_NOT_PROJECT_MEMBER`).
+   *
+   * The two cannot both hold on `addTeamMember`, and the newer instruction wins — the same precedence
+   * this repo applied to the defect-delete and Rollup reversals. What survives of §2A is the DERIVING
+   * itself, on the path the BA's own E2E-002 uses: `createTeam` with `memberUserIds` still grants
+   * project access through RBE-06 ("Create Team under a Project and select one existing user as
+   * Editor"), and a roster row still implies access for everyone it admits. What changed is that an
+   * EXISTING team can no longer be the first place a user meets a project: grant access, then staff
+   * the team.
+   *
+   * PUT TO THE BA. If they want §2A's order restored, the refusal in `TeamService.addTeamMember` is
+   * the one predicate to remove, and this block goes back to asserting the add succeeds.
+   */
+  describe('step 3 — project access comes FIRST, then team membership (2026-08-21)', () => {
+    it('refuses a workspace user who has no access to the team’s project', async () => {
       const { team } = await prepareLinkedContext();
+
+      await expect(
+        teams.addTeamMember(team.id, DEVELOPER_ID, admin.workspaceId, ADMIN_USER_ID),
+      ).rejects.toThrow(/TEAM_MEMBER_NOT_PROJECT_MEMBER|does not belong/);
+
+      const roster = await teams.listTeamMembers(team.id, admin.workspaceId);
+      expect(roster.map((m) => m.userId)).not.toContain(DEVELOPER_ID);
+    });
+
+    it('admits them once they hold project access, and the roster row keeps deriving it', async () => {
+      const { project, team } = await prepareLinkedContext();
+      await access.grantProjectAccess({
+        workspaceId: admin.workspaceId,
+        projectId: project.id,
+        userId: DEVELOPER_ID,
+        accessLevel: 'editor',
+        actorId: ADMIN_USER_ID,
+        // An ordinary user, so the §2.1 branch never applies; stated because the parameter is required.
+        onWorkspaceAdmin: 'refuse',
+      });
 
       const member = await teams.addTeamMember(
         team.id,
@@ -186,10 +231,38 @@ describe('BA flows: E2E-002 admin prepares team and user for work management', (
         admin.workspaceId,
         ADMIN_USER_ID,
       );
-      expect(member.userId).toBe(DEVELOPER_ID);
 
+      expect(member.userId).toBe(DEVELOPER_ID);
       const roster = await teams.listTeamMembers(team.id, admin.workspaceId);
       expect(roster.map((m) => m.userId)).toContain(DEVELOPER_ID);
+    });
+
+    it('writes NO Project Access when a team is created with members (PM-FR-021)', async () => {
+      // The last of §2A to go. `PM-FR-021` (2026-08-22): "Adding or removing a Team member never
+      // creates or changes Project Access" — and the same commit makes candidates users who already
+      // hold a level, so nothing is left for a roster row to grant. This case asserted the opposite
+      // (RBE-06 deriving at create time) until that ruling.
+      const { project } = await prepareLinkedContext();
+      const before = await access.getProjectAccessLevel(admin.workspaceId, VIEWER_ID, project.id);
+      expect(before).toBeNull();
+
+      const team = await teams.createTeam(
+        admin.workspaceId,
+        {
+          name: `E2E-002 No-grant Team ${uniqueKey('T')}`,
+          key: uniqueKey('T'),
+          projectIds: [project.id],
+          memberUserIds: [VIEWER_ID],
+        },
+        ADMIN_USER_ID,
+      );
+
+      const roster = await teams.listTeamMembers(team.id, admin.workspaceId);
+      expect(roster.map((m) => m.userId)).toContain(VIEWER_ID);
+      // Membership written, access untouched.
+      expect(
+        await access.getProjectAccessLevel(admin.workspaceId, VIEWER_ID, project.id),
+      ).toBeNull();
     });
 
     it('refuses a user who is not a member of the owning workspace', async () => {

@@ -64,6 +64,8 @@ export interface BacklogFilters {
   scheduleState?: WiScheduleState
   priority?: WiPriority
   assigneeId?: string
+  /** Dev Owner, filtered like Owner including the `unassigned` sentinel (`P2-BL-FR-004`). */
+  devOwnerId?: string
   iterationId?: string
   releaseId?: string
   teamId?: string
@@ -100,6 +102,7 @@ export async function fetchBacklogPage(projectId: string, filters: BacklogFilter
           'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release' | undefined,
         priority: filters.priority as 'none' | 'low' | 'normal' | 'high' | 'urgent' | undefined,
         assigneeId: filters.assigneeId,
+        devOwnerId: filters.devOwnerId,
         iterationId: filters.iterationId,
         releaseId: filters.releaseId,
         teamId: filters.teamId,

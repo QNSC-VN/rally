@@ -94,6 +94,12 @@ export const ProjectMemberResponseSchema = z.object({
     .int()
     .min(0)
     .describe('Active team_members rows for Teams linked to this project'),
+  isWorkspaceAdmin: z
+    .boolean()
+    .describe(
+      'TRUE for the synthesized, read-only Workspace Admin row: no project_members record exists, ' +
+        'it is excluded from memberCount, and it offers no Access Level control and no Remove.',
+    ),
 });
 
 export class ProjectMemberResponseDto extends createZodDto(ProjectMemberResponseSchema) {}

@@ -359,6 +359,18 @@ export function DetailSidebar({
           disabled={disabled}
         />
 
+        {/* Dev Owner — the SECOND, independent responsibility (`WID-FR-007`, `WID-FR-016`).
+            "Owner và Dev Owner là hai trách nhiệm độc lập. Cả hai dùng cùng candidate source theo
+            Project/Team; đổi Dev Owner không được ghi đè Owner." Hence the same `ownerOptions` feed
+            and a patch that names only `devOwnerId`. */}
+        <OwnerSelectField
+          label={t('sidebar.devOwner', 'Dev Owner')}
+          value={item.devOwnerId}
+          onChange={(v) => onUpdate({ devOwnerId: v || null })}
+          members={ownerOptions}
+          disabled={disabled}
+        />
+
         {/* Project — read-only (WID-FR-007, and WID-FR-017: "moving between Projects
             unsupported"). A work item's project is fixed, and it is the ITEM's project, not the
             one selected in the app shell (P6-E2E-003) — see `recordProject`.

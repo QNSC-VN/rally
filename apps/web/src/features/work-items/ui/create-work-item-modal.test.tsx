@@ -51,6 +51,13 @@ import '@/shared/i18n/i18n'
 import { CreateWorkItemModal } from './create-work-item-modal'
 
 const ALICE = { userId: 'alice', displayName: 'Alice Smith', email: 'alice@qnsc.dev' }
+
+// The signed-in user IS Alice, so `WIC-FR-006`'s "defaults to the current user when eligible" has
+// something to default to. Mocked at the store, because that is where the modal reads it.
+vi.mock('@/shared/lib/stores/auth.store', () => ({
+  useAuthStore: (selector: (s: { user: { id: string } }) => unknown) =>
+    selector({ user: { id: 'alice' } }),
+}))
 const ALPHA = { id: 'team-1', name: 'Team Alpha', key: 'TA' }
 const BETA = { id: 'team-2', name: 'Team Beta', key: 'TB' }
 
@@ -122,20 +129,45 @@ describe('CreateWorkItemModal — Project is read-only (WIC-FR-004 AC #11, P5-PI
   })
 })
 
-describe('CreateWorkItemModal — Owner defaults to Unassigned', () => {
-  it('does not seed the signed-in creator', () => {
+/**
+ * OWNER DEFAULTS TO THE CURRENT USER — WHEN THE FEED OFFERS THEM (`WIC-FR-006`, BA `c42df59`).
+ *
+ * "Owner defaults to the authenticated current user only when that user is eligible in the selected
+ * Project/Team. Otherwise it defaults to `Unassigned`." Rally agrees: its Owner "defaults to the user
+ * who creates the defect".
+ *
+ * This REVERSES the previous rule these cases asserted, and the gate is what makes the reversal safe.
+ * The old defect was seeding the creator UNCONDITIONALLY, which is how P6-TC-007's "null-owner Task
+ * attributed to a named member" happened — a Story silently owned by whoever opened the modal, and a
+ * Task inheriting it. Defaulting only to someone the picker itself offers cannot reproduce that.
+ */
+describe('CreateWorkItemModal — Owner defaults to the eligible current user', () => {
+  it('seeds the signed-in creator when the feed offers them', async () => {
+    teamOwnerOptions.mockReturnValue({ data: [ALICE] })
     open()
-    expect(screen.getByRole('button', { name: 'Owner' }).textContent).toContain('— No Entry —')
-    expect(screen.getByRole('button', { name: 'Owner' }).textContent).not.toContain('Alice')
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Owner' }).textContent).toContain('Alice Smith'),
+    )
   })
 
-  it('sends NO assigneeId when the field is left alone', async () => {
+  it('leaves it Unassigned when the feed does NOT offer them', async () => {
+    // An Editor with no Team, or anyone the shared assignment rule withholds: the default must not
+    // put a value in the field that its own dropdown would not show.
+    teamOwnerOptions.mockReturnValue({ data: [{ userId: 'someone-else', displayName: 'Bo' }] })
+    open()
+
+    expect(screen.getByRole('button', { name: 'Owner' }).textContent).toContain('— No Entry —')
+  })
+
+  it('sends the defaulted owner, and respects an explicit Unassigned', async () => {
+    teamOwnerOptions.mockReturnValue({ data: [ALICE] })
     open()
     fireEvent.change(screen.getByLabelText(/Title/i), { target: { value: 'Wire the callback' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create Item' }))
 
     await waitFor(() => expect(createWorkItem).toHaveBeenCalled())
-    expect(createWorkItem.mock.calls[0][0].assigneeId).toBeUndefined()
+    expect(createWorkItem.mock.calls[0][0].assigneeId).toBe('alice')
   })
 })
 
@@ -148,10 +180,16 @@ describe('CreateWorkItemModal — Owner options follow the selected Team (GAP-P1
   })
 
   it('clears a stale owner when the Team changes', async () => {
+    // Alice is offered on team-1 and NOT on team-2, which is the whole point: eligibility is
+    // per-team (`WIC-FR-006A`), so the feed has to answer differently per team for this to mean
+    // anything. She is also the signed-in user, so she arrives as the default (`WIC-FR-006`).
+    teamOwnerOptions.mockImplementation((_p: string, teamId: string | null) => ({
+      data: teamId === 'team-1' ? [ALICE] : [],
+    }))
     open()
-    fireEvent.click(screen.getByRole('button', { name: 'Owner' }))
-    fireEvent.click(await screen.findByText('Alice Smith'))
-    expect(screen.getByRole('button', { name: 'Owner' }).textContent).toContain('Alice Smith')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Owner' }).textContent).toContain('Alice Smith'),
+    )
 
     // Switching team re-populates the Owner list; a selection made against the previous team is no
     // longer offered, and a draft must not submit a value its own picker would not show.

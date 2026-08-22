@@ -46,6 +46,7 @@ export const IterationStatusQuerySchema = PageQuerySchema.extend({
   // A UUID targets one owner; the sentinel filters unassigned rows (owner IS
   // NULL) — the same contract the Backlog list already offers.
   assigneeId: z.union([z.string().uuid(), z.literal(UNASSIGNED_FILTER)]).optional(),
+  devOwnerId: z.union([z.string().uuid(), z.literal(UNASSIGNED_FILTER)]).optional(),
   // ── Manage Filters column predicates (P2-IS-FR-022/023/024) ─────────────────
   itemKey: z.string().trim().max(64).optional(),
   title: z.string().trim().max(500).optional(),

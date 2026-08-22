@@ -87,6 +87,8 @@ export const WorkItemQuerySchema = PageQuerySchema.extend({
   priority: z.enum(WORK_ITEM_PRIORITIES).optional(),
   // A UUID targets one owner; the sentinel filters unassigned items (owner IS NULL).
   assigneeId: z.union([z.string().uuid(), z.literal(UNASSIGNED_FILTER)]).optional(),
+  // Dev Owner filters exactly like Owner, sentinel included (`P2-BL-FR-004`, `P2-IS-FR-024`).
+  devOwnerId: z.union([z.string().uuid(), z.literal(UNASSIGNED_FILTER)]).optional(),
   teamId: z.string().uuid().optional(),
   iterationId: z.string().uuid().optional(),
   releaseId: z.string().uuid().optional(),
@@ -214,6 +216,9 @@ export const CreateTaskSchema = z.object({
   description: z.string().max(50000).optional(),
   state: z.enum(['defined', 'in_progress', 'completed']).optional(),
   assigneeId: z.string().uuid().optional(),
+  // The second responsibility, offered at birth exactly like `assigneeId` — `work.tasks` carries its
+  // own column since migration 0127 and `P4-NOTIF-DC-012` notifies on either.
+  devOwnerId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
   // No `iterationId`. A Task inherits its Iteration through its parent Story/Defect and has "no
   // independent Iteration selector" (P1-TASK-011, P2-IS-024) — so the contract does not advertise a

@@ -46,6 +46,7 @@ export type IterationFilterKey =
   | 'scheduleState'
   | 'isBlocked'
   | 'assigneeId'
+  | 'devOwnerId'
   | 'planEstimate'
   | 'taskEstimate'
   | 'toDo'
@@ -105,6 +106,18 @@ export function useIterationFilterFields({
         label: label('owner'),
         kind: 'select',
         defaultVisible: true,
+        options: [
+          { value: UNASSIGNED_OWNER, label: t('toolbar.unassigned') },
+          ...members.map((m) => ({ value: m.userId, label: m.displayName ?? m.userId })),
+        ],
+      },
+      {
+        // `P2-IS-FR-024` (BA 2026-08-22) adds Dev Owner to the dropdown filters beside Owner. Same
+        // option list — one candidate source for both fields — and the same `unassigned` sentinel,
+        // because SQL equality never matches NULL.
+        key: 'devOwnerId',
+        label: label('devOwner'),
+        kind: 'select',
         options: [
           { value: UNASSIGNED_OWNER, label: t('toolbar.unassigned') },
           ...members.map((m) => ({ value: m.userId, label: m.displayName ?? m.userId })),

@@ -332,6 +332,8 @@ export interface IterationStatusFilters {
   isBlocked?: 'true' | 'false'
   /** A user id, or `UNASSIGNED_OWNER` for rows with no owner (resolved server-side). */
   assigneeId?: string
+  /** The same, for the Dev Owner column (`P2-IS-FR-024`). Independent of `assigneeId`. */
+  devOwnerId?: string
   /**
    * Manage Filters column predicates (P2-IS-FR-022/023/024). Server-side, and
    * separate from `q` so quick search stays independent (P2-BL-TS-015, inherited).

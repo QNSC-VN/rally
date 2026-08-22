@@ -53,8 +53,18 @@ export interface IterationStatusItem {
   /** Rollup: child tasks in the Completed task-state (Task % numerator). */
   taskDone: number;
   assigneeId: string | null;
+  /**
+   * The owner's display name, joined server-side.
+   *
+   * The grid used to resolve it from a PICKER feed, and every picker feed narrows: a Workspace Admin
+   * holds no `project_members` row (§2.1) and is excluded from the project feed by AC-16, so an item
+   * they owned read `No Entry` while the id sat in the database. A name belongs to the row.
+   */
+  assigneeName: string | null;
   /** work_items.dev_owner_id — Rally "Dev Owner" (distinct from Owner/assignee). */
   devOwnerId: string | null;
+  /** As `assigneeName`, for the Dev Owner column. */
+  devOwnerName: string | null;
   rank: string;
   /** The linked Feature's id — the Feature column links to portfolio detail, not
    * to `/item/:key`: a Feature is a portfolio item, so no work-item key resolves it. */
@@ -82,6 +92,8 @@ export interface IterationStatusFilters {
    * Owner filters mean the same thing (P2-IS §5: "inherit Phase 2.1 patterns").
    */
   assigneeId?: string;
+  /** Dev Owner, filtered exactly like Owner including the UNASSIGNED sentinel (`P2-IS-FR-024`). */
+  devOwnerId?: string;
   /**
    * Manage Filters text/number column predicates (P2-IS-FR-022/023/024).
    * Each is a SERVER predicate, so a match past the first page is still found.

@@ -3322,6 +3322,8 @@ export interface components {
       avatarUrl: string | null
       /** @description Active team_members rows for Teams linked to this project */
       teamCount: number
+      /** @description TRUE for the synthesized, read-only Workspace Admin row: no project_members record exists, it is excluded from memberCount, and it offers no Access Level control and no Remove. */
+      isWorkspaceAdmin: boolean
     }
     ProjectMemberOptionResponseDto: {
       /** Format: uuid */
@@ -3361,6 +3363,9 @@ export interface components {
       flowState: string
       priority: string
       assigneeId: string | null
+      /** @description Owner display name, joined server-side on the grid reads. A picker feed cannot name a Workspace Admin (no project_members row, §2.1), so the row carries its own name. */
+      assigneeName: string | null
+      devOwnerName: string | null
       reporterId: string | null
       parentId: string | null
       teamId: string | null
@@ -3560,6 +3565,8 @@ export interface components {
       state?: 'defined' | 'in_progress' | 'completed'
       /** Format: uuid */
       assigneeId?: string
+      /** Format: uuid */
+      devOwnerId?: string
       /** Format: uuid */
       teamId?: string
       estimateHours?: number
@@ -3949,7 +3956,10 @@ export interface components {
         taskTotal: number
         taskDone: number
         assigneeId: string | null
+        /** @description Owner display name, joined server-side — a picker feed cannot name a Workspace Admin */
+        assigneeName: string | null
         devOwnerId: string | null
+        devOwnerName: string | null
         rank: string
         featureId: string | null
         featureKey: string | null
@@ -8399,6 +8409,7 @@ export interface operations {
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
         assigneeId?: string | 'unassigned'
+        devOwnerId?: string | 'unassigned'
         teamId?: string
         iterationId?: string
         releaseId?: string
@@ -8527,6 +8538,7 @@ export interface operations {
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         priority?: 'none' | 'low' | 'normal' | 'high' | 'urgent'
         assigneeId?: string | 'unassigned'
+        devOwnerId?: string | 'unassigned'
         teamId?: string
         iterationId?: string
         releaseId?: string
@@ -11479,6 +11491,7 @@ export interface operations {
         scheduleState?: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         isBlocked?: 'true' | 'false'
         assigneeId?: string | 'unassigned'
+        devOwnerId?: string | 'unassigned'
         itemKey?: string
         title?: string
         planEstimate?: '' | string

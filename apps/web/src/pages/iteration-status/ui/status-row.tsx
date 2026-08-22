@@ -104,10 +104,19 @@ export function StatusRow({
   const navigate = useNavigate()
   const update = useUpdateWorkItem(item.id)
   const setMilestones = useSetWorkItemMilestones(item.id)
+  /**
+   * The ROW names its own owner; `memberMap` is only the fallback.
+   *
+   * Resolving a name from a picker feed cannot work in general — `member-options` for a project
+   * excludes Workspace Admins (AC-16) and the workspace directory narrows a non-admin to their own
+   * projects' members and leads, so a Workspace Admin owner had no name source and the cell read
+   * `No Entry` while the value sat in the database. The read model joins `assigneeName` /
+   * `devOwnerName` now; the map stays as the fallback for rows served by an older response.
+   */
   const member = item.assigneeId ? memberMap.get(item.assigneeId) : undefined
-  const ownerName = member?.displayName ?? member?.email ?? null
+  const ownerName = item.assigneeName ?? member?.displayName ?? member?.email ?? null
   const devOwner = item.devOwnerId ? memberMap.get(item.devOwnerId) : undefined
-  const devOwnerName = devOwner?.displayName ?? devOwner?.email ?? null
+  const devOwnerName = item.devOwnerName ?? devOwner?.displayName ?? devOwner?.email ?? null
 
   // Narrowed locals so closures below keep the non-null type.
   const featureId = item.featureId
@@ -567,7 +576,8 @@ export function StatusRow({
           {taskFeed.phase === 'ready' &&
             childTasks.map((task) => {
               const taskMember = task.assigneeId ? memberMap.get(task.assigneeId) : undefined
-              const taskOwner = taskMember?.displayName ?? taskMember?.email ?? 'Unassigned'
+              const taskOwner =
+                task.assigneeName ?? taskMember?.displayName ?? taskMember?.email ?? 'Unassigned'
               return (
                 <ChildTaskRow
                   key={task.id}
@@ -635,7 +645,8 @@ function ChildTaskRow({
     save({ devOwnerId: userId }, t('row.devOwnerUpdated'))
 
   const devOwnerMember = task.devOwnerId ? memberMap.get(task.devOwnerId) : undefined
-  const taskDevOwnerName = devOwnerMember?.displayName ?? devOwnerMember?.email ?? null
+  const taskDevOwnerName =
+    task.devOwnerName ?? devOwnerMember?.displayName ?? devOwnerMember?.email ?? null
 
   return (
     <div

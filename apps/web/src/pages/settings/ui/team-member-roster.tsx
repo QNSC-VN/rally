@@ -22,19 +22,21 @@
  *    scopes membership to, and the team picker, capacity eligibility and every assignment surface
  *    already hide an archived team, so growing one is a membership nobody can use.
  */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Loader2, UserMinus, UserPlus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   useAddTeamMember,
+  useProjectMembers,
   useRemoveTeamMember,
   useTeamMembers,
   type Team,
   type TeamMember,
 } from '@/features/teams/api'
 import { useWorkspaceMembers } from '@/features/workspaces/api'
-import { SearchableSelect, type SelectOption } from '@/shared/ui/searchable-select'
-import { memberSelectOption, OwnerAvatar } from '@/shared/ui/owner-cell'
+import { Button } from '@/shared/ui/button'
+import { SelectionModal, type SelectionItem } from '@/shared/ui/selection-modal'
+import { OwnerAvatar } from '@/shared/ui/owner-cell'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
 import { WorkspaceAdminBadge } from '@/shared/ui/workspace-admin-badge'
@@ -50,10 +52,13 @@ function teamMemberLabel(m: TeamMember): string {
 export function TeamMemberRoster({
   team,
   workspaceId,
+  projectId,
   isWA,
 }: {
   team: Team
   workspaceId: string | undefined
+  /** The project this roster is being managed FROM — the scope its add candidates come from. */
+  projectId: string
   isWA: boolean
 }) {
   const { t } = useTranslation('settings')
@@ -86,6 +91,7 @@ export function TeamMemberRoster({
           <AddTeamMemberControl
             team={team}
             workspaceId={workspaceId}
+            projectId={projectId}
             memberUserIds={members.map((m) => m.userId)}
           />
         )}
@@ -164,73 +170,102 @@ export function TeamMemberRoster({
 }
 
 /**
- * The ADD half — one pick, one write, no default selection.
+ * The ADD half — an `Add` button and a modal, and candidates scoped to THIS PROJECT.
  *
- * Candidates are every ACTIVE workspace member not already on the roster, Workspace Admins
- * INCLUDED. That inclusion is the reversed half of §2.1 (see `project-teams-tab.tsx`). A Workspace
- * Admin candidate carries the same shield glyph the badge uses and matches a search for `Workspace
- * Admin`, so the person choosing can tell before the pick that this grants operational scope and no
- * project access level.
+ * Both halves are BA report 2026-08-21. It was an inline popover over every active WORKSPACE member,
+ * so on a project with no members of its own the picker still offered all four workspace users and
+ * "users who do not belong to Project X are exposed as Team member candidates". A team roster row is
+ * project-scoped work — RBE-06 even GRANTS project access from it — so offering an outsider was the
+ * picker promising something the project's own access list never said.
+ *
+ * WHO IS ELIGIBLE: active users holding access to this project, plus active Workspace Admins, minus
+ * anyone already on the roster. The Workspace Admins are in because their authority IS the
+ * workspace-wide grant (§2.1 keeps them off `project_members`, migration 0118 deletes such rows), so a
+ * project-membership test would exclude exactly the principals the 2026-08-20 Workspace-Admin-on-a-Team
+ * feature exists for — and the same BA report shows them as a row on that project's own Users &
+ * Permissions list. They keep the badge word in their search text, so the reader can tell before the
+ * pick that this grants operational scope and no project access level.
+ *
+ * `SelectionModal` rather than a hand-rolled dialog: it already owns the search box, the disabled-row
+ * treatment and the empty state the report asks for. Its multi-select is a bonus the inline control
+ * could not offer — staffing a team is rarely one person — and each pick is still one explicit write.
+ *
+ * The SERVER refuses an ineligible user independently (`TEAM_MEMBER_NOT_PROJECT_MEMBER`), which is the
+ * half a narrowed picker cannot provide.
  */
 function AddTeamMemberControl({
   team,
   workspaceId,
+  projectId,
   memberUserIds,
 }: {
   team: Team
   workspaceId: string | undefined
+  projectId: string
   memberUserIds: readonly string[]
 }) {
   const { t } = useTranslation('settings')
+  const [open, setOpen] = useState(false)
+  const { data: projectMembers = [] } = useProjectMembers(projectId)
   const { data: wsMembers = [] } = useWorkspaceMembers(workspaceId)
   const addMember = useAddTeamMember(team.id)
-  const existing = new Set(memberUserIds)
   const adminLabel = t('access.workspaceAdmin')
-  const candidates: SelectOption[] = wsMembers
-    .filter((m) => m.status === 'active' && !existing.has(m.userId))
-    .map((m) => {
-      const isWorkspaceAdmin = m.roleSlug === 'workspace_admin'
-      // Every candidate gets the avatar; a Workspace Admin additionally MATCHES the badge word, so
-      // searching "Workspace Admin" finds them. Previously only they carried a glyph — a shield — which
-      // made an ordinary member look like a row with something missing rather than a different kind.
-      return memberSelectOption(m, {
-        extraSearch: isWorkspaceAdmin ? adminLabel : undefined,
+
+  const candidates: SelectionItem[] = useMemo(() => {
+    // Built INSIDE the memo: a Set constructed in the body is a new reference every render, so it
+    // would defeat the memo it is a dependency of.
+    const existing = new Set(memberUserIds)
+    const rows = new Map<string, SelectionItem>()
+    for (const m of projectMembers) {
+      if (m.status !== 'active' || existing.has(m.userId)) continue
+      rows.set(m.userId, {
+        id: m.userId,
+        name: m.displayName ?? m.email ?? m.userId,
+        icon: <OwnerAvatar name={m.displayName ?? m.email ?? m.userId} size={16} />,
+        meta: m.email ?? undefined,
       })
-    })
+    }
+    for (const a of wsMembers) {
+      if (a.roleSlug !== 'workspace_admin' || a.status !== 'active') continue
+      if (existing.has(a.userId)) continue
+      const name = a.displayName ?? a.email ?? a.userId
+      rows.set(a.userId, {
+        id: a.userId,
+        name,
+        icon: <OwnerAvatar name={name} size={16} />,
+        // The badge word, so the reader sees WHY this person is eligible without a project row.
+        meta: adminLabel,
+      })
+    }
+    return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [projectMembers, wsMembers, memberUserIds, adminLabel])
 
-  if (candidates.length === 0) {
-    return <p className="text-ui-xs text-foreground-subtle">{t('teams.addMemberNoCandidates')}</p>
-  }
-
-  function add(userId: string) {
-    if (!userId) return
-    const name = candidates.find((c) => c.value === userId)?.label ?? userId
-    addMember.mutate(userId, {
-      onSuccess: () => notify.success(t('teams.addMemberAdded', { name, team: team.name })),
-      onError: (e) => notify.fromError(e, t('teams.addMemberError')),
-    })
+  async function addAll(userIds: string[]) {
+    // Sequential, not `Promise.all`: each add re-reads the roster and may grant project access
+    // (RBE-06), and a failure part-way must leave the successful ones written rather than racing.
+    for (const userId of userIds) {
+      await addMember.mutateAsync(userId)
+    }
+    notify.success(t('teams.addMemberAdded', { name: `${userIds.length}`, team: team.name }))
   }
 
   return (
-    <div className="flex w-64 items-center gap-2">
-      {addMember.isPending ? (
-        <Loader2 size={13} className="animate-spin text-foreground-subtle" />
-      ) : (
-        <UserPlus size={13} className="shrink-0 text-foreground-subtle" />
+    <>
+      <Button type="button" size="sm" variant="secondary" onClick={() => setOpen(true)}>
+        <UserPlus size={13} /> {t('teams.addMember')}
+      </Button>
+      {open && (
+        <SelectionModal
+          open={open}
+          onClose={() => setOpen(false)}
+          title={t('teams.addMemberModalTitle', { team: team.name })}
+          searchPlaceholder={t('teams.addMemberSearch')}
+          confirmLabel={t('teams.addMemberConfirm')}
+          items={candidates}
+          selectedIds={[]}
+          onSave={addAll}
+        />
       )}
-      {/* `value=''` always: this is an ACTION, not a field — the pick fires the write and the
-          control returns to its placeholder, so it never claims to hold a current value. */}
-      <SearchableSelect
-        variant="field"
-        dense
-        value=""
-        readOnly={addMember.isPending}
-        ariaLabel={t('teams.addMember')}
-        placeholder={t('teams.addMemberPlaceholder')}
-        searchPlaceholder={t('teams.addMemberSearch')}
-        options={candidates}
-        onChange={(v) => add(v as string)}
-      />
-    </div>
+    </>
   )
 }
