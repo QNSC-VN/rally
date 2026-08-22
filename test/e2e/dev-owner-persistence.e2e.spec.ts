@@ -124,7 +124,12 @@ describe('Dev Owner persistence (GAP-P2-IS-004)', () => {
     // The reload, through the feed the Tasks tab actually reads.
     const tasks = await authed('GET', `/work-items/${NXP_STORY_1_ID}/tasks`);
     expect(tasks.statusCode).toBe(200);
-    const row = tasks.json().find((t) => t.id === created.json().id);
+    // A typed LOCAL, not an inline `as` on the call: the pre-commit `eslint --fix` strips a redundant
+    // assertion and leaves `.find` walking `any`, which CI's stricter test typecheck then rejects
+    // (CLAUDE.md records this exact trap).
+    const taskRows: Array<{ id: string; devOwnerId: string | null; devOwnerName: string | null }> =
+      tasks.json();
+    const row = taskRows.find((t) => t.id === created.json().id);
     expect(row?.devOwnerId).toBe(DEVELOPER_ID);
     // And NAMED, so the grid does not depend on a picker feed carrying the person.
     expect(row?.devOwnerName).toBeTruthy();
