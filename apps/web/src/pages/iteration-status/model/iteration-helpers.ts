@@ -52,3 +52,96 @@ export function iterationStatusTotals(rows: readonly TotalsRow[]): {
   }
   return { planEst, taskEst, toDoSum, count: rows.length }
 }
+
+/** A row's sortable fields, in the shape the comparator reads. */
+export type SortableStatusRow = {
+  rank: string
+  itemKey: string
+  title: string
+  scheduleState: string
+  isBlocked: boolean
+  planEstimate?: number | null
+  taskEstimate?: number | null
+  toDo?: number | null
+  assigneeName?: string | null
+  devOwnerName?: string | null
+}
+
+/**
+ * The value a column sorts on — `P2-IS-FR-025/026` and §286's `sortBy`.
+ *
+ * `null` means the row has no value for this column, and the comparator places those rows LAST in
+ * ascending order, matching the keyset rule every server-side grid in the app follows (ASC → NULLS
+ * LAST). Empty-string-as-zero would instead float unassigned rows to the top of an A-Z sort.
+ *
+ * Two mappings are worth stating:
+ *  - `flowState` returns the SCHEDULE state, because the Flow State cell reads and writes that same
+ *    field on this screen. One value, one ordering.
+ *  - `owner` / `devOwner` return the joined NAME, never the id. They used to compare `assigneeId` —
+ *    a uuid — so the header offered a sort and produced an order arbitrary to any reader, which is
+ *    indistinguishable from a broken one. Dev Owner had no mapping at all and its header was inert.
+ *
+ * `iteration` and `feature` are absent deliberately: this grid is scoped to ONE iteration, so every
+ * row's Iteration is the same value, and Feature is not in §286's list.
+ */
+export function statusSortValue(
+  row: SortableStatusRow,
+  column: string,
+): string | number | null | undefined {
+  switch (column) {
+    case 'rank':
+      return row.rank
+    case 'id':
+      return row.itemKey
+    case 'name':
+      return row.title.toLowerCase()
+    case 'scheduleState':
+    case 'flowState':
+      return row.scheduleState
+    case 'block':
+      return row.isBlocked ? 1 : 0
+    case 'planEstimate':
+      return row.planEstimate ?? null
+    case 'taskEstimate':
+      return row.taskEstimate ?? null
+    case 'toDo':
+      return row.toDo ?? null
+    case 'owner':
+      return row.assigneeName?.toLowerCase() ?? null
+    case 'devOwner':
+      return row.devOwnerName?.toLowerCase() ?? null
+    default:
+      // An unmapped column sorts nothing rather than ordering by an arbitrary key.
+      return undefined
+  }
+}
+
+/**
+ * Sort the rows of one iteration by a column, nulls last in ASC and first in DESC.
+ *
+ * Client-side on purpose: `useIterationStatus` follows the cursor and loads the WHOLE iteration
+ * (the Board view needs every row to allow drag), so the set being ordered is complete and a server
+ * `sortBy` would be a second definition of one ordering. That is also why the sort disables rank
+ * drag — the visual order stops being rank.
+ */
+export function sortStatusRows<T extends SortableStatusRow>(
+  rows: readonly T[],
+  column: string | null,
+  direction: 'asc' | 'desc',
+): readonly T[] {
+  if (!column) return rows
+  const dir = direction === 'asc' ? 1 : -1
+  const isAbsent = (v: unknown) => v === null || v === undefined
+  return [...rows].sort((a, b) => {
+    const va = statusSortValue(a, column)
+    const vb = statusSortValue(b, column)
+    if (isAbsent(va) && isAbsent(vb)) return 0
+    // Nulls last ascending, first descending — the shared keyset rule, so a column sorted here and
+    // the same column sorted by a server-side grid do not disagree about where blanks belong.
+    if (isAbsent(va)) return 1 * dir
+    if (isAbsent(vb)) return -1 * dir
+    if (va! < vb!) return -1 * dir
+    if (va! > vb!) return 1 * dir
+    return 0
+  })
+}

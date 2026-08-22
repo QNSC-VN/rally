@@ -65,5 +65,5 @@ export const HEADER_META: DataTableHeaderColumn<ColKey>[] = [
   { key: 'actual', label: 'Actual', align: 'right' },
   { key: 'owner', label: 'Owner', sortCol: 'owner' },
   { key: 'milestones', label: 'Milestones' },
-  { key: 'devOwner', label: 'Dev Owner' },
+  { key: 'devOwner', label: 'Dev Owner', sortCol: 'devOwner' },
 ]

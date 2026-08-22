@@ -39,7 +39,7 @@ import { defaultIterationId } from '@/features/iterations/default-iteration'
 import { StatusRow } from './ui/status-row'
 import { AddItemModal } from './ui/add-item-modal'
 import { IterationHeader, MetricsStrip, Toolbar, TableFooterTotals } from './ui/iteration-chrome'
-import { computeTotalDays, iterationStatusTotals } from './model/iteration-helpers'
+import { computeTotalDays, iterationStatusTotals, sortStatusRows } from './model/iteration-helpers'
 import { type ColKey, ITERATION_STATUS_COLUMNS, HEADER_META } from './model/columns'
 import { useIterationFilterFields, toIterationStatusQuery } from './model/filter-fields'
 import { useManageFilters } from '@/features/work-items/model/manage-filters'
@@ -202,57 +202,10 @@ export function IterationStatusPage() {
 
   // No client-side filter pass: `items` IS the filtered set, because every
   // Manage Filters field and the quick search are server predicates.
-  const sortedItems = useMemo(() => {
-    if (!sortCol) return items
-    const dir = sortDir === 'asc' ? 1 : -1
-    return [...items].sort((a, b) => {
-      let va: string | number
-      let vb: string | number
-      switch (sortCol) {
-        case 'rank':
-          va = a.rank
-          vb = b.rank
-          break
-        case 'id':
-          va = a.itemKey
-          vb = b.itemKey
-          break
-        case 'name':
-          va = a.title.toLowerCase()
-          vb = b.title.toLowerCase()
-          break
-        case 'scheduleState':
-          va = a.scheduleState
-          vb = b.scheduleState
-          break
-        case 'block':
-          va = a.isBlocked ? 1 : 0
-          vb = b.isBlocked ? 1 : 0
-          break
-        case 'planEstimate':
-          va = a.planEstimate ?? 0
-          vb = b.planEstimate ?? 0
-          break
-        case 'taskEstimate':
-          va = a.taskEstimate ?? 0
-          vb = b.taskEstimate ?? 0
-          break
-        case 'toDo':
-          va = a.toDo ?? 0
-          vb = b.toDo ?? 0
-          break
-        case 'owner':
-          va = a.assigneeId ?? ''
-          vb = b.assigneeId ?? ''
-          break
-        default:
-          return 0
-      }
-      if (va < vb) return -1 * dir
-      if (va > vb) return 1 * dir
-      return 0
-    })
-  }, [items, sortCol, sortDir])
+  const sortedItems = useMemo(
+    () => sortStatusRows(items, sortCol, sortDir),
+    [items, sortCol, sortDir],
+  )
 
   // ── Client-side pagination ──────────────────────────────────────────────
   // An iteration is a bounded dataset (the fetch loads the full sprint), so we
