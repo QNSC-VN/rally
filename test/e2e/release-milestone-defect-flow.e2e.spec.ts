@@ -23,7 +23,7 @@ import { ReleasesService } from '@modules/releases';
 import { WorkItemsService } from '@modules/work-items';
 import { TeamService } from '@modules/workspace';
 
-import { ALL, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
+import { ALL, SEEDED, adminActor, bootRallyApp, uniqueKey } from './support/flow-harness';
 
 describe('BA flows: releases + milestones + defect lifecycle (real AppModule + seeded DB)', () => {
   let app: NestFastifyApplication;
@@ -345,12 +345,12 @@ describe('BA flows: releases + milestones + defect lifecycle (real AppModule + s
        * soft-deleted, so nothing dangled either way — the cascade only made the delete partly
        * irreversible. Asserted from the SURVIVING item, because the deleted one is unreadable.
        */
-      const project = await projects.createProject(actor, {
-        key: uniqueKey(),
-        name: 'Defect Soft Delete',
-      });
-      const story = await workItems.createWorkItem(actor, project.id, 'story', 'Survivor story');
-      const defect = await workItems.createWorkItem(actor, project.id, 'defect', 'Linked defect');
+      // SEEDED.nxp, not a fresh project: `test/e2e-fixtures.ratchet.spec.ts` caps the suite's
+      // `createProject` count and may only ever let it fall, and nothing here needs a project of
+      // its own — the rule under test is about one item's own relations.
+      const projectId = SEEDED.nxp.projectId;
+      const story = await workItems.createWorkItem(actor, projectId, 'story', 'Survivor story');
+      const defect = await workItems.createWorkItem(actor, projectId, 'defect', 'Linked defect');
       await workItems.linkWorkItem(actor, defect.id, story.id, 'relates_to');
 
       // The premise: the link is visible from both ends before the delete.

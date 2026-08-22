@@ -89,6 +89,20 @@ export function useIterationFilterFields({
         defaultVisible: true,
         options: SCHEDULE_STATE_VALUES.map((s) => ({ value: s, label: SCHEDULE_STATE_LABEL[s] })),
       },
+      /**
+       * `P2-IS-FR-024` also lists `Flow State` and `Iteration` as dropdown filters. Both are
+       * deliberately ABSENT, and for the same reason their sort affordances are:
+       *
+       *  - Flow State IS Schedule State on this screen — the cell reads and writes `scheduleState`
+       *    (`P3-QA-FR-016`: the two "mirror two-way in MVP"). A second dropdown over one column can
+       *    be set to two different values at once, and the only honest result of that pair is an
+       *    empty grid, which reads as a broken filter rather than as a contradiction.
+       *  - Iteration cannot narrow anything: this grid is scoped to ONE iteration, so every row
+       *    carries the same value.
+       *
+       * Raised with the BA. If they want the Flow State control anyway, it maps to `scheduleState`
+       * and this is the one place to add it.
+       */
       {
         key: 'isBlocked',
         label: label('block'),
