@@ -136,3 +136,23 @@ export const WatcherResponseSchema = z.object({
 });
 
 export class WatcherResponseDto extends createZodDto(WatcherResponseSchema) {}
+
+// ── Parent Story reference feed ───────────────────────────────────────────────
+
+/**
+ * The Story REFERENCE feed's row — the picker behind a Defect's `Parent Story` field.
+ *
+ * A separate schema, not a `.pick()` of {@link WorkItemResponseSchema}, for the same reason
+ * `PortfolioFeatureOptionSchema` is: a field added to the record shape must not silently join a
+ * feed that a wider audience reads.
+ */
+export const StoryOptionSchema = z.object({
+  id: z.string().uuid(),
+  itemKey: z.string().describe('US-<n>, unique across the workspace'),
+  title: z.string(),
+  projectId: z.string().uuid().describe('Always the requested project; echoed for binding'),
+});
+
+export class StoryOptionResponseDto extends createZodDto(StoryOptionSchema) {}
+
+export type StoryOptionResponseDtoShape = z.infer<typeof StoryOptionSchema>;

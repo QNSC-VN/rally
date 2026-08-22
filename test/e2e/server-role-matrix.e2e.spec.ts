@@ -54,6 +54,7 @@ import { AuthService, EntraTokenVerifier, type EntraClaims } from '@qnsc-vn/iden
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
+import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import { WORKSPACE_ID } from '../../db/seeds/constants';
 import { ADMIN_USER_ID, grantProjectAccess, SEEDED } from './support/flow-harness';
 
@@ -137,9 +138,9 @@ describe('server role matrix (e2e)', () => {
 
     const claims: EntraClaims = {
       oid: `role-matrix-admin-${randomUUID()}`,
-      email: `role-matrix-admin-${randomUUID().slice(0, 8)}@qnsc.vn`,
+      email: `role-matrix-admin-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
       displayName: 'E2E Project Admin',
-      externalTenantId: 'dev-tenant',
+      externalTenantId: SSO_TENANT_ID,
       roles: [],
     };
     const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
@@ -341,7 +342,7 @@ describe('server role matrix (e2e)', () => {
         },
         (role) =>
           request(role, 'POST', `/workspaces/${randomUUID()}/invitations`, {
-            email: `role-matrix-${randomUUID().slice(0, 8)}@qnsc.vn`,
+            email: `role-matrix-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
           }).then((r) => r.statusCode),
       ),
     );

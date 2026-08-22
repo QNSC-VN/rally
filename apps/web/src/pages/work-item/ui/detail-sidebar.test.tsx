@@ -23,6 +23,7 @@ const recordProject = vi.fn()
 const assignableIterations = vi.fn()
 const iterationOptions = vi.fn()
 const teamScope = vi.fn()
+const storyOptions = vi.fn()
 
 vi.mock('@/features/teams/api', () => ({
   useProjectTeams: () => ({ data: [{ id: 'team-1', name: 'Team Alpha', key: 'TA' }] }),
@@ -42,7 +43,7 @@ vi.mock('@/features/work-items/api', () => ({
   useWorkItemMilestones: () => ({ data: [] }),
   useSetWorkItemMilestones: () => ({ mutateAsync: vi.fn() }),
   useTaskTotals: () => ({ data: undefined }),
-  useBacklog: () => ({ data: undefined }),
+  useStoryOptions: (...args: unknown[]) => storyOptions(...args),
 }))
 vi.mock('@/features/releases/api', () => ({ useReleases: () => ({ data: [] }) }))
 vi.mock('@/features/portfolio/api', () => ({
@@ -103,6 +104,7 @@ function setup() {
   iterationOptions.mockReturnValue({ data: [] })
   // An admin by default — the caller who may still move an item to the Project Backlog.
   teamScope.mockReturnValue({ unrestricted: true, teamRequired: false, isLoading: false })
+  storyOptions.mockReturnValue({ data: [] })
 }
 
 function renderSidebar(over: Partial<WorkItem> = {}) {
@@ -319,5 +321,57 @@ describe('DetailSidebar — the Project Backlog is admin-only (BA ruling 2026-08
 
     const options = openOptions('Team')
     expect(has(options, 'No team')).toBe(true)
+  })
+})
+
+describe('DetailSidebar — Parent Story offers a SCHEDULED Story (BA repro 2026-08-21)', () => {
+  /**
+   * The BA's repro: with DE-10 open, the Parent Story field showed only `No parent story` and
+   * searching `US-2` answered `No matches`, so a Defect could not be traced to its User Story.
+   *
+   * The cause was the FEED, not this component: all three Parent Story surfaces read
+   * `useBacklog(projectId, { type: 'story' })`, and the Backlog is defined by
+   * `iteration_id IS NULL`, so every Story already pulled into a sprint was absent from the
+   * options — and `SearchableSelect` filters the options it was HANDED, which is why the search
+   * said "No matches" rather than showing nothing at all.
+   *
+   * So the property worth pinning here is which HOOK feeds it, with which project, and that a Story
+   * that hook returns is offered and patched through. `vi.mock` with a factory means a drift back
+   * onto `useBacklog` cannot even import.
+   */
+  it("reads the Story reference feed for the ITEM's project, and offers a sprint-scheduled Story", () => {
+    setup()
+    const onUpdate = vi.fn()
+    storyOptions.mockReturnValue({
+      data: [
+        { id: 'us-2', itemKey: 'US-2', title: 'Reset password', projectId: 'proj-record' },
+        { id: 'us-9', itemKey: 'US-9', title: 'Audit trail', projectId: 'proj-record' },
+      ],
+    })
+    render(
+      <DetailSidebar
+        item={item({ type: 'defect', parentId: null })}
+        onUpdate={onUpdate}
+        updating={false}
+        readOnly={false}
+      />,
+    )
+
+    // The DEFECT's own project, not `useAppContext()`'s selection — the two differ on a deep link.
+    expect(storyOptions).toHaveBeenCalledWith('proj-record')
+
+    const options = openOptions('Parent Story')
+    expect(has(options, 'US-2')).toBe(true)
+    expect(has(options, 'US-9')).toBe(true)
+    // Unparenting stays available: a Defect MAY have no parent, unlike a Task.
+    expect(has(options, 'No parent story')).toBe(true)
+
+    const list = screen.getByRole('dialog')
+    fireEvent.click(
+      within(list)
+        .getAllByRole('button')
+        .find((b) => (b.textContent ?? '').includes('US-2'))!,
+    )
+    expect(onUpdate).toHaveBeenCalledWith({ parentId: 'us-2' })
   })
 })

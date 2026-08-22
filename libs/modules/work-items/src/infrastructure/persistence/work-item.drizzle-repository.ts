@@ -48,8 +48,9 @@ import type {
   TaskTotals,
   MyWorkItem,
   WorkspaceSummary,
+  StoryOption,
 } from '../../domain/work-item.types';
-import { UNASSIGNED_FILTER } from '../../domain/work-item.types';
+import { UNASSIGNED_FILTER, STORY_OPTIONS_LIMIT } from '../../domain/work-item.types';
 import { teamRowFilter } from '../../domain/team-read-scope';
 import type { TeamReadScope, ProjectTeamScope } from '../../domain/team-read-scope';
 import { IWorkItemRepository, IterationScope } from '../../domain/ports/work-item.repository';
@@ -557,6 +558,49 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
       direction,
       Number(countRow?.total ?? 0),
     );
+  }
+
+  /**
+   * The Story REFERENCE feed for one project — see the port's docblock for why it is not
+   * `listBacklog`.
+   *
+   * The predicate set is exactly the write path's own eligibility rule (`createWorkItem` /
+   * `updateWorkItem`): same project, `type = 'story'`, not soft-deleted. Nothing else. In
+   * particular there is NO `iteration_id` predicate (that one belongs to the Backlog screen) and
+   * no `schedule_state` predicate — a Defect is most often raised AGAINST accepted work, so
+   * hiding accepted Stories would withhold the commonest parent while the API kept accepting it.
+   *
+   * Ordered by `item_key`, not rank: rank orders a planning grid, while a picker is scanned for a
+   * known `US-<n>`. A total order also makes the `STORY_OPTIONS_LIMIT` cut deterministic.
+   */
+  async listStoryOptions(
+    projectId: string,
+    workspaceId: string,
+    teamScope: TeamReadScope,
+  ): Promise<StoryOption[]> {
+    const team = this.teamConditions(teamScope);
+    // An Editor with no active Team in this project reads no work rows at all, so the picker is
+    // empty — the same short-circuit every other read takes, never `inArray(col, [])`.
+    if (team === null) return [];
+    return this.db
+      .select({
+        id: workItems.id,
+        itemKey: workItems.itemKey,
+        title: workItems.title,
+        projectId: workItems.projectId,
+      })
+      .from(workItems)
+      .where(
+        and(
+          eq(workItems.projectId, projectId),
+          eq(workItems.workspaceId, workspaceId),
+          isNull(workItems.deletedAt),
+          eq(workItems.type, 'story'),
+          ...team,
+        ),
+      )
+      .orderBy(asc(workItems.itemKey), asc(workItems.id))
+      .limit(STORY_OPTIONS_LIMIT);
   }
 
   /**

@@ -17,6 +17,7 @@ import { AccessService } from '@modules/access';
 import { ACCESS_LEVEL_PERMISSIONS, permissionGrants } from '@shared-kernel';
 
 import { AppModule } from '../../apps/api/src/app.module';
+import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import {
   ADMIN_USER_ID,
   DEVELOPER_ID,
@@ -184,9 +185,9 @@ describe('authorization cluster (e2e)', () => {
      */
     const claims: EntraClaims = {
       oid: `timebox-admin-${randomUUID()}`,
-      email: `timebox-admin-${randomUUID().slice(0, 8)}@qnsc.vn`,
+      email: `timebox-admin-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
       displayName: 'E2E Timebox Admin',
-      externalTenantId: 'dev-tenant',
+      externalTenantId: SSO_TENANT_ID,
       roles: [],
     };
     const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');

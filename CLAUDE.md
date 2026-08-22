@@ -24,6 +24,94 @@ pnpm start:dev                                   # API with watch
 pnpm --filter rally-web dev                      # SPA (proxies /v1 → API)
 ```
 
+## Commands
+
+Backend commands run from the repo root (the backend IS the root package); the SPA is the
+only pnpm workspace member, so it is reached with `--filter rally-web`.
+
+```bash
+export NODE_AUTH_TOKEN="$(gh auth token)"   # @qnsc-vn/* live on GitHub Packages (read:packages)
+pnpm install                                # root (backend) + apps/web
+
+pnpm build                                  # nest build api + worker
+pnpm build:web                              # tsc -b && vite build
+pnpm lint                                   # {apps/api,apps/worker,libs,db}/**/*.ts — run this, not path-scoped eslint
+pnpm typecheck                              # tsc --noEmit (use `tsc -b --force` for cross-package changes)
+
+pnpm test                                   # backend unit (vitest)
+pnpm test:cov                               # coverage — floors are a ratchet, see below
+pnpm test:e2e                               # backend e2e (test/vitest.e2e.config.ts) — resets the DB
+pnpm --filter rally-web test                # SPA unit (vitest + testing-library)
+pnpm --filter rally-web test:e2e            # Playwright
+```
+
+One test / one case:
+
+```bash
+pnpm vitest run libs/modules/work-items/src/application/work-items.service.spec.ts
+pnpm vitest run -t "refuses a cross-project move"
+pnpm vitest run --config test/vitest.e2e.config.ts test/e2e/editor-team-scope.e2e.spec.ts
+pnpm --filter rally-web exec vitest run src/pages/portfolio/portfolio-page.test.tsx
+pnpm --filter rally-web exec playwright test golden-journey --headed
+```
+
+Database:
+
+```bash
+pnpm db:migrate            # migrations + bootstrap seed (see the seeding note below)
+pnpm db:seed               # demo fixtures on top
+pnpm db:seed:test          # RESETS, then seeds fixtures — run after a BE e2e run, before Playwright
+pnpm db:studio             # drizzle-kit studio
+pnpm --filter rally-web codegen   # regenerate the API client from a RUNNING local API
+```
+
+Ordering that bites: a BE e2e run truncates at its START and leaves debris, Playwright and a manual
+session both die under that truncation, and `codegen` needs a freshly restarted API. All three are
+expanded in the section below.
+
+## Architecture
+
+Four deployables from one repo, sharing `libs/` and `db/`:
+
+- **`apps/api`** — NestJS 11 on Fastify. Thin: it composes modules from `libs/modules/*` and owns
+  bootstrap (CSP, Swagger opt-in, the global exception filter that maps `@platform` domain
+  exceptions to HTTP).
+- **`apps/worker`** — a second Nest app over the same modules. It owns the CRON and RELAY loops:
+  the report snapshot job (`cron/`), the email relay, the Entra guest-invite relay, the notification
+  outbox, audit and SCM. Anything periodic or outbox-draining lives here, never in the API — and a
+  running worker is a competing consumer of the same outbox tables the BE e2e suite waits on.
+- **`apps/web`** — React 19 + Vite SPA in Feature-Sliced Design (`app / pages / widgets / features /
+entities / shared`). Its API client is GENERATED from `/api/docs-json` and COMMITTED. Browser auth is
+  BFF: the SPA holds no tokens and talks to `apps/web/functions/v1/[[path]].ts` (a Cloudflare Pages
+  Function) which proxies to the API with an opaque session cookie.
+- **`db/`** — Drizzle schema, hand-written migrations, seeds, and `permissions.catalog.ts`. It ships
+  as its own migrator image, which is why the catalogue lives outside `libs/`.
+
+**A domain module is four layers**, and the direction is inward
+(`libs/modules/<name>/src/{interface,application,domain,infrastructure}`):
+
+| layer            | holds                                                          |
+| ---------------- | -------------------------------------------------------------- |
+| `interface/http` | controllers, `@RequirePermission`, zod DTOs (the OpenAPI shape) |
+| `application`    | services — business rules, transactions, cache invalidation     |
+| `domain/ports`   | repository interfaces the service depends on                    |
+| `infrastructure` | Drizzle implementations of those ports                          |
+
+Cross-module code goes to `libs/shared-kernel` (pure domain types, the permission re-export),
+`libs/platform` (config/env schema, HTTP concerns, CSRF, observability façades) or `libs/contracts`.
+Modules import each other by ALIAS (`@modules/access`), never by relative path — and deep-import when
+a barrel would close a cycle (`WorkspaceService` → `ApiTokensService`).
+
+**Three facts decide most backend changes**, each detailed in its own section below:
+
+1. `libs/modules/access` is the single authorization decision point — `PolicyGuard` plus
+   `AccessService` (`listReadableProjectIds`, `resolveTeamScope`, `assertTeamInScope`). No other
+   module may re-implement a scope rule.
+2. Permissions come from the DATABASE on every check, never from the token, and a new permission
+   code needs a backfill migration as well as a catalogue entry.
+3. Test gates are RATCHETS, not targets — coverage floors, route-policy counts, FE consistency,
+   e2e fixture counts. They may only move one way, and they must be re-measured when raised.
+
 ## Tooling behaviour that surprises people
 
 - **`pnpm db:migrate` also seeds.** It runs the tenant bootstrap seed, not just
@@ -549,6 +637,35 @@ two automatic moves:
   not, so estimating an existing task left To Do empty and the number had to be typed twice.
 - **Completing a task sets To Do to 0**, and **reopening does NOT restore it** — the owner enters a new
   remaining value if there is one. This replaces the older `Estimate = To Do + Actual` display rule.
+
+## A picker feeds from the WRITE's rule, never from a screen's
+
+BA repro, Production, 2026-08-21: a Defect's `Parent Story` field offered nothing but
+`No parent story`, and searching a Story's key answered `No matches`, so no Defect could be traced
+to the User Story it was found against. All three Parent Story surfaces — the detail sidebar, Create
+Work Item, and Log Defect — read `GET /work-items/backlog?type=story`.
+
+- **The Backlog is a SCREEN, and `iteration_id IS NULL` is its defining rule** (see `listBacklog`,
+  which explains why). `updateWorkItem` has no such rule: it accepts any non-deleted Story in the
+  same project. So every Story already pulled into a sprint — the ones a Defect is most often raised
+  against — was withheld from a picker whose own server would have taken it. The 50-row first page
+  was a second, quieter cap on the same feed.
+- **"No matches" was the symptom, not a search bug.** `SearchableSelect` filters the options it was
+  HANDED, so a missing option and a broken search are the same fault seen twice. Read a picker's
+  emptiness as a question about its FEED before touching the control.
+- **`GET /work-items/story-options` is the fix** — the Story REFERENCE feed, mirroring
+  `GET /portfolio-items/options` exactly: unpaged (a paged picker omits options past its first page
+  without saying so), no schedule-state filter (a Defect against shipped work needs an ACCEPTED
+  parent), `work_item:view` gated by the guard on the required `projectId`, and team-scoped in the
+  service because that is a row boundary the guard cannot express. Declared ABOVE `@Get(':id')`, or
+  Nest routes it into `ParseUUIDPipe` as a 400.
+- **This is the Story analogue of "an iteration is assignable by SCOPE, never by LIFECYCLE"**
+  (P6-VEL-004, above). Same shape, different field: a feed narrower than the write it feeds makes
+  half a documented rule unreachable, and it presents as a persistence or search bug rather than as a
+  missing option. When a picker and a write path disagree, the WRITE is the contract.
+- Pinned over real HTTP in `test/e2e/parent-story-feed.e2e.spec.ts` (population, team scope, and the
+  picker-offers-what-the-write-accepts round trip). A service spec cannot see it: the repository is
+  mocked, so no predicate is exercised.
 
 ## A Task's Iteration is DERIVED, not cascaded
 

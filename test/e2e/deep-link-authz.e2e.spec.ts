@@ -39,6 +39,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ACCESS_LEVEL_PERMISSIONS } from '@shared-kernel';
 import { AppModule } from '../../apps/api/src/app.module';
+import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import { SEEDED, grantProjectAccess } from './support/flow-harness';
 
 /**
@@ -91,9 +92,9 @@ describe('deep-link authorization (e2e)', () => {
   async function newPrincipal(): Promise<{ token: string; userId: string }> {
     const claims: EntraClaims = {
       oid: `deep-link-${randomUUID()}`,
-      email: `deep-link-${randomUUID().slice(0, 8)}@qnsc.vn`,
+      email: `deep-link-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
       displayName: 'E2E Deep Link Reader',
-      externalTenantId: 'dev-tenant',
+      externalTenantId: SSO_TENANT_ID,
       roles: [],
     };
     const session = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');

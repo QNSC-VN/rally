@@ -105,16 +105,23 @@ overrides:
   #   8.x — testcontainers          (patched in 8.9.0)
   "undici@>=7.0.0 <7.29.0": ">=7.29.0 <8.0.0"
   "undici@>=8.0.0 <8.9.0": ">=8.9.0"
+# pnpm 11 wrote this block during its migration and left every value as the literal
+# placeholder "set this to true or false". Unresolved, pnpm treats the decision as unmade,
+# refuses to run those postinstalls, and exits 1 with ERR_PNPM_IGNORED_BUILDS — and because
+# pnpm 11 runs an implicit `install` before every script, that failure blocks EVERY
+# `pnpm <script>` in this repo, `db:migrate` included. The values below mirror
+# `onlyBuiltDependencies` beneath, which is the allowlist this repo already committed;
+# they are not a new trust decision.
 allowBuilds:
-  '@scarf/scarf': set this to true or false
-  '@swc/core': set this to true or false
-  argon2: set this to true or false
-  cpu-features: set this to true or false
-  esbuild: set this to true or false
-  msw: set this to true or false
-  protobufjs: set this to true or false
-  ssh2: set this to true or false
-  unrs-resolver: set this to true or false
+  '@scarf/scarf': true
+  '@swc/core': true
+  argon2: true
+  cpu-features: true
+  esbuild: true
+  msw: true
+  protobufjs: true
+  ssh2: true
+  unrs-resolver: true
 onlyBuiltDependencies:
   - '@scarf/scarf'
   - '@swc/core'

@@ -7,6 +7,7 @@ import type {
   TaskTotals,
   MyWorkItem,
   WorkspaceSummary,
+  StoryOption,
 } from '../work-item.types';
 import type { TeamReadScope, ProjectTeamScope } from '../team-read-scope';
 
@@ -76,6 +77,24 @@ export interface IWorkItemRepository {
     args: { limit: number; cursor: CursorPayload | null },
     teamScope: TeamReadScope,
   ): Promise<PagedResult<WorkItem>>;
+  /**
+   * The Story REFERENCE feed — every Story in one project a Defect may name as its Parent Story.
+   *
+   * NOT `listBacklog` with `type: 'story'`, which is what the three pickers used to call: that
+   * list is defined by `iteration_id IS NULL` (the Backlog SCREEN's own rule), so every Story
+   * pulled into a sprint vanished from the picker while `updateWorkItem` went on accepting it —
+   * a feed that offered strictly less than the server allows. Unpaged and unfiltered by schedule
+   * state for the same reason: the picker must offer exactly what the write path accepts.
+   *
+   * Team-scoped like every other read over work rows (BA ruling 2026-08-17 names pickers
+   * explicitly): an Editor cannot READ another team's Story, so offering one would produce a link
+   * whose target their own detail page then refuses.
+   */
+  listStoryOptions(
+    projectId: string,
+    workspaceId: string,
+    teamScope: TeamReadScope,
+  ): Promise<StoryOption[]>;
   /**
    * Direct child tasks of a parent work item, ordered by rank.
    *

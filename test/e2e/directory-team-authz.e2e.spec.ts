@@ -43,6 +43,7 @@ import { AuthService, EntraTokenVerifier, type EntraClaims } from '@qnsc-vn/iden
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';
+import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import {
   PAY_PROJECT_ID,
   SEED_PROJECTS,
@@ -93,9 +94,9 @@ describe('user directory and team reads: authorization over HTTP (e2e)', () => {
   async function newPrincipal(label: string): Promise<{ token: string; userId: string }> {
     const claims: EntraClaims = {
       oid: `${label}-${randomUUID()}`,
-      email: `${label}-${randomUUID().slice(0, 8)}@qnsc.vn`,
+      email: `${label}-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
       displayName: `E2E ${label}`,
-      externalTenantId: 'dev-tenant',
+      externalTenantId: SSO_TENANT_ID,
       roles: [],
     };
     const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');

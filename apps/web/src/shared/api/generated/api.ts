@@ -822,6 +822,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/v1/work-items/story-options': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List a project's User Stories as Parent Story picker options */
+    get: operations['WorkItemsController_listStoryOptions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/v1/work-items/my': {
     parameters: {
       query?: never
@@ -3379,6 +3396,18 @@ export interface components {
       devOwnerId: string | null
       defectState: string | null
       fixedInBuild: string | null
+    }
+    StoryOptionResponseDto: {
+      /** Format: uuid */
+      id: string
+      /** @description US-<n>, unique across the workspace */
+      itemKey: string
+      title: string
+      /**
+       * Format: uuid
+       * @description Always the requested project; echoed for binding
+       */
+      projectId: string
     }
     MyWorkItemResponseDto: {
       /** Format: uuid */
@@ -8541,6 +8570,55 @@ export interface operations {
       }
       /** @description Unauthorized — missing or invalid authentication */
       401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  WorkItemsController_listStoryOptions: {
+    parameters: {
+      query: {
+        projectId: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StoryOptionResponseDto'][]
+        }
+      }
+      /** @description Bad Request — validation error or malformed input */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Unauthorized — missing or invalid authentication */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description Forbidden — insufficient permissions */
+      403: {
         headers: {
           [name: string]: unknown
         }

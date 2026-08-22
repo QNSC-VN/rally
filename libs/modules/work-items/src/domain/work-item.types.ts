@@ -234,3 +234,26 @@ export interface WorkspaceSummary {
   openDefects: number;
   assignedToMe: number;
 }
+
+/**
+ * One row of the Story REFERENCE feed — the picker behind a Defect's `Parent Story` field.
+ *
+ * Deliberately NOT a `WorkItem`: a picker needs a key, a title and the project it binds in, and
+ * shipping the whole record would put every Story field (estimates, owner, dates) into a feed whose
+ * audience is only "may I link to this?".
+ */
+export interface StoryOption {
+  id: string;
+  itemKey: string;
+  title: string;
+  projectId: string;
+}
+
+/**
+ * Cap on that feed, because it is unpaged.
+ *
+ * A picker is read whole (`SearchableSelect` filters client-side), so there is no cursor to hand
+ * back; the cap is a memory guard, not a page. Ordered by `item_key`, so the truncation — if a
+ * project ever grows past it — is at the far end of a total order rather than arbitrary.
+ */
+export const STORY_OPTIONS_LIMIT = 500;

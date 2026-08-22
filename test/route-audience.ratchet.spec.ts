@@ -398,6 +398,10 @@ const AUDIENCE: Record<string, Audience> = {
   'WorkItemsController.listAttachments': 'editor',
   'WorkItemsController.listBacklog': 'editor',
   'WorkItemsController.listRelations': 'editor',
+  // The Parent Story picker feed. `editor` because logging a Defect and naming the Story it was
+  // found against is an Editor action (§3.2:79) — the same audience as `listBacklog`, which used to
+  // serve this picker and hid every sprint-scheduled Story from it.
+  'WorkItemsController.listStoryOptions': 'editor',
   'WorkItemsController.listTasks': 'editor',
   'WorkItemsController.listTimeLogs': 'editor',
   'WorkItemsController.listWatchers': 'editor',

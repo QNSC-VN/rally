@@ -28,6 +28,7 @@ import { WorkItemsService } from '../../application/work-items.service';
 import {
   WorkItemQueryDto,
   WorkItemByKeyQueryDto,
+  StoryOptionsQueryDto,
   CreateWorkItemDto,
   UpdateWorkItemDto,
   CreateTaskDto,
@@ -52,6 +53,7 @@ import {
   ActivityResponseDto,
   TimeLogResponseDto,
   WatcherResponseDto,
+  StoryOptionResponseDto,
 } from './dto/work-item-response.dto';
 import type { WorkItem } from '../../domain/work-item.types';
 import { BACKLOG_SORT_FIELDS } from '../../domain/work-item.types';
@@ -247,6 +249,39 @@ export class WorkItemsController {
       args,
     );
     return { data: page.data.map(toWorkItemDto), pageInfo: page.pageInfo };
+  }
+
+  // ── Parent Story reference feed ─────────────────────────────────────────────
+
+  /**
+   * The Story picker behind a Defect's `Parent Story` field (Details sidebar, Create Work Item,
+   * Log Defect).
+   *
+   * DECLARED ABOVE `:id` deliberately: Nest matches in declaration order, so below it every
+   * request for `/story-options` would be a `getWorkItem` call with `id = 'story-options'` and
+   * die in `ParseUUIDPipe` as a 400 — the same trap `GET /portfolio-items/options` documents.
+   *
+   * All three surfaces used to call `GET /work-items/backlog?type=story` for this. That list is
+   * the Backlog SCREEN and carries its rule (`iteration_id IS NULL`, plus a 50-row first page), so
+   * a Story scheduled into any iteration could not be named as a parent even though
+   * `updateWorkItem` accepts it — the Defect-to-Story trace was unreachable through the UI for
+   * exactly the Stories most likely to have defects.
+   *
+   * `work_item:view`, scoped by the guard to the required `projectId`: the Defect and its parent
+   * must share a Project (`WORK_ITEM_PARENT_SCOPE_MISMATCH`), so there is one project to check and
+   * the service needs no narrowing of its own. Team scope is applied INSIDE the service, because
+   * that is a row-level boundary the guard cannot express.
+   */
+  @Get('story-options')
+  @RequirePermission('work_item:view', { from: 'query', field: 'projectId' })
+  @ApiOperation({ summary: "List a project's User Stories as Parent Story picker options" })
+  @ApiResponse({ status: 200, type: StoryOptionResponseDto, isArray: true })
+  @ApiCommonErrors(400, 401, 403, 404)
+  async listStoryOptions(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: StoryOptionsQueryDto,
+  ): Promise<StoryOptionResponseDto[]> {
+    return this.workItemsService.listStoryOptions(user, query.projectId);
   }
 
   // ── Home dashboard aggregates (declared before @Get(':id')) ──

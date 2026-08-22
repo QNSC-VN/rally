@@ -26,6 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ACCESS_LEVEL_PERMISSIONS } from '@shared-kernel';
 import { AppModule } from '../../apps/api/src/app.module';
+import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import {
   NXP_ITER_CURRENT_ID,
   NXP_RELEASE_1_ID,
@@ -144,12 +145,12 @@ describe('report routes: authorization over HTTP (e2e)', () => {
      * Editor is refused the project roster — dev had silently stopped being an Editor. A spec that
      * needs a grant should create the principal it grants to.
      */
-    const email = `report-reader-${randomUUID().slice(0, 8)}@qnsc.vn`;
+    const email = `report-reader-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`;
     const claims: EntraClaims = {
       oid: `report-reader-${randomUUID()}`,
       email,
       displayName: 'E2E Report Reader',
-      externalTenantId: 'dev-tenant',
+      externalTenantId: SSO_TENANT_ID,
       roles: [],
     };
     const session = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
@@ -185,9 +186,9 @@ describe('report routes: authorization over HTTP (e2e)', () => {
      */
     const claims: EntraClaims = {
       oid: `cross-project-${randomUUID()}`,
-      email: `cross-project-${randomUUID().slice(0, 8)}@qnsc.vn`,
+      email: `cross-project-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
       displayName: 'E2E Cross-project Reader',
-      externalTenantId: 'dev-tenant',
+      externalTenantId: SSO_TENANT_ID,
       roles: [],
     };
     const login = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
