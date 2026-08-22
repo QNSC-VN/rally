@@ -255,6 +255,15 @@ export const ErrorCodes = {
   TEAM_MEMBER_NOT_FOUND: 'TEAM_MEMBER_NOT_FOUND',
   TEAM_MEMBER_ALREADY_EXISTS: 'TEAM_MEMBER_ALREADY_EXISTS',
   TEAM_MEMBER_NOT_WORKSPACE_MEMBER: 'TEAM_MEMBER_NOT_WORKSPACE_MEMBER',
+  /**
+   * A team roster row is project-scoped work, so a candidate must already belong to a project the team
+   * serves (BA report 2026-08-21). Distinct from `TEAM_MEMBER_NOT_WORKSPACE_MEMBER`, which is the
+   * tenant boundary: this one refuses somebody who IS in the workspace but has no access to the
+   * team's projects, and it is the reader's cue to grant project access first rather than to look for
+   * a different person. A Workspace Admin never hits it (§2.1 keeps them off project rosters while
+   * their workspace-wide grant covers every project).
+   */
+  TEAM_MEMBER_NOT_PROJECT_MEMBER: 'TEAM_MEMBER_NOT_PROJECT_MEMBER',
   /** Delete is an operation on the ARCHIVE: archive the team first (`TeamService.deleteTeam`). */
   TEAM_NOT_ARCHIVED: 'TEAM_NOT_ARCHIVED',
   /**

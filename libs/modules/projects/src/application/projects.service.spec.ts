@@ -121,6 +121,9 @@ const makeProjectMemberRepo = () => ({
   listByProject: vi.fn().mockResolvedValue([]),
   // §2.1 — no Workspace Admin by default; the RBE-03 tests set this.
   listWorkspaceAdminUserIds: vi.fn().mockResolvedValue([]),
+  // The synthesized Workspace Admin rows on the project roster (BA report 2026-08-21). Empty by
+  // default so every other case still measures real members only.
+  listWorkspaceAdminProfiles: vi.fn().mockResolvedValue([]),
   findMember: vi.fn().mockResolvedValue(null),
   findMemberById: vi.fn().mockResolvedValue(null),
   updateMember: vi.fn().mockResolvedValue(undefined),
@@ -708,9 +711,18 @@ describe('ProjectsService', () => {
    * offerable again as one.
    */
   describe('Workspace Admin is not a project member (§2.1)', () => {
-    it('filters Workspace Admins out of the project roster', async () => {
+    /**
+     * The MEMBER half of §2.1 still holds: a `project_members` row for a Workspace Admin is dropped, so
+     * they can never appear as an editable member with an access level. What changed on 2026-08-21 is
+     * that they are then added back as a SYSTEM row — flagged, with no level — because the BA asked for
+     * "a system-generated, read-only row … independent of Project Access and Team membership".
+     */
+    it('replaces a Workspace Admin member row with the synthesized system row', async () => {
       projectRepo.findById.mockResolvedValue(mockProject());
       projectMemberRepo.listWorkspaceAdminUserIds.mockResolvedValue(['wa-1']);
+      projectMemberRepo.listWorkspaceAdminProfiles.mockResolvedValue([
+        { userId: 'wa-1', displayName: 'Wanda Admin', email: 'wanda@acme.test', avatarUrl: null },
+      ]);
       projectMemberRepo.listByProject.mockResolvedValue([
         { id: 'pm-1', userId: 'wa-1', accessLevel: 'admin' },
         { id: 'pm-2', userId: 'user-2', accessLevel: 'editor' },
@@ -718,7 +730,28 @@ describe('ProjectsService', () => {
 
       const roster = await service.listProjectMembers('ws-1', 'proj-1', 'user-1');
 
-      expect(roster.map((m) => m.userId)).toEqual(['user-2']);
+      // Once only, and as the system row: the real `pm-1` row is gone, so no editable level survives.
+      expect(roster.map((m) => m.userId)).toEqual(['wa-1', 'user-2']);
+      const wa = roster.find((m) => m.userId === 'wa-1');
+      expect(wa?.isWorkspaceAdmin).toBe(true);
+      expect(wa?.accessLevel).toBeNull();
+      expect(roster.find((m) => m.userId === 'user-2')?.isWorkspaceAdmin).toBeUndefined();
+    });
+
+    it('shows the admin row on a project with no members of its own', async () => {
+      // The reported symptom: "No members in this project yet." on a project whose only authority was
+      // the admin reading the screen.
+      projectRepo.findById.mockResolvedValue(mockProject());
+      projectMemberRepo.listWorkspaceAdminUserIds.mockResolvedValue(['wa-1']);
+      projectMemberRepo.listWorkspaceAdminProfiles.mockResolvedValue([
+        { userId: 'wa-1', displayName: 'Wanda Admin', email: 'wanda@acme.test', avatarUrl: null },
+      ]);
+      projectMemberRepo.listByProject.mockResolvedValue([]);
+
+      const roster = await service.listProjectMembers('ws-1', 'proj-1', 'user-1');
+
+      expect(roster).toHaveLength(1);
+      expect(roster[0].isWorkspaceAdmin).toBe(true);
     });
 
     // The write half of §2.1 — "REFUSES adding a Workspace Admin" — moved with the writer, to

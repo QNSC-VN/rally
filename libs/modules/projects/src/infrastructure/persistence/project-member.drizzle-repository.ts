@@ -6,7 +6,8 @@ import { projectMembers, teamMembers, projectTeams } from '../../../../../../db/
 import { users } from '../../../../../../db/schema/identity';
 import type { ProjectMember, UpdateProjectMemberInput } from '../../domain/project.types';
 import { IProjectMemberRepository } from '../../domain/ports/project-member.repository';
-import { selectWorkspaceAdminUserIds } from '@modules/access';
+import { selectWorkspaceAdminProfiles, selectWorkspaceAdminUserIds } from '@modules/access';
+import type { WorkspaceAdminProfile } from '@modules/access';
 
 @Injectable()
 export class ProjectMemberDrizzleRepository implements IProjectMemberRepository {
@@ -140,6 +141,10 @@ export class ProjectMemberDrizzleRepository implements IProjectMemberRepository 
   /** §2.1 — see `selectWorkspaceAdminUserIds` for why this is one shared query. */
   async listWorkspaceAdminUserIds(workspaceId: string): Promise<string[]> {
     return selectWorkspaceAdminUserIds(this.db, workspaceId);
+  }
+
+  async listWorkspaceAdminProfiles(workspaceId: string): Promise<WorkspaceAdminProfile[]> {
+    return selectWorkspaceAdminProfiles(this.db, workspaceId);
   }
 
   async updateMember(

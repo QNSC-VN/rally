@@ -116,9 +116,48 @@ describe('TeamService — team membership and its project access', () => {
     service = module.get(TeamService);
   });
 
-  it('adds a member who is an active workspace member', async () => {
+  it('adds a member who is an active workspace member AND belongs to the project', async () => {
+    // Both halves are preconditions since 2026-08-21: the workspace one is the tenant boundary, the
+    // project one is the BA's ("reject adding a user who does not belong to the Project").
+    access.getProjectAccessLevel.mockResolvedValue('editor');
+
     await service.addTeamMember('team-1', 'user-2', 'ws-1', 'actor-1');
+
     expect(workspaceMemberRepo.isMember).toHaveBeenCalledWith('ws-1', 'user-2');
+    expect(teamMemberRepo.addMember).toHaveBeenCalled();
+  });
+
+  it("rejects a workspace member who belongs to none of the team's projects", async () => {
+    // The default fixture is exactly this candidate: an active workspace member holding no level.
+    await expect(service.addTeamMember('team-1', 'outsider', 'ws-1', 'actor-1')).rejects.toThrow(
+      PreconditionFailedException,
+    );
+    expect(teamMemberRepo.addMember).not.toHaveBeenCalled();
+  });
+
+  it('admits a WORKSPACE ADMIN, who holds no project level by design', async () => {
+    // §2.1 keeps them off `work.project_members`, so a project-membership test would exclude exactly
+    // the principals the 2026-08-20 Workspace-Admin-on-a-Team feature exists for.
+    access.isWorkspaceAdmin.mockResolvedValue(true);
+
+    await service.addTeamMember('team-1', 'wa-1', 'ws-1', 'actor-1');
+
+    expect(teamMemberRepo.addMember).toHaveBeenCalled();
+    // RBE-06 still runs for them and still writes nothing, which is the §2.1 half the 2026-08-20
+    // feature deliberately kept. (The level IS read on that path — the skip lives in the grant
+    // writer, not in this precondition.)
+    expect(access.grantProjectAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'wa-1', onWorkspaceAdmin: 'skip' }),
+      uow.tx,
+    );
+  });
+
+  it('admits anyone when the team has NO active project link', async () => {
+    // There is no project to be outside of, and refusing would make such a team unstaffable.
+    teamRepo.listActiveProjectIds.mockResolvedValue([]);
+
+    await service.addTeamMember('team-1', 'user-2', 'ws-1', 'actor-1');
+
     expect(teamMemberRepo.addMember).toHaveBeenCalled();
   });
 
@@ -220,6 +259,8 @@ describe('TeamService — team membership and its project access', () => {
 
     it('grants on addTeamMember too, scoped to the team’s linked projects', async () => {
       teamRepo.listActiveProjectIds.mockResolvedValue(['proj-1', 'proj-2']);
+      // Belongs to the project, so the 2026-08-21 precondition passes and RBE-06 is what is under test.
+      access.getProjectAccessLevel.mockResolvedValue('editor');
 
       await service.addTeamMember('team-1', 'user-2', 'ws-1', 'actor-1');
 

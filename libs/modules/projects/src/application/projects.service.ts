@@ -1037,7 +1037,53 @@ export class ProjectsService {
     // otherwise reappear through the second branch.
     const admins = await this.workspaceAdminIds(workspaceId);
     const members = await this.projectMemberRepo.listByProject(projectId);
-    return members.filter((m) => !admins.has(m.userId));
+    const real = members.filter((m) => !admins.has(m.userId));
+
+    /**
+     * Then the Workspace Admins are added BACK, as synthesized read-only rows.
+     *
+     * BA report 2026-08-21: "Every Project Users & Permissions list always displays the active
+     * Workspace Admin as a system-generated, read-only row … independent of Project Access and Team
+     * membership … No project_members record is created and the row is excluded from Project-member
+     * metrics." Before this the screen read "No members in this project yet." on a project whose only
+     * authority was a WA, which is the least true sentence available: the person reading it was
+     * usually that admin.
+     *
+     * This REVERSES one SRS sentence and keeps the rest. §5.2:138 says "Workspace Admin is excluded
+     * from rows and candidates" — rows now include them, CANDIDATES still do not
+     * (`listProjectMemberOptions` and the Add-Existing-User feed are untouched), and §2.1's "not added
+     * as a Project user" is intact because nothing is written.
+     *
+     * The filter above is not redundant: it drops any REAL row a WA might still hold — a pre-0118
+     * leftover, or one a seed wrote back — so the person appears exactly once, and as the synthesized
+     * row rather than as a member with an editable access level.
+     *
+     * `accessLevel: null` is deliberately NOT how a caller should recognise these: a null level
+     * already means "team-derived row" elsewhere in this module. `isWorkspaceAdmin` is the flag.
+     */
+    const now = new Date();
+    const synthesized: ProjectMember[] = (
+      await this.projectMemberRepo.listWorkspaceAdminProfiles(workspaceId)
+    ).map((a) => ({
+      // Its own userId: the response schema types `id` as a uuid, and a synthesized row has no
+      // `project_members` id to give. Nothing addresses it — `PATCH`/`DELETE :id/members/*` resolve a
+      // real row and 404 — and no client may branch on this value: `isWorkspaceAdmin` is the flag.
+      id: a.userId,
+      workspaceId,
+      projectId,
+      userId: a.userId,
+      accessLevel: null,
+      status: 'active',
+      joinedAt: now,
+      updatedAt: now,
+      displayName: a.displayName,
+      email: a.email,
+      avatarUrl: a.avatarUrl,
+      teamCount: 0,
+      isWorkspaceAdmin: true,
+    }));
+
+    return [...synthesized, ...real];
   }
 
   /**

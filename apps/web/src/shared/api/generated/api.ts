@@ -3322,6 +3322,8 @@ export interface components {
       avatarUrl: string | null
       /** @description Active team_members rows for Teams linked to this project */
       teamCount: number
+      /** @description TRUE for the synthesized, read-only Workspace Admin row: no project_members record exists, it is excluded from memberCount, and it offers no Access Level control and no Remove. */
+      isWorkspaceAdmin: boolean
     }
     ProjectMemberOptionResponseDto: {
       /** Format: uuid */

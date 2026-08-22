@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import type { DbExecutor } from '@platform';
 import { SYSTEM_ROLE } from '@shared-kernel';
 import { systemRoles, userRoleAssignments } from '../../../../../../db/schema/access';
+import { users } from '../../../../../../db/schema/identity';
 import { workspaceMembers } from '../../../../../../db/schema/workspace';
 
 /**
@@ -66,4 +67,61 @@ export async function selectWorkspaceAdminUserIds(
     );
   // A user can hold the role through more than one assignment row; the callers want a set.
   return [...new Set(rows.map((r) => r.userId))];
+}
+
+/** One Workspace Admin, with the profile fields a roster row needs to render. */
+export interface WorkspaceAdminProfile {
+  userId: string;
+  displayName: string;
+  email: string;
+  avatarUrl: string | null;
+}
+
+/**
+ * The same predicate as {@link selectWorkspaceAdminUserIds}, with the profile a ROW needs.
+ *
+ * Added for the Project `Users & Permissions` list, which now shows every active Workspace Admin as a
+ * system-generated read-only row (BA report 2026-08-21). That REVERSES one sentence of the SRS —
+ * §5.2:138 "Workspace Admin is excluded from rows and candidates" — and keeps the rest of it: the row
+ * is not a `work.project_members` record, it is not counted in `memberCount`, and `Add Existing User`
+ * still offers normal users only. So the display changed and the membership rule did not.
+ *
+ * A projection of the same query rather than a second predicate, because the two must never disagree
+ * about who a Workspace Admin IS. Kept as a separate exported function rather than widening the id
+ * version: the id set has three callers that want a `Set<string>` for filtering, and handing them rows
+ * they must map would be slower on every roster read for no reader's benefit.
+ */
+export async function selectWorkspaceAdminProfiles(
+  db: DbExecutor,
+  workspaceId: string,
+): Promise<WorkspaceAdminProfile[]> {
+  const rows = await db
+    .select({
+      userId: userRoleAssignments.userId,
+      displayName: users.displayName,
+      email: users.email,
+      avatarUrl: users.avatarUrl,
+    })
+    .from(userRoleAssignments)
+    .innerJoin(systemRoles, eq(systemRoles.id, userRoleAssignments.roleId))
+    .innerJoin(
+      workspaceMembers,
+      and(
+        eq(workspaceMembers.workspaceId, userRoleAssignments.workspaceId),
+        eq(workspaceMembers.userId, userRoleAssignments.userId),
+        eq(workspaceMembers.status, 'active'),
+      ),
+    )
+    .innerJoin(users, eq(users.id, userRoleAssignments.userId))
+    .where(
+      and(
+        eq(userRoleAssignments.workspaceId, workspaceId),
+        eq(userRoleAssignments.scopeType, 'workspace'),
+        eq(systemRoles.slug, SYSTEM_ROLE.WORKSPACE_ADMIN),
+      ),
+    );
+  // One user can hold the role through several assignment rows; a roster shows them once.
+  const byUser = new Map<string, WorkspaceAdminProfile>();
+  for (const r of rows) if (!byUser.has(r.userId)) byUser.set(r.userId, r);
+  return [...byUser.values()];
 }

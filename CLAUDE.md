@@ -522,6 +522,47 @@ Iteration Status total, the Tasks-tab total and the next Burndown snapshot with 
 the service; the other two edit surfaces already did this correctly, and this screen's own UI comment
 described the behaviour it did not have.
 
+## A Team roster is staffed FROM the project, and the Workspace Admin is a row on it
+
+Two BA findings of 2026-08-21, and both reverse a sentence that is still in the SRS. Read which
+sentence before touching either.
+
+- **A team member must already hold access to one of the team's projects** (`TEAM_MEMBER_NOT_PROJECT_MEMBER`,
+  `TeamService.addTeamMember`). The Add-member control was an inline popover over every active
+  WORKSPACE user, so on a project with no members of its own it still offered all four workspace users
+  — "users who do not belong to Project X are exposed as Team member candidates". It is an `Add` button
+  and a `SelectionModal` now, and the candidates are the project's members plus active Workspace
+  Admins, minus the existing roster.
+  - **This REVERSES Phase 1 SRS §2A's "User project access is derived from team membership"** on that
+    one write. The two cannot both hold, and the newer instruction wins — same precedence as the
+    defect-delete and Rollup reversals. What survives is the DERIVING on the path the BA's own E2E-002
+    uses: `createTeam` with `memberUserIds` still grants access through RBE-06 ("Create Team under a
+    Project and select one existing user as Editor"). What changed is that an EXISTING team can no
+    longer be the first place a user meets a project — grant access, then staff the team. Put to the
+    BA; if §2A's order is restored, that one predicate is what comes out, and
+    `team-preparation-flow.e2e.spec.ts` step 3 goes back to asserting the add succeeds.
+  - **A WORKSPACE ADMIN is admitted with no project row at all**, by the `isWorkspaceAdmin`
+    short-circuit. §2.1 keeps them off `work.project_members`, so a membership test would exclude
+    exactly the principals the 2026-08-20 feature below exists for.
+  - **The check is against ANY actively linked project, not every one.** A team can serve several and
+    `POST /teams/:id/members` carries no project, so "every" would make a multi-project team almost
+    unstaffable. A team with NO active link admits any active workspace member: there is no project to
+    be outside of.
+- **Project `Users & Permissions` always shows the active Workspace Admins**, as synthesized read-only
+  rows (`ProjectsService.listProjectMembers`, `isWorkspaceAdmin` on the row). The screen used to read
+  "No members in this project yet." on a project whose only authority was a WA — the least true
+  sentence available, since the reader was usually that admin.
+  - **This reverses §5.2:138 "Workspace Admin is excluded from rows and candidates" — the ROWS half
+    only.** Candidates still exclude them (`Add Existing User`, `listProjectMemberOptions`), nothing is
+    written to `work.project_members`, and `memberCount` counts the table so it does not move.
+  - **The real row is still filtered first**, so a pre-0118 leftover or a seed-written row cannot
+    appear as an editable member beside the system row. The person shows once.
+  - **`isWorkspaceAdmin` is the flag to branch on, never `accessLevel === null`** — a null level
+    already means "team-derived row" on a real member.
+  - **`useProjectMembers` drops those rows and `useProjectAccessRoster` keeps them.** One query key,
+    two projections: six other call sites (two owner pickers among them) were written against real
+    members and §2.1 still says a WA is not one.
+
 ## A Workspace Admin may be a TEAM member, and still not a Project user
 
 BA feature, 2026-08-20. This REVERSES half of §2.1 and leaves the other half standing, so read which

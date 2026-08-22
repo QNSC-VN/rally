@@ -353,7 +353,7 @@ export function TeamDetail({
         ))}
       </div>
 
-      <TeamMemberRoster team={team} workspaceId={workspaceId} isWA={isWA} />
+      <TeamMemberRoster team={team} workspaceId={workspaceId} projectId={projectId} isWA={isWA} />
 
       {editing && (
         <TeamFormModal

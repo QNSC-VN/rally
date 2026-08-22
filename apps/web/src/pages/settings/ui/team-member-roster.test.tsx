@@ -98,21 +98,46 @@ const WS_ROSTER = [
     status: 'active',
     roleSlug: 'workspace_admin',
   },
+  // In the workspace, in no project, not an admin — the candidate the BA reported as exposed.
+  {
+    id: 'wm-4',
+    userId: 'u-outsider',
+    displayName: 'Owen Outsider',
+    email: 'owen@acme.test',
+    status: 'active',
+    roleSlug: 'project_member',
+  },
 ]
 
-function renderRoster(opts: { team?: Team; isWA?: boolean; roster?: unknown[] } = {}) {
+function renderRoster(
+  opts: {
+    team?: Team
+    isWA?: boolean
+    roster?: unknown[]
+    /** `GET /projects/:id/members` — the candidate scope the BA's report is about. */
+    projectMembers?: unknown[]
+    wsRoster?: unknown[]
+  } = {},
+) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   mockGET.mockImplementation((path: string) => {
     if (path === '/v1/teams/{id}/members') return Promise.resolve({ data: opts.roster ?? ROSTER })
     if (path === '/v1/workspaces/{id}/members-with-profile')
-      return Promise.resolve({ data: WS_ROSTER })
+      return Promise.resolve({ data: opts.wsRoster ?? WS_ROSTER })
+    if (path === '/v1/projects/{id}/members')
+      return Promise.resolve({ data: opts.projectMembers ?? [] })
     return Promise.resolve({ data: [] })
   })
   return render(
     <QueryClientProvider client={qc}>
-      <TeamMemberRoster team={opts.team ?? TEAM} workspaceId="ws-1" isWA={opts.isWA ?? true} />
+      <TeamMemberRoster
+        team={opts.team ?? TEAM}
+        workspaceId="ws-1"
+        projectId="proj-1"
+        isWA={opts.isWA ?? true}
+      />
     </QueryClientProvider>,
   )
 }
@@ -166,9 +191,13 @@ describe('TeamMemberRoster — add and remove a member of an EXISTING team', () 
   })
 
   it('adds a Workspace Admin to the team with ONE write, and no project-access write', async () => {
+    // The control is an `Add` BUTTON opening a MODAL now, not an inline popover (BA report
+    // 2026-08-21). A Workspace Admin is still a candidate with no `project_members` row of their own:
+    // the project-members feed is empty here, so this row can only have come from the admin branch.
     renderRoster()
     fireEvent.click(await screen.findByRole('button', { name: 'Add member' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Winona Admin' }))
+    fireEvent.click(await screen.findByLabelText('Winona Admin'))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to team' }))
 
     await waitFor(() => expect(mockPOST).toHaveBeenCalledTimes(1))
     expect(mockPOST.mock.calls[0][0]).toBe('/v1/teams/{id}/members')
@@ -176,6 +205,41 @@ describe('TeamMemberRoster — add and remove a member of an EXISTING team', () 
       params: { path: { id: 'team-a' } },
       body: { userId: 'u-wa2' },
     })
+  })
+
+  /**
+   * BA report 2026-08-21: "Users who do not belong to Project Mini-Rally are exposed as Team member
+   * candidates." The picker read the WORKSPACE roster, so on a project with no members of its own it
+   * still offered every workspace user.
+   */
+  it('offers project members and Workspace Admins, and nobody else', async () => {
+    renderRoster({
+      projectMembers: [
+        {
+          userId: 'u-inproject',
+          displayName: 'Pia Project',
+          email: 'pia@qnsc.dev',
+          status: 'active',
+          accessLevel: 'editor',
+          teamCount: 1,
+        },
+      ],
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Add member' }))
+
+    // In the project → offered.
+    expect(await screen.findByLabelText('Pia Project')).toBeTruthy()
+    // A Workspace Admin holds no project row and is offered anyway (2026-08-20 feature).
+    expect(screen.getByLabelText('Winona Admin')).toBeTruthy()
+    // In the workspace, NOT in the project, not an admin → withheld.
+    expect(screen.queryByLabelText('Owen Outsider')).toBeNull()
+  })
+
+  it('shows an empty state when the project has no eligible users', async () => {
+    // Every project member is already on the roster and there is no other admin to offer.
+    renderRoster({ wsRoster: [], projectMembers: [] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Add member' }))
+    expect(await screen.findByText('No items found')).toBeTruthy()
   })
 
   it('asks before removing, and removes only that membership', async () => {

@@ -541,6 +541,39 @@ export class TeamService {
       );
     }
 
+    /**
+     * A team roster row is PROJECT-SCOPED work, so the candidate must already belong to a project the
+     * team serves (BA report 2026-08-21: "Backend validation must also reject adding a user who does
+     * not belong to the Project").
+     *
+     * Checked against ANY actively linked project, not every one: a team can serve several projects
+     * and `POST /teams/:id/members` carries none, so "every" would make a multi-project team almost
+     * unstaffable and would refuse adds that are legitimate on the screen the reader is looking at.
+     *
+     * A WORKSPACE ADMIN passes with no `project_members` row of their own. That absence is §2.1 and
+     * migration 0118, not a missing grant — their authority is the workspace-wide one, which is why
+     * `grantTeamRosterProjectAccess` skips them below and why the Project `Users & Permissions` list
+     * shows them as a synthesized row. Excluding them here would remove the only path to the
+     * Workspace-Admin-on-a-Team feature (2026-08-20) that the same BA asked for.
+     *
+     * A team with NO active project link admits any active workspace member: there is no project to
+     * be outside of, and refusing would make such a team permanently unstaffable.
+     */
+    const linkedProjectIds = await this.teamRepo.listActiveProjectIds(teamId);
+    if (linkedProjectIds.length > 0 && !(await this.access.isWorkspaceAdmin(workspaceId, userId))) {
+      const levels = await Promise.all(
+        linkedProjectIds.map((projectId) =>
+          this.access.getProjectAccessLevel(workspaceId, userId, projectId),
+        ),
+      );
+      if (levels.every((level) => level === null)) {
+        throw new PreconditionFailedException(
+          'TEAM_MEMBER_NOT_PROJECT_MEMBER',
+          "User does not belong to any of this team's projects",
+        );
+      }
+    }
+
     const existing = await this.teamMemberRepo.findMember(teamId, userId);
     if (existing) {
       throw new ConflictException(
@@ -564,7 +597,7 @@ export class TeamService {
       toInvalidate = await this.grantTeamRosterProjectAccess(
         tx,
         workspaceId,
-        await this.teamRepo.listActiveProjectIds(teamId),
+        linkedProjectIds,
         [userId],
         actorId,
       );

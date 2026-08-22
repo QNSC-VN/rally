@@ -284,3 +284,56 @@ describe('ProjectAccessList — a Workspace Admin is still not a PROJECT ACCESS 
     expect(screen.queryByRole('button', { name: 'Wanda Admin' })).toBeNull()
   })
 })
+
+/**
+ * The system-generated Workspace Admin row (BA report 2026-08-21).
+ *
+ * Before this the screen read "No members in this project yet." on a project whose only authority was
+ * a Workspace Admin — the least true sentence available, since the reader was usually that admin. The
+ * row is composed on READ: §2.1 still keeps them off `work.project_members`, so it carries no access
+ * level to change and nothing to remove, and `memberCount` (counted from the table) does not move.
+ */
+describe('ProjectAccessList — the Workspace Admin row', () => {
+  const WA_ROW = {
+    id: 'u-wa',
+    userId: 'u-wa',
+    workspaceId: 'ws-1',
+    projectId: 'p-1',
+    accessLevel: null,
+    status: 'active',
+    displayName: 'Wanda Admin',
+    email: 'wanda@acme.test',
+    joinedAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    teamCount: 0,
+    isWorkspaceAdmin: true,
+  }
+
+  beforeEach(() => {
+    mockGET.mockReset()
+    mockPATCH.mockReset()
+    mockPOST.mockReset()
+    mockDELETE.mockReset()
+    mockGET.mockImplementation((path: string) => {
+      if (path === '/v1/projects/{id}/members') return Promise.resolve({ data: [WA_ROW] })
+      if (path === '/v1/projects/{id}/teams') return Promise.resolve({ data: TEAMS })
+      return Promise.resolve({ data: [] })
+    })
+  })
+
+  it('renders the admin instead of the empty state when there are no normal members', async () => {
+    renderList()
+    expect(await screen.findByText('Wanda Admin')).toBeTruthy()
+    expect(screen.queryByText('No members in this project yet.')).toBeNull()
+  })
+
+  it('offers no Access Level control and no Remove on that row', async () => {
+    renderList()
+    await screen.findByText('Wanda Admin')
+
+    // The badge states the authority; a level dropdown would claim a `project_members` row exists.
+    expect(screen.getByText('Workspace Admin')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Access level for Wanda Admin' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Remove access' })).toBeNull()
+  })
+})
