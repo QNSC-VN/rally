@@ -30,7 +30,7 @@ vi.mock('@/features/access/api', () => ({
 vi.mock('@/features/releases/api', () => ({ useReleases: () => ({ data: [] }) }))
 vi.mock('@/features/iterations/api', () => ({ useIterationOptions: () => ({ data: [] }) }))
 vi.mock('@/features/work-items/api', () => ({
-  useBacklog: () => ({ data: { data: [] } }),
+  useStoryOptions: () => ({ data: [] }),
   useUpdateWorkItem: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 vi.mock('@/shared/lib/toast', () => ({ notify: { success: vi.fn(), error: vi.fn() } }))

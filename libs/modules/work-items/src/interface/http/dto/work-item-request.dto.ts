@@ -101,6 +101,24 @@ export const WorkItemQuerySchema = PageQuerySchema.extend({
 
 export class WorkItemQueryDto extends createZodDto(WorkItemQuerySchema) {}
 
+// ── Parent Story picker query ────────────────────────────────────
+
+/**
+ * The Parent Story picker's query. `projectId` is REQUIRED, which is what lets the route be gated
+ * by the guard rather than narrowed in the service — the same shape as
+ * `PortfolioFeatureOptionsQuerySchema`, and for the same reason: a Defect's parent must belong to
+ * the Defect's own Project (`WORK_ITEM_PARENT_SCOPE_MISMATCH`), so there is no "all projects" form
+ * to ask for.
+ *
+ * Not a `PageQuerySchema` extension: a picker reads its options whole, and a paged picker silently
+ * omits everything past the first page — which is half of what made the Backlog feed wrong here.
+ */
+export const StoryOptionsQuerySchema = z.object({
+  projectId: z.string().uuid(),
+});
+
+export class StoryOptionsQueryDto extends createZodDto(StoryOptionsQuerySchema) {}
+
 // ── By-key lookup query ─────────────────────────────────────────────────────────
 
 export const WorkItemByKeyQuerySchema = z.object({

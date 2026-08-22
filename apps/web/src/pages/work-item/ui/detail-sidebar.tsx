@@ -13,7 +13,7 @@ import {
   useWorkItemMilestones,
   useSetWorkItemMilestones,
   useTaskTotals,
-  useBacklog,
+  useStoryOptions,
   type WorkItem,
   type UpdateWorkItemInput,
 } from '@/features/work-items/api'
@@ -61,13 +61,15 @@ function ParentStorySelect({
   onUpdate: (patch: { parentId: string | null }) => void
 }) {
   const { t } = useTranslation('work-items')
-  const { data: backlogData } = useBacklog(projectId, { type: 'story' })
-  const stories = backlogData?.data ?? []
+  const { data: stories = [] } = useStoryOptions(projectId)
   return (
     <SearchableSelect
       variant="field"
       value={currentParentId ?? ''}
-      ariaLabel={t('sidebar.noParentStory')}
+      // The FIELD's name, not the empty option's. It read `sidebar.noParentStory`, so the control
+      // announced itself as "No parent story" — indistinguishable, to a screen reader, from a field
+      // that is empty, on the one control whose emptiness was the reported defect.
+      ariaLabel={t('sidebar.parentStory')}
       placeholder={t('sidebar.noParentStory')}
       options={[
         { value: '', label: t('sidebar.noParentStory') },
@@ -75,7 +77,7 @@ function ParentStorySelect({
           value: s.id,
           label: `${s.itemKey}: ${s.title}`,
           searchText: `${s.itemKey} ${s.title}`,
-          icon: <TypeBadge type={s.type} size={16} />,
+          icon: <TypeBadge type="story" size={16} />,
         })),
       ]}
       onChange={(v) => onUpdate({ parentId: v || null })}

@@ -8,6 +8,11 @@ import { ApiError, apiErrorMessage } from '@/shared/api/api-error'
 import type { components } from '@/shared/api/generated/api'
 import { withCsrfHeader } from '@/shared/api/csrf'
 
+// The Parent Story picker's feed lives in its own file (see `story-options.ts`) and is re-exported
+// here so the three surfaces that use it import from the one work-items API barrel like everything
+// else. Split out only because this file is the SPA's file-length ratchet holder.
+export { useStoryOptions, type StoryOption } from './story-options'
+
 // ── Response types from generated contract ────────────────────────────────────
 
 export type WorkItem = components['schemas']['WorkItemResponseDto']

@@ -40,6 +40,8 @@ import { MutationCache, type QueryClient, type QueryKey } from '@tanstack/react-
  * work-item integrity test pins it explicitly.
  */
 export const WORK_ITEM_VIEW_ROOTS: readonly QueryKey[] = [
+  // ...and `story-options`, the Parent Story picker's feed, which shares this prefix on purpose:
+  // creating or renaming a Story must change what that picker offers.
   ['work-items'], // backlog, list, detail, by-key, tasks, task-totals, activity, time-logs, watchers, labels
   ['iteration-status'], // Iteration Status board/grid + read-model
   ['team-status'], // Team Status

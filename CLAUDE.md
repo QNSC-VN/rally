@@ -595,6 +595,35 @@ two automatic moves:
 - **Completing a task sets To Do to 0**, and **reopening does NOT restore it** — the owner enters a new
   remaining value if there is one. This replaces the older `Estimate = To Do + Actual` display rule.
 
+## A picker feeds from the WRITE's rule, never from a screen's
+
+BA repro, Production, 2026-08-21: a Defect's `Parent Story` field offered nothing but
+`No parent story`, and searching a Story's key answered `No matches`, so no Defect could be traced
+to the User Story it was found against. All three Parent Story surfaces — the detail sidebar, Create
+Work Item, and Log Defect — read `GET /work-items/backlog?type=story`.
+
+- **The Backlog is a SCREEN, and `iteration_id IS NULL` is its defining rule** (see `listBacklog`,
+  which explains why). `updateWorkItem` has no such rule: it accepts any non-deleted Story in the
+  same project. So every Story already pulled into a sprint — the ones a Defect is most often raised
+  against — was withheld from a picker whose own server would have taken it. The 50-row first page
+  was a second, quieter cap on the same feed.
+- **"No matches" was the symptom, not a search bug.** `SearchableSelect` filters the options it was
+  HANDED, so a missing option and a broken search are the same fault seen twice. Read a picker's
+  emptiness as a question about its FEED before touching the control.
+- **`GET /work-items/story-options` is the fix** — the Story REFERENCE feed, mirroring
+  `GET /portfolio-items/options` exactly: unpaged (a paged picker omits options past its first page
+  without saying so), no schedule-state filter (a Defect against shipped work needs an ACCEPTED
+  parent), `work_item:view` gated by the guard on the required `projectId`, and team-scoped in the
+  service because that is a row boundary the guard cannot express. Declared ABOVE `@Get(':id')`, or
+  Nest routes it into `ParseUUIDPipe` as a 400.
+- **This is the Story analogue of "an iteration is assignable by SCOPE, never by LIFECYCLE"**
+  (P6-VEL-004, above). Same shape, different field: a feed narrower than the write it feeds makes
+  half a documented rule unreachable, and it presents as a persistence or search bug rather than as a
+  missing option. When a picker and a write path disagree, the WRITE is the contract.
+- Pinned over real HTTP in `test/e2e/parent-story-feed.e2e.spec.ts` (population, team scope, and the
+  picker-offers-what-the-write-accepts round trip). A service spec cannot see it: the repository is
+  mocked, so no predicate is exercised.
+
 ## A Task's Iteration is DERIVED, not cascaded
 
 The BA says it three times — "A Task inherits Project, Team, Iteration and Release/Milestone context

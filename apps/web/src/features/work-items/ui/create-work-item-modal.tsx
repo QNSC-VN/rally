@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
-import { useCreateWorkItem, useBacklog, type WorkItem } from '@/features/work-items/api'
+import { useCreateWorkItem, useStoryOptions, type WorkItem } from '@/features/work-items/api'
 import { useProjectTeams } from '@/features/teams/api'
 import { useTeamOwnerOptions } from '@/features/teams/api'
 import { useProjectTeamScope } from '@/features/access/api'
@@ -93,8 +93,7 @@ export function CreateWorkItemModal({
   const createMutation = useCreateWorkItem()
   const { data: teams = [] } = useProjectTeams(projectId)
   // Fetch stories for the parent dropdown (only used when type=defect)
-  const { data: backlogData } = useBacklog(projectId, { type: 'story' })
-  const stories = backlogData?.data ?? []
+  const { data: stories = [] } = useStoryOptions(projectId)
 
   // A pre-filled/inherited team that isn't linked to the fixed project is
   // treated as unset so the backend can't reject the create with

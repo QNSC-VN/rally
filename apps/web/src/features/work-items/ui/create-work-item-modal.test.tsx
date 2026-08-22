@@ -22,7 +22,7 @@ const appContext = vi.fn()
 
 vi.mock('@/features/work-items/api', () => ({
   useCreateWorkItem: () => ({ mutateAsync: createWorkItem }),
-  useBacklog: () => ({ data: undefined }),
+  useStoryOptions: () => ({ data: [] }),
 }))
 vi.mock('@/features/teams/api', () => ({
   useProjectTeams: () => projectTeams(),

@@ -66,6 +66,7 @@ import type {
   TaskTotals,
   MyWorkItem,
   WorkspaceSummary,
+  StoryOption,
 } from '../domain/work-item.types';
 import { teamScopeAdmits } from '../domain/team-read-scope';
 import type { TeamReadScope, ProjectTeamScope } from '../domain/team-read-scope';
@@ -337,6 +338,30 @@ export class WorkItemsService {
     );
   }
 
+  /**
+   * The Story REFERENCE feed — the picker behind a Defect's `Parent Story` field.
+   *
+   * It answers exactly the question the write path asks ("may this Defect name this Story as its
+   * parent?"), which is why it is a route of its own rather than `listBacklog(type: 'story')`:
+   * that list is the Backlog SCREEN, defined by `iteration_id IS NULL`, so every Story in a sprint
+   * was withheld from a picker whose own server-side rule (`WORK_ITEM_PARENT_SCOPE_MISMATCH` /
+   * `WORK_ITEM_INVALID_PARENT_TYPE`) accepts it. A feed that offers less than the write accepts is
+   * the same class of fault as `listAssignmentOptions`' old lifecycle filter, recorded in
+   * `CLAUDE.md`: "An iteration is assignable by SCOPE, never by LIFECYCLE."
+   *
+   * The project is resolved (and so authorised as existing/readable) exactly as `listBacklog`
+   * does; the guard has already checked `work_item:view` against this same `projectId`, which is
+   * what the required query parameter is for.
+   */
+  async listStoryOptions(actor: JwtPayload, projectId: string): Promise<StoryOption[]> {
+    await this.projectsService.getProject(actor.workspaceId, projectId);
+    return this.workItemRepo.listStoryOptions(
+      projectId,
+      actor.workspaceId,
+      await this.teamScopeFor(actor, projectId),
+    );
+  }
+
   // ── Create ────────────────────────────────────────────────────────────────
 
   /**
@@ -396,6 +421,17 @@ export class WorkItemsService {
           'Parent work item does not belong to the same project',
         );
       }
+      // ...and it must be a row this caller may READ. Naming a parent discloses it: the child then
+      // renders the parent's key and title, `listTasks`/child-defect feeds reach it from the other
+      // side, and the link is a claim about work the caller may not be able to open. The picker feed
+      // (`listStoryOptions`) narrows to the same scope, so this is the server counting exactly the
+      // population the screen offers — the property `projectTeamContext` states, and the inverse of
+      // the defect that made this feed too NARROW.
+      //
+      // AFTER the project check on purpose: a cross-project parent must stay
+      // `WORK_ITEM_PARENT_SCOPE_MISMATCH` rather than becoming a team refusal about another
+      // project's roster.
+      await this.assertTeamScope(actor, parent);
       // Defects can only have story parents
       if (type === 'defect' && parent.type !== 'story') {
         throw new PreconditionFailedException(
@@ -974,6 +1010,9 @@ export class WorkItemsService {
           'Work product does not belong to the same project',
         );
       }
+      // Reparenting reaches the DESTINATION row, so it takes the destination's team scope — the same
+      // reason `updateWorkItem` re-checks a moving Team rather than only the current one.
+      await this.assertTeamScope(actor, newParent);
       if (newParent.type !== 'story' && newParent.type !== 'defect') {
         throw new PreconditionFailedException(
           'WORK_ITEM_INVALID_PARENT_TYPE',
@@ -1000,6 +1039,11 @@ export class WorkItemsService {
           'User story does not belong to the same project',
         );
       }
+      // The Parent Story the picker offers is team-scoped (`listStoryOptions`); so is the one this
+      // write accepts. Without this an Editor could name a Story from another Team — or from the
+      // Project Backlog — by passing its id, and the Defect would then render a key and title from a
+      // record they cannot open.
+      await this.assertTeamScope(actor, newParent);
       if (newParent.type !== 'story') {
         throw new PreconditionFailedException(
           'WORK_ITEM_INVALID_PARENT_TYPE',

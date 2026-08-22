@@ -13,7 +13,7 @@ import { useProjectTeamScope } from '@/features/access/api'
 import { listResource } from '@/shared/lib/query/resource'
 import { useReleases } from '@/features/releases/api'
 import { useIterationOptions } from '@/features/iterations/api'
-import { useUpdateWorkItem, useBacklog } from '@/features/work-items/api'
+import { useUpdateWorkItem, useStoryOptions } from '@/features/work-items/api'
 import {
   WorkItemType,
   SCHEDULE_STATE_VALUES,
@@ -585,8 +585,7 @@ export function LogDefectModal({ projectId, onClose }: { projectId: string; onCl
   const membersQuery = useProjectMemberOptions(projectId)
   const memberFeed = listResource(membersQuery)
   const { data: releases } = useReleases(projectId)
-  const { data: backlog } = useBacklog(projectId, { type: 'story' })
-  const stories = backlog?.data ?? []
+  const { data: stories = [] } = useStoryOptions(projectId)
   const createDefect = useCreateDefect()
   /**
    * A Defect is a Work Item, so the BA's 2026-08-17 Team rule applies to logging one.
