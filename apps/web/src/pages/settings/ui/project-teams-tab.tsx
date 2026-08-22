@@ -60,11 +60,7 @@ import { WorkspaceAdminBadge } from '@/shared/ui/workspace-admin-badge'
 import { TeamMemberRoster } from './team-member-roster'
 import { notify } from '@/shared/lib/toast'
 import { suggestKey } from '@/shared/lib/suggest-key'
-import {
-  teamMemberAccessOptions,
-  type AccessLevel,
-  type TeamMemberAccessLevel,
-} from '@/shared/config/access-levels'
+import {} from '@/shared/config/access-levels'
 
 export function ProjectTeamsTab({
   projectId,
@@ -412,6 +408,9 @@ function TeamFormModal({
    * Editing an existing team keeps the stored key and the input disabled — a key is an identity, and
    * re-deriving it from a rename would silently re-key the team.
    */
+  // The stored roster, for the Team Lead options while EDITING (`PM-FR-021`: a lead is a member).
+  // Skipped on create — there is no team yet and the ticked rows are the roster.
+  const { data: teamMembers = [] } = useTeamMembers(team?.id)
   const [keyTouched, setKeyTouched] = useState(team?.key ?? '')
   const [leadId, setLeadId] = useState<string | null>(team?.leadId ?? null)
   // Per-user access map: presence of a userId = included; its value = the level that
@@ -429,7 +428,12 @@ function TeamFormModal({
    * `memberUserIds`, and the value is what {@link syncMemberAccess} decides to write. Collapsing the
    * two would either drop the Workspace Admin's membership or write them a `project_members` row.
    */
-  const [memberAccess, setMemberAccess] = useState<Record<string, TeamMemberAccessLevel | null>>({})
+  /**
+   * Membership only, keyed by userId — `PM-FR-021` removed the level this used to carry ("Project
+   * Access is read-only in this flow"). Kept as a record rather than a Set so the existing
+   * presence checks and `Object.keys` read unchanged.
+   */
+  const [memberAccess, setMemberAccess] = useState<Record<string, true>>({})
 
   /**
    * Every ACTIVE workspace member, Workspace Admins INCLUDED — the reversed half of §2.1 (see the
@@ -439,80 +443,63 @@ function TeamFormModal({
    * Team's Lead. `status === 'active'` stays — the ruling's own "an active company user" — and the
    * `project_members` half of §2.1 is enforced per ROW below, not by hiding the row.
    */
-  const eligible = wsMembers.filter((m) => m.status === 'active')
-  const isWorkspaceAdminRow = (userId: string) =>
-    wsMembers.find((m) => m.userId === userId)?.roleSlug === 'workspace_admin'
-  // `max: 10` is the column's own ceiling (`varchar(10)`), and the server takes `^[A-Z][A-Z0-9]{1,9}$`.
-  const key = keyTouched || (team ? '' : suggestKey(name, { style: 'initials', max: 10 }))
-
-  // `memberSelectOption`, so a Team lead carries the same avatar the member table two hundred lines
-  // below already draws for the same person — and so typing an email finds them.
-  const leadOptions: SelectOption[] = eligible.map((m) => memberSelectOption(m))
-  const valid = name.trim().length >= 2 && /^[A-Z][A-Z0-9]{1,9}$/.test(key)
-
-  /** Toggling a row includes/excludes it. A newly-checked row defaults to its CURRENT
-   *  project access level (mockup: Priya Nair, already Admin, shows "Admin" once
-   *  checked) or 'editor' when it has none yet — never a blanket shared default.
+  /**
+   * CANDIDATES ARE ALREADY ELIGIBLE IN THIS PROJECT (`PM-FR-020`, BA 2026-08-22).
    *
-   *  A WORKSPACE ADMIN row takes `null`: it joins the team (the key is present) and no level is
-   *  ever chosen for it. That is decided HERE rather than at the write, so no future edit to
-   *  `syncMemberAccess` can reintroduce the level by defaulting an absent value. */
-  function toggleMemberRow(userId: string, currentLevel: AccessLevel | null) {
-    setMemberAccess((prev) => {
-      const next = { ...prev }
-      if (userId in next) {
-        delete next[userId]
-      } else if (isWorkspaceAdminRow(userId)) {
-        next[userId] = null
-      } else {
-        // A Viewer joining a team is PROMOTED to Editor, not carried across as a Viewer. Team
-        // membership only means anything for someone who can write — it is the boundary an Editor's
-        // writes are measured against — so "read-only team member" is not a state worth having.
-        // Rally does the same from the same premise: its Team Member checkbox auto-promotes to
-        // Editor, and demoting to Viewer removes team membership. §5.3 states the rule as "only
-        // Admin and Editor are Team-member choices".
-        next[userId] = currentLevel === 'admin' ? 'admin' : 'editor'
-      }
-      return next
-    })
-  }
-
-  function setMemberRowLevel(userId: string, level: TeamMemberAccessLevel) {
-    setMemberAccess((prev) => ({ ...prev, [userId]: level }))
-  }
+   * "Members | Maintained from active users already eligible in the selected Project; Project Access
+   * is read-only in this flow." So the create form offers the project's own active members plus the
+   * active Workspace Admin — who holds no `project_members` row by §2.1 and is eligible anyway — and
+   * NOT the workspace directory it used to list.
+   */
+  const eligible = wsMembers.filter((m) => {
+    if (m.status !== 'active') return false
+    if (m.roleSlug === 'workspace_admin') return true
+    return projectMembers.some((pm) => pm.userId === m.userId && pm.status === 'active')
+  })
+  /**
+   * Auto-generated from the name, editable until the first save, immutable after (`PM-FR-022`, AC16).
+   *
+   * Reads the saved key directly while editing instead of relying on `keyTouched` having been seeded
+   * from it — same rendered value, but the immutability is now a property of this expression rather
+   * than of an initial state a later edit could stop setting. `max: 10` is the column's own ceiling
+   * (`varchar(10)`) and the server takes `^[A-Z][A-Z0-9]{1,9}$`.
+   */
+  const key = team ? team.key : keyTouched || suggestKey(name, { style: 'initials', max: 10 })
 
   /**
-   * P4-RBAC-010 / §5.3: setting up a team assigns each selected member their Project access — each at
-   * ITS OWN level, per `memberAccess`. A team created here is linked to THIS project only (no
-   * picker), so this project is the only one to sync.
+   * A TEAM LEAD MUST BE AN ACTIVE MEMBER OF THIS TEAM (`PM-FR-021`, AC15).
    *
-   * The THIRD §5 journey, and it reaches the SAME combined writer as the other two (AC-9: "All three
-   * journeys update the same Project access and Team membership source"). It used to branch between
-   * `POST /projects/{id}/members` and `PATCH /projects/{id}/members/{memberId}` — a NULL
-   * `access_level` row is team-derived, so its `id` is a `team_members` id and PATCHing it 404'd,
-   * which surfaced as "Failed to create team" over a half-write. One upserting endpoint removes the
-   * branch and the failure mode with it.
+   * "Team Lead must be an active Team member. The Team Lead label grants no separate Project
+   * permission or Work Item Owner eligibility." So the options are the team's own roster — the rows
+   * ticked in this form while creating, and the stored roster while editing — not the directory. The
+   * server refuses the rest (`TEAM_LEAD_NOT_MEMBER`).
    *
-   * No `teamIds` here, deliberately: `POST /v1/teams` has already written the roster rows for
-   * `memberUserIds` and implied a level for each (`teamRosterAccessLevel`), so an Editor landing in
-   * this loop already satisfies §2.2 — this call is only correcting the LEVEL, and sending a team set
-   * would let a level correction silently reshape the membership the team creation just established.
-   *
-   * **A `null` level is SKIPPED, and that is the one line the whole Workspace-Admin reversal turns
-   * on.** `POST /projects/{id}/members` upserts a `project_members` row, so sending a Workspace
-   * Admin here would write back exactly the row migration 0118 deletes and §2.1 forbids — and it
-   * would not stay dormant: `AccessService.effectiveAssignments` synthesizes a project grant FROM
-   * that table, so it becomes a live Project Admin grant the moment the user is demoted, on a row no
-   * roster displays. The membership itself is already written by `POST /v1/teams` from
-   * `memberUserIds`, which is why skipping the level loses nothing.
+   * `memberSelectOption`, so a lead carries the same avatar the member table below draws for the same
+   * person, and typing an email finds them.
    */
-  async function syncMemberAccess() {
-    for (const [uid, level] of Object.entries(memberAccess)) {
-      if (level === null) continue
-      const existing = projectMembers.find((pm) => pm.userId === uid)
-      if (existing?.accessLevel === level) continue
-      await setAccess.mutateAsync({ userId: uid, accessLevel: level })
-    }
+  const leadCandidateIds = new Set(
+    team ? teamMembers.map((m) => m.userId) : Object.keys(memberAccess),
+  )
+  const leadOptions: SelectOption[] = wsMembers
+    .filter((m) => m.status === 'active' && leadCandidateIds.has(m.userId))
+    .map((m) => memberSelectOption(m))
+  const valid = name.trim().length >= 2 && /^[A-Z][A-Z0-9]{1,9}$/.test(key)
+
+  /**
+   * Toggling a row includes or excludes it, and that is now the WHOLE decision.
+   *
+   * It used to also pick a project access LEVEL for the row — carrying an existing Admin across and
+   * promoting anyone else to Editor, Rally's own team-membership rule. `PM-FR-021` ends that: "Adding
+   * or removing a Team member never creates or changes Project Access", and the candidates are users
+   * who already hold a level, so there is nothing left to decide or to write.
+   */
+  function toggleMemberRow(userId: string) {
+    setMemberAccess((prev) => {
+      const next = { ...prev }
+      if (userId in next) delete next[userId]
+      else next[userId] = true
+      return next
+    })
   }
 
   async function handleSave() {
@@ -542,7 +529,8 @@ function TeamFormModal({
         projectIds: [projectId],
         memberUserIds: Object.keys(memberAccess),
       })
-      await syncMemberAccess()
+      // No access sync: `PM-FR-021` forbids this flow from touching Project Access, and every
+      // candidate already holds a level (that is what made them eligible).
       notify.success('Team created')
       onClose()
     } catch (e) {
@@ -621,7 +609,7 @@ function TeamFormModal({
                       <span className="flex w-5 justify-center">
                         <SelectionCheckbox
                           checked={checked}
-                          onChange={() => toggleMemberRow(m.userId, currentLevel)}
+                          onChange={() => toggleMemberRow(m.userId)}
                           ariaLabel={`Add ${label} to this team`}
                         />
                       </span>
@@ -655,16 +643,14 @@ function TeamFormModal({
                             {t('teams.memberNoLevelWritten')}
                           </span>
                         ) : checked ? (
-                          <SearchableSelect
-                            variant="field"
-                            dense
-                            value={memberAccess[m.userId] ?? ''}
-                            ariaLabel={`Access level for ${label}`}
-                            options={teamMemberAccessOptions}
-                            onChange={(v) =>
-                              setMemberRowLevel(m.userId, v as TeamMemberAccessLevel)
-                            }
-                          />
+                          /* PROJECT ACCESS IS READ-ONLY IN THIS FLOW (`PM-FR-021`, BA 2026-08-22):
+                             "Adding or removing a Team member never creates or changes Project
+                              Access." The level select wrote one, so the cell states the membership
+                             it IS about instead. The access level beside it is the existing grant,
+                             which is now the PRECONDITION for being offered at all. */
+                          <span className="block text-center text-ui-xs text-foreground-subtle">
+                            {t('teams.memberWillJoin')}
+                          </span>
                         ) : (
                           <span className="block text-center text-ui-xs text-foreground-subtle opacity-60">
                             {t('teams.memberNotAdded')}

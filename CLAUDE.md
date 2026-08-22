@@ -533,14 +533,22 @@ sentence before touching either.
   — "users who do not belong to Project X are exposed as Team member candidates". It is an `Add` button
   and a `SelectionModal` now, and the candidates are the project's members plus active Workspace
   Admins, minus the existing roster.
-  - **This REVERSES Phase 1 SRS §2A's "User project access is derived from team membership"** on that
-    one write. The two cannot both hold, and the newer instruction wins — same precedence as the
-    defect-delete and Rollup reversals. What survives is the DERIVING on the path the BA's own E2E-002
-    uses: `createTeam` with `memberUserIds` still grants access through RBE-06 ("Create Team under a
-    Project and select one existing user as Editor"). What changed is that an EXISTING team can no
-    longer be the first place a user meets a project — grant access, then staff the team. Put to the
-    BA; if §2A's order is restored, that one predicate is what comes out, and
-    `team-preparation-flow.e2e.spec.ts` step 3 goes back to asserting the add succeeds.
+  - **This REVERSES Phase 1 SRS §2A's "User project access is derived from team membership", and the
+    BA has since finished the reversal.** `PM-FR-021` (`c42df59`, 2026-08-22) states it outright:
+    "Adding or removing a Team member never creates or changes Project Access." So **RBE-06 IS
+    RETIRED** — `grantTeamRosterProjectAccess` and `teamRosterAccessLevel` are gone, from all three
+    writes (create, edit, add-member), and the team form no longer sets an access level at all
+    ("Project Access is read-only in this flow"). Access comes first, then membership; the candidate
+    rule is what guarantees a member already has it.
+  - **Nothing is invalidated by a roster write any more.** The assignment cache is keyed on
+    `project_members`, which these writes no longer touch, and team SCOPE is read live from
+    `team_members` (`AccessService.listScopedTeamIds`) rather than from the cache.
+  - **A TEAM LEAD IS ENROLLED, not refused.** `PM-FR-021`/AC15 say a lead "must be an active Team
+    member", and the same commit's addendum states it as an identity — "an active Team Lead is an
+    operational Team member". Refusing would make "create a team with a lead" impossible in one call,
+    which the BA's own E2E-002 journey does, so `leadInclusiveRoster` adds the lead to the roster on
+    create and on any patch that moves either side. The lead still passes the candidate rule; enrolment
+    is not a way around it. The SPA offers only ticked/rostered members as lead.
   - **A WORKSPACE ADMIN is admitted with no project row at all**, by the `isWorkspaceAdmin`
     short-circuit. §2.1 keeps them off `work.project_members`, so a membership test would exclude
     exactly the principals the 2026-08-20 feature below exists for.

@@ -50,6 +50,7 @@ import {
   ADMIN_USER_ID,
   ALL,
   DEVELOPER_ID,
+  VIEWER_ID,
   adminActor,
   bootRallyApp,
   uniqueKey,
@@ -236,29 +237,32 @@ describe('BA flows: E2E-002 admin prepares team and user for work management', (
       expect(roster.map((m) => m.userId)).toContain(DEVELOPER_ID);
     });
 
-    it('still derives access from a roster named at CREATE time (§2A, E2E-002 step 2)', async () => {
-      // The half of §2A that stands: the BA's own flow creates the team WITH its members, and RBE-06
-      // grants each of them project access. Nobody needs a project assignment to be staffed this way.
-      // The shared helper's project, not a new one: `e2e-fixtures.ratchet.spec.ts` caps the number of
-      // self-built projects in this suite, and this case needs a project, not its own project.
+    it('writes NO Project Access when a team is created with members (PM-FR-021)', async () => {
+      // The last of §2A to go. `PM-FR-021` (2026-08-22): "Adding or removing a Team member never
+      // creates or changes Project Access" — and the same commit makes candidates users who already
+      // hold a level, so nothing is left for a roster row to grant. This case asserted the opposite
+      // (RBE-06 deriving at create time) until that ruling.
       const { project } = await prepareLinkedContext();
+      const before = await access.getProjectAccessLevel(admin.workspaceId, VIEWER_ID, project.id);
+      expect(before).toBeNull();
+
       const team = await teams.createTeam(
         admin.workspaceId,
         {
-          name: 'E2E-002 Derived Team',
+          name: `E2E-002 No-grant Team ${uniqueKey('T')}`,
           key: uniqueKey('T'),
-          leadId: ADMIN_USER_ID,
           projectIds: [project.id],
-          memberUserIds: [DEVELOPER_ID],
+          memberUserIds: [VIEWER_ID],
         },
         ADMIN_USER_ID,
       );
 
-      expect(
-        await access.getProjectAccessLevel(admin.workspaceId, DEVELOPER_ID, project.id),
-      ).not.toBeNull();
       const roster = await teams.listTeamMembers(team.id, admin.workspaceId);
-      expect(roster.map((m) => m.userId)).toContain(DEVELOPER_ID);
+      expect(roster.map((m) => m.userId)).toContain(VIEWER_ID);
+      // Membership written, access untouched.
+      expect(
+        await access.getProjectAccessLevel(admin.workspaceId, VIEWER_ID, project.id),
+      ).toBeNull();
     });
 
     it('refuses a user who is not a member of the owning workspace', async () => {

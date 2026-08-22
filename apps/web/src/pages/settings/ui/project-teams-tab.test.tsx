@@ -231,7 +231,27 @@ describe('TeamFormModal — a Workspace Admin is a Team candidate, but never a p
             assignable: true,
           })),
         })
-      if (path === '/v1/projects/{id}/members') return Promise.resolve({ data: [] })
+      // Eddie holds Editor on this project — which is what makes him a candidate at all under
+      // `PM-FR-020` ("active users already eligible in the selected Project"). Wanda needs no row:
+      // §2.1 keeps a Workspace Admin off `project_members` and the rule admits them anyway.
+      if (path === '/v1/projects/{id}/members')
+        return Promise.resolve({
+          data: [
+            {
+              id: 'pm-ed',
+              userId: 'u-ed',
+              workspaceId: 'ws-1',
+              projectId: 'p-1',
+              accessLevel: 'editor',
+              status: 'active',
+              displayName: 'Eddie Editor',
+              email: 'eddie@acme.test',
+              joinedAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              teamCount: 0,
+            },
+          ],
+        })
       return Promise.resolve({ data: [] })
     })
   })
@@ -299,11 +319,25 @@ describe('TeamFormModal — a Workspace Admin is a Team candidate, but never a p
     })
   })
 
-  it('offers a Workspace Admin as a Team lead (the reversed half of §2.1)', async () => {
+  /**
+   * `PM-FR-021` (BA 2026-08-22): "Team Lead must be an active Team member." So the lead options are
+   * the rows ticked in this form, not the directory — and a Workspace Admin is still among them once
+   * ticked, which is the reversed half of §2.1 this case was written for.
+   */
+  it('offers only ticked members as Team lead, Workspace Admin included', async () => {
     await openCreate()
+
+    // Nobody ticked yet: nothing to lead with.
     fireEvent.click(await screen.findByRole('button', { name: 'Team lead' }))
+    expect(screen.queryByRole('button', { name: 'Wanda Admin' })).toBeNull()
+
+    // Close the picker before ticking, then reopen: the option list is rebuilt from the roster.
+    fireEvent.click(screen.getByRole('button', { name: 'Team lead' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Add Wanda Admin to this team' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Team lead' }))
     expect(await screen.findByRole('button', { name: 'Wanda Admin' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Eddie Editor' })).toBeTruthy()
+    // Not ticked, so not a candidate — the rule cuts both ways.
+    expect(screen.queryByRole('button', { name: 'Eddie Editor' })).toBeNull()
   })
 
   it('offers a Workspace Admin as a Team MEMBER candidate', async () => {
@@ -313,24 +347,22 @@ describe('TeamFormModal — a Workspace Admin is a Team candidate, but never a p
     ).toBeTruthy()
   })
 
-  it('shows the Workspace Admin badge and NO access-level select on that row, even when checked', async () => {
+  /**
+   * `PM-FR-021`: "Project Access is read-only in this flow." The level select is gone for EVERYONE,
+   * not only for a Workspace Admin — this form now decides membership and nothing else, and the level
+   * shown beside a row is the existing grant that made the person eligible.
+   */
+  it('offers no access-level select at all, for any row', async () => {
     await openCreate()
-    const row = await screen.findByRole('checkbox', { name: 'Add Wanda Admin to this team' })
-    fireEvent.click(row)
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Add Wanda Admin to this team' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Add Eddie Editor to this team' }))
 
-    // The badge stands where a level would be, and the level select never appears for this row.
     expect(screen.getAllByText('Workspace Admin').length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Access level for Wanda Admin' })).toBeNull()
-
-    // Contrast: an ordinary member DOES get one once checked, so the absence above is about the
-    // Workspace Admin and not about the checkbox failing to register.
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Add Eddie Editor to this team' }))
-    expect(
-      await screen.findByRole('button', { name: 'Access level for Eddie Editor' }),
-    ).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Access level for Eddie Editor' })).toBeNull()
   })
 
-  it('adds the Workspace Admin to the team but OMITS them from the project-access sync', async () => {
+  it('adds both to the team and writes no Project Access at all', async () => {
     await openCreate()
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Add Wanda Admin to this team' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Add Eddie Editor to this team' }))
@@ -353,12 +385,9 @@ describe('TeamFormModal — a Workspace Admin is a Team candidate, but never a p
       'u-wa',
     ])
 
-    // Project access: the Editor ONLY. A `POST /v1/projects/{id}/members` naming `u-wa` is the row
-    // §2.1 forbids and migration 0118 deletes.
-    await waitFor(() =>
-      expect(mockPOST.mock.calls.some((c) => c[0] === '/v1/projects/{id}/members')).toBe(true),
-    )
-    const accessCalls = mockPOST.mock.calls.filter((c) => c[0] === '/v1/projects/{id}/members')
-    expect(accessCalls.map((c) => (c[1].body as { userId: string }).userId)).toEqual(['u-ed'])
+    // And NO project-access write for anybody: `PM-FR-021` — "Adding or removing a Team member never
+    // creates or changes Project Access." This used to write the Editor's level here, which is the
+    // grant RBE-06 implied from a roster row; that rule is retired.
+    expect(mockPOST.mock.calls.some((c) => c[0] === '/v1/projects/{id}/members')).toBe(false)
   })
 })

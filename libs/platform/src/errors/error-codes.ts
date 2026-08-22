@@ -264,6 +264,12 @@ export const ErrorCodes = {
    * their workspace-wide grant covers every project).
    */
   TEAM_MEMBER_NOT_PROJECT_MEMBER: 'TEAM_MEMBER_NOT_PROJECT_MEMBER',
+  /**
+   * A Team Lead must be an active member of that team (`PM-FR-021` / AC15, BA 2026-08-22). The label
+   * confers no access and no Owner eligibility, so a lead who is not on the roster is a claim about
+   * the delivery model that the roster itself contradicts.
+   */
+  TEAM_LEAD_NOT_MEMBER: 'TEAM_LEAD_NOT_MEMBER',
   /** Delete is an operation on the ARCHIVE: archive the team first (`TeamService.deleteTeam`). */
   TEAM_NOT_ARCHIVED: 'TEAM_NOT_ARCHIVED',
   /**

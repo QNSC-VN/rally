@@ -69,23 +69,20 @@ if (teamScopedLevels.length !== 1) {
 export const TEAM_ROSTER_ACCESS_LEVEL: ProjectAccessLevel = teamScopedLevels[0];
 
 /**
- * The level a team roster row should grant a user who may already hold one.
+ * RBE-06 IS RETIRED — a team roster row grants NOTHING.
  *
- * Never a DEMOTION: an existing Admin stays Admin, because being put on a team says nothing
- * about the project authority they were separately given, and silently narrowing it would
- * revoke access as a side effect of a roster edit. Anyone else lands on
- * {@link TEAM_ROSTER_ACCESS_LEVEL}.
+ * `teamRosterAccessLevel` lived here and answered "what level should a roster row imply", the rule
+ * `grantTeamRosterProjectAccess` applied on every team write. `PM-FR-021` (BA, 2026-08-22) ends it:
+ * "Adding or removing a Team member never creates or changes Project Access", and the same commit's
+ * addendum makes Team candidates users who ALREADY hold Admin or Editor on the project. So the
+ * implication now runs the other way — access first, then membership — and a rule that granted from a
+ * roster row would hand access to the very users the candidate rule says must already have it.
  *
- * The same rule the SPA already encodes in `project-teams-tab.tsx`
- * (`currentLevel === 'admin' ? 'admin' : 'editor'`), lifted here so the SPA is no longer the only
- * place that knows it — `POST /v1/teams` reaches the same write with no SPA in front of it.
- * Rally agrees from the other direction: its Team Member checkbox auto-promotes to Editor.
+ * This also finishes reversing Phase 1 §2A's "User project access is derived from team membership",
+ * which `TeamService.addTeamMember` had already reversed for one write. Both halves are gone together;
+ * `TEAM_ROSTER_ACCESS_LEVEL` is kept below because the Editor Teams modal still names that level when
+ * a Workspace Admin grants access deliberately.
  */
-export function teamRosterAccessLevel(
-  current: ProjectAccessLevel | null | undefined,
-): ProjectAccessLevel {
-  return current && grantsAllTeams(current) ? current : TEAM_ROSTER_ACCESS_LEVEL;
-}
 
 /**
  * Whether the level's authority is measured against TEAMS, so holding it means holding at least one
