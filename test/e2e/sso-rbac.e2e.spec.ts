@@ -49,9 +49,12 @@ import { AppModule } from '../../apps/api/src/app.module';
 // platform-admin elevation reads PLATFORM_ADMIN_EMAILS, so deriving both from
 // the same source keeps the test aligned by construction.
 const TENANT = process.env['ENTRA_TENANT_ID'] ?? 'dev-tenant';
-const PLATFORM_ADMIN_EMAIL = (process.env['PLATFORM_ADMIN_EMAILS'] ?? 'nghiavt@qnsc.vn')
-  .split(',')[0]
-  .trim();
+//
+// An EMPTY value is not the same as an unset one, and `??` cannot tell them apart: `.env` in this
+// repo ships `PLATFORM_ADMIN_EMAILS=` with nothing after it, so the fallback never fired, the claims
+// carried `email: ''`, and the login died in `assertConnectionAllows` — "Your email domain is not
+// permitted to sign in to this organization", which reads like an SSO defect and is a config read.
+const PLATFORM_ADMIN_EMAIL = (process.env['PLATFORM_ADMIN_EMAILS'] ?? '').split(',')[0].trim();
 // JIT provisioning is gated on the connection's allow-list, which
 // seedTenantBootstrap builds from SSO_ALLOWED_EMAIL_DOMAINS — not from the admin
 // address. Deriving it from the admin email instead would happen to pass while
@@ -136,24 +139,35 @@ describe('SSO login → RBAC/PBAC (real AppModule + seeded DB)', () => {
     expect(resolved.permissions).not.toContain(WORKSPACE_ALL);
   });
 
-  it('elevates a PLATFORM_ADMIN_EMAILS user to workspace_admin', async () => {
-    const claims: EntraClaims = {
-      oid: 'e2e-sso-admin',
-      email: PLATFORM_ADMIN_EMAIL,
-      displayName: 'E2E Platform Admin',
-      externalTenantId: TENANT,
-      roles: [],
-    };
+  /**
+   * Elevation is CONFIGURATION-GATED, so this case only has a subject when the variable names one.
+   *
+   * Skipped rather than defaulted to a literal address: with `PLATFORM_ADMIN_EMAILS` empty the app
+   * elevates NOBODY, so asserting that some invented address becomes `workspace_admin` would assert
+   * behaviour the running configuration does not have — a green test for a claim that is false on the
+   * machine it ran on. CI sets the variable, which is where the assertion means something.
+   */
+  it.skipIf(!PLATFORM_ADMIN_EMAIL)(
+    'elevates a PLATFORM_ADMIN_EMAILS user to workspace_admin',
+    async () => {
+      const claims: EntraClaims = {
+        oid: 'e2e-sso-admin',
+        email: PLATFORM_ADMIN_EMAIL,
+        displayName: 'E2E Platform Admin',
+        externalTenantId: TENANT,
+        roles: [],
+      };
 
-    const result = await auth.ssoLogin(entraToken(claims), '127.0.0.1');
-    const token = decodeAccessToken(result.accessToken);
+      const result = await auth.ssoLogin(entraToken(claims), '127.0.0.1');
+      const token = decodeAccessToken(result.accessToken);
 
-    const resolved = await access.getUserRoleAndPermissions(token.sub, token.contextId!);
-    expect(resolved.role).toBe('workspace_admin');
+      const resolved = await access.getUserRoleAndPermissions(token.sub, token.contextId!);
+      expect(resolved.role).toBe('workspace_admin');
 
-    // workspace_admin carries the `workspace:*` wildcard in the store — which is
-    // now the only place it lives.
-    expect(resolved.permissions).toContain(WORKSPACE_ALL);
-    expect(token.claims['permissions']).toBeUndefined();
-  });
+      // workspace_admin carries the `workspace:*` wildcard in the store — which is
+      // now the only place it lives.
+      expect(resolved.permissions).toContain(WORKSPACE_ALL);
+      expect(token.claims['permissions']).toBeUndefined();
+    },
+  );
 });

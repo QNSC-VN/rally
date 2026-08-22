@@ -57,6 +57,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AccessService } from '@modules/access';
 import { AppModule } from '../../apps/api/src/app.module';
+import { SSO_EMAIL_DOMAIN, SSO_TENANT_ID } from './support/sso-env';
 import {
   PAY_PROJECT_ID,
   SEED_PROJECTS,
@@ -138,9 +139,9 @@ describe('project-scoped routes: authorization over HTTP (e2e)', () => {
   async function noAccessToken(): Promise<{ token: string; userId: string }> {
     const claims: EntraClaims = {
       oid: `no-access-${randomUUID()}`,
-      email: `no-access-${randomUUID().slice(0, 8)}@qnsc.vn`,
+      email: `no-access-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
       displayName: 'E2E No Access Principal',
-      externalTenantId: 'dev-tenant',
+      externalTenantId: SSO_TENANT_ID,
       roles: [],
     };
     const { accessToken } = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
@@ -185,9 +186,9 @@ describe('project-scoped routes: authorization over HTTP (e2e)', () => {
   async function principalAt(level: 'admin' | 'editor', projectId: string): Promise<string> {
     const claims: EntraClaims = {
       oid: `authz-${level}-${randomUUID()}`,
-      email: `authz-${level}-${randomUUID().slice(0, 8)}@qnsc.vn`,
+      email: `authz-${level}-${randomUUID().slice(0, 8)}@${SSO_EMAIL_DOMAIN}`,
       displayName: `E2E ${level}`,
-      externalTenantId: 'dev-tenant',
+      externalTenantId: SSO_TENANT_ID,
       roles: [],
     };
     const { accessToken } = await auth.ssoLogin(JSON.stringify(claims), '127.0.0.1');
