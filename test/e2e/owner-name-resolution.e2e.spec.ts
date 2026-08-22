@@ -157,6 +157,64 @@ describe('owner names come from the row, not from a picker feed', () => {
     expect(row?.assigneeName).toBeTruthy();
   });
 
+  it('sorts the Backlog by owner NAME, and pages that sort without repeating a row', async () => {
+    /**
+     * Phase 2/01 §167 lists `assignee` and `devOwner` among the accepted `sortBy` values. They were
+     * withheld while the grids resolved a name on the client, because the only thing the server
+     * could order by was the uuid — arbitrary to every reader. Now that the name is joined, the sort
+     * seeks on the SAME `coalesce(display_name, email)` expression the cell renders, which is what
+     * keeps the order and the keyset cursor from disagreeing on a user with no display name.
+     *
+     * The paging half is the part a unit test cannot see: a keyset over a non-unique, nullable,
+     * JOINED expression is exactly where an off-by-one repeats or skips a row.
+     */
+    const first = await as(
+      adminToken,
+      'GET',
+      `/work-items?projectId=${NXP}&sort=assignee:asc&limit=3`,
+    );
+    expect(first.statusCode, first.body).toBe(200);
+    const page1 = first.json().data as OwnedRow[];
+    const names = (rows: OwnedRow[]) => rows.map((r) => r.assigneeName ?? null);
+
+    // Non-null names ascend, and the nulls come last (ASC → NULLS LAST, the shared keyset rule).
+    const named = names(page1).filter((n): n is string => n !== null);
+    expect([...named]).toEqual([...named].sort((a, b) => a.localeCompare(b)));
+    if (names(page1).some((n) => n === null)) {
+      expect(names(page1).indexOf(null)).toBeGreaterThanOrEqual(named.length);
+    }
+
+    const cursor = first.json().pageInfo?.nextCursor as string | undefined;
+    if (cursor) {
+      const second = await as(
+        adminToken,
+        'GET',
+        `/work-items?projectId=${NXP}&sort=assignee:asc&limit=3&cursor=${encodeURIComponent(cursor)}`,
+      );
+      expect(second.statusCode, second.body).toBe(200);
+      const page2 = second.json().data as OwnedRow[];
+      const ids = new Set(page1.map((r) => r.itemKey));
+      for (const row of page2) {
+        expect(ids.has(row.itemKey), `${row.itemKey} appeared on both pages`).toBe(false);
+      }
+    }
+  });
+
+  it('sorts by Dev Owner too — the second field is not half-wired', async () => {
+    const res = await as(
+      adminToken,
+      'GET',
+      `/work-items?projectId=${NXP}&sort=devOwner:desc&limit=5`,
+    );
+    expect(res.statusCode, res.body).toBe(200);
+    // DESC → NULLS FIRST: unset Dev Owners lead, then names descend.
+    const values = (res.json().data as OwnedRow[]).map((r) => r.devOwnerName ?? null);
+    const firstNamed = values.findIndex((v) => v !== null);
+    if (firstNamed > 0) expect(values.slice(0, firstNamed).every((v) => v === null)).toBe(true);
+    const named = values.filter((v): v is string => v !== null);
+    expect([...named]).toEqual([...named].sort((a, b) => b.localeCompare(a)));
+  });
+
   it('does NOT widen the owner OFFER feed (WID-FR-016)', async () => {
     // Naming and offering stay separate questions, and the name fix moved only the first. Asserted on
     // the team branch: a Workspace Admin who is not on the selected team is still not offered there,

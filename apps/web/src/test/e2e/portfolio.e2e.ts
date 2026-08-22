@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { login, selectProject } from './helpers'
+import { login, selectProject, settle } from './helpers'
 
 /**
  * Picks an Owner in a create dialog, which SRS §344 makes required for both types.
@@ -468,6 +468,12 @@ test.describe('Portfolio', () => {
       .click()
     await expect(page.getByRole('button', { name: /NXP · Team Alpha/ })).toBeVisible()
 
+    // A context change lands on HOME (`SHELL-FR-005`: "navigate về Home của context mới"), so come
+    // back to the surface under test. This used to stay put — the Team half of that rule was read
+    // as a scope filter that should not move the reader, and this spec was written against it.
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+
     await page.getByLabel('Type').selectOption('epic')
     await expect(page.getByText('Filter not show item')).toBeVisible()
 
@@ -478,6 +484,11 @@ test.describe('Portfolio', () => {
       .first()
       .click()
     await expect(page.getByRole('button', { name: /NXP · All Teams/ })).toBeVisible()
+    await page.goto('/portfolio', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+    // Re-apply the Type filter: the navigation home reset this page's own filter state, and
+    // asserting the message is gone with NO filter applied would pass for the wrong reason.
+    await page.getByLabel('Type').selectOption('epic')
     await expect(page.getByText('Filter not show item')).toHaveCount(0)
   })
 

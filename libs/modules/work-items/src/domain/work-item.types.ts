@@ -132,9 +132,30 @@ export interface WorkItemFilters {
  * `priority`) sort by their semantic Postgres enum declaration order.
  */
 export type WorkItemSortBy =
-  'rank' | 'itemKey' | 'type' | 'title' | 'scheduleState' | 'priority' | 'planEstimate';
+  | 'rank'
+  | 'itemKey'
+  | 'type'
+  | 'title'
+  | 'scheduleState'
+  | 'priority'
+  | 'planEstimate'
+  | 'assignee'
+  | 'devOwner';
 
-/** Whitelist of backlog sort fields accepted from the `sort` query param. */
+/**
+ * Whitelist of backlog sort fields accepted from the `sort` query param — Phase 2/01 §167.
+ *
+ * `assignee` and `devOwner` sort by the OWNER'S NAME, joined, not by the uuid the row stores: a
+ * uuid order is arbitrary to every reader, which is why they were withheld until the read models
+ * joined the name (`ownerNameJoins`). The keyset therefore seeks on the same
+ * `coalesce(display_name, email)` expression the grid renders, so paging cannot disagree with the
+ * order on a user who has no display name.
+ *
+ * Two fields the BA lists there are still absent, for reasons rather than by omission:
+ *  - `iteration` — the Backlog is DEFINED by `iteration_id IS NULL` (`listBacklog`), so every row's
+ *    value is the same and the sort could only ever be a no-op.
+ *  - `release` — needs a `releases` join this query does not carry; it is a real gap, not a rule.
+ */
 export const BACKLOG_SORT_FIELDS = [
   'rank',
   'itemKey',
@@ -143,6 +164,8 @@ export const BACKLOG_SORT_FIELDS = [
   'scheduleState',
   'priority',
   'planEstimate',
+  'assignee',
+  'devOwner',
 ] as const satisfies readonly WorkItemSortBy[];
 
 export interface CreateWorkItemInput {
