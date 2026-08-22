@@ -583,6 +583,49 @@ Four things are now true, and each was a separate defect:
 **And the Owner is never defaulted to the current user** (AC7). A change that did exactly that was
 reverted on this branch: `Unassigned` is the default the BA states three times.
 
+## A parent's Schedule State is DERIVED FROM ITS TASK SET, not nudged by transitions
+
+Rally's own rule (Broadcom, "Task State Updates Parent Schedule State"), and now ours —
+`reconcileParentScheduleState` in `WorkItemsService`, called from task create, update and delete:
+
+| the live task set | parent becomes |
+|---|---|
+| all `Defined` | `Defined` |
+| all `Completed` | `Completed` |
+| anything else | `In-Progress` |
+| no live tasks | untouched — nothing to derive from |
+
+**It was three per-event branches, and that shape is what broke it.** `TASK-FR-016` states two triggers
+(all Tasks Completed; any Task reopened) and both were built; a Task STARTING was cited in the service's
+own comment as Rally's behaviour ("otherwise → In Progress") and never implemented. So a Story read
+`Defined` while a Task under it was In-Progress — a state Rally cannot be in, and the first thing a
+reader checks to answer "is anyone working on this?". Reported from develop on 2026-08-22 as "the
+roll-up stopped working"; it had never worked for that trigger, which is why nothing regressed and no
+test caught it. A set-derived rule has no third trigger to forget.
+
+- **CREATE and DELETE are part of the rule**, and no transition trigger could ever have covered them.
+  Broadcom names both: "adding a task to a story in Idea will make the story Defined" and "adding a
+  task to a story in Completed will make the story In Progress". Deleting the last OPEN task completes
+  the parent exactly as completing it would have.
+- **`accepted` and `release` are reconciled like any other state, and guarding them would have been the
+  natural mistake.** Broadcom is silent on those two, so the literal rule un-accepts a Story because
+  somebody added a Task — which reads like something to prevent. The repo had already decided it:
+  `P3-TS-FR-041` (BA-confirmed 2026-07-24) moves a parent back "from ANY at-or-past-completed state —
+  `completed`, `accepted` OR `release`", with a unit test asserting it. A guard here would have
+  contradicted a confirmed rule and its own test. To reverse it, exempt those states in the reconciler
+  and retire that case — both, or the two disagree.
+- **`taskStateCounts` replaced `areAllTasksComplete`** for the same reason: "are they all complete"
+  cannot answer two of the three cases, so the port returns a census.
+- **The one divergence from Rally: we have no `Auto State Updates` switch.** Rally gates this whole
+  behaviour per project/subscription, which is how it reconciles automation with `TASK-FR-016`'s "user
+  may still change the parent status manually". Without it a manual parent state survives only until
+  the next task write. Put to the BA; if they want the manual edit to win, that switch is the answer,
+  not weakening the rule.
+- Reached by every surface: the three SPA controls (Tasks tab, Iteration Status nested row, Team Status)
+  all send `PATCH /v1/work-items/:id`, and Team Status' own task route delegates to this service. Pinned
+  in `test/e2e/derived-invariants.e2e.spec.ts`, which asserts the STORED parent state — what every grid,
+  report and burndown reads — not the response of the call that changed the Task.
+
 ## Task hours are THREE independent fields
 
 `Estimate`, `To Do` and `Actual` never derive from each other (Portfolio SRS:141-147), with exactly
