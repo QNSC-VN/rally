@@ -30,6 +30,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../../apps/api/src/app.module';
 import {
   ADMIN_USER_ID,
+  TEAM_BETA_ID,
   NXP_ITER_CURRENT_ID,
   SEED_PROJECTS,
   TEAM_ALPHA_ID,
@@ -100,12 +101,19 @@ describe('owner names come from the row, not from a picker feed', () => {
     await app?.close();
   });
 
-  it('the picker feeds genuinely cannot name this owner — the premise', async () => {
-    const projectFeed = await as(editorToken, 'GET', `/projects/${NXP}/member-options`);
-    expect(projectFeed.statusCode).toBe(200);
-    // AC-16: a Workspace Admin is not an assignable owner, so the OFFER list must not carry them.
-    // That is correct, and it is exactly why the name cannot come from here.
-    expect(userIdsOf(projectFeed.json())).not.toContain(ADMIN_USER_ID);
+  it('the TEAM-scoped picker feed cannot name this owner — the premise', async () => {
+    // The premise, stated against the branch the grids actually use. `WID-FR-017` (BA `c42df59`)
+    // scopes a team-selected feed to project Admins, Editors on THAT team, and a WA on its roster —
+    // so a WA who is not on the selected team is absent, and a name resolved from this feed would be
+    // missing. (The no-team branch does now include Workspace Admins, which is why this case names
+    // the team explicitly rather than asserting the feed can never carry them.)
+    const teamFeed = await as(
+      editorToken,
+      'GET',
+      `/projects/${NXP}/member-options?teamId=${TEAM_BETA_ID}`,
+    );
+    expect(teamFeed.statusCode, teamFeed.body).toBe(200);
+    expect(userIdsOf(teamFeed.json())).not.toContain(ADMIN_USER_ID);
   });
 
   it('Iteration Status names the Owner and the Dev Owner for an EDITOR', async () => {
@@ -149,9 +157,15 @@ describe('owner names come from the row, not from a picker feed', () => {
     expect(row?.assigneeName).toBeTruthy();
   });
 
-  it('does NOT widen the owner OFFER feed (WID-FR-016 / AC-16)', async () => {
-    // Naming and offering are separate questions, and the fix must move only the first.
-    const feed = await as(adminToken, 'GET', `/projects/${NXP}/member-options`);
+  it('does NOT widen the owner OFFER feed (WID-FR-016)', async () => {
+    // Naming and offering stay separate questions, and the name fix moved only the first. Asserted on
+    // the team branch: a Workspace Admin who is not on the selected team is still not offered there,
+    // however the row names them.
+    const feed = await as(
+      adminToken,
+      'GET',
+      `/projects/${NXP}/member-options?teamId=${TEAM_BETA_ID}`,
+    );
     expect(userIdsOf(feed.json())).not.toContain(ADMIN_USER_ID);
   });
 });

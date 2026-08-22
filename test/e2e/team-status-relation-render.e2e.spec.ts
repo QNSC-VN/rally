@@ -35,6 +35,7 @@ import {
   DEVELOPER_ID,
   adminActor,
   bootRallyApp,
+  grantProjectAccess,
   uniqueKey,
 } from './support/flow-harness';
 
@@ -76,7 +77,10 @@ describe('BA flows: E2E-011 Team Status renders a fully-related task', () => {
     );
     await projects.linkTeam(admin.workspaceId, project.id, team.id);
     // Both the assignee (DEVELOPER_ID) and admin must be team members for the
-    // owner grouping to place the task.
+    // owner grouping to place the task — and since `PM-FR-020` (BA 2026-08-22) a team member must
+    // already hold Project Access, so the grant comes FIRST. That order is the rule, not a fixture
+    // detail: `TEAM_MEMBER_NOT_PROJECT_MEMBER` refuses the add otherwise.
+    await grantProjectAccess(app, DEVELOPER_ID, project.id, 'editor');
     await teams.addTeamMember(team.id, DEVELOPER_ID, admin.workspaceId, ADMIN_USER_ID);
 
     const iteration = await iterations.createIteration(admin, project.id, 'E2E-011 Sprint', {
@@ -149,6 +153,8 @@ describe('BA flows: E2E-011 Team Status renders a fully-related task', () => {
     );
     await projects.linkTeam(admin.workspaceId, project.id, teamA.id);
     await projects.linkTeam(admin.workspaceId, project.id, teamB.id);
+    // Access first, then membership — `PM-FR-020`.
+    await grantProjectAccess(app, DEVELOPER_ID, project.id, 'editor');
     await teams.addTeamMember(teamA.id, DEVELOPER_ID, admin.workspaceId, ADMIN_USER_ID);
 
     const iteration = await iterations.createIteration(admin, project.id, 'E2E-011 Iso Sprint', {

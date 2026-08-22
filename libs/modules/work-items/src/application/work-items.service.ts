@@ -502,6 +502,8 @@ export class WorkItemsService {
       releaseId: opts.releaseId ?? null,
       foundInReleaseId: opts.foundInReleaseId ?? null,
       memberIds: [opts.assigneeId, opts.reporterId, opts.devOwnerId],
+      // Owner and Dev Owner go through the shared assignment rule as well; the reporter does not.
+      assignableIds: [opts.assigneeId, opts.devOwnerId],
     });
     // An `AccessService.assertTeamScoped` call sat here (and on update and delete). Team scope was
     // deleted as an authorization boundary by ruling — see that method's former home in
@@ -1150,14 +1152,18 @@ export class WorkItemsService {
     const effectiveIterationId =
       input.iterationId ?? (input.teamId !== undefined ? item.iterationId : null);
     const changedMemberIds: Array<string | null | undefined> = [];
+    // Owner and Dev Owner also go through the shared assignment rule; a reporter does not.
+    const changedAssignableIds: Array<string | null | undefined> = [];
     if (input.assigneeId && input.assigneeId !== item.assigneeId) {
       changedMemberIds.push(input.assigneeId);
+      changedAssignableIds.push(input.assigneeId);
     }
     if (input.reporterId && input.reporterId !== item.reporterId) {
       changedMemberIds.push(input.reporterId);
     }
     if (input.devOwnerId && input.devOwnerId !== item.devOwnerId) {
       changedMemberIds.push(input.devOwnerId);
+      changedAssignableIds.push(input.devOwnerId);
     }
     await this.assertAssignmentScope(
       actor.workspaceId,
@@ -1168,6 +1174,7 @@ export class WorkItemsService {
         releaseId: input.releaseId ?? null,
         foundInReleaseId: input.foundInReleaseId ?? null,
         memberIds: changedMemberIds,
+        assignableIds: changedAssignableIds,
       },
       { validateTeamLink: Boolean(input.teamId) },
     );
@@ -2269,6 +2276,8 @@ export class WorkItemsService {
       releaseId?: string | null;
       foundInReleaseId?: string | null;
       memberIds?: Array<string | null | undefined>;
+      /** Owner / Dev Owner — the subset the shared assignment rule applies to. */
+      assignableIds?: Array<string | null | undefined>;
     },
     opts: { validateTeamLink?: boolean } = {},
   ): Promise<void> {
@@ -2298,6 +2307,29 @@ export class WorkItemsService {
     ];
     for (const userId of memberIds) {
       await this.projectsService.assertWorkspaceMember(workspaceId, userId);
+    }
+    /**
+     * OWNER AND DEV OWNER ALSO SATISFY THE ASSIGNMENT RULE, not just workspace membership.
+     *
+     * The BA states the candidate list and the validation as one rule (`c42df59`, 2026-08-22): with a
+     * Team, an active Project Admin, an Editor assigned to THAT team, or a Workspace Admin who is a
+     * member of it; with no Team, a Project Admin only. Until now the write checked only that the
+     * person was an active member of the workspace — two orders of magnitude wider than the picker,
+     * so any user id in the body was accepted for work no picker would have offered them.
+     *
+     * `reporterId` is deliberately NOT included: a reporter records who raised the item, not who may
+     * be given it, and narrowing it would refuse a legitimate filer.
+     */
+    const assignableIds = [
+      ...new Set((scope.assignableIds ?? []).filter((id): id is string => Boolean(id))),
+    ];
+    for (const userId of assignableIds) {
+      await this.projectsService.assertAssignable(
+        workspaceId,
+        scope.projectId,
+        scope.teamId ?? null,
+        userId,
+      );
     }
   }
 

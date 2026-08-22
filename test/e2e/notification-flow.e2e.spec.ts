@@ -96,7 +96,11 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
       // but its creator can read, and the producer drops a recipient without `work_item:view` on it
       // (FR-019). Without this the assertion below passed only while the notification path ignored
       // access entirely — it would be measuring the leak, not the contract.
-      await grantProjectAccess(app, DEVELOPER_ID, project.id, 'editor');
+      // `admin`, not `editor`: since the BA's assignment rule (`c42df59`, 2026-08-22) an Editor is
+      // assignable only inside an assigned Team, and this project has none — so an Editor grant would
+      // make the WRITE refuse and this spec would be measuring eligibility instead of notifications.
+      // The level is irrelevant to the contract under test; `work_item:view` is what FR-019 turns on.
+      await grantProjectAccess(app, DEVELOPER_ID, project.id, 'admin');
 
       await workItems.updateWorkItem(admin, story.id, { assigneeId: DEVELOPER_ID });
 
@@ -117,18 +121,24 @@ describe('BA flows: Phase 4.1 notifications (real AppModule + seeded DB)', () =>
       // legitimately assign work to a colleague with No Access to it, and the notification would
       // otherwise name the item's key and title on the one surface §7 says must disclose nothing.
       //
-      // Filtered, not refused: the assignment is a real thing an admin may do deliberately (they may
-      // be about to grant access), and failing the whole PATCH over a notification would be worse.
-      // So both halves are asserted — the write lands, the notification does not.
+      // THE WRITE IS NOW REFUSED OUTRIGHT, and this case used to assert the opposite — "filtered, not
+      // refused: the assignment is a real thing an admin may do deliberately". The BA's assignment
+      // rule (`c42df59`, 2026-08-22) removed that possibility: a user with no access to the project
+      // satisfies neither branch of it, so `WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE` fires before any
+      // notification decision is reached. The refusal subsumes what this case was protecting — an
+      // unreachable recipient cannot be told about an item they cannot see if they cannot be given it.
       const project = await projects.createProject(admin, {
         key: uniqueKey(),
         name: 'No Access Assign Project',
       });
       const story = await workItems.createWorkItem(admin, project.id, 'story', 'Assign outward');
 
-      const updated = await workItems.updateWorkItem(admin, story.id, { assigneeId: DEVELOPER_ID });
+      await expect(
+        workItems.updateWorkItem(admin, story.id, { assigneeId: DEVELOPER_ID }),
+      ).rejects.toThrow(/not eligible|Project Admin/);
 
-      expect(updated.assigneeId).toBe(DEVELOPER_ID);
+      const unchanged = await workItems.getWorkItem(admin.workspaceId, story.id);
+      expect(unchanged.assigneeId).toBeNull();
       expect(await outboxFor(story.id)).toHaveLength(0);
     });
 

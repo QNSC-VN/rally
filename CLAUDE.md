@@ -598,6 +598,42 @@ half before touching either.
   filter. The SPA was the only thing withholding them: `project-teams-tab.tsx` filtered
   `roleSlug !== 'workspace_admin'` out of the Team Lead options and the member table.
 
+## ONE assignment-eligibility rule, for Owner and for Dev Owner
+
+`ProjectsService.assignmentCandidates` is the only expression of it, read by the picker feed
+(`listProjectMemberOptions`) and by the write (`assertAssignable`, `WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE`).
+BA `c42df59` (2026-08-22) states it once and points both fields at it — `WID-FR-017`, `WIC-FR-006A`,
+and the Project/Team assignment addendum:
+
+| selected Team | offered |
+|---|---|
+| a Team | project `admin` (project-wide) + `editor` assigned to THAT team + Workspace Admin on its roster |
+| none | project `admin` + Workspace Admin |
+
+- **Two things it replaced, both visible on screen.** The team branch read `team_members` ALONE, so a
+  project Admin who is not on the team was withheld even though §3.1 gives Admin All Teams. The
+  project-wide branch offered every member, so with no Team chosen an Editor could be made Owner of
+  work their own team scope would then refuse them.
+- **The WRITE now applies it too.** It used to check only `assertWorkspaceMember` — orders of magnitude
+  wider than the picker, so any user id in the body was accepted for work no picker would have offered.
+  `reporterId` is deliberately OUTSIDE the rule: a reporter records who raised the item, not who may be
+  given it.
+- **The no-Team branch including Workspace Admins is a DECLARED READING.** `WIC-FR-006A` says "with
+  blank Team, Editor/WA **Team members** are not offered", which reads as excluding the team-derived
+  qualification rather than the principal — and team-less work IS the Project Backlog, whose audience
+  the team-scope ruling already fixes at Workspace Admin plus Project Admin. Excluding them would also
+  refuse the case the same commit encourages: a WA filing backlog work and being defaulted as its
+  Owner. If the BA means the narrow reading, drop the second half of that branch and nothing else
+  changes.
+- **Owner defaults to the CURRENT USER when the feed offers them** (`WIC-FR-006`), which reverses
+  `GAP-P1-WID-007`/P6-TC-007's "default to Unassigned" — and Rally agrees ("defaults to the user who
+  creates the defect"). The gate is what makes it safe: the old defect seeded the creator
+  UNCONDITIONALLY, which is how a Task inherited an owner nobody chose. The default is DERIVED, never
+  stored — an effect writing it into state cascades renders, and it has to follow every Team change.
+- **A fixture that assigns an owner now needs a Team** (or an admin). Four e2e specs had to change,
+  and that is the rule working: `manage-filters`, `notification-flow`, `team-status-relation-render`
+  and `project-delivery-flow` were all assigning an Editor to team-less work.
+
 ## A NAME belongs to the ROW; a picker feed can never be its source
 
 Reported 2026-08-22: an Editor read `No Entry` / `Unassigned` in Iteration Status' Owner and Dev Owner

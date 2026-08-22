@@ -146,6 +146,7 @@ describe('Manage Filters: every specified column filters SERVER-side (e2e)', () 
 
     const both = await items.createWorkItem(actor, project, 'story', `${NEEDLE} both`, {
       assigneeId: DEVELOPER_ID,
+      teamId: SEEDED.nxp.teamAlphaId,
       storyPoints: '13.00',
     });
     bothId = both.id;
@@ -162,6 +163,7 @@ describe('Manage Filters: every specified column filters SERVER-side (e2e)', () 
     ownerOnlyId = (
       await items.createWorkItem(actor, project, 'story', `${HAYSTACK} owner only`, {
         assigneeId: DEVELOPER_ID,
+        teamId: SEEDED.nxp.teamAlphaId,
       })
     ).id;
     created.push(ownerOnlyId);
@@ -191,7 +193,12 @@ describe('Manage Filters: every specified column filters SERVER-side (e2e)', () 
       project,
       'story',
       `${NEEDLE} sprint row`,
-      { iterationId: SEEDED.nxp.iterationFutureId, assigneeId: DEVELOPER_ID, storyPoints: '13.00' },
+      {
+        iterationId: SEEDED.nxp.iterationFutureId,
+        assigneeId: DEVELOPER_ID,
+        teamId: SEEDED.nxp.teamAlphaId,
+        storyPoints: '13.00',
+      },
     );
     blockedId = sprintNeedle.id;
     created.push(blockedId);

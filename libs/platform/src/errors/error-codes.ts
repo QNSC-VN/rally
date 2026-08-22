@@ -270,6 +270,13 @@ export const ErrorCodes = {
    * the delivery model that the roster itself contradicts.
    */
   TEAM_LEAD_NOT_MEMBER: 'TEAM_LEAD_NOT_MEMBER',
+  /**
+   * `Owner` / `Dev Owner` must satisfy the shared assignment rule (BA `c42df59`, 2026-08-22): with a
+   * Team, an active Project Admin, an Editor assigned to that Team, or a Workspace Admin who is a
+   * member of it; with no Team, a Project Admin only. Distinct from a team-SCOPE refusal — this is
+   * about who may be given the work, not about who may read it.
+   */
+  WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE: 'WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE',
   /** Delete is an operation on the ARCHIVE: archive the team first (`TeamService.deleteTeam`). */
   TEAM_NOT_ARCHIVED: 'TEAM_NOT_ARCHIVED',
   /**

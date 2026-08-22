@@ -783,6 +783,16 @@ describe('ProjectsService', () => {
           status: 'active',
           displayName: 'Admin',
         },
+        // A genuine PROJECT Admin — eligible in every branch, because §3.1 gives Admin All Teams.
+        {
+          id: 'pm-0',
+          userId: 'user-1',
+          accessLevel: 'admin',
+          status: 'active',
+          displayName: 'Ada Admin',
+          email: 'ada@qnsc.dev',
+          avatarUrl: null,
+        },
         {
           id: 'pm-2',
           userId: 'user-2',
@@ -802,9 +812,9 @@ describe('ProjectsService', () => {
 
       expect(options).toEqual([
         {
-          userId: 'user-2',
-          displayName: 'Dev Two',
-          email: 'dev2@qnsc.dev',
+          userId: 'user-1',
+          displayName: 'Ada Admin',
+          email: 'ada@qnsc.dev',
           avatarUrl: null,
         },
       ]);
@@ -815,10 +825,25 @@ describe('ProjectsService', () => {
       expect(Object.keys(options[0])).not.toContain('teamCount');
     });
 
-    it('excludes Workspace Admins and inactive rows', async () => {
+    /**
+     * WITH NO TEAM, ONLY A PROJECT ADMIN IS OFFERED (BA `c42df59`, 2026-08-22 — `WIC-FR-006A`).
+     *
+     * "With blank Team, Editor/WA Team members are not offered." This used to offer every active
+     * project member, so an Editor could be made Owner of work their own team scope would then refuse
+     * them. A Workspace Admin is excluded here too, and for a different reason: they qualify only
+     * through a team roster, and there is no team.
+     */
+    it('offers project Admins and Workspace Admins when no team is given — not Editors', async () => {
+      projectMemberRepo.listWorkspaceAdminProfiles.mockResolvedValue([
+        { userId: 'wa-1', displayName: 'Admin', email: 'wa@qnsc.dev', avatarUrl: null },
+      ]);
+
       const options = await service.listProjectMemberOptions('ws-1', 'proj-1');
 
-      expect(options.map((o) => o.userId)).toEqual(['user-2']);
+      // The Editor (`user-2`) is withheld: that is the rule. The Workspace Admin is included as a
+      // DECLARED READING — team-less work is the Project Backlog, whose audience is exactly Workspace
+      // Admin plus Project Admin. See `assignmentCandidates`.
+      expect(options.map((o) => o.userId).sort()).toEqual(['user-1', 'wa-1']);
     });
 
     it('takes NO actor and applies no roster gate — the route carries project:view', async () => {
@@ -860,28 +885,31 @@ describe('ProjectsService', () => {
         ]);
       });
 
-      it('offers the TEAM roster, not the project roster', async () => {
+      /**
+       * THE TEAM BRANCH IS THREE POPULATIONS, not the roster alone (BA `c42df59` — `WID-FR-017`).
+       *
+       * "active Project Admin, active Editor assigned to that Team, or active WA member of that Team."
+       * It used to be `team_members` ALONE, which withheld a project Admin who is not on the team even
+       * though §3.1 gives Admin All Teams — and offered a team member with no project access at all,
+       * which RBE-06 used to justify and `PM-FR-021` has now retired.
+       */
+      it('offers project Admins, Editors on that team, and a WA on its roster', async () => {
         const options = await service.listProjectMemberOptions('ws-1', 'proj-1', 'team-1');
 
-        expect(options).toEqual([
-          {
-            userId: 'user-9',
-            displayName: 'Team Nine',
-            email: 'nine@qnsc.dev',
-            avatarUrl: null,
-          },
-          {
-            userId: 'wa-1',
-            displayName: 'Admin',
-            email: 'wa@qnsc.dev',
-            avatarUrl: null,
-          },
-        ]);
-        // `user-2` is an active PROJECT member and is deliberately absent: the narrowed population is
-        // `team_members`, not `project_members` filtered by team — RBE-06 grants `editor` FROM a team
-        // roster row, so intersecting the two would withhold exactly the team-derived participants.
+        // `user-1` (Admin, not on the team), `wa-1` (WA, on the roster). `user-9` is on the roster but
+        // holds no project access, so `PM-FR-021`'s world has nothing to make them eligible.
+        expect(options.map((o) => o.userId).sort()).toEqual(['user-1', 'wa-1']);
         expect(teamService.listTeamMembers).toHaveBeenCalledWith('team-1', 'ws-1');
-        expect(projectMemberRepo.listByProject).not.toHaveBeenCalled();
+      });
+
+      it('offers an Editor once they are on the selected team', async () => {
+        teamService.listTeamMembers.mockResolvedValue([
+          { userId: 'user-2', status: 'active', displayName: 'Dev Two', email: 'dev2@qnsc.dev' },
+        ]);
+
+        const options = await service.listProjectMemberOptions('ws-1', 'proj-1', 'team-1');
+
+        expect(options.map((o) => o.userId).sort()).toEqual(['user-1', 'user-2']);
       });
 
       /**
@@ -896,15 +924,22 @@ describe('ProjectsService', () => {
 
         const options = await service.listProjectMemberOptions('ws-1', 'proj-1', 'team-1');
 
-        expect(options.map((o) => o.userId)).toEqual(['wa-1']);
+        // The WA is offered through the roster, beside the project Admin who is offered in every
+        // branch. The retest failure was the WA being ABSENT; that is what this pins.
+        expect(options.map((o) => o.userId)).toContain('wa-1');
       });
 
-      it('still offers the whole project when NO teamId is given', async () => {
+      it('does not consult any team when NO teamId is given', async () => {
+        projectMemberRepo.listWorkspaceAdminProfiles.mockResolvedValue([]);
         const options = await service.listProjectMemberOptions('ws-1', 'proj-1');
 
-        // The project-wide feed is what resolves an owner's NAME on a grid whose row owner may have
-        // left the team, so it must not narrow itself.
-        expect(options.map((o) => o.userId)).toEqual(['user-2']);
+        // Admin only, and no roster read at all — `WIC-FR-006A`: "With blank Team, Editor/WA Team
+        // members are not offered."
+        //
+        // NOTE the consequence, because it moved a responsibility: this feed is no longer wide enough
+        // to NAME an owner who has left the team, which it used to be relied on for. Names now come
+        // joined on the row itself (`ownerNameJoins`), which is what made narrowing this safe.
+        expect(options.map((o) => o.userId)).toEqual(['user-1']);
         expect(teamService.listTeamMembers).not.toHaveBeenCalled();
       });
 

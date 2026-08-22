@@ -202,6 +202,10 @@ const makeProjectsService = () => {
     // The Owner picker's own feed, which the Team-move Owner reset consults (`GAP-P1-WID-007` AC5).
     // Defaults to EMPTY, so a test that expects a moved Owner to survive has to name the roster.
     listProjectMemberOptions: vi.fn().mockResolvedValue([]),
+    // The WRITE side of the same rule (BA `c42df59`): Owner and Dev Owner must be eligible in the
+    // project/team, not merely members of the workspace. Permissive by default so the cases that are
+    // about something else keep measuring that; the eligibility cases drive it explicitly.
+    assertAssignable: vi.fn().mockResolvedValue(undefined),
     listProjectTeams,
     // Mirrors the real ProjectsService.assertTeamLinkedToProject so tests keep
     // driving the outcome via the listProjectTeams mock.
@@ -588,6 +592,80 @@ describe('WorkItemsService', () => {
   });
 
   // ── createTask ─────────────────────────────────────────────────────────────
+
+  /**
+   * OWNER AND DEV OWNER MUST BE ELIGIBLE, not merely workspace members (BA `c42df59`, 2026-08-22).
+   *
+   * The write used to check only `assertWorkspaceMember`, which is orders of magnitude wider than the
+   * picker: any user id in the body was accepted for work no picker would have offered them. The
+   * candidate list and the validation are one rule now (`ProjectsService.assertAssignable`), and these
+   * cases pin that the write CONSULTS it — with the reporter deliberately outside it.
+   */
+  describe('the assignment rule reaches the write path', () => {
+    it('asserts Owner and Dev Owner against the project/team, and not the reporter', async () => {
+      // `team-1` has to be LINKED for the write to reach the assignment rule at all.
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-1', status: 'active' }]);
+      workItemRepo.create.mockResolvedValue(mockWorkItem({ assigneeId: 'u-owner' }));
+
+      await service.createWorkItem(mockActor, 'proj-1', 'story', 'Titled', {
+        teamId: 'team-1',
+        assigneeId: 'u-owner',
+        devOwnerId: 'u-dev',
+        reporterId: 'u-reporter',
+      });
+
+      expect(projectsService.assertAssignable).toHaveBeenCalledWith(
+        'ws-1',
+        'proj-1',
+        'team-1',
+        'u-owner',
+      );
+      expect(projectsService.assertAssignable).toHaveBeenCalledWith(
+        'ws-1',
+        'proj-1',
+        'team-1',
+        'u-dev',
+      );
+      // A reporter records who RAISED the item, not who may be given it.
+      expect(projectsService.assertAssignable).not.toHaveBeenCalledWith(
+        'ws-1',
+        'proj-1',
+        'team-1',
+        'u-reporter',
+      );
+    });
+
+    it('refuses the create when the rule refuses the owner', async () => {
+      workItemRepo.create.mockResolvedValue(mockWorkItem());
+      projectsService.assertAssignable.mockRejectedValueOnce(
+        new PreconditionFailedException('WORK_ITEM_ASSIGNEE_NOT_ELIGIBLE', 'nope'),
+      );
+
+      await expect(
+        service.createWorkItem(mockActor, 'proj-1', 'story', 'Titled', { assigneeId: 'u-x' }),
+      ).rejects.toThrow(PreconditionFailedException);
+      expect(workItemRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('asserts against the INCOMING team when a patch moves both', async () => {
+      // The team the owner has to be eligible in is the one the item ends up on, not the one it left.
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ teamId: 'team-old' }));
+      projectsService.listProjectTeams.mockResolvedValue([{ teamId: 'team-1', status: 'active' }]);
+      workItemRepo.update.mockResolvedValue(mockWorkItem({ teamId: 'team-1' }));
+      // The Team-move Owner reset consults the picker feed first (AC5) and would otherwise clear the
+      // incoming owner before the rule is reached — the reset and the rule read the same population.
+      projectsService.listProjectMemberOptions.mockResolvedValue([{ userId: 'u-owner' }]);
+
+      await service.updateWorkItem(mockActor, 'wi-1', { teamId: 'team-1', assigneeId: 'u-owner' });
+
+      expect(projectsService.assertAssignable).toHaveBeenCalledWith(
+        'ws-1',
+        'proj-1',
+        'team-1',
+        'u-owner',
+      );
+    });
+  });
 
   describe('createTask', () => {
     it('inherits the team from the parent when none is provided', async () => {
