@@ -207,6 +207,60 @@ describe('derived invariants (e2e)', () => {
    * Every case asserts the STORED parent state, because that is what every grid, report and burndown
    * reads — not the response of the call that changed the task.
    */
+  describe('accepted_date follows the accepted FAMILY, not the accepted state', () => {
+    /**
+     * `trg_sync_accepted_date` (migration 0087) stamps on entry to `accepted` OR `release`, and
+     * Velocity is built entirely on that timestamp — a released Story with no `accepted_date` is
+     * reported `unclassified` and its points fall out of the bar.
+     *
+     * A DIRECT transition into `release` is the case worth pinning: it never passes through
+     * `accepted`, so a rule written as "stamp when the state becomes accepted" would miss it, and
+     * the loss is silent — the item is visibly Released while the sprint's velocity is short by its
+     * points, which reads as a reporting bug rather than a missing timestamp.
+     */
+    async function acceptedDateOf(id: string): Promise<Date | null> {
+      const rows = await db.execute<{ accepted_date: Date | null }>(
+        sql`select accepted_date from work.work_items where id = ${id}::uuid`,
+      );
+      return rows.rows[0].accepted_date;
+    }
+
+    it('stamps a story moved straight from Defined to Release', async () => {
+      const story = await items.createWorkItem(
+        actor,
+        SEEDED.nxp.projectId,
+        'story',
+        `Straight to release ${uniqueKey()}`,
+        { storyPoints: '3' },
+      );
+      expect(await acceptedDateOf(story.id)).toBeNull();
+
+      await items.updateWorkItem(actor, story.id, { scheduleState: 'release' });
+      expect(await acceptedDateOf(story.id)).not.toBeNull();
+    });
+
+    it('clears it again when that story is reopened, and re-stamps LATER on re-release', async () => {
+      const story = await items.createWorkItem(
+        actor,
+        SEEDED.nxp.projectId,
+        'story',
+        `Reopened after release ${uniqueKey()}`,
+        { storyPoints: '3' },
+      );
+      await items.updateWorkItem(actor, story.id, { scheduleState: 'release' });
+      const first = await acceptedDateOf(story.id);
+
+      await items.updateWorkItem(actor, story.id, { scheduleState: 'in_progress' });
+      expect(await acceptedDateOf(story.id)).toBeNull();
+
+      await items.updateWorkItem(actor, story.id, { scheduleState: 'accepted' });
+      const second = await acceptedDateOf(story.id);
+      expect(second).not.toBeNull();
+      // A fresh acceptance, not the old one restored — Velocity credits the sprint it happened in.
+      expect(second!.getTime()).toBeGreaterThanOrEqual(first!.getTime());
+    });
+  });
+
   describe('parent Schedule State is derived from the task set', () => {
     const parentState = async (id: string) => {
       const row = await db.execute<{ schedule_state: string }>(

@@ -98,8 +98,16 @@ export const BACKLOG_COLUMNS: ColumnDef<ColumnKey>[] = COLUMNS.map((key) => ({
 }))
 
 /**
- * Server-side sort field per column (backend `WorkItemSortBy`). Columns absent
- * from this map are not sortable (owner/release/iteration would sort by UUID).
+ * Server-side sort field per column (backend `WorkItemSortBy`), per Phase 2/01 §167.
+ *
+ * Owner and Dev Owner sort by the joined owner NAME — the same
+ * `coalesce(display_name, email)` the cell renders — not by the uuid the row stores. That is why
+ * they were absent until the read models joined the name: a uuid order is arbitrary to a reader, so
+ * offering the affordance would have been worse than withholding it.
+ *
+ * Release and Iteration are still absent. `iteration` cannot mean anything here (the Backlog IS the
+ * unscheduled rows, so every value is blank); `release` needs a join the backlog query does not
+ * carry yet.
  */
 export const COLUMN_SORT_FIELD: Partial<Record<ColumnKey, string>> = {
   rank: 'rank',
@@ -108,6 +116,8 @@ export const COLUMN_SORT_FIELD: Partial<Record<ColumnKey, string>> = {
   scheduleState: 'scheduleState',
   priority: 'priority',
   estimate: 'planEstimate',
+  owner: 'assignee',
+  devOwner: 'devOwner',
 }
 
 /** Header descriptors for the shared <DataTableHeader>; sortable where mapped. */

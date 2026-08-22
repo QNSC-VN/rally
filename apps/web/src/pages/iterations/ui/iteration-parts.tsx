@@ -5,8 +5,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { FileText, History, Loader2 } from 'lucide-react'
 import { notify } from '@/shared/lib/toast'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
+import { useRecordProject } from '@/shared/lib/deep-link-project'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
-import { useProjects } from '@/features/projects/api'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
 import { SCHEDULE_STATE_STEPS } from '@/entities/work-item/ui/state-steps'
@@ -16,7 +16,7 @@ import { TeamSelectField } from '@/shared/ui/entity-select-field'
 import { ITERATION_STATE_STYLE } from '@/features/iterations/status-colors'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
-import { FormField } from '@/shared/ui/form-field'
+import { FormField, ReadOnlyFieldValue } from '@/shared/ui/form-field'
 import { Input } from '@/shared/ui/input'
 import { DateField } from '@/shared/ui/date-field'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
@@ -51,13 +51,18 @@ export function CreateIterationModal({
   onCreated: (id: string) => void
 }) {
   const { t } = useTranslation('iterations')
-  const { workspace, team } = useAppContext()
-  const workspaceId = workspace?.workspaceId ?? ''
-  // Project auto-fills from context (P2-IT-FR-001C) but an admin may override it
-  // (FR-001D); Team then filters by the SELECTED project and must be valid for it.
-  const [selectedProjectId, setSelectedProjectId] = useState(projectId)
-  const { data: projects = [] } = useProjects(workspaceId || undefined)
-  const { data: teams = [] } = useProjectTeams(selectedProjectId)
+  const { team } = useAppContext()
+  /**
+   * Project is FIXED to the context and read-only — `P2-IT-FR-011` renders it as a
+   * "read-only Project" and `P2-IT-FR-001D` states that even a Workspace Admin "cannot change
+   * Iteration Project inside create/detail. To create in another Project, change the global
+   * Project context first." So the picker this field used to carry is gone rather than disabled,
+   * for the same reason `ProjectSelectCell` was deleted rather than gated: there is no role for
+   * which the move is legal. Team is then scoped to that fixed Project ("Team may be changed only
+   * to a Team valid for the fixed Project").
+   */
+  const projectDisplay = useRecordProject(projectId)
+  const { data: teams = [] } = useProjectTeams(projectId)
   const create = useCreateIteration()
   const [name, setName] = useState('')
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
@@ -79,12 +84,6 @@ export function CreateIterationModal({
   // PROJECT_TEAM_LINK_NOT_FOUND (FR-001D). Derived — no effect needed.
   const validTeamId = teams.some((tm) => tm.id === teamId) ? teamId : ''
 
-  function handleProjectChange(nextProjectId: string) {
-    if (nextProjectId === selectedProjectId) return
-    setSelectedProjectId(nextProjectId)
-    setTeamId('')
-  }
-
   async function submit(openDetail: boolean) {
     const next: typeof errors = {}
     if (!name.trim()) next.name = t('create.nameRequired')
@@ -97,7 +96,7 @@ export function CreateIterationModal({
     setErrors({})
     try {
       const it = await create.mutateAsync({
-        projectId: selectedProjectId,
+        projectId,
         name: name.trim(),
         teamId: validTeamId || undefined,
         startDate: startDate || undefined,
@@ -130,15 +129,14 @@ export function CreateIterationModal({
             placeholder="Enter iteration name..."
           />
         </FormField>
-        {/* Project — auto-filled from context, overridable by admin (P2-IT-FR-001C/D). */}
+        {/* Project — auto-filled from context and read-only (P2-IT-FR-001C/D, FR-011). */}
         <FormField label={t('create.projectLabel')} required>
-          <SearchableSelect
-            variant="field"
-            value={selectedProjectId}
-            ariaLabel={t('create.projectLabel')}
-            options={projects.map((p) => ({ value: p.id, label: p.name }))}
-            onChange={handleProjectChange}
-          />
+          <ReadOnlyFieldValue>
+            <ProjectCell
+              projectKey={projectDisplay?.projectKey}
+              projectName={projectDisplay?.projectName}
+            />
+          </ReadOnlyFieldValue>
         </FormField>
         <FormField label={t('create.teamLabel')}>
           <SearchableSelect

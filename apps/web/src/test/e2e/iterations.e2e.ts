@@ -21,6 +21,11 @@ test.describe('P2.2 Iteration Management (Timeboxes)', () => {
     // Scope the field buttons to the modal (the list behind also has date columns);
     // the calendar popover portals to <body>, so the day button is page-level.
     const modal = page.getByRole('dialog')
+    // Project is FIXED to the context and read-only (P2-IT-FR-001D / FR-011): the Team picker is a
+    // combobox, the Project is not one at all. Asserting the Team combobox exists in the same breath
+    // is what makes this a statement about Project rather than about the modal failing to render.
+    await expect(modal.getByRole('combobox', { name: 'Team' })).toBeVisible()
+    await expect(modal.getByRole('combobox', { name: 'Project' })).toHaveCount(0)
     await modal.getByRole('button', { name: 'Start Date' }).click()
     await page.getByRole('button', { name: '15', exact: true }).click()
     await modal.getByRole('button', { name: 'End Date' }).click()

@@ -39,7 +39,7 @@ import { defaultIterationId } from '@/features/iterations/default-iteration'
 import { StatusRow } from './ui/status-row'
 import { AddItemModal } from './ui/add-item-modal'
 import { IterationHeader, MetricsStrip, Toolbar, TableFooterTotals } from './ui/iteration-chrome'
-import { computeTotalDays } from './model/iteration-helpers'
+import { computeTotalDays, iterationStatusTotals } from './model/iteration-helpers'
 import { type ColKey, ITERATION_STATUS_COLUMNS, HEADER_META } from './model/columns'
 import { useIterationFilterFields, toIterationStatusQuery } from './model/filter-fields'
 import { useManageFilters } from '@/features/work-items/model/manage-filters'
@@ -336,17 +336,10 @@ export function IterationStatusPage() {
   }
 
   // ── Totals ─────────────────────────────────────────────────────────────
-  const totals = useMemo(() => {
-    let planEst = 0
-    let taskEst = 0
-    let toDoSum = 0
-    for (const item of items) {
-      planEst += item.planEstimate ?? 0
-      taskEst += item.taskEstimate ?? 0
-      toDoSum += item.toDo ?? 0
-    }
-    return { planEst, taskEst, toDoSum, count: items.length }
-  }, [items])
+  // `P2-IS-FR-016B/016C`. The formula lives in `iterationStatusTotals` (see its docblock for why
+  // Task Est is `To Do + Actual` rather than the column's own sum) so it can be asserted without
+  // mounting the page.
+  const totals = useMemo(() => iterationStatusTotals(items), [items])
 
   // ── Metrics ────────────────────────────────────────────────────────────
   const metrics = status?.metrics

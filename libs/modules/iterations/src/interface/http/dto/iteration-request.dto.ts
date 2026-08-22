@@ -50,6 +50,14 @@ export const CreateIterationSchema = z.object({
 export class CreateIterationDto extends createZodDto(CreateIterationSchema) {}
 
 // ── Update ────────────────────────────────────────────────────────────────────
+//
+// `projectId` is deliberately ABSENT, so the contract does not advertise a move the product
+// forbids: `P2-IT-FR-001D` states that a Workspace Admin/Admin "cannot change Iteration Project
+// inside create/detail. To create in another Project, change the global Project context first."
+// Same rule, and the same reason, as `UpdatePortfolioItemSchema` — a record's Project is chosen
+// once, by the context. `teamId` stays settable because that requirement's second sentence permits
+// it ("Team may be changed only to a Team valid for the fixed Project"), which
+// `assertTeamInProject` is what enforces.
 
 export const UpdateIterationSchema = z.object({
   name: z.string().min(1).max(255).trim().optional(),
