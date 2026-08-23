@@ -19,7 +19,7 @@ import {
 } from '@/features/portfolio/api'
 import { useWorkspaceMemberOptions } from '@/features/workspaces/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
+import { useDefaultOwner } from '@/shared/lib/hooks/use-default-owner'
 import { useRecordProject } from '@/shared/lib/deep-link-project'
 import { ProjectCell } from '@/shared/ui/project-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
@@ -98,7 +98,6 @@ export function CreatePortfolioItemModal({
    * module shipped; the dialog sent none, so every new item arrived unowned, unteamed and
    * unscheduled and had to be opened and edited to become the thing the planner was describing.
    */
-  const [ownerId, setOwnerId] = useState('')
   const [teamId, setTeamId] = useState('')
   const [releaseId, setReleaseId] = useState('')
   const [errors, setErrors] = useState<{ name?: string; owner?: string; form?: string }>({})
@@ -139,15 +138,23 @@ export function CreatePortfolioItemModal({
    * `useState` would leave them empty on first paint.
    */
   const { team: contextTeam } = useAppContext()
-  const currentUserId = useAuthStore((s) => s.user?.id)
+  /**
+   * Owner defaults to the current user when the feed offers them (`WIC-FR-006`), through the one
+   * shared hook.
+   *
+   * The inline version this replaces was `ownerId || <default>`, which had a defect the others did
+   * not: `Unassigned` is the empty string, so an explicitly cleared Owner was FALSY and the default
+   * immediately reasserted itself. The reader could not clear the field at all — and since Owner is
+   * required here (§344), the only visible symptom was a value that would not go away. Tracking the
+   * CHOICE rather than the value is what fixes it, which is why the hook returns `touched` instead
+   * of relying on emptiness.
+   */
+  const { ownerId: effectiveOwnerId, setOwnerId } = useDefaultOwner(members)
   const defaultTeamId =
     contextTeam?.teamId && teams.some((tm) => tm.id === contextTeam.teamId)
       ? contextTeam.teamId
       : (teams[0]?.id ?? '')
   const effectiveTeamId = teamId || defaultTeamId
-  const effectiveOwnerId =
-    ownerId ||
-    (currentUserId && members.some((m) => m.userId === currentUserId) ? currentUserId : '')
   // Only Epics in the SAME project are offerable: a Feature's Release must belong to its
   // project, and mixing projects across one Epic makes the rollup span projects in a way
   // the spec does not ask for.

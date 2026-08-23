@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react'
 import { useCreateTask, useWorkItem } from '@/features/work-items/api'
 import { useTeamOwnerOptions } from '@/features/teams/api'
 import { useRecordProject } from '@/shared/lib/deep-link-project'
+import { useDefaultOwner } from '@/shared/lib/hooks/use-default-owner'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
 import { Button } from '@/shared/ui/button'
 import { FormField, ReadOnlyFieldValue } from '@/shared/ui/form-field'
@@ -58,16 +59,27 @@ export function AddTaskModal({ workItemId, onClose }: Props) {
   const [todo, setTodo] = useState('')
   const [actual, setActual] = useState('')
   /**
-   * Owner defaults to UNASSIGNED (GAP-P1-WID-007 / P6-TC-007: "Work Item and Task Owner default to
-   * Unassigned").
+   * Owner defaults to the current user WHEN THIS TASK'S OWN FEED OFFERS THEM, else `Unassigned`
+   * (`WIC-FR-006`, BA `c42df59`, 2026-08-22).
    *
-   * This used to seed the authenticated CREATOR's id, so a task created "without an owner" silently
-   * arrived owned — which is how P6-TC-007's "null-owner Task attributed to a named member" and
-   * GAP-P3-TS-008's outside-team member group came to exist at all. The Team Capacity projection
-   * (`rollUpTeamCapacity`) keys `ownerId ?? 'Unassigned'` correctly; there was simply never a null
-   * owner to key.
+   * This field held the opposite rule until now, and the history is the reason the gate matters.
+   * `GAP-P1-WID-007` / `P6-TC-007` reported a "null-owner Task attributed to a named member", and
+   * `GAP-P3-TS-008` an outside-team member group in Team Status; the cause of both was this modal
+   * seeding the authenticated creator's id UNCONDITIONALLY, so a task created "without an owner"
+   * silently arrived owned by whoever happened to open the form — a person who need not be on the
+   * team the task's hours are counted under. The fix at the time was to default to nothing.
+   *
+   * The BA has since reversed the default itself, and `useDefaultOwner` gates it on the candidate
+   * feed, which is what makes the reversal safe rather than a return to the defect: the creator is
+   * offered only where the shared assignment rule already offers them, so a person outside the
+   * parent's team is still never defaulted in. `members` here is the PARENT's team feed
+   * (`TASK-FR-017` scopes a Task's options to the inherited parent Team), so the gate is asking
+   * about the right population.
+   *
+   * `rollUpTeamCapacity` still keys `ownerId ?? 'Unassigned'`, and `Unassigned` is still reachable —
+   * the reader can choose it, and it survives being chosen.
    */
-  const [assigneeId, setAssigneeId] = useState('')
+  const { ownerId: assigneeId, setOwnerId: setAssigneeId } = useDefaultOwner(members)
   const [error, setError] = useState<string | null>(null)
   // Server/submit failures aren't tied to one input — shown as a modal-level
   // banner, not under the Name field.

@@ -7,6 +7,7 @@ import { cn, EMPTY_VALUE } from '@/shared/lib/utils'
 import { useCreateIterationItem, type IterationReference } from '@/features/iterations/api'
 import { useProjectMemberOptions, useProjectTeams } from '@/features/teams/api'
 import { useProjectTeamScope } from '@/features/access/api'
+import { useDefaultOwner } from '@/shared/lib/hooks/use-default-owner'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -69,7 +70,12 @@ export function AddItemModal({
   const [type, setType] = useState<'story' | 'defect'>('story')
   const [title, setTitle] = useState('')
   const [planEstimate, setPlanEstimate] = useState('')
-  const [assigneeId, setAssigneeId] = useState('')
+  /**
+   * Owner defaults to the current user when this modal's own feed offers them (`WIC-FR-006`) — the
+   * same rule and the same gate Create Work Item applies, via the one shared hook so the two
+   * surfaces cannot answer it differently.
+   */
+  const { ownerId: assigneeId, setOwnerId: setAssigneeId } = useDefaultOwner(members)
   const [teamTouched, setTeamTouched] = useState('')
   const [teamError, setTeamError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
