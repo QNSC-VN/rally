@@ -56,12 +56,14 @@ test.describe('P2.1 Backlog Enhancement', () => {
     await stepper.getByRole('button', { name: targetLabel }).click()
     await settle(page, 1200)
 
-    // Reload and confirm the change stuck (sourced from work_items): the first
-    // row's active (disabled) segment now shows the target state's letter.
+    // Reload and confirm the change stuck (sourced from work_items): the first row's CURRENT
+    // segment now shows the target state's letter. `[data-current]`, not `button:disabled` — a
+    // segment that cannot act is a span now, because a disabled button is a dead control in the
+    // accessibility tree and was invalid HTML wherever the stepper sits inside another button.
     await page.reload()
     await settle(page)
     await expect(
-      page.getByRole('group', { name: 'Schedule state' }).first().locator('button:disabled'),
+      page.getByRole('group', { name: 'Schedule state' }).first().locator('[data-current]'),
     ).toHaveText(targetLetter)
   })
 
