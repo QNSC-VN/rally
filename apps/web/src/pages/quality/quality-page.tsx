@@ -9,14 +9,13 @@ import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, PackageOpen, Plus } from 'lucide-react'
+import { AlertTriangle, Copy, PackageOpen, Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/shared/ui/page-header'
 import { PageToolbar } from '@/shared/ui/page-toolbar'
 import { MetricCard } from '@/shared/ui/metric-card'
 import { MetricStrip } from '@/shared/ui/metric-strip'
 import { BRAND } from '@/shared/config/brand'
 import { Button } from '@/shared/ui/button'
-import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useProjectPermissions } from '@/features/access/api'
@@ -24,9 +23,10 @@ import { useDefects, type DefectRow } from '@/features/quality/api'
 import { useProjectMemberOptions } from '@/features/teams/api'
 import { listResource } from '@/shared/lib/query/resource'
 import { useReleases } from '@/features/releases/api'
-import { useRankAnyWorkItem, useCreateWorkItem } from '@/features/work-items/api'
+import { useRankAnyWorkItem } from '@/features/work-items/api'
 import { ColumnFieldsMenu } from '@/shared/ui/column-fields-menu'
 import { useDataTable, useRowRerank, SelectableTable } from '@/shared/ui/table'
+import { BulkBarButton } from '@/shared/ui/bulk-action-bar'
 import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { STORAGE_KEYS } from '@/shared/config/storage-keys'
 import { QUALITY_COLUMNS, FilterSelect, LogDefectModal, DefectTableRow } from './ui/quality-parts'
@@ -167,30 +167,8 @@ export function QualityPage() {
       ),
   })
 
-  // ── Bulk selection (shared SelectableTable + BulkDeleteCopy) ────────
+  // ── Bulk selection (shared SelectableTable; the bulk bar is a deferred placeholder) ────────
   const selection = useRowSelection(defects)
-  const createItem = useCreateWorkItem()
-  async function copySelected() {
-    const src = defects.find((d) => selection.selectedIds.has(d.id))
-    if (!src || !project?.projectId) return
-    try {
-      await createItem.mutateAsync({
-        projectId: project.projectId,
-        type: 'defect',
-        title: `${src.title} (copy)`,
-        priority: (src.priority ?? 'none') as 'none' | 'low' | 'normal' | 'high' | 'urgent',
-        // The SOURCE's Team, which the row now carries. Without it the copy landed in the Project
-        // Backlog — silently for an admin, and as `WORK_ITEM_TEAM_REQUIRED` for an Editor, whose
-        // surface this is (`quality:view` is a Project Member code). BA ruling 2026-08-17.
-        teamId: src.teamId ?? undefined,
-      })
-      selection.clear()
-      toast.success('Defect copied')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Copy failed')
-    }
-  }
-
   const metrics = data?.metrics ?? {
     openDefects: 0,
     critical: 0,
@@ -401,17 +379,21 @@ export function QualityPage() {
             dndContextProps: rerank.dndContextProps,
             sortableContextProps: rerank.sortableContextProps,
           }}
-          bulkActions={(sel) =>
-            canManage ? (
-              <BulkDeleteCopy
-                canDelete={can('work_item:delete')}
-                selection={sel}
-                projectId={project?.projectId ?? ''}
-                onCopy={copySelected}
-                copyPending={createItem.isPending}
-              />
-            ) : null
-          }
+          /**
+           * The bulk bar is a DISABLED PLACEHOLDER on this surface, and that is the requirement.
+           *
+           * `P3-QA-FR-016A`: "Bulk actions must not execute in Phase 3.4 until BA confirms available
+           * actions and permissions." The same SRS says it three more times — §22 lists "row
+           * selection, disabled/future bulk-action placeholder", §32 requires any visible placeholder
+           * to be "disabled or clearly treated as future scope", `P3-QA-Q04` defers the action list,
+           * and §176 puts bulk endpoints out of scope. So this used to execute a real bulk delete and
+           * copy, which is the one thing the BA withheld.
+           *
+           * Selection STAYS: §22 asks for it, and Delete for a single Defect is granted by
+           * `P3-QA-FR-010` — it lives on the Defect's own detail page, where the confirmation and the
+           * soft-delete semantics can be stated.
+           */
+          bulkActions={(sel) => <BulkActionsDeferred count={sel.count} />}
           loading={isLoading}
           skeleton={{ rows: 8 }}
           empty={
@@ -477,3 +459,35 @@ export function QualityPage() {
     </div>
   )
 }
+
+/**
+ * The Phase 3.4 bulk-action placeholder — visible, and incapable of acting.
+ *
+ * `P3-QA-FR-016A` / `P3-QA-Q04` defer both the action list and its permissions, and §32 requires any
+ * visible placeholder to be "disabled or clearly treated as future scope". Disabled buttons rather
+ * than an empty bar, because §22 lists the placeholder as part of the dashboard: a reader who selects
+ * rows needs to see that bulk actions are coming, not an affordance that silently does nothing.
+ *
+ * They carry NO `onClick`. A handler behind a `disabled` attribute is one prop away from executing
+ * the thing the BA withheld — the same reason `ProjectSelectCell` was deleted rather than gated.
+ */
+function BulkActionsDeferred({ count }: { count: number }) {
+  const { t } = useTranslation('quality')
+  return (
+    <>
+      <span className="px-2 text-ui-xs text-foreground-subtle">{t('bulk.deferred')}</span>
+      <BulkBarButton
+        icon={<Trash2 size={13} />}
+        label={t('bulk.delete')}
+        disabled
+        danger
+        onClick={noop}
+      />
+      <BulkBarButton icon={<Copy size={13} />} label={t('bulk.copy')} disabled onClick={noop} />
+      {count > 0 && <span className="sr-only">{t('bulk.selected', { count })}</span>}
+    </>
+  )
+}
+
+/** The placeholder's buttons are inert BY CONSTRUCTION; `BulkBarButton` requires a handler. */
+function noop() {}

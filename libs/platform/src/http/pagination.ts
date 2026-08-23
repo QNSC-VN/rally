@@ -2,19 +2,7 @@ import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
 import { applyDecorators, Type } from '@nestjs/common';
 import { ApiExtraModels, ApiOkResponse, getSchemaPath } from '@nestjs/swagger';
-import {
-  and,
-  or,
-  eq,
-  gt,
-  lt,
-  isNull,
-  isNotNull,
-  sql,
-  type Column,
-  type GetColumnData,
-  type SQL,
-} from 'drizzle-orm';
+import { and, or, eq, gt, lt, isNull, isNotNull, sql, Column, type SQL } from 'drizzle-orm';
 import { ErrorCodes } from '../errors/error-codes';
 import { PreconditionFailedException } from '../errors/exceptions';
 
@@ -135,12 +123,21 @@ export function buildPageResult<T extends { id: string }>(
  * been deleted the subquery yields NULL, every comparison is unknown, and the
  * page comes back empty — the walk ends instead of looping.
  */
-export function keysetCondition<TSort extends Column>(
-  sortCol: TSort,
+/**
+ * `sortCol` may also be an EXPRESSION, for a sort whose displayed value is computed rather than
+ * stored — a joined `coalesce(display_name, email)` owner name is the case it was widened for.
+ * Sorting such a grid on the underlying column instead would order it by a value the reader cannot
+ * see: a user with no display name renders as their email and would sort under the absence of a
+ * display name. The predicate is otherwise identical, because every comparison below is already
+ * expression-shaped. A date EXPRESSION is not supported — reading the boundary back by id needs a
+ * real column and its table, so that branch tests for one.
+ */
+export function keysetCondition(
+  sortCol: Column | SQL,
   tieBreakCol: Column,
   cursor: CursorPayload,
 ): SQL {
-  if (sortCol.dataType === 'date') {
+  if (sortCol instanceof Column && sortCol.dataType === 'date') {
     const boundary = sql`(select ${sortCol} from ${sortCol.table} where ${tieBreakCol} = ${cursor.id})`;
     const afterTieAt = and(eq(sortCol, boundary), gt(tieBreakCol, cursor.id));
     return cursor.d === 'asc'
@@ -148,19 +145,23 @@ export function keysetCondition<TSort extends Column>(
       : or(lt(sortCol, boundary), afterTieAt)!;
   }
 
-  const value = cursor.k[0] as GetColumnData<TSort, 'raw'> | null | undefined;
+  // One expression from here down, so a column and a computed sort take exactly the same
+  // predicate — drizzle's comparison helpers are overloaded per operand type and a union of the
+  // two satisfies none of them.
+  const expr: SQL = sortCol instanceof Column ? sql`${sortCol}` : sortCol;
+  const value = cursor.k[0] as string | number | null | undefined;
   const afterTie = gt(tieBreakCol, cursor.id);
   if (cursor.d === 'asc') {
     // NULLS LAST: null rows sort after every non-null row, so once the cursor is
     // on a null row only later null rows remain; otherwise all null rows follow.
     return value === null || value === undefined
-      ? and(isNull(sortCol), afterTie)!
-      : or(gt(sortCol, value), and(eq(sortCol, value), afterTie), isNull(sortCol))!;
+      ? and(isNull(expr), afterTie)!
+      : or(gt(expr, value), and(eq(expr, value), afterTie), isNull(expr))!;
   }
   // DESC → NULLS FIRST: null rows sort before every non-null row.
   return value === null || value === undefined
-    ? or(and(isNull(sortCol), afterTie), isNotNull(sortCol))!
-    : or(lt(sortCol, value), and(eq(sortCol, value), afterTie))!;
+    ? or(and(isNull(expr), afterTie), isNotNull(expr))!
+    : or(lt(expr, value), and(eq(expr, value), afterTie))!;
 }
 
 /**

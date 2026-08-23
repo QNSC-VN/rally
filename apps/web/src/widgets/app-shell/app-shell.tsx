@@ -247,22 +247,23 @@ export function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaces])
 
-  // SHELL-FR-005: Invalidate all project-scoped queries when the project context changes
+  /**
+   * SHELL-FR-005: invalidate EVERY project/team-scoped query when either half of the context
+   * changes — "invalidate/refetch toàn bộ Project/Team-scoped query. Không giữ route hoặc dữ liệu
+   * của context cũ."
+   *
+   * A team change used to invalidate `['work-items']` alone, which is narrower than the rule and
+   * narrower than the truth: iterations, capacity, reports, team status and the pickers are all
+   * team-scoped too, so each kept serving the previous team's rows until its own staleness expired.
+   * One blanket invalidation for both, because the requirement draws no distinction between them.
+   */
   const projectId = project?.projectId
+  const teamId = team?.teamId
   useEffect(() => {
     if (projectId) {
       void queryClient.invalidateQueries()
     }
-  }, [projectId])
-
-  // Invalidate work-item queries when the team context changes so that
-  // backlog / iteration-status / home pages re-fetch with the new teamId filter.
-  const teamId = team?.teamId
-  useEffect(() => {
-    if (projectId) {
-      void queryClient.invalidateQueries({ queryKey: ['work-items'] })
-    }
-  }, [teamId, projectId])
+  }, [projectId, teamId])
 
   async function handleSignOut() {
     // Revoke the server-side session (clears the __Host-rally_session cookie) and return to login.
@@ -275,26 +276,31 @@ export function AppShell() {
   }
 
   /**
-   * Switch the selected project (and optionally its team), landing on Home when the PROJECT changed.
+   * Switch the selected project and/or team, landing on Home whenever EITHER changed.
    *
    * Selecting only mutated the store before, so the current route stayed open under a context it no
    * longer belongs to: a work-item detail kept rendering another project's record until something
    * refetched, and a project-scoped page could sit there denied or empty. Home is the one surface that
-   * is correct for every project, which is why the BA asked for it.
+   * is correct for every context, which is why the BA asked for it.
    *
-   * A TEAM-only change deliberately does NOT navigate. Team is a scope filter — narrowing Iteration
-   * Status or Team Status to another of your teams is the reason to click it, and being thrown to Home
-   * for that would undo the very thing the reader asked for.
+   * A TEAM-only change navigates too, and this REVERSES the narrower reading shipped earlier — that
+   * Team is merely a scope filter, so being thrown to Home would undo the narrowing the reader just
+   * asked for. `SHELL-FR-005` states both halves together and admits no such exception: "Khi đổi
+   * Project hoặc Team từ context selector, navigate về Home của context mới … Không giữ route hoặc
+   * dữ liệu của context cũ." The record routes are why the BA wins: a team-scoped detail or an
+   * Iteration Status row belongs to the team that was selected when it was opened, and an Editor
+   * moving between their teams would otherwise sit on a record their new scope refuses.
    */
   function selectProjectContext(
     next: { projectId: string; projectKey: string; projectName: string },
     nextTeam: { teamId: string; teamName: string } | null,
   ) {
-    const projectChanged = project?.projectId !== next.projectId
+    const contextChanged =
+      project?.projectId !== next.projectId || (team?.teamId ?? null) !== (nextTeam?.teamId ?? null)
     setProject(next)
     setTeam(nextTeam)
     closeAll()
-    if (projectChanged) void navigate({ to: '/' })
+    if (contextChanged) void navigate({ to: '/' })
   }
 
   function closeAll() {

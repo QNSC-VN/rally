@@ -41,8 +41,10 @@ import {
   ListChecks,
   PanelRightOpen,
   Users,
+  Trash2,
 } from 'lucide-react'
 import {
+  useDeleteWorkItem,
   useTasks,
   useUpdateWorkItem,
   useWatchers,
@@ -56,6 +58,8 @@ import {
 import { useCollapseToSummary } from '@/features/work-items/summary-selection'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useProjectPermissions } from '@/features/access/api'
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
+import { notify } from '@/shared/lib/toast'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { DetailLayout } from '@/shared/ui/detail/detail-layout'
 import { DetailHeaderButton } from '@/shared/ui/detail-header'
@@ -201,6 +205,18 @@ export function WorkItemDetailPage() {
   // BA spec: all active roles (non-Viewer) can update any work item.
   const { can } = useProjectPermissions(itemByKey?.projectId)
   const readOnly = !can('work_item:edit')
+  /**
+   * DELETE, from the record itself — `P3-QA-FR-010`: "Authorized user can delete a Defect after
+   * confirmation; delete is soft delete and removes it from active Backlog/Quality/Iteration/report
+   * results", and §27 of the same SRS repeats the confirmation.
+   *
+   * The detail page is where this has to live for a Defect reached from `Quality > Defect`, because
+   * `P3-QA-FR-016A` withholds that grid's bulk actions until the BA confirms them — so without it,
+   * the one surface dedicated to Defects offers no way to perform a verb §3.2 grants. `Closed` /
+   * `Closed Declined` are NOT prerequisites (`FR-011`), so nothing gates this on the state.
+   */
+  const deleteItem = useDeleteWorkItem()
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const currentUserId = useAuthStore((s) => s.user?.id)
 
   // P1-23: watchers
@@ -388,9 +404,50 @@ export function WorkItemDetailPage() {
             {isWatching ? <BellOff size={14} /> : <Bell size={14} />}
             <span>{isWatching ? t('watch.watching') : t('watch.watch')}</span>
           </DetailHeaderButton>
+
+          {/* Delete — `P3-QA-FR-010`. Absent rather than disabled without the code: the verb is
+              either granted or it is not, and a control that only refuses is noise. */}
+          {can('work_item:delete') && (
+            <DetailHeaderButton
+              tone="ghost"
+              ariaLabel={t('delete.action')}
+              title={t('delete.title')}
+              onClick={() => setConfirmDelete(true)}
+              disabled={deleteItem.isPending}
+            >
+              <Trash2 size={14} />
+              <span>{t('delete.action')}</span>
+            </DetailHeaderButton>
+          )}
         </>
       }
     >
+      {/* The confirmation `FR-010` requires. NAMED, not typed: the delete is a SOFT one, so the
+          record is recoverable in the database — the typed gate is reserved for the irreversible. */}
+      <ConfirmDialog
+        open={confirmDelete}
+        destructive
+        title={t('delete.title')}
+        message={t('delete.message', { key: item.itemKey })}
+        confirmLabel={t('delete.action')}
+        pending={deleteItem.isPending}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          void deleteItem
+            .mutateAsync({ id: item.id, projectId: item.projectId })
+            .then(() => {
+              setConfirmDelete(false)
+              notify.success(t('delete.deleted', { key: item.itemKey }))
+              // The record is gone from every active list, so staying on its page would render a
+              // "not found" — leave the way `onBack` does.
+              back()
+            })
+            .catch((e: unknown) => {
+              setConfirmDelete(false)
+              notify.error(e instanceof Error ? e.message : t('delete.failed'))
+            })
+        }}
+      />
       {/* Content area */}
       <div className="flex min-h-0 flex-1 bg-avatar">
         {/* Main content */}

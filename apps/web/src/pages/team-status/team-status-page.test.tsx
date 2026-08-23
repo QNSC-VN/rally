@@ -23,10 +23,17 @@ vi.mock('@/shared/lib/stores/app-context.store', () => ({
   useAppContext: () => ({ project: { projectId: 'p-1' }, team: { teamId: 't-1' } }),
 }))
 
-// Full edit rights, deliberately: a read-only field must be read-only for the MOST privileged
-// caller, or the assertion only proves the permission gate works.
+/**
+ * Edit rights, mutable per test.
+ *
+ * Full rights are the DEFAULT deliberately: a read-only field must be read-only for the MOST
+ * privileged caller, or the assertion only proves the permission gate works. `grantedCodes` is for
+ * the opposite case — `P3-TS-FR-039`'s Editor, who holds `team_status:view` and not
+ * `team_status:edit`.
+ */
+const grantedCodes: { deny?: string } = {}
 vi.mock('@/features/access/api', () => ({
-  useProjectPermissions: () => ({ can: () => true }),
+  useProjectPermissions: () => ({ can: (code: string) => code !== grantedCodes.deny }),
 }))
 
 /**
@@ -131,6 +138,7 @@ async function expandAlice() {
 }
 
 beforeEach(() => {
+  grantedCodes.deny = undefined
   vi.clearAllMocks()
   localStorage.clear()
   iterationFeed.data = [ITERATION]
@@ -251,5 +259,37 @@ describe('the member progress bar keeps ONE formula under a filter', () => {
     // would read 100% — one Completed task out of one visible.
     await waitFor(() => expect(screen.getByText('50%')).toBeTruthy())
     expect(screen.queryByText('100%')).toBeNull()
+  })
+})
+
+describe('P3-TS-FR-039 — an Editor gets Team Status read-only', () => {
+  /**
+   * "Editor may access Team Status for assigned Project/Team scope in read-only mode; Team Status
+   * mutation is rejected."
+   *
+   * `editor` holds `team_status:view` and deliberately not `team_status:edit`, so both writes on
+   * this screen (`PATCH /team-status/capacity`, `PATCH /team-status/tasks/:taskId`) answer 403. This
+   * asserts the SCREEN agrees: a control that is offered and then refused is the failure mode this
+   * repo keeps finding, and it reads to the user as the save silently not sticking.
+   */
+  it('offers no capacity editor, no task-name editor and a disabled Task State control', async () => {
+    grantedCodes.deny = 'team_status:edit'
+    mockGET.mockResolvedValue({
+      data: TEAM_STATUS,
+      error: undefined,
+      response: { status: 200 },
+    })
+    const { container } = renderPage()
+    await expandAlice()
+    await screen.findByText('DEV - wire SSO')
+
+    // No cell carries the editable affordance at all — capacity on the member row, task name on the
+    // task rows. The class is what `InlineEditableCell` adds only when `canEdit`.
+    expect(container.querySelectorAll('.inline-edit-cell')).toHaveLength(0)
+    expect(screen.queryByRole('textbox', { name: 'Capacity' })).toBeNull()
+    // Task State is a `<select>`, so its read-only form is DISABLED rather than absent.
+    for (const control of screen.getAllByRole('combobox', { name: 'Task state' })) {
+      expect(control).toBeDisabled()
+    }
   })
 })

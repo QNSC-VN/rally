@@ -989,10 +989,17 @@ changes the **global Project context** first.
   recorded on `UpdatePortfolioItemSchema` as well. If the BA reverses it, the field, the guard and
   `applyProjectMove` all come back together — a picker without the reconciliation would leave a Team
   and a Release pointing into the old project.
-- **The ONE Project picker that stays is on Iteration create**, and it is the Iterations SRS's own
-  rule, not drift: §92-93 auto-fill Project from context and then say a Workspace Admin "vẫn có
-  quyền đổi Project/Team trong quick create/detail nếu cần" (P2-IT-FR-001C/D). An Iteration is a
-  timebox, not a Work Item or a Portfolio Item. Do not "align" it to the rule above.
+- **There is NO exception left — Iteration create used to be one, and the BA closed it.** This note
+  read "the ONE Project picker that stays is on Iteration create", on §92-93's sentence that a
+  Workspace Admin "vẫn có quyền đổi Project/Team trong quick create/detail nếu cần". BA `c42df59`
+  rewrites that row: `P2-IT-FR-011` lists the quick-create field as a "read-only Project" and
+  `P2-IT-FR-001D` says a Workspace Admin/Admin "cannot change Iteration Project inside create/detail.
+  To create in another Project, change the global Project context first." So the picker is DELETED
+  rather than disabled, and the detail panel's `ProjectCell` was already right. `UpdateIterationSchema`
+  never carried `projectId`, and that absence is now documented on the schema so it is not helpfully
+  filled in. **The second sentence of FR-001D still stands**: Team may be changed, "only to a Team
+  valid for the fixed Project" — which is why the Team picker is scoped to `projectId` and
+  `assertTeamInProject` is the enforcement.
 - **`ReadOnlyFieldValue` (`shared/ui/form-field.tsx`) is the box these render in** — an input-shaped
   `<div>`, deliberately not a `disabled` input, so the fixed value sits on the same baseline as the
   editable fields beside it without announcing itself as a control that might become enabled. It
@@ -1289,6 +1296,52 @@ Three properties of it are load-bearing and none is obvious:
   reader from their own project.
 - **Clearing the project clears the Team with it.** A Team belongs to the project being left, which is
   what the shell's own switcher and `adoptRecordProject` already do.
+
+## Changing EITHER half of the delivery context lands on Home
+
+`SHELL-FR-005`: "Khi đổi Project hoặc Team từ context selector, navigate về Home của context mới và
+invalidate/refetch toàn bộ Project/Team-scoped query. Không giữ route hoặc dữ liệu của context cũ."
+Both halves, one rule, in `selectProjectContext` (`widgets/app-shell/app-shell.tsx`).
+
+- **A TEAM-only change navigates too, and this REVERSES the narrower reading shipped in #467** —
+  that Team is merely a scope filter, so throwing the reader to Home would undo the narrowing they
+  just asked for. The requirement admits no such exception, and the RECORD routes are why it wins: a
+  work-item detail or an Iteration Status row belongs to the context it was opened under, so an
+  Editor moving between their own teams would otherwise sit on a record their new scope refuses.
+- **The invalidation is unconditional for both.** A team change used to drop `['work-items']` alone,
+  which is narrower than the rule and narrower than the truth — iterations, capacity, reports, Team
+  Status and every picker are team-scoped as well, so each kept serving the previous team's rows
+  until its own staleness expired.
+- Pinned by `apps/web/src/test/e2e/context-switch.e2e.ts`, which starts on `/backlog` so "landed on
+  Home" cannot pass vacuously. The switcher had NO journey of its own before, which is how the Team
+  half shipped with the opposite behaviour.
+
+## A sort affordance must order by the value the cell RENDERS
+
+Iteration Status offered one on Owner and compared `assigneeId` — a uuid — so the column sorted into
+an order arbitrary to every reader, indistinguishable from a broken sort. Three separate faults, all
+under `P2-IS-FR-025/026`, and each was invisible in a different way:
+
+- **Owner sorted by uuid.** Fixed by comparing the joined `assigneeName`, which exists only because
+  the read models now join the name (see "A NAME belongs to the ROW").
+- **Dev Owner had no mapping AND no `sortCol`.** Its header was inert in both directions.
+- **Flow State declared a `sortCol` with no case**, so it fell through to `return 0` and clicking it
+  did nothing. It orders by `scheduleState`, the field its own cell reads and writes.
+
+Two rules came out of it that apply to any grid:
+
+- **Absent sorts LAST ascending, FIRST descending** — the same rule `keysetCondition` applies
+  server-side, so a column sorted on the client and the same column sorted by the server cannot
+  disagree about where blanks belong. Comparing a missing owner as `''` floats every unassigned row
+  to the top of an A-Z sort, and an unestimated row ranks as a deliberate zero.
+- **Iteration Status sorts on the CLIENT deliberately.** `useIterationStatus` follows the cursor and
+  loads the whole iteration (the Board view needs every row for drag), so the set is complete and a
+  server `sortBy` would be a second definition of one ordering — §286 lists the param, but the grid
+  it describes does not page. The Backlog is the opposite case and sorts server-side, which is why
+  `keysetCondition` grew an expression overload: `assignee` / `devOwner` seek on the same
+  `coalesce(display_name, email)` the cell renders, so the order and its own cursor cannot diverge
+  on a user with no display name. `iteration` stays unsortable on the Backlog (every row there is
+  unscheduled, so it could only be a no-op) and `release` needs a join that query does not carry.
 
 ## A RECORD route must own its denied state; its guard cannot
 

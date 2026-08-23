@@ -1401,12 +1401,33 @@ describe('WorkItemsService', () => {
       expect(workItemRepo.softDelete).toHaveBeenCalledWith('wi-1', 'ws-1');
     });
 
-    it('removes the item’s relations so none dangle after delete (GAP-8)', async () => {
+    /**
+     * INVERTED by `P3-QA-FR-020` (BA `c42df59`): "Soft delete retains child Tasks, attachments,
+     * comments and relations … and performs no physical cascade delete."
+     *
+     * This used to assert the opposite — GAP-8 had the service delete the relations so none dangled
+     * on the other item. That reason does not survive inspection: `listForItem` already filters
+     * `isNull(other.deletedAt)` in both directions, so nothing dangled on screen either way, while
+     * the cascade made the soft delete partly irreversible. The assertion is inverted rather than
+     * deleted, because the behaviour is now the requirement.
+     */
+    it('RETAINS the item’s relations — a soft delete cascades nothing (P3-QA-FR-020)', async () => {
       workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1', type: 'story' }));
 
       await service.deleteWorkItem(mockActor, 'wi-1');
 
-      expect(relationRepo.deleteForItem).toHaveBeenCalledWith('wi-1', 'ws-1');
+      expect(relationRepo.deleteForItem).not.toHaveBeenCalled();
+    });
+
+    it('records the actor and the action in the item’s own history (P3-QA-FR-020)', async () => {
+      workItemRepo.findById.mockResolvedValue(mockWorkItem({ id: 'wi-1', type: 'story' }));
+
+      await service.deleteWorkItem(mockActor, 'wi-1');
+
+      expect(activityRepo.log).toHaveBeenCalledWith(
+        [expect.objectContaining({ action: 'work_item.deleted', actorId: mockActor.sub })],
+        expect.anything(),
+      );
     });
 
     it('throws when work item not found', async () => {

@@ -39,11 +39,24 @@ export class UpdateProjectEstimationSettingsDto extends createZodDto(
 // ── Create Project ───────────────────────────────────────────────────────────
 
 export const CreateProjectSchema = z.object({
+  /**
+   * 2-10 UPPERCASE letters/numbers, starting with a letter, immutable after creation
+   * (`UpdateProjectSchema` carries no key) — Phase 1/08 §8.2's field table, and the same rule
+   * `CreateTeamSchema` already enforced for a Team key.
+   *
+   * The case half was the gap: this accepted `[A-Za-z]` and stored whatever arrived, while the SPA
+   * upper-cases every keystroke. So the only way to get a lowercase key was to bypass the form, and
+   * the result reads as a different project everywhere a key is displayed — `nxp` beside `NXP` — for
+   * a value the SRS makes immutable, so it could never be corrected in place.
+   */
   key: z
     .string()
     .min(2)
     .max(10)
-    .regex(/^[A-Za-z][A-Za-z0-9]*$/, 'Key must start with a letter and be alphanumeric'),
+    .regex(
+      /^[A-Z][A-Z0-9]*$/,
+      'Key must be 2-10 uppercase letters/numbers, starting with a letter',
+    ),
   name: z.string().trim().min(2).max(255),
   description: z.string().max(2000).trim().optional(),
   leadId: z.string().uuid().optional(),

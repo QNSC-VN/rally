@@ -69,5 +69,11 @@
     "stateUpdateFailed": "Failed to update defect state",
     "updateFailed": "Failed to update",
     "flowStateUpdateFailed": "Failed to update flow state"
+  },
+  "bulk": {
+    "deferred": "Bulk actions coming soon",
+    "delete": "Delete",
+    "copy": "Copy",
+    "selected": "{{count}} selected"
   }
 }

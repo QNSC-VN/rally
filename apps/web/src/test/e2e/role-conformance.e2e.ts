@@ -24,7 +24,7 @@
  */
 import { test, expect } from '@playwright/test'
 
-import { EDITOR, login } from './helpers'
+import { EDITOR, login, settle } from './helpers'
 
 /** Surfaces §3.2 gives an Editor: Backlog and US/DE/Task, Iteration Status, Quality, Team Status. */
 const EDITOR_SURFACES = [
@@ -100,6 +100,34 @@ test.describe('Role conformance — per-project Editor', () => {
       await page.goto(path, { waitUntil: 'domcontentloaded' })
       await expect(page.getByRole('alert')).toBeVisible({ timeout: 10_000 })
     }
+  })
+
+  test('gets Team Status READ-ONLY — every mutation control absent or disabled', async ({
+    page,
+  }) => {
+    /**
+     * `P3-TS-FR-039`: "Editor may access Team Status for assigned Project/Team scope in read-only
+     * mode; Team Status mutation is rejected."
+     *
+     * The surface is granted (it is in EDITOR_SURFACES above) and the WRITE is not: `editor` holds
+     * `team_status:view` and deliberately not `team_status:edit`, so the server answers 403. This
+     * asserts the screen agrees — an offered control whose write is refused is the failure mode this
+     * repo keeps finding, and the Task State dropdown is the one control on the row that carries the
+     * write.
+     */
+    await login(page, EDITOR, { seedContext: false })
+    await page.goto('/team-status', { waitUntil: 'domcontentloaded' })
+    await settle(page)
+
+    const stateControls = page.getByRole('combobox', { name: 'Task state' })
+    for (let i = 0; i < (await stateControls.count()); i++) {
+      await expect(stateControls.nth(i)).toBeDisabled()
+    }
+    // Capacity is the other mutation on this screen (`PATCH /team-status/capacity`). Its control is
+    // an `InlineEditableCell`, which renders a plain span until clicked, so its absence for an
+    // Editor is asserted where the affordance itself is observable — the unit test in
+    // `team-status-page.test.tsx`, which counts `.inline-edit-cell`. Here the state dropdown is the
+    // control a real Editor would reach for first.
   })
 
   test('opens a work item from Iteration Status without being evicted', async ({ page }) => {

@@ -80,9 +80,34 @@ const SCHEDULE_STATE_TO_TASK_STATE: Record<WorkItemScheduleState, TaskState> = {
  * previously left every non-rank sort paginating by rank. `planEstimate` maps to
  * the nullable `story_points`; {@link keysetCondition} handles its NULL ordering.
  */
+/**
+ * The owner-name join aliases, and the expression each renders — module-level, so the ORDER BY,
+ * the keyset predicate and the SELECT cannot be built from different definitions of one name.
+ *
+ * `coalesce(display_name, email)` is what the grids display (a user may have no display name), so
+ * it is also what a sort and its cursor must compare.
+ */
+const WI_ASSIGNEE_USER = alias(users, 'wi_assignee');
+const WI_DEV_OWNER_USER = alias(users, 'wi_dev_owner');
+const BACKLOG_OWNER_NAME = {
+  assignee: sql<
+    string | null
+  >`coalesce(${WI_ASSIGNEE_USER.displayName}, ${WI_ASSIGNEE_USER.email})`,
+  devOwner: sql<
+    string | null
+  >`coalesce(${WI_DEV_OWNER_USER.displayName}, ${WI_DEV_OWNER_USER.email})`,
+};
+
+/**
+ * The sortable backlog columns, and the cursor key each produces.
+ *
+ * `column` is a stored column for most fields and a NAME EXPRESSION for the two owner fields — the
+ * grid renders `coalesce(display_name, email)`, so ordering on `display_name` alone would place a
+ * user with no display name by a value nobody can see. `keysetCondition` takes either.
+ */
 const BACKLOG_SORT_COLUMNS: Record<
   WorkItemSortBy,
-  { column: AnyColumn; value: (w: WorkItem) => unknown }
+  { column: AnyColumn | SQL; value: (w: WorkItem) => unknown }
 > = {
   rank: { column: workItems.rank, value: (w) => w.rank },
   itemKey: { column: workItems.itemKey, value: (w) => w.itemKey },
@@ -91,6 +116,8 @@ const BACKLOG_SORT_COLUMNS: Record<
   scheduleState: { column: workItems.scheduleState, value: (w) => w.scheduleState },
   priority: { column: workItems.priority, value: (w) => w.priority },
   planEstimate: { column: workItems.storyPoints, value: (w) => w.storyPoints },
+  assignee: { column: BACKLOG_OWNER_NAME.assignee, value: (w) => w.assigneeName ?? null },
+  devOwner: { column: BACKLOG_OWNER_NAME.devOwner, value: (w) => w.devOwnerName ?? null },
 };
 
 /**
@@ -644,20 +671,14 @@ export class WorkItemDrizzleRepository implements IWorkItemRepository {
    * states who owns it, which stays true.
    */
   private ownerNameJoins(assigneeCol: AnyPgColumn, devOwnerCol: AnyPgColumn) {
-    const assigneeUser = alias(users, 'wi_assignee');
-    const devOwnerUser = alias(users, 'wi_dev_owner');
     return {
-      assigneeUser,
-      devOwnerUser,
+      assigneeUser: WI_ASSIGNEE_USER,
+      devOwnerUser: WI_DEV_OWNER_USER,
       assigneeCol,
       devOwnerCol,
       columns: {
-        assigneeName: sql<
-          string | null
-        >`coalesce(${assigneeUser.displayName}, ${assigneeUser.email})`,
-        devOwnerName: sql<
-          string | null
-        >`coalesce(${devOwnerUser.displayName}, ${devOwnerUser.email})`,
+        assigneeName: BACKLOG_OWNER_NAME.assignee,
+        devOwnerName: BACKLOG_OWNER_NAME.devOwner,
       },
     };
   }

@@ -60,10 +60,11 @@
     "history": "Revision History"
   },
   "delete": {
-    "title": "Delete work item",
-    "message": "Delete {{key}}? This cannot be undone.",
-    "success": "{{key}} deleted",
-    "failed": "Failed to delete work item"
+    "action": "Delete",
+    "title": "Delete this item",
+    "message": "Delete {{key}}? It is removed from Backlog, Quality, Iteration Status and reports. Child Tasks, attachments, comments and links are retained.",
+    "deleted": "{{key}} deleted",
+    "failed": "Delete failed"
   },
   "details": {
     "heading": "Details",

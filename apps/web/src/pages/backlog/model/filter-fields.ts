@@ -46,6 +46,7 @@ export type BacklogFilterKey =
   | 'priority'
   | 'planEstimate'
   | 'assigneeId'
+  | 'devOwnerId'
   | 'releaseId'
 
 /**
@@ -111,6 +112,31 @@ export function useBacklogFilterFields({
         label: COLUMN_LABELS.owner,
         kind: 'select',
         defaultVisible: true,
+        options: [
+          { value: UNASSIGNED_OWNER, label: t('filters.unassigned') },
+          ...members.map((m) => ({
+            value: m.userId,
+            label: m.displayName ?? m.email ?? m.userId,
+          })),
+        ],
+      },
+      /**
+       * Dev Owner, beside Owner — `P2-BL-FR-004` lists both ("Filter gồm Type, Schedule State,
+       * Defect Priority, Owner, Dev Owner, Release và Iteration").
+       *
+       * Same option source and the same `UNASSIGNED_OWNER` sentinel as Owner, because they are one
+       * candidate population (`WID-FR-016`) filtered independently — the server already accepted
+       * `devOwnerId` here; only this field was missing, so the column was filterable on Iteration
+       * Status and not on the Backlog.
+       *
+       * `Iteration` is the one entry in FR-004 deliberately absent: `listBacklog` is unconditionally
+       * `iteration_id IS NULL`, so every row's Iteration is blank and the filter could only ever
+       * return everything or nothing.
+       */
+      {
+        key: 'devOwnerId',
+        label: COLUMN_LABELS.devOwner,
+        kind: 'select',
         options: [
           { value: UNASSIGNED_OWNER, label: t('filters.unassigned') },
           ...members.map((m) => ({
