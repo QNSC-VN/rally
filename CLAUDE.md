@@ -687,13 +687,37 @@ on Iteration Status' `Add Item`. Not a permission fault and not the naming fault
   own Owner still RESOLVED to a name out of the workspace directory, so the value appeared and
   vanished depending on which of the two lists a reader consulted. An offer list and a name source are
   two feeds; when a dropdown is empty but the cell shows a name, it is this.
-- **`Portfolio > Feature > Children` still has this shape**: its Story/Defect rows carry an
-  `OwnerSelectCell` fed by `useProjectMemberOptions(projectId)`, and that projection carries no team
-  either. Not fixed here because the surface is admin-only (§3.2 hides Portfolio from an Editor, and
-  the no-Team branch does offer project Admins and WAs), and closing it needs the same
-  projection + DTO + codegen round. Recorded rather than quietly widened.
+- **`Portfolio > Feature > Children` had the same shape and is fixed too.** Its Story/Defect rows
+  carry an `OwnerSelectCell`, and it was fed the project-wide list. That projection ALREADY selected
+  `team_id` (it was added when the children rows became editable), so no server change was needed —
+  only pointing the offers at `useTeamOwnerOptions(child.projectId, child.teamId)` and leaving the
+  project-wide feed as the NAME source. Worth knowing for the next grid: check the projection before
+  assuming a codegen round is needed.
 - Pinned in `owner-name-resolution.e2e.spec.ts` (the read model carries the team) and
   `status-row.test.tsx` (the row asks the team-scoped hook).
+
+## A row's VERB needs a row affordance
+
+`P2-BL-FR-022` and Phase 2/01 §124 put Delete on the row — "Delete Defect | Row or detail action with
+confirmation" — and the Backlog had neither for most of its life. The BA logged "cannot delete work
+item in Backlog" twice, and both times the route was innocent
+(`test/e2e/work-item-delete-route.e2e.spec.ts` deletes a story, a task and a story-with-children over
+HTTP).
+
+- **The bulk bar is not a row action.** It only appears once rows are SELECTED, so a reader looking at
+  one row sees no verb at all. That is why the first investigation of this report fixed the bulk
+  control's gate and its error text and the report came back.
+- **`WorkItemRowActions` is the shared control**, not page-local: the same action belongs on Quality
+  and Iteration Status when the BA rules on those grids, and a second copy is how two grids come to
+  confirm differently. It renders NOTHING without `work_item:delete` — the menu holds one verb, so a
+  disabled item would be a menu that only refuses.
+- **It is a TRAILING cell, not a declared column.** An affordance must not be resizable, reorderable
+  or — the reason that matters — HIDEABLE, since hiding it would take away the row's only verb.
+  Revealed on `group-hover` like the drag grip AND on `focus-within`, or a keyboard reader could tab
+  to a control they cannot see.
+- **The confirmation is NAMED, not typed, and its copy says what survives.** The delete is soft and
+  `P3-QA-FR-020` retains the child Tasks, attachments, comments and relations, so "this cannot be
+  undone" was false; the typed gate stays reserved for the irreversible.
 
 ## A chevron must move in the direction its ICON points, not by index
 
