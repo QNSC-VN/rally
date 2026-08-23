@@ -111,8 +111,9 @@ test.describe('Golden journey', () => {
     await expect(row).toBeVisible({ timeout: 10_000 })
 
     // ── 6. Move its Schedule State and confirm it persists across reload ──────
-    // Schedule state is a Rally-style segmented stepper (role=group); the active
-    // segment is disabled and shows its letter. Move to In-Progress ("P").
+    // Schedule state is a Rally-style segmented stepper (role=group); the CURRENT segment carries
+    // `data-current` and shows its letter, and only the actionable segments are buttons. Move to
+    // In-Progress ("P").
     const stepper = row.getByRole('group', { name: 'Schedule state' })
     const inProgress = stepper.getByRole('button', { name: 'In Progress' })
     if ((await inProgress.count()) > 0 && (await inProgress.isEnabled())) {
@@ -127,7 +128,7 @@ test.describe('Golden journey', () => {
       await settle(page, 600)
       const rowAfter = page.locator('div.group.flex').filter({ hasText: backlogStoryTitle })
       await expect(
-        rowAfter.getByRole('group', { name: 'Schedule state' }).locator('button:disabled'),
+        rowAfter.getByRole('group', { name: 'Schedule state' }).locator('[data-current]'),
       ).toHaveText('P')
     }
 

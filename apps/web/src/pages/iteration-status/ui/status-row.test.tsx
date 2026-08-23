@@ -17,6 +17,19 @@ import { fireEvent, render, screen } from '@testing-library/react'
 
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
 
+/**
+ * The OFFER feed, mocked at the hook. The row asks for its OWN team's candidates now
+ * (`useTeamOwnerOptions(projectId, item.teamId ?? fallbackTeamId)`) rather than being handed one
+ * project-wide array — the page used to pass the NO-TEAM feed, which by the assignment rule offers
+ * Project Admins only, so an Editor on the selected Team was missing from both dropdowns.
+ */
+const offersRef: { current: Array<{ userId: string; displayName: string; email: string }> } = {
+  current: [],
+}
+vi.mock('@/features/teams/api', () => ({
+  useTeamOwnerOptions: () => ({ data: offersRef.current }),
+}))
+
 vi.mock('@/features/work-items/api', () => ({
   useUpdateWorkItem: () => ({ mutate: vi.fn(), isPending: false }),
   useSetWorkItemMilestones: () => ({ mutate: vi.fn(), isPending: false }),
@@ -70,13 +83,15 @@ const renderRow = (
     names = [ALICE, WA],
     offers = [ALICE],
   }: { names?: (typeof ALICE)[]; offers?: (typeof ALICE)[] } = {},
-) =>
-  render(
+) => {
+  offersRef.current = offers
+  return render(
     <StatusRow
       item={item(over)}
       rank={1}
       memberMap={new Map(names.map((m) => [m.userId, m]))}
-      memberOptions={offers}
+      projectId="p-1"
+      fallbackTeamId="t-1"
       milestoneOptions={[]}
       iterationOptions={[]}
       selectedIterationId="it-1"
@@ -89,6 +104,7 @@ const renderRow = (
       onOpen={() => {}}
     />,
   )
+}
 
 /**
  * The ROW names its own owner (2026-08-22).

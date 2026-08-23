@@ -26,16 +26,18 @@ vi.mock('@/features/releases/api', () => ({
     data: [{ id: 'r1', name: 'v2.0', releaseKey: 'REL-1' } as unknown as ReleaseOption],
   }),
 }))
+const MEMBER = {
+  userId: 'u1',
+  displayName: 'Admin User',
+  email: 'admin@qnsc.dev',
+} as unknown as ProjectMemberOption
+
 vi.mock('@/features/teams/api', () => ({
-  useProjectMemberOptions: () => ({
-    data: [
-      {
-        userId: 'u1',
-        displayName: 'Admin User',
-        email: 'admin@qnsc.dev',
-      } as unknown as ProjectMemberOption,
-    ],
-  }),
+  // The project-wide feed is the NAME source; the OFFER list is the child's own team
+  // (`WID-FR-017`). Both return the same person here, so these cases keep measuring layout and
+  // disclosure rather than eligibility.
+  useProjectMemberOptions: () => ({ data: [MEMBER] }),
+  useTeamOwnerOptions: () => ({ data: [MEMBER] }),
 }))
 
 import '@/shared/i18n/i18n'

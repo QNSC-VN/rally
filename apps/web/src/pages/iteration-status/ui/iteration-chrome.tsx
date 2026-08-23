@@ -33,9 +33,10 @@ export function IterationHeader({
   iterations,
   selected,
   selectedId,
-  selectedIndex,
   setSelectedId,
-  move,
+  stepIteration,
+  hasEarlier,
+  hasLater,
   selectorOpen,
   setSelectorOpen,
   viewMode,
@@ -47,9 +48,17 @@ export function IterationHeader({
   iterations: IterationReference[]
   selected: IterationReference | undefined
   selectedId: string | null
-  selectedIndex: number
   setSelectedId: (id: string) => void
-  move: (dir: -1 | 1) => void
+  /**
+   * Step by CHRONOLOGY, never by row index. The feed is newest-first, so the left chevron asks for
+   * `earlier` and the right for `later` — passing `-1`/`+1` from here is what made both arrows move
+   * the opposite way from their icons (Production, 2026-08-21).
+   */
+  stepIteration: (direction: 'earlier' | 'later') => void
+  /** Whether an earlier / later iteration exists. Derived beside `stepIteration`, from one mapping,
+   *  so a disabled arrow and the step it guards cannot disagree. */
+  hasEarlier: boolean
+  hasLater: boolean
   selectorOpen: boolean
   setSelectorOpen: React.Dispatch<React.SetStateAction<boolean>>
   viewMode: 'list' | 'board'
@@ -79,21 +88,22 @@ export function IterationHeader({
         }}
       >
         <button
-          disabled={selectedIndex <= 0}
-          onClick={() => move(-1)}
+          aria-label="Previous iteration"
+          disabled={!hasEarlier}
+          onClick={() => stepIteration('earlier')}
           className="border-r border-border-subtle"
           style={{
             height: '100%',
             padding: '0 6px',
             display: 'flex',
             alignItems: 'center',
-            cursor: selectedIndex <= 0 ? 'not-allowed' : 'pointer',
+            cursor: hasEarlier ? 'pointer' : 'not-allowed',
             background: 'transparent',
-            color: selectedIndex <= 0 ? BRAND.textMuted : BRAND.textSecondary,
-            opacity: selectedIndex <= 0 ? 0.4 : 1,
+            color: hasEarlier ? BRAND.textSecondary : BRAND.textMuted,
+            opacity: hasEarlier ? 1 : 0.4,
           }}
           onMouseOver={(e) => {
-            if (selectedIndex > 0) e.currentTarget.style.backgroundColor = BRAND.surfaceHover
+            if (hasEarlier) e.currentTarget.style.backgroundColor = BRAND.surfaceHover
           }}
           onMouseOut={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent'
@@ -187,22 +197,22 @@ export function IterationHeader({
           )}
         </div>
         <button
-          disabled={selectedIndex >= iterations.length - 1}
-          onClick={() => move(1)}
+          aria-label="Next iteration"
+          disabled={!hasLater}
+          onClick={() => stepIteration('later')}
           className="border-l border-border-subtle"
           style={{
             height: '100%',
             padding: '0 6px',
             display: 'flex',
             alignItems: 'center',
-            cursor: selectedIndex >= iterations.length - 1 ? 'not-allowed' : 'pointer',
+            cursor: hasLater ? 'pointer' : 'not-allowed',
             background: 'transparent',
-            color: selectedIndex >= iterations.length - 1 ? BRAND.textMuted : BRAND.textSecondary,
-            opacity: selectedIndex >= iterations.length - 1 ? 0.4 : 1,
+            color: hasLater ? BRAND.textSecondary : BRAND.textMuted,
+            opacity: hasLater ? 1 : 0.4,
           }}
           onMouseOver={(e) => {
-            if (selectedIndex < iterations.length - 1)
-              e.currentTarget.style.backgroundColor = BRAND.surfaceHover
+            if (hasLater) e.currentTarget.style.backgroundColor = BRAND.surfaceHover
           }}
           onMouseOut={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent'

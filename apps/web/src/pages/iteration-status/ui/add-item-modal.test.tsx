@@ -29,7 +29,10 @@ vi.mock('@/features/iterations/api', () => ({
   useCreateIterationItem: () => ({ mutateAsync: createItem, isPending: false }),
 }))
 vi.mock('@/features/teams/api', () => ({
-  useProjectMemberOptions: () => ({ data: [] }),
+  // The Owner OFFER feed is TEAM-scoped now: the modal used to read the project-wide list, which by
+  // the assignment rule offers Project Admins and no Editors, so the picker held only `Unassigned`
+  // on a project staffed by Editors (Production, 2026-08-21).
+  useTeamOwnerOptions: () => ({ data: [] }),
   useProjectTeams: () => projectTeams(),
 }))
 vi.mock('@/features/access/api', () => ({

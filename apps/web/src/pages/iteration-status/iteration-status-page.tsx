@@ -39,7 +39,12 @@ import { defaultIterationId } from '@/features/iterations/default-iteration'
 import { StatusRow } from './ui/status-row'
 import { AddItemModal } from './ui/add-item-modal'
 import { IterationHeader, MetricsStrip, Toolbar, TableFooterTotals } from './ui/iteration-chrome'
-import { computeTotalDays, iterationStatusTotals, sortStatusRows } from './model/iteration-helpers'
+import {
+  computeTotalDays,
+  iterationStatusTotals,
+  sortStatusRows,
+  stepIndexInTime,
+} from './model/iteration-helpers'
 import { type ColKey, ITERATION_STATUS_COLUMNS, HEADER_META } from './model/columns'
 import { useIterationFilterFields, toIterationStatusQuery } from './model/filter-fields'
 import { useManageFilters } from '@/features/work-items/model/manage-filters'
@@ -180,10 +185,34 @@ export function IterationStatusPage() {
 
   const items = status?.items ?? EMPTY_ITEMS
 
-  function move(dir: -1 | 1) {
-    const next = selectedIndex + dir
-    if (next >= 0 && next < iterations.length) setSelectedId(iterations[next].id)
-  }
+  /**
+   * Step to the EARLIER or LATER iteration — chronology, not row order.
+   *
+   * The feed is ordered newest-first for the reader (see `defaultIterationId`), so `index - 1` is
+   * the LATER sprint and `index + 1` the earlier one. The toolbar used to pass `-1` for its left
+   * chevron and `+1` for its right, which made both arrows point the opposite way from the
+   * direction their icons communicate: from KB Sprint 1 the left chevron advanced to KB Sprint 2.
+   * Reported from Production on 2026-08-21.
+   *
+   * The signature is the fix, not the arithmetic: a caller now names the DIRECTION IN TIME it
+   * wants, so a later change to the feed's order cannot silently reverse the arrows again. Both
+   * `hasEarlier`/`hasLater` derive from the same mapping, so a disabled state cannot disagree with
+   * the step it guards.
+   */
+  const stepIteration = useCallback(
+    (direction: 'earlier' | 'later') => {
+      const next = stepIndexInTime(selectedIndex, direction, iterations.length)
+      if (next !== null) setSelectedId(iterations[next].id)
+    },
+    [selectedIndex, iterations, setSelectedId],
+  )
+  // Derived from the SAME mapping the step uses, so a disabled arrow and the step it guards cannot
+  // disagree about which end of the list they are at.
+  const hasEarlier = stepIndexInTime(selectedIndex, 'earlier', iterations.length) !== null
+  const hasLater = stepIndexInTime(selectedIndex, 'later', iterations.length) !== null
+  // The selected iteration's own team, read OUTSIDE the row map: `selected` is shadowed in there by
+  // each row's own selection flag.
+  const selectedIterationTeamId = selected?.teamId ?? null
 
   const toggleSort = useCallback(
     (col: string) => {
@@ -409,9 +438,10 @@ export function IterationStatusPage() {
         iterations={iterations}
         selected={selected}
         selectedId={selectedId}
-        selectedIndex={selectedIndex}
         setSelectedId={setSelectedId}
-        move={move}
+        stepIteration={stepIteration}
+        hasEarlier={hasEarlier}
+        hasLater={hasLater}
         selectorOpen={selectorOpen}
         setSelectorOpen={setSelectorOpen}
         viewMode={viewMode}
@@ -554,7 +584,8 @@ export function IterationStatusPage() {
               item={item}
               rank={(currentPage - 1) * pageSize + localItems.indexOf(item) + 1}
               memberMap={memberMap}
-              memberOptions={members}
+              projectId={projectId ?? ''}
+              fallbackTeamId={selectedIterationTeamId}
               milestoneOptions={milestoneOptions}
               iterationOptions={iterationOptions}
               selectedIterationId={selectedId!}

@@ -155,5 +155,8 @@
     "author": "Author",
     "allAuthors": "All authors",
     "emptyChangesets": "No commits linked. Reference this item's key in a commit message."
+  },
+  "rowActions": {
+    "label": "Actions for {{key}}"
   }
 }
