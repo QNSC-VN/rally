@@ -48,10 +48,17 @@ const summary: {
   error?: unknown
 } = { data: undefined, isLoading: false, isError: false }
 
+/** The Project Health rows, swapped per test. */
+const health: { data: unknown[]; isLoading: boolean; isError: boolean } = {
+  data: [],
+  isLoading: false,
+  isError: false,
+}
+
 vi.mock('@/features/home/api', () => ({
   useWorkspaceSummary: () => summary,
   useMyWork: () => ({ data: [], isLoading: false, isError: false }),
-  useProjectHealth: () => ({ data: [], isLoading: false, isError: false }),
+  useProjectHealth: () => health,
 }))
 
 vi.mock('@/features/notifications/api', () => ({
@@ -77,6 +84,9 @@ beforeEach(() => {
   summary.isLoading = false
   summary.isError = false
   summary.error = undefined
+  health.data = []
+  health.isLoading = false
+  health.isError = false
 })
 
 describe('Home KPI strip', () => {
@@ -132,5 +142,60 @@ describe('Home KPI strip', () => {
     }
     const { container } = render(<HomePage />)
     expect(tileValues(container)).toEqual(['2', '41', '1', '3', '7', '5'])
+  })
+})
+
+/**
+ * The two panel tables, after the migration off their hand-rolled chrome.
+ *
+ * They were the same shape written twice, and shared one defect: `flex-1` with no `min-w-0` on the
+ * Name column, so a long project name could not shrink below its own content and squeezed the fixed
+ * columns until every remaining HEADING wrapped — `Open Defects` breaking across two lines while the
+ * body rows kept their height. `PanelTable` states each width once and applies it to the heading and
+ * the cell through one component, so the two can no longer disagree.
+ */
+describe('Home panel tables', () => {
+  const ROW = {
+    id: 'p-1',
+    key: 'MINIRAL',
+    name: 'A deliberately long project name that used to squeeze its neighbours',
+    activeSprintName: null,
+    progressPercent: 0,
+    openDefects: 11,
+    blockedCount: 0,
+    leadName: 'Hieu Vu Minh Bui',
+  }
+
+  it('gives the flexible Name column `min-width: 0` so headings cannot be squeezed', () => {
+    health.data = [ROW]
+    const { container } = render(<HomePage />)
+
+    // Both tables' flexible column. Without this the fixed columns lose their width and their
+    // headings wrap — the reported defect, and the only thing that actually caused it.
+    const flexible = [...container.querySelectorAll<HTMLElement>('[style*="min-width"]')].filter(
+      (n) => n.style.minWidth === '0px' && n.style.flex.startsWith('1'),
+    )
+    expect(flexible.length).toBeGreaterThan(0)
+  })
+
+  it('keeps every OTHER column at its declared width and unshrinkable', () => {
+    health.data = [ROW]
+    const { container } = render(<HomePage />)
+
+    const fixed = [...container.querySelectorAll<HTMLElement>('[style*="flex-shrink"]')].filter(
+      (n) => n.style.flexShrink === '0' && n.style.width,
+    )
+    // A fixed column that can shrink is a heading that can wrap.
+    expect(fixed.length).toBeGreaterThan(0)
+    for (const cell of fixed) expect(cell.style.width).toMatch(/^\d+px$/)
+  })
+
+  it('still renders the row, and still marks the SELECTED project', () => {
+    // The control for the two assertions above: geometry that renders no data is not a table.
+    health.data = [ROW]
+    render(<HomePage />)
+    expect(screen.getByText(ROW.name)).toBeTruthy()
+    expect(screen.getByText('MINIRAL')).toBeTruthy()
+    expect(screen.getByText('Hieu Vu Minh Bui')).toBeTruthy()
   })
 })

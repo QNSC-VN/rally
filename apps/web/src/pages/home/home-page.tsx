@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, ArrowUpRight, Clock, Inbox } from 'lucide-react'
 import { useAuthStore } from '@/shared/lib/stores/auth.store'
@@ -12,6 +13,12 @@ import { LoadErrorState } from '@/shared/ui/load-error-state'
 import { listResource, valueResource } from '@/shared/lib/query/resource'
 import { OwnerCell } from '@/shared/ui/owner-cell'
 import { KeyChip } from '@/shared/ui/key-chip'
+import {
+  PanelTable,
+  PanelTableCell,
+  PanelTableRow,
+  type PanelTableColumn,
+} from '@/shared/ui/table/panel-table'
 import { PriorityBadge } from '@/entities/work-item/ui/badges'
 import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { StateStepper } from '@/entities/work-item/ui/state-stepper'
@@ -71,7 +78,35 @@ function getGreeting(t: (key: string) => string) {
 // ── Project Health Row ────────────────────────────────────────────────────────
 // Pure presentational — the rollup is computed server-side (one bounded query),
 // so this row fires NO per-project requests.
-function ProjectHealthRow({ row, isSelected }: { row: ProjectHealth; isSelected: boolean }) {
+/**
+ * The Project Health columns, declared once and shared by the header and the rows.
+ *
+ * `projectName` is the flexible one — every other column states a fixed width, so a long project
+ * name yields instead of squeezing the rest until their headings wrap. `OPEN DEFECTS` and `ACTIVE
+ * SPRINT` are the two that were breaking across two lines; they are also the two whose headings are
+ * longer than their content, which is why they now carry a width chosen for the LABEL.
+ */
+function healthColumns(t: TFunction): PanelTableColumn[] {
+  return [
+    { key: 'key', label: t('projectHealth.columns.key'), width: 112 },
+    { key: 'projectName', label: t('projectHealth.columns.projectName') },
+    { key: 'activeSprint', label: t('projectHealth.columns.activeSprint'), width: 148 },
+    { key: 'progress', label: t('projectHealth.columns.progress'), width: 144 },
+    { key: 'openDefects', label: t('projectHealth.columns.openDefects'), width: 116 },
+    { key: 'blocked', label: t('projectHealth.columns.blocked'), width: 96 },
+    { key: 'owner', label: t('common:owner'), width: 160 },
+  ]
+}
+
+function ProjectHealthRow({
+  row,
+  isSelected,
+  columns,
+}: {
+  row: ProjectHealth
+  isSelected: boolean
+  columns: PanelTableColumn[]
+}) {
   const { t } = useTranslation('home')
   const progressColor =
     row.progressPercent >= 70
@@ -79,24 +114,22 @@ function ProjectHealthRow({ row, isSelected }: { row: ProjectHealth; isSelected:
       : row.progressPercent >= 40
         ? BRAND.primaryLight
         : BRAND.warning
+  const [key, name, sprint, progress, defects, blocked, owner] = columns
 
   return (
-    <div
-      className="flex h-9 items-center gap-3 border-b border-border-inner px-4 transition-colors hover:bg-surface-hover"
-      style={{ backgroundColor: isSelected ? BRAND.primaryLighter : undefined }}
-    >
-      <div className="w-28 shrink-0">
+    <PanelTableRow style={{ backgroundColor: isSelected ? BRAND.primaryLighter : undefined }}>
+      <PanelTableCell column={key}>
         <KeyChip>{row.key}</KeyChip>
-      </div>
-      <div className="min-w-0 flex-1">
+      </PanelTableCell>
+      <PanelTableCell column={name}>
         <span className="block truncate text-ui-md font-medium text-foreground">{row.name}</span>
-      </div>
-      <div className="w-32 shrink-0 text-ui-sm text-muted-foreground">
+      </PanelTableCell>
+      <PanelTableCell column={sprint} className="text-ui-sm text-muted-foreground">
         {row.activeSprintName ?? (
           <span className="text-foreground-subtle">{t('projectHealth.noActiveSprint')}</span>
         )}
-      </div>
-      <div className="flex w-36 shrink-0 items-center gap-2">
+      </PanelTableCell>
+      <PanelTableCell column={progress} className="gap-2">
         <div className="h-1.5 w-20 overflow-hidden rounded-full bg-border-subtle">
           <div
             className="h-full rounded-full"
@@ -106,8 +139,8 @@ function ProjectHealthRow({ row, isSelected }: { row: ProjectHealth; isSelected:
         <span className="text-ui-xs font-semibold text-muted-foreground tabular-nums">
           {row.progressPercent}%
         </span>
-      </div>
-      <div className="w-24 shrink-0">
+      </PanelTableCell>
+      <PanelTableCell column={defects}>
         <span
           className="text-ui-md font-semibold tabular-nums"
           style={{ color: row.openDefects > 0 ? BRAND.danger : BRAND.success }}
@@ -117,8 +150,8 @@ function ProjectHealthRow({ row, isSelected }: { row: ProjectHealth; isSelected:
         <span className="ml-1 text-ui-xs text-foreground-subtle">
           {t('projectHealth.defect', { count: row.openDefects })}
         </span>
-      </div>
-      <div className="w-24 shrink-0">
+      </PanelTableCell>
+      <PanelTableCell column={blocked}>
         {row.blockedCount > 0 ? (
           <span className="inline-flex items-center gap-1 text-ui-xs font-semibold text-destructive">
             <AlertTriangle size={11} />
@@ -127,11 +160,11 @@ function ProjectHealthRow({ row, isSelected }: { row: ProjectHealth; isSelected:
         ) : (
           <span className="text-ui-xs text-success">{t('projectHealth.none')}</span>
         )}
-      </div>
-      <div className="flex w-32 shrink-0 items-center">
+      </PanelTableCell>
+      <PanelTableCell column={owner}>
         <OwnerCell name={row.leadName} />
-      </div>
-    </div>
+      </PanelTableCell>
+    </PanelTableRow>
   )
 }
 
@@ -178,6 +211,25 @@ export function HomePage() {
   const activity = activityFeed.rows
   const health = healthFeed.rows
   const openNotification = useOpenNotification()
+
+  /**
+   * Column widths for the two panel tables, stated ONCE each and shared by the header and the rows.
+   *
+   * Both tables previously wrote their widths twice — once as Tailwind classes in a header array and
+   * again on every body cell — so a header and its column could disagree, and did. `useMemo` only
+   * because these are arrays passed as props; the labels are translated, so they follow `t`.
+   */
+  const myWorkCols = useMemo<PanelTableColumn[]>(
+    () => [
+      { key: 'id', label: t('myWork.columns.id'), width: 120 },
+      { key: 'name', label: t('common:name') },
+      { key: 'project', label: t('myWork.columns.project'), width: 96 },
+      { key: 'status', label: t('common:status'), width: 128 },
+      { key: 'priority', label: t('myWork.columns.priority'), width: 80 },
+    ],
+    [t],
+  )
+  const healthCols = useMemo(() => healthColumns(t), [t])
 
   /** `--` for an absent number, never `0` — the app-wide rule, and here it is load-bearing. */
   const metric = (value: number | undefined) => (value === undefined ? EMPTY_VALUE : value)
@@ -290,75 +342,53 @@ export function HomePage() {
             </Link>
           </div>
 
-          {/* Table header */}
-          <div className="flex h-7 items-center gap-2 border-b border-border-subtle bg-surface-hover px-3 select-none">
-            {(
-              [
-                ['w-[120px] shrink-0', t('myWork.columns.id')],
-                ['flex-1 min-w-0 pr-2', t('common:name')],
-                ['w-24 shrink-0', t('myWork.columns.project')],
-                ['w-32 shrink-0', t('common:status')],
-                ['w-[80px] shrink-0', t('myWork.columns.priority')],
-              ] as [string, string][]
-            ).map(([cls, label]) => (
-              <div
-                key={label}
-                className={`${cls} text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase`}
-              >
-                {label}
-              </div>
-            ))}
-          </div>
-
-          {/* Rows */}
-          {myWorkFeed.phase === 'error' ? (
-            <LoadErrorState error={myWorkFeed.error} size="sm" />
-          ) : myWorkFeed.phase === 'empty' ? (
-            <EmptyState
-              size="sm"
-              icon={<Inbox size={28} className="text-foreground-subtle" />}
-              title={t('myWork.empty')}
-            />
-          ) : (
-            myItems.map((item) => (
-              <div
-                key={item.id}
-                // `min-h-8`, not `h-8`: a fixed height CLIPS a wrapped title instead of
-                // growing with it, so the row constraint has to be relaxed before the cell
-                // below is allowed to wrap.
-                className="flex min-h-8 items-center gap-2 border-b border-border-inner px-3 hover:bg-surface-hover"
-              >
-                <div className="w-[120px] shrink-0">
-                  <IdCell
-                    type={toWiType(item.type)}
-                    itemKey={item.itemKey}
-                    onOpen={() =>
-                      navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
-                    }
-                  />
-                </div>
-                <div className="min-w-0 flex-1 pr-2">
-                  <span className="block text-ui-md font-medium break-words whitespace-normal text-foreground">
-                    {item.title}
-                  </span>
-                </div>
-                <div className="w-24 shrink-0 font-mono text-ui-xs text-muted-foreground">
-                  {item.projectKey}
-                </div>
-                <div className="w-32 shrink-0">
-                  <StateStepper
-                    steps={SCHEDULE_STATE_STEPS}
-                    value={item.scheduleState as ScheduleState}
-                    canEdit={false}
-                    ariaLabel="Schedule state"
-                  />
-                </div>
-                <div className="w-[80px] shrink-0">
-                  <PriorityBadge priority={toPriority(item.priority)} />
-                </div>
-              </div>
-            ))
-          )}
+          <PanelTable columns={myWorkCols} gapClassName="gap-2" padClassName="px-3">
+            {myWorkFeed.phase === 'error' ? (
+              <LoadErrorState error={myWorkFeed.error} size="sm" />
+            ) : myWorkFeed.phase === 'empty' ? (
+              <EmptyState
+                size="sm"
+                icon={<Inbox size={28} className="text-foreground-subtle" />}
+                title={t('myWork.empty')}
+              />
+            ) : (
+              myItems.map((item) => (
+                <PanelTableRow key={item.id} gapClassName="gap-2" padClassName="px-3">
+                  <PanelTableCell column={myWorkCols[0]}>
+                    <IdCell
+                      type={toWiType(item.type)}
+                      itemKey={item.itemKey}
+                      onOpen={() =>
+                        navigate({ to: '/item/$itemKey', params: { itemKey: item.itemKey } })
+                      }
+                    />
+                  </PanelTableCell>
+                  <PanelTableCell column={myWorkCols[1]} className="pr-2">
+                    <span className="block text-ui-md font-medium break-words whitespace-normal text-foreground">
+                      {item.title}
+                    </span>
+                  </PanelTableCell>
+                  <PanelTableCell
+                    column={myWorkCols[2]}
+                    className="font-mono text-ui-xs text-muted-foreground"
+                  >
+                    {item.projectKey}
+                  </PanelTableCell>
+                  <PanelTableCell column={myWorkCols[3]}>
+                    <StateStepper
+                      steps={SCHEDULE_STATE_STEPS}
+                      value={item.scheduleState as ScheduleState}
+                      canEdit={false}
+                      ariaLabel="Schedule state"
+                    />
+                  </PanelTableCell>
+                  <PanelTableCell column={myWorkCols[4]}>
+                    <PriorityBadge priority={toPriority(item.priority)} />
+                  </PanelTableCell>
+                </PanelTableRow>
+              ))
+            )}
+          </PanelTable>
         </div>
 
         {/* Recent Activity — sourced from the notification feed (assignments/mentions) */}
@@ -406,41 +436,22 @@ export function HomePage() {
               {t('activity.all')} <ArrowUpRight size={11} />
             </Link>
           </div>
-          {/* Table header */}
-          <div className="flex h-7 items-center gap-3 border-b border-border-subtle bg-surface-hover px-4 select-none">
-            {(
-              [
-                ['w-28 shrink-0', t('projectHealth.columns.key')],
-                ['flex-1 min-w-0', t('projectHealth.columns.projectName')],
-                ['w-32 shrink-0', t('projectHealth.columns.activeSprint')],
-                ['w-36 shrink-0', t('projectHealth.columns.progress')],
-                ['w-24 shrink-0', t('projectHealth.columns.openDefects')],
-                ['w-24 shrink-0', t('projectHealth.columns.blocked')],
-                ['w-32 shrink-0', t('common:owner')],
-              ] as [string, string][]
-            ).map(([cls, label]) => (
-              <div
-                key={label}
-                className={`${cls} text-ui-xs font-semibold tracking-widest text-foreground-subtle uppercase`}
-              >
-                {label}
-              </div>
-            ))}
-          </div>
-          {/* Rows */}
-          {healthFeed.phase === 'error' ? (
-            <LoadErrorState error={healthFeed.error} size="sm" />
-          ) : healthFeed.phase === 'empty' ? (
-            <EmptyState size="sm" title={t('projectHealth.empty')} />
-          ) : (
-            health.map((row) => (
-              <ProjectHealthRow
-                key={row.id}
-                row={row}
-                isSelected={selectedProject?.projectId === row.id}
-              />
-            ))
-          )}
+          <PanelTable columns={healthCols}>
+            {healthFeed.phase === 'error' ? (
+              <LoadErrorState error={healthFeed.error} size="sm" />
+            ) : healthFeed.phase === 'empty' ? (
+              <EmptyState size="sm" title={t('projectHealth.empty')} />
+            ) : (
+              health.map((row) => (
+                <ProjectHealthRow
+                  key={row.id}
+                  row={row}
+                  columns={healthCols}
+                  isSelected={selectedProject?.projectId === row.id}
+                />
+              ))
+            )}
+          </PanelTable>
         </div>
       </div>
     </div>

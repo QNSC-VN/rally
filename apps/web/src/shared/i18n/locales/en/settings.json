@@ -359,7 +359,11 @@
     "memberNotAdded": "Not added",
     "memberNoAccess": "No Access",
     "memberNoLevelWritten": "No level written",
-    "memberNoLevelWrittenHint": "Workspace-wide access — team membership writes no project access level."
+    "memberNoLevelWrittenHint": "Workspace-wide access — team membership writes no project access level.",
+    "colKey": "Key",
+    "colTeam": "Team",
+    "colLead": "Lead",
+    "colMembers": "Members"
   },
   "roles": {
     "permissionsUpdated": "Role permissions updated",
