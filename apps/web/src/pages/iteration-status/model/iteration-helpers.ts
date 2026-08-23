@@ -145,3 +145,27 @@ export function sortStatusRows<T extends SortableStatusRow>(
     return 0
   })
 }
+
+/**
+ * The row index of the iteration one step EARLIER or LATER than `index`, or `null` at the end.
+ *
+ * The feed is ordered NEWEST FIRST (`desc(startDate)` server-side, and `default-iteration.ts` says
+ * the picker "shows newest first"), so a step back in time is a step FORWARD through the array. The
+ * toolbar's chevrons used to pass `-1` for left and `+1` for right, which pointed both arrows the
+ * opposite way from the direction their icons communicate — from KB Sprint 1 the left chevron
+ * advanced to KB Sprint 2 (reported from Production, 2026-08-21).
+ *
+ * It is a named function rather than inline arithmetic because `index ± 1` carries no chronological
+ * meaning: whether it moves forward or back in time is a property of the FEED's order, and nothing
+ * at the call site said which. A later change to that order now breaks one expression with a test on
+ * it, instead of silently reversing two buttons.
+ */
+export function stepIndexInTime(
+  index: number,
+  direction: 'earlier' | 'later',
+  count: number,
+): number | null {
+  if (index < 0) return null
+  const next = index + (direction === 'earlier' ? 1 : -1)
+  return next >= 0 && next < count ? next : null
+}
