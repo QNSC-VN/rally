@@ -27,6 +27,7 @@ import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
+import { WorkItemRowActions } from '@/features/work-items/ui/work-item-row-actions'
 import { RankEdgeActions } from '@/features/work-items/ui/rank-edge-actions'
 import { BulkScheduleActions } from '@/features/work-items/ui/bulk-schedule-bar'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
@@ -418,6 +419,7 @@ export function BacklogPage() {
                 active={item.itemKey === summaryItemKey}
                 onToggleSelect={onToggleSelect}
                 canAssignRelease={canAssignRelease}
+                canDelete={can('work_item:delete')}
                 onOpen={() => openItem(item)}
                 colStyles={colStyles}
                 canEdit={canEdit}
@@ -558,6 +560,9 @@ interface BacklogRowProps {
    * grid they own.
    */
   canAssignRelease: boolean
+  /** `work_item:delete` — the code `DELETE /work-items/:id` itself requires. False renders no row
+   *  action menu at all, rather than one whose single item refuses. */
+  canDelete: boolean
   /** The assignee feed (`useProjectMemberOptions`) — the shared picker shape, which permits null. */
   members: OwnerSelectMember[]
   releases: Array<{ id: string; name: string; releaseKey?: string | null }>
@@ -591,6 +596,7 @@ function BacklogRow({
   colStyles,
   canEdit,
   canAssignRelease,
+  canDelete,
   members,
   releases,
   iterations,
@@ -873,6 +879,23 @@ function BacklogRow({
             })),
           ]}
           onChange={(v) => patch({ iterationId: v || null })}
+        />
+      </div>
+
+      {/* Row actions — `P2-BL-FR-022` / §124: "Delete Defect | Row/detail action with confirmation".
+          A TRAILING cell rather than a declared column: it is an affordance, not data, so it must not
+          be resizable, reorderable or — the reason that matters — hideable, since hiding it would take
+          away the row's only verb. Revealed on hover like the drag grip, and on FOCUS too, or a
+          keyboard reader could tab to a control they cannot see. */}
+      <div
+        className="ml-auto flex shrink-0 items-center px-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+        onClick={stop}
+      >
+        <WorkItemRowActions
+          itemId={item.id}
+          itemKey={item.itemKey}
+          projectId={item.projectId}
+          canDelete={canDelete}
         />
       </div>
     </div>

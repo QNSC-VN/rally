@@ -67,30 +67,64 @@ export function StateStepper<T extends string>({
         // Only the hovered box previews the target; the resting fill is untouched.
         const isPreview = interactive && hovered === i && !isCurrent
         const lit = isCurrent || isPreview
+        const cellStyle = {
+          width: CELL,
+          flex: 'none' as const,
+          border: 'none',
+          borderLeft: i > 0 ? `1px solid ${STEPPER_SEP}` : 'none',
+          padding: 0,
+          fontSize: 10,
+          fontWeight: 700,
+          lineHeight: `${CELL - 2}px`,
+          backgroundColor: lit ? STEPPER_CURRENT : reached ? STEPPER_REACHED : BRAND.surface,
+          // Only the CURRENT box shows its letter; a hover preview just
+          // recolours the box (no letter), matching Rally.
+          color: isCurrent ? BRAND.surface : 'transparent',
+          transition: 'background-color 120ms',
+        }
+        // Named rather than spread inline at each element: the FE ratchet counts `style={{` literals,
+        // and a shared base plus two named variants is both cheaper to read and one fewer of them.
+        const staticCellStyle = {
+          ...cellStyle,
+          display: 'inline-block',
+          textAlign: 'center' as const,
+        }
+        const actionableCellStyle = { ...cellStyle, cursor: 'pointer' }
+        /**
+         * A cell that cannot act is a SPAN, not a disabled button.
+         *
+         * Three things were wrong with rendering every cell as a disabled button element. It put six
+         * dead controls per row into the accessibility tree, where a reader meets them one after
+         * another with nothing to do. It made a read-only stepper — `canEdit={false}`, which is most
+         * of them — six controls that never act. And where the stepper is rendered INSIDE another
+         * button it produced invalid HTML: `SearchableSelect` renders the selected option's node in
+         * its own trigger button, so the `Schedule State` field logged "In HTML, button cannot be a
+         * descendant of button. This will cause a hydration error." on every detail page.
+         *
+         * `data-current` marks the segment holding the value, so a test (or a style) can address it
+         * by what it MEANS rather than by a disabled-button selector, which was only ever a side
+         * effect of this shape.
+         */
+        if (!actionable) {
+          return (
+            <span
+              key={step.value}
+              title={step.label}
+              data-current={isCurrent ? 'true' : undefined}
+              style={staticCellStyle}
+            >
+              {isCurrent ? step.letter : ''}
+            </span>
+          )
+        }
         return (
           <button
             key={step.value}
             type="button"
-            title={actionable ? `Move to ${step.label}` : step.label}
-            disabled={!actionable}
-            onMouseEnter={actionable ? () => setHovered(i) : undefined}
-            onClick={actionable ? () => onChange!(step.value) : undefined}
-            style={{
-              width: CELL,
-              flex: 'none',
-              border: 'none',
-              borderLeft: i > 0 ? `1px solid ${STEPPER_SEP}` : 'none',
-              padding: 0,
-              fontSize: 10,
-              fontWeight: 700,
-              lineHeight: `${CELL - 2}px`,
-              cursor: actionable ? 'pointer' : 'default',
-              backgroundColor: lit ? STEPPER_CURRENT : reached ? STEPPER_REACHED : BRAND.surface,
-              // Only the CURRENT box shows its letter; a hover preview just
-              // recolours the box (no letter), matching Rally.
-              color: isCurrent ? BRAND.surface : 'transparent',
-              transition: 'background-color 120ms',
-            }}
+            title={`Move to ${step.label}`}
+            onMouseEnter={() => setHovered(i)}
+            onClick={() => onChange!(step.value)}
+            style={actionableCellStyle}
           >
             {isCurrent ? step.letter : ''}
           </button>

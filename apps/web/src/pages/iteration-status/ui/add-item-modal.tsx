@@ -5,7 +5,7 @@ import { Loader2 } from 'lucide-react'
 
 import { cn, EMPTY_VALUE } from '@/shared/lib/utils'
 import { useCreateIterationItem, type IterationReference } from '@/features/iterations/api'
-import { useProjectMemberOptions, useProjectTeams } from '@/features/teams/api'
+import { useProjectTeams, useTeamOwnerOptions } from '@/features/teams/api'
 import { useProjectTeamScope } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { notify } from '@/shared/lib/toast'
@@ -36,9 +36,6 @@ export function AddItemModal({
   const { t } = useTranslation('iteration-status')
   const navigate = useNavigate()
   const create = useCreateIterationItem(iteration.id)
-  // The assignee feed, NOT the administrative roster: that one is Admin-only (§3.1:71), and
-  // defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
-  const { data: members = [] } = useProjectMemberOptions(projectId)
   const { data: teams = [], isLoading: teamsLoading } = useProjectTeams(projectId)
   const { project } = useAppContext()
   // Project / Team / Iteration are inherited from the iteration context and shown
@@ -85,6 +82,21 @@ export function AddItemModal({
    */
   const autoTeamId = mustChooseTeam && teams.length === 1 ? teams[0].id : ''
   const teamId = teamTouched || autoTeamId
+
+  /**
+   * The Owner OFFER list, scoped to the team the item will be CREATED IN.
+   *
+   * The assignee feed, not the administrative roster: that one is Admin-only (§3.1:71), and
+   * defaulting its 403 to `[]` made every owned item read `Unassigned` for an Editor.
+   *
+   * It used to be `useProjectMemberOptions(projectId)` with no team — the NO-TEAM branch of the
+   * assignment rule, which offers Project Admins only and deliberately no Editors (`WIC-FR-006A`).
+   * So on a project staffed by Editors the picker held nothing but `Unassigned` and an owner could
+   * not be chosen while creating (reported from Production, 2026-08-21). Scoped to `teamId` it
+   * offers exactly what `assertAssignable` will accept for this create, and it re-resolves when the
+   * reader changes the Team above.
+   */
+  const { data: members = [] } = useTeamOwnerOptions(projectId, teamId || iteration.teamId)
 
   async function submit(openDetail = false) {
     setError(null)

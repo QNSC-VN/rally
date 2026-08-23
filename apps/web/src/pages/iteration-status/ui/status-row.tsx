@@ -33,6 +33,7 @@ import { IdCell } from '@/entities/work-item/ui/id-cell'
 import { TypeBadge } from '@/entities/work-item/ui/badges'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { SearchableSelect } from '@/shared/ui/searchable-select'
+import { useTeamOwnerOptions } from '@/features/teams/api'
 import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { RowGutter } from '@/shared/ui/row-gutter'
 import { MilestoneSelectCell, TasksProgress } from './status-cells'
@@ -57,7 +58,8 @@ export function StatusRow({
   item,
   rank,
   memberMap,
-  memberOptions,
+  projectId,
+  fallbackTeamId,
   milestoneOptions,
   iterationOptions,
   selectedIterationId,
@@ -81,8 +83,13 @@ export function StatusRow({
    * feed and {@link memberOptions} are two props and not one.
    */
   memberMap: Map<string, OwnerSelectMember>
-  /** What an Owner / Dev Owner picker may OFFER — the project's own active members. */
-  memberOptions: OwnerSelectMember[]
+  projectId: string
+  /**
+   * The Team to scope the Owner / Dev Owner OFFER list to when the row carries none — the selected
+   * iteration's own team. A shared sprint names no team (195 of 206 local iterations do not), so
+   * this is null far more often than not, and then the offer list is the no-Team one by rule.
+   */
+  fallbackTeamId: string | null
   milestoneOptions: readonly { id: string; name: string; milestoneKey?: string | null }[]
   iterationOptions: readonly { id: string; name: string; iterationKey?: string | null }[]
   selectedIterationId: string
@@ -140,7 +147,21 @@ export function StatusRow({
    * a name; offering that whole set here would put every workspace user in an Owner dropdown, which
    * `WID-FR-016` forbids. So the offers come from the project feed and the names from the map.
    */
-  const membersList = memberOptions
+  /**
+   * The OFFER list, scoped to THIS ROW'S Team — `WID-FR-017` / `WIC-FR-006A`.
+   *
+   * The page used to fetch `useProjectMemberOptions(projectId)` once, with no team, and hand the same
+   * array to every row. That feed is the NO-TEAM branch of the assignment rule, which offers Project
+   * Admins (plus Workspace Admins) and deliberately no Editors — so on a project whose members are
+   * Editors on the selected Team, both the Owner and the Dev Owner dropdown showed nothing but
+   * `No Entry` and no active Team member could be assigned inline (Production, 2026-08-21). The
+   * intermittency in that report is the same fact seen twice: the row's own Owner still RESOLVED to a
+   * name out of `memberMap`, so the value came and went with which of the two lists was consulted.
+   *
+   * Per row, like the Tasks tab (`useTeamOwnerOptions(projectId, task.teamId ?? parentTeamId)`).
+   * Rows sharing a team share one query key, so this is one request per distinct team on screen.
+   */
+  const { data: membersList = [] } = useTeamOwnerOptions(projectId, item.teamId ?? fallbackTeamId)
 
   const {
     setNodeRef,

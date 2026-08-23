@@ -3947,6 +3947,7 @@ export interface components {
         /** @enum {string} */
         scheduleState: 'idea' | 'defined' | 'in_progress' | 'completed' | 'accepted' | 'release'
         iterationId: string | null
+        teamId: string | null
         isBlocked: boolean
         blockedReason: string | null
         planEstimate: number | null

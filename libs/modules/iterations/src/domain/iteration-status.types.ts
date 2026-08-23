@@ -37,6 +37,16 @@ export interface IterationStatusItem {
   title: string;
   scheduleState: WorkItemScheduleState;
   iterationId: string | null;
+  /**
+   * The row's own Team, and it is the OFFER LIST's scope.
+   *
+   * `WID-FR-017` / `WIC-FR-006A` scope Owner and Dev Owner candidates to the record's Team, so a
+   * grid that does not carry the team cannot ask for the right candidates: Iteration Status fetched
+   * the project-wide feed instead, which by the same rule offers Project Admins only — so an active
+   * Editor on the Team was missing from both dropdowns and the cell read `No Entry` with nothing
+   * selectable (reported from Production, 2026-08-21).
+   */
+  teamId: string | null;
   isBlocked: boolean;
   /** work_items.blocked_reason — surfaced beside the Block flag (Rally "Blocked Reason"). */
   blockedReason: string | null;

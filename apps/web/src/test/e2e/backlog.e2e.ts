@@ -56,12 +56,14 @@ test.describe('P2.1 Backlog Enhancement', () => {
     await stepper.getByRole('button', { name: targetLabel }).click()
     await settle(page, 1200)
 
-    // Reload and confirm the change stuck (sourced from work_items): the first
-    // row's active (disabled) segment now shows the target state's letter.
+    // Reload and confirm the change stuck (sourced from work_items): the first row's CURRENT
+    // segment now shows the target state's letter. `[data-current]`, not `button:disabled` — a
+    // segment that cannot act is a span now, because a disabled button is a dead control in the
+    // accessibility tree and was invalid HTML wherever the stepper sits inside another button.
     await page.reload()
     await settle(page)
     await expect(
-      page.getByRole('group', { name: 'Schedule state' }).first().locator('button:disabled'),
+      page.getByRole('group', { name: 'Schedule state' }).first().locator('[data-current]'),
     ).toHaveText(targetLetter)
   })
 
@@ -78,6 +80,57 @@ test.describe('P2.1 Backlog Enhancement', () => {
     await expect(page.getByText(/\d+ item.*selected/i)).toBeVisible()
     await expect(page.getByRole('button', { name: 'Delete' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Copy' })).toBeVisible()
+  })
+
+  test('deletes a work item from the ROW, after a confirmation', async ({ page }) => {
+    /**
+     * `P2-BL-FR-022` and §124: "Delete Defect | Row or detail action with confirmation".
+     *
+     * The verb existed before this control, but only in the bulk bar — which appears once rows are
+     * SELECTED — and on the record's own detail page. Neither is the row, which is why the BA reported
+     * "cannot delete work item in Backlog" while `work-item-delete-route.e2e.spec.ts` was proving the
+     * route deletes fine.
+     *
+     * CREATES its own row and deletes that one. Deleting a seeded row would consume a fixture other
+     * specs read — the leak this suite's own notes warn about — and creating first also proves the two
+     * halves of the flow line up: the item this grid just added is the item this grid can remove.
+     */
+    await loginAndSelectProject(page)
+    await page.goto('/backlog')
+    await settle(page)
+
+    const title = `E2E Row Delete ${Date.now()}`
+    await page.getByRole('button', { name: 'Add New' }).click()
+    // Matched on the visible label and the Title field, like the golden journey does, so a copy edit
+    // cannot silently retarget this at the other create modal.
+    await expect(page.getByText('New Work Item')).toBeVisible()
+    await page.getByLabel(/^Title/).fill(title)
+    await page.getByRole('button', { name: 'Create Item' }).click()
+    await settle(page, 1200)
+    // `.first()`: creating also SELECTS the row, so the title renders in the grid and again in the
+    // summary panel beside it.
+    await expect(page.getByText(title).first()).toBeVisible()
+
+    /**
+     * The row's own menu, scoped to THIS row — every row renders one, hidden until hover, so an
+     * unscoped locator would be a coin toss. `group` is the class the hover reveal keys off, which
+     * makes it the row element by construction.
+     */
+    const row = page.locator('[class*="group"]').filter({ hasText: title }).first()
+    await row.hover()
+    await row.getByRole('button', { name: /^Actions for / }).click()
+    await page.getByText('Delete', { exact: true }).click()
+
+    // The confirmation is the gate (§371: cancelling makes no change).
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Delete' }).click()
+    await settle(page, 1200)
+
+    // Gone from the ACTIVE list — a soft delete is invisible, not erased (P3-QA-FR-020). Counted,
+    // not `toBeHidden`: the summary panel copy also carried the title, so "no node at all" is the
+    // assertion that means the row left the grid.
+    await expect(page.getByText(title)).toHaveCount(0)
   })
 
   test('excludes a story that is scheduled into an iteration', async ({ page }) => {

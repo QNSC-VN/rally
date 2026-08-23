@@ -660,6 +660,83 @@ and the Project/Team assignment addendum:
   and that is the rule working: `manage-filters`, `notification-flow`, `team-status-relation-render`
   and `project-delivery-flow` were all assigning an Editor to team-less work.
 
+## An OFFER feed is scoped by the ROW's Team, and a grid that lacks the team asks the wrong question
+
+Reported from Production 2026-08-21: on `Track > Iteration Status` the inline Owner AND Dev Owner
+dropdowns showed nothing but `No Entry`, and an active Team member could not be assigned — the same
+on Iteration Status' `Add Item`. Not a permission fault and not the naming fault above:
+
+- **`assignmentCandidates` has two branches, and the no-Team one offers no Editors at all** — with a
+  Team it is project `admin` + `editor` on THAT team + Workspace Admin on its roster; with no Team it
+  is project `admin` + Workspace Admin (`WIC-FR-006A`). Iteration Status called
+  `useProjectMemberOptions(projectId)` — **no team** — so every row got the no-Team list. On a project
+  whose members are Editors, that list is empty, which renders as `No Entry` with nothing selectable.
+- **The row could not have passed a team, because the read model did not carry one.** The
+  iteration-status projection selected no `team_id` (added with this fix, plus DTO and a codegen
+  round). The grid is the only place that knows which team a row belongs to, so the field is what
+  makes the correct question askable.
+- **`useTeamOwnerOptions` is the team-scoped feed and it fetches NOTHING without a team** — that is
+  deliberate ("No Team offers only Unassigned"), which is exactly why silently falling back to the
+  project-wide feed was worse than an empty list: it looked populated for admins and empty for the
+  role that needed it.
+- **Per ROW, not per screen** (`useTeamOwnerOptions(projectId, item.teamId ?? fallbackTeamId)`), the
+  shape the Tasks tab already used. Rows sharing a team share one query key, so it is one request per
+  distinct team on screen — and under `All Teams` each row still asks with its own team instead of the
+  screen's.
+- **The "intermittent" half of that report is the naming rule seen from the other side.** The row's
+  own Owner still RESOLVED to a name out of the workspace directory, so the value appeared and
+  vanished depending on which of the two lists a reader consulted. An offer list and a name source are
+  two feeds; when a dropdown is empty but the cell shows a name, it is this.
+- **`Portfolio > Feature > Children` had the same shape and is fixed too.** Its Story/Defect rows
+  carry an `OwnerSelectCell`, and it was fed the project-wide list. That projection ALREADY selected
+  `team_id` (it was added when the children rows became editable), so no server change was needed —
+  only pointing the offers at `useTeamOwnerOptions(child.projectId, child.teamId)` and leaving the
+  project-wide feed as the NAME source. Worth knowing for the next grid: check the projection before
+  assuming a codegen round is needed.
+- Pinned in `owner-name-resolution.e2e.spec.ts` (the read model carries the team) and
+  `status-row.test.tsx` (the row asks the team-scoped hook).
+
+## A row's VERB needs a row affordance
+
+`P2-BL-FR-022` and Phase 2/01 §124 put Delete on the row — "Delete Defect | Row or detail action with
+confirmation" — and the Backlog had neither for most of its life. The BA logged "cannot delete work
+item in Backlog" twice, and both times the route was innocent
+(`test/e2e/work-item-delete-route.e2e.spec.ts` deletes a story, a task and a story-with-children over
+HTTP).
+
+- **The bulk bar is not a row action.** It only appears once rows are SELECTED, so a reader looking at
+  one row sees no verb at all. That is why the first investigation of this report fixed the bulk
+  control's gate and its error text and the report came back.
+- **`WorkItemRowActions` is the shared control**, not page-local: the same action belongs on Quality
+  and Iteration Status when the BA rules on those grids, and a second copy is how two grids come to
+  confirm differently. It renders NOTHING without `work_item:delete` — the menu holds one verb, so a
+  disabled item would be a menu that only refuses.
+- **It is a TRAILING cell, not a declared column.** An affordance must not be resizable, reorderable
+  or — the reason that matters — HIDEABLE, since hiding it would take away the row's only verb.
+  Revealed on `group-hover` like the drag grip AND on `focus-within`, or a keyboard reader could tab
+  to a control they cannot see.
+- **The confirmation is NAMED, not typed, and its copy says what survives.** The delete is soft and
+  `P3-QA-FR-020` retains the child Tasks, attachments, comments and relations, so "this cannot be
+  undone" was false; the typed gate stays reserved for the irreversible.
+
+## A chevron must move in the direction its ICON points, not by index
+
+`Track > Iteration Status`' iteration arrows were reversed: from KB Sprint 1 the LEFT chevron
+advanced to KB Sprint 2 (Production, 2026-08-21). The handlers were `index - 1` and `index + 1`, and
+the feed is ordered **newest first** (`desc(startDate)` server-side; `default-iteration.ts` says the
+picker "shows newest first"), so `- 1` is the LATER sprint.
+
+- **The signature was the fix, not the arithmetic.** `stepIndexInTime(index, 'earlier' | 'later',
+  count)` names the direction IN TIME, so a caller cannot express "left" without saying what left
+  means, and a later change to the feed's order breaks one tested expression instead of silently
+  reversing two buttons.
+- **The disabled state must come from the same mapping.** Both chevrons' `disabled`, cursor, colour
+  and hover were computed from raw index comparisons *in the styling*, which is how a greyed-out arrow
+  and the step it guards can disagree about which end of the list they are at. They read `hasEarlier`
+  / `hasLater`, both derived from `stepIndexInTime`.
+- The arrows had **no test at all**, which is why a newest-first feed reversed them unnoticed. They
+  also had no accessible name; they are `Previous iteration` / `Next iteration` now.
+
 ## A NAME belongs to the ROW; a picker feed can never be its source
 
 Reported 2026-08-22: an Editor read `No Entry` / `Unassigned` in Iteration Status' Owner and Dev Owner

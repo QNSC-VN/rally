@@ -128,6 +128,25 @@ describe('owner names come from the row, not from a picker feed', () => {
     expect(row?.devOwnerName).toBeTruthy();
   });
 
+  it('carries the row TEAM, which is what scopes its Owner offer list', async () => {
+    /**
+     * `WID-FR-017` scopes Owner and Dev Owner candidates to the record's Team. The Iteration Status
+     * projection did not select `team_id`, so the grid had no team to ask with and fetched the
+     * PROJECT-WIDE feed instead — the no-Team branch of the rule, which offers Project Admins and no
+     * Editors at all. Both dropdowns then showed nothing but `No Entry` on a project staffed by
+     * Editors, and no active Team member could be assigned inline (Production, 2026-08-21).
+     *
+     * Asserted on the read model rather than through the picker, because the picker is the client:
+     * without this field there is nothing for it to pass.
+     */
+    const res = await as(editorToken, 'GET', `/iterations/${NXP_ITER_CURRENT_ID}/status?limit=100`);
+    expect(res.statusCode, res.body).toBe(200);
+    const row = (res.json().items as Array<OwnedRow & { teamId: string | null }>).find(
+      (i) => i.itemKey === storyKey,
+    );
+    expect(row?.teamId, 'the probe story was created on Team Alpha').toBe(TEAM_ALPHA_ID);
+  });
+
   it('the Backlog list names them too, and so does the same row for an ADMIN', async () => {
     // Backlog is the surface that was broken for EVERY role, because it consults only the project
     // feed — so the admin direction is the sharper assertion here.

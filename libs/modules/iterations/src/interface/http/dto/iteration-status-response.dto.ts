@@ -23,6 +23,8 @@ export const IterationStatusItemSchema = z.object({
   title: z.string(),
   scheduleState: z.enum(workItemScheduleStateEnum.enumValues),
   iterationId: z.string().uuid().nullable(),
+  // The row's Team — the scope of its Owner / Dev Owner candidate list (`WID-FR-017`).
+  teamId: z.string().uuid().nullable(),
   isBlocked: z.boolean(),
   blockedReason: z.string().nullable(),
   planEstimate: z.number().nullable(),

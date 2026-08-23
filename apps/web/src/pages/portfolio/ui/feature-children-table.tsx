@@ -41,7 +41,11 @@ import {
 } from '@/entities/work-item/model/types'
 import { useTableSort, type SortDir } from '@/shared/lib/hooks/use-table-sort'
 import { useReleaseOptions, type ReleaseOption } from '@/features/releases/api'
-import { useProjectMemberOptions, type ProjectMemberOption } from '@/features/teams/api'
+import {
+  useProjectMemberOptions,
+  useTeamOwnerOptions,
+  type ProjectMemberOption,
+} from '@/features/teams/api'
 import {
   useRankAnyWorkItem,
   useTasks,
@@ -180,8 +184,16 @@ export function FeatureChildrenTable({
   // The REFERENCE feed, not `useReleaseRecords`: this table only labels and chooses a release,
   // and the administrative list is `release:view` — which a project Editor does not hold.
   const { data: releases = [] } = useReleaseOptions(projectId)
-  // Owner PICKER + name lookup, so the reference feed. This table is reached through a surface that
-  // happens to be Admin-gated today, which is exactly the coincidence the split refuses to rely on.
+  /**
+   * The NAME source for an owner already set — the project reference feed, project-wide.
+   *
+   * It is no longer the OFFER list: `WID-FR-017` scopes Owner candidates to the record's Team, and
+   * this project-wide feed is the NO-TEAM branch of that rule, which offers project Admins and
+   * deliberately no Editors. Handing it to every child row therefore withheld exactly the active Team
+   * members a Story is normally assigned to — the same defect reported on Iteration Status. Each row
+   * asks for its own team's candidates instead (see `ChildRow`), and this stays as the id-to-name
+   * lookup, which must stay WIDE or a set owner outside the offer list reads as unassigned.
+   */
   const { data: members = [] } = useProjectMemberOptions(projectId)
 
   /**
@@ -418,6 +430,15 @@ function ChildRow({
   onOpenTask: (itemKey: string) => void
 }) {
   const { t } = useTranslation(['portfolio', 'work-items'])
+  /**
+   * The Owner OFFER list for THIS child, scoped to its own Team (`WID-FR-017` / `WIC-FR-006A`).
+   *
+   * `members` above is the project-wide reference feed and stays the NAME source; using it to OFFER
+   * meant every row got the rule's no-Team branch — project Admins, no Editors — so an active Team
+   * member could not be chosen. Rows sharing a team share one query key, and a child with no team
+   * asks for nothing, which is the rule's own answer ("No Team offers only Unassigned").
+   */
+  const { data: ownerOffers = [] } = useTeamOwnerOptions(child.projectId, child.teamId ?? null)
   const update = useUpdateWorkItem(child.id)
   const patch = (body: UpdateWorkItemInput) => update.mutate(body)
   const stop = (event: React.MouseEvent) => event.stopPropagation()
@@ -543,7 +564,7 @@ function ChildRow({
           <OwnerSelectCell
             ownerName={ownerName}
             assigneeId={child.assigneeId}
-            members={members}
+            members={ownerOffers}
             canEdit={canEdit}
             onChange={(userId) => patch({ assigneeId: userId })}
           />
