@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { FileText, History, Loader2 } from 'lucide-react'
 import { notify } from '@/shared/lib/toast'
+import { addIsoDays, todayIsoDate, DEFAULT_TIMEBOX_DAYS } from '@/shared/lib/utils'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useRecordProject } from '@/shared/lib/deep-link-project'
 import { useProjectTeams, useProjectMembers } from '@/features/teams/api'
@@ -67,8 +68,17 @@ export function CreateIterationModal({
   const [name, setName] = useState('')
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
   const [teamId, setTeamId] = useState<string>(team?.teamId ?? '')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  /**
+   * The window is PREFILLED — today, and two weeks out — rather than started empty.
+   *
+   * Both are required fields (`create.startDateRequired` / `create.endDateRequired` below), so an
+   * empty pair is never a legal submission: the modal opened asking the reader to type two dates
+   * that are, for almost every sprint, today and today + a sprint. `useState`'s lazy initialiser
+   * runs ONCE per mount, which is what this needs — a value recomputed on render would fight the
+   * reader's own edit, and an effect would cascade a render to write state it already knows.
+   */
+  const [startDate, setStartDate] = useState(todayIsoDate)
+  const [endDate, setEndDate] = useState(() => addIsoDays(todayIsoDate(), DEFAULT_TIMEBOX_DAYS))
   const [state, setState] = useState<IterationState>('planning')
   // Per-field validation errors render under their own field; `form` is a
   // modal-level error (server/submit failures not tied to one input).

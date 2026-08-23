@@ -229,3 +229,48 @@ export function formatWholePercent(
   if (percent === null || percent === undefined || !Number.isFinite(percent)) return fallback
   return `${Math.round(percent)}%`
 }
+
+/**
+ * TODAY as `yyyy-MM-dd`, in the reader's own timezone.
+ *
+ * `new Date().toISOString().slice(0, 10)` is the obvious spelling and is WRONG for half the
+ * world: it converts to UTC first, so a planner in UTC+7 opening a modal before 07:00 local
+ * would be handed yesterday's date, and one in UTC-5 after 19:00 would be handed tomorrow's.
+ * `en-CA` is used for the same reason `formatDateIso` uses it — it is the locale whose short
+ * date format IS `yyyy-MM-dd`, so the shape does not depend on the reader's locale while the
+ * DAY does.
+ */
+export function todayIsoDate(): string {
+  const { timeZone } = getFormatPrefs()
+  return new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone,
+  }).format(new Date())
+}
+
+/**
+ * `days` after an ISO date-only string, as another ISO date-only string.
+ *
+ * Arithmetic is done at UTC NOON, not midnight: a date-only value has no zone, and anchoring
+ * it at midnight puts it within an hour of a DST boundary in the zones that observe one — so
+ * "+14 days" could land on the 13th or the 15th twice a year. Noon is far enough from either
+ * shift that the calendar day cannot move.
+ */
+export function addIsoDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T12:00:00Z`)
+  if (Number.isNaN(d.getTime())) return iso
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * The default length of a newly created timebox, in days — two weeks, the commonest sprint.
+ *
+ * A create modal prefills `startDate = todayIsoDate()` and `endDate = addIsoDays(start,
+ * DEFAULT_TIMEBOX_DAYS)` so the reader confirms a plausible window instead of typing both from
+ * an empty field. Both stay fully editable, and the required-field validation is unchanged —
+ * this defaults the value, it does not decide it.
+ */
+export const DEFAULT_TIMEBOX_DAYS = 14
