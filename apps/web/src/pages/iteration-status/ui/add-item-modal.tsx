@@ -7,6 +7,7 @@ import { cn, EMPTY_VALUE } from '@/shared/lib/utils'
 import { useCreateIterationItem, type IterationReference } from '@/features/iterations/api'
 import { useProjectTeams, useTeamOwnerOptions } from '@/features/teams/api'
 import { useProjectTeamScope } from '@/features/access/api'
+import { useDefaultOwner } from '@/shared/lib/hooks/use-default-owner'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { notify } from '@/shared/lib/toast'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -66,7 +67,8 @@ export function AddItemModal({
   const [type, setType] = useState<'story' | 'defect'>('story')
   const [title, setTitle] = useState('')
   const [planEstimate, setPlanEstimate] = useState('')
-  const [assigneeId, setAssigneeId] = useState('')
+  // Owner is not declared here: its default is gated on the candidate feed, so it is resolved
+  // alongside that feed below (`useDefaultOwner`).
   const [teamTouched, setTeamTouched] = useState('')
   const [teamError, setTeamError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -97,6 +99,18 @@ export function AddItemModal({
    * reader changes the Team above.
    */
   const { data: members = [] } = useTeamOwnerOptions(projectId, teamId || iteration.teamId)
+
+  /**
+   * Owner defaults to the current user when the feed ABOVE offers them (`WIC-FR-006`) — the same
+   * rule and the same gate Create Work Item applies, through the one shared hook so the two
+   * surfaces cannot answer it differently.
+   *
+   * Declared AFTER `members` deliberately: the gate reads that feed, so a call placed with the
+   * other `useState` lines is a temporal-dead-zone error rather than a style preference. It was
+   * exactly that for one commit — `members` moved below it when this modal's feed became
+   * team-scoped, and `tsc` caught it (TS2448) where a reviewer would not have.
+   */
+  const { ownerId: assigneeId, setOwnerId: setAssigneeId } = useDefaultOwner(members)
 
   async function submit(openDetail = false) {
     setError(null)

@@ -31,6 +31,13 @@ import { PERMISSION } from '@/shared/config/permissions'
 import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { SettingsTabHeader } from './settings-tab-header'
 import { StatusBadge } from '@/shared/ui/status-badge'
+import { Card, CardBody, CardHeader } from '@/shared/ui/card'
+import {
+  PanelTable,
+  PanelTableCell,
+  PanelTableRow,
+  type PanelTableColumn,
+} from '@/shared/ui/table/panel-table'
 import { BRAND } from '@/shared/config/brand'
 import { effectiveProjectLevel, projectLevelLabel } from '../model/effective-access'
 
@@ -49,31 +56,33 @@ export function MyPermissionsTab() {
       <div className="flex-1 overflow-y-auto px-8 py-6">
         <div className="mx-auto max-w-2xl space-y-6">
           {/* Workspace authority */}
-          <div className="rounded-lg border border-border-subtle p-4">
-            <h3 className="text-ui-sm font-semibold text-foreground">Workspace Authority</h3>
-            {isWA ? (
-              <p className="mt-2 text-ui-md text-foreground">
-                You are a <strong>Workspace Admin</strong> with full company authority. You can
-                manage all users, Projects, Teams, and Project access.
-              </p>
-            ) : (
-              <p className="mt-2 text-ui-md text-foreground-subtle">
-                You are a company member. Your Project access is managed per-Project by the
-                Workspace Admin.
-              </p>
-            )}
-            {user?.displayName && (
-              <p className="mt-1 text-ui-xs text-foreground-subtle">{user.displayName}</p>
-            )}
-          </div>
+          <Card>
+            <CardHeader title="Workspace Authority" />
+            <CardBody>
+              {isWA ? (
+                <p className="text-ui-md text-foreground">
+                  You are a <strong>Workspace Admin</strong> with full company authority. You can
+                  manage all users, Projects, Teams, and Project access.
+                </p>
+              ) : (
+                <p className="text-ui-md text-foreground-subtle">
+                  You are a company member. Your Project access is managed per-Project by the
+                  Workspace Admin.
+                </p>
+              )}
+              {user?.displayName && (
+                <p className="mt-1 text-ui-xs text-foreground-subtle">{user.displayName}</p>
+              )}
+            </CardBody>
+          </Card>
 
           {/* Per-Project access */}
           {!isWA && <ProjectAccessSummary workspaceId={workspaceId ?? ''} />}
 
           {/* Quick capability reference */}
-          <div className="rounded-lg border border-border-subtle p-4">
-            <h3 className="text-ui-sm font-semibold text-foreground">Access Level Reference</h3>
-            <div className="mt-3 space-y-2">
+          <Card>
+            <CardHeader title="Access Level Reference" />
+            <CardBody className="space-y-2">
               {CAPABILITY_ROWS.map((row) => (
                 <div key={row.level} className="flex items-center gap-3 text-ui-sm">
                   <StatusBadge
@@ -87,8 +96,8 @@ export function MyPermissionsTab() {
                   <span className="text-foreground-subtle">{row.desc}</span>
                 </div>
               ))}
-            </div>
-          </div>
+            </CardBody>
+          </Card>
         </div>
       </div>
     </>
@@ -123,42 +132,54 @@ function ProjectAccessSummary({ workspaceId }: { workspaceId: string }) {
   }
 
   return (
-    <div className="rounded-lg border border-border-subtle">
-      <div className="border-b border-border-subtle bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
-        Your Project Access
-      </div>
-      {projects.length === 0 ? (
-        <p className="px-4 py-6 text-center text-ui-md text-foreground-subtle">
-          No Projects available.
-        </p>
-      ) : (
-        projects.map((p) => {
-          const level = levelsLoading ? undefined : effectiveProjectLevel((c) => can(p.id, c))
-          return (
-            <div
-              key={p.id}
-              className="flex items-center justify-between border-b border-border-subtle px-4 py-2 last:border-b-0"
-            >
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-ui-xs text-foreground-subtle">{p.key}</span>
-                <span className="text-ui-sm text-foreground">{p.name}</span>
-              </div>
-              <span className="text-ui-sm text-foreground-subtle">
-                {level === undefined
-                  ? EMPTY_VALUE
-                  : level === null
-                    ? t('access.noAccess')
-                    : level === 'workspace_admin'
-                      ? t('access.workspaceAdmin')
-                      : projectLevelLabel(level)}
-              </span>
-            </div>
-          )
-        })
-      )}
-    </div>
+    <Card>
+      <PanelTable columns={ACCESS_COLUMNS}>
+        {projects.length === 0 ? (
+          <p className="px-4 py-6 text-center text-ui-md text-foreground-subtle">
+            No Projects available.
+          </p>
+        ) : (
+          projects.map((p) => {
+            const level = levelsLoading ? undefined : effectiveProjectLevel((c) => can(p.id, c))
+            return (
+              <PanelTableRow key={p.id} className="min-h-0 py-2 last:border-b-0">
+                <PanelTableCell column={ACCESS_COLUMNS[0]} className="gap-2">
+                  <span className="font-mono text-ui-xs text-foreground-subtle">{p.key}</span>
+                  <span className="truncate text-ui-sm text-foreground">{p.name}</span>
+                </PanelTableCell>
+                <PanelTableCell
+                  column={ACCESS_COLUMNS[1]}
+                  className="text-ui-sm text-foreground-subtle"
+                >
+                  {level === undefined
+                    ? EMPTY_VALUE
+                    : level === null
+                      ? t('access.noAccess')
+                      : level === 'workspace_admin'
+                        ? t('access.workspaceAdmin')
+                        : projectLevelLabel(level)}
+                </PanelTableCell>
+              </PanelTableRow>
+            )
+          })
+        )}
+      </PanelTable>
+    </Card>
   )
 }
+
+/**
+ * Project on the left, the reader's level on the right.
+ *
+ * The heading was one uppercase band reading `Your Project Access` over an unlabelled two-column
+ * list, so the LEVEL column — the answer this screen exists to give — had no heading at all. Naming
+ * both columns is what the shared table asks for, and it is also the honest layout: the level is a
+ * value in a column, not a suffix on the project name.
+ */
+const ACCESS_COLUMNS: PanelTableColumn[] = [
+  { key: 'project', label: 'Project' },
+  { key: 'level', label: 'Your Access', width: 148, align: 'right' },
+]
 
 const CAPABILITY_ROWS = [
   {

@@ -247,13 +247,27 @@ function SortHeader({ label, col, activeCol, dir, onSort, rightAlign }: SortHead
       onClick={() => onSort(col)}
       aria-label={`${label}, ${state}. Activate to sort.`}
     >
-      {/* TRUNCATES, like the non-sortable branch above. Without `min-w-0` + `truncate` a long label
-          (`Planned Team Assignment` at 160px) overflowed its own column and printed on top of the
-          next header — a flex item will not shrink below its content width unless told it may. The
-          sort caret keeps `shrink-0`, so the label yields first and the affordance never disappears. */}
+      {/*
+       * TRUNCATES, like the non-sortable branch above. Without `min-w-0` + `truncate` a long label
+       * (`Planned Team Assignment` at 160px) overflowed its own column and printed on top of the
+       * next header — a flex item will not shrink below its content width unless told it may. The
+       * sort caret keeps `shrink-0`, so the label yields first and the affordance never disappears.
+       * (A label that truncates at its DEFAULT width is a column too narrow for its own heading, and
+       * that is a `defaultWidth` to fix rather than something to solve here.)
+       *
+       * The sorted column's LABEL stays the header colour; only its caret marks it. It used to
+       * switch to `BRAND.primaryLight`, which made the active heading read as a different KIND of
+       * column rather than as the same column in a state — on Timeboxes, whose default sort is Start
+       * Date, one blue heading sat among six grey ones before the reader had touched anything, and
+       * it looked like a rendering fault rather than a sort. Every grid shares this header, so every
+       * default-sorted grid showed it. Direction is still carried twice, by the caret and by the
+       * button's own accessible name, so nothing is lost by not colouring the word: a colour was
+       * never the thing that said WHICH WAY. The hover darkening stays, since it answers a different
+       * question (is this clickable).
+       */}
       <span
         title={label}
-        style={{ color: isActive ? BRAND.primaryLight : HEADER_TEXT, fontWeight: 700 }}
+        style={{ color: HEADER_TEXT, fontWeight: 700 }}
         className="min-w-0 truncate transition-colors duration-150 group-hover/sort:text-slate-800"
       >
         {label}

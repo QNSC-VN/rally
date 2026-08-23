@@ -405,7 +405,7 @@ const MILESTONES_COLUMNS: ColumnSpec<Milestone, MilestoneCtx, MilestoneColKey>[]
   {
     key: 'targetStartDate',
     label: 'Target Start Date',
-    defaultWidth: 120,
+    defaultWidth: 152,
     minWidth: 90,
     sortCol: 'targetStartDate',
     cellClassName: 'flex items-center px-2',
@@ -414,7 +414,7 @@ const MILESTONES_COLUMNS: ColumnSpec<Milestone, MilestoneCtx, MilestoneColKey>[]
   {
     key: 'targetEndDate',
     label: 'Target End Date',
-    defaultWidth: 120,
+    defaultWidth: 138,
     minWidth: 90,
     sortCol: 'targetEndDate',
     cellClassName: 'flex items-center px-2',

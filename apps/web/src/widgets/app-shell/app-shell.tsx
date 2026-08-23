@@ -33,7 +33,7 @@ import { isFeatureEnabled } from '@/shared/config/feature-flags'
 // Before that the pairing existed only here: the nav hid an item the caller lacked the code for and
 // the router checked nothing, so a bookmarked `/portfolio` rendered an empty grid for a project
 // Editor. See `shared/config/nav.ts` for the full note; do NOT copy a code back into this file.
-import { NAV_ITEMS, type NavItem } from '@/shared/config/nav'
+import { NAV_ITEMS, isNavGroupActive, isNavPathActive, type NavItem } from '@/shared/config/nav'
 import { queryClient } from '@/shared/api/query-client'
 import { NotificationPopover } from '@/widgets/notification-popover/notification-popover'
 import { GlobalSearch } from './global-search'
@@ -332,8 +332,10 @@ export function AppShell() {
     })
   }
 
-  const isActive = (path: string) =>
-    path === '/' ? currentPath === '/' : currentPath.startsWith(path)
+  // Both live in `shared/config/nav.ts` beside the table they read — see `isNavGroupActive` for why
+  // a group's active state cannot be its parent path alone.
+  const isActive = (path: string) => isNavPathActive(currentPath, path)
+  const isGroupActive = (item: NavItem) => isNavGroupActive(currentPath, item)
 
   /**
    * Determine nav item visibility:
@@ -377,12 +379,25 @@ export function AppShell() {
       >
         {/* Logo + workspace selector */}
         <div className="mr-4 flex items-center gap-2">
-          <div
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded"
+          {/*
+           * The mark is a LINK HOME, which is the one thing a product logo is universally expected
+           * to be — it was an inert `div`, so the most-clicked affordance in any web app did
+           * nothing. A real `<a>` (TanStack `Link`), never a `div` with an `onClick`: it must carry
+           * a focus ring, answer the Enter key and offer open-in-new-tab, and the `fe-consistency`
+           * ratchet counts hand-rolled clickable non-buttons for exactly this reason.
+           *
+           * The name is the static "Home" rather than the workspace's: that string has a three-way
+           * fallback ending in `Select workspace`, and an accessible name reading "Select workspace
+           * home" would be wrong in precisely the state where the reader needs it to be right.
+           */}
+          <Link
+            to="/"
+            aria-label={t('common:homeAria')}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded transition-opacity hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
             style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
           >
             <Layers size={13} className="text-white" />
-          </div>
+          </Link>
           <div className="relative">
             <button
               onClick={() => {
@@ -520,7 +535,8 @@ export function AppShell() {
 
         {/* Primary nav */}
         <nav className="flex flex-1 items-center gap-0.5">
-          {NAV_ITEMS.map(({ path, label, children, featureFlag, permission }) => {
+          {NAV_ITEMS.map((item) => {
+            const { path, label, children, featureFlag, permission } = item
             const state = navItemState({ featureFlag, permission })
             if (state === 'hidden') return null
 
@@ -566,8 +582,10 @@ export function AppShell() {
                     }}
                     className="flex items-center gap-1.5 rounded py-1 pr-2 pl-2.5 text-ui-lg font-medium transition-colors"
                     style={{
-                      backgroundColor: isActive(path) ? 'rgba(255,255,255,0.16)' : 'transparent',
-                      color: isActive(path) ? BRAND.surface : 'rgba(255,255,255,0.72)',
+                      backgroundColor: isGroupActive(item)
+                        ? 'rgba(255,255,255,0.16)'
+                        : 'transparent',
+                      color: isGroupActive(item) ? BRAND.surface : 'rgba(255,255,255,0.72)',
                     }}
                   >
                     {label}
@@ -585,7 +603,7 @@ export function AppShell() {
                       <ChevronDown
                         size={9}
                         style={{
-                          color: isActive(path) ? BRAND.surface : 'rgba(255,255,255,0.55)',
+                          color: isGroupActive(item) ? BRAND.surface : 'rgba(255,255,255,0.55)',
                           transform: openMenu === label ? 'rotate(180deg)' : 'none',
                           transition: 'transform 0.15s',
                         }}

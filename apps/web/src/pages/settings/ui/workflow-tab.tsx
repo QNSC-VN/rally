@@ -1,3 +1,19 @@
+/**
+ * Settings > Workflow — per-project schedule-state / flow-state configuration.
+ *
+ * NOT WIRED INTO THE SIDEBAR — see the identical note on `labels-tab.tsx`, which is unreachable for
+ * the same reason and since the same change (PR 128). `WorkflowTab` is exported and imported nowhere;
+ * `settings-page.tsx`'s registry does not list it.
+ *
+ * Recorded rather than deleted (product-owner ruling, 2026-08-23). Its hooks are live
+ * (`useProjectStatuses` / `useCreateStatus` / `useDeleteStatus` / `useReorderStatuses`) and workflow
+ * status configuration is one of the two things `project:edit` is deliberately kept in the Admin set
+ * FOR (CLAUDE.md, "A per-Project `Admin` has NO structural authority"), so the capability is real
+ * even while this screen is not reachable.
+ *
+ * A fix here reaches no user until something renders it, and re-wiring it is a product decision
+ * rather than a refactor.
+ */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ChevronUp, ChevronDown, Trash2, Loader2 } from 'lucide-react'

@@ -3,6 +3,14 @@
  * Replaces the deleted Roles tab. SRS Phase 4.3 §7.
  * Visible to WA + Project Admin (gated on PROJECT_EDIT).
  */
+import { Card, CardBody, CardHeader } from '@/shared/ui/card'
+import {
+  PanelTable,
+  PanelTableCell,
+  PanelTableRow,
+  type PanelTableColumn,
+} from '@/shared/ui/table/panel-table'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { SettingsTabHeader } from './settings-tab-header'
 
 type Action = string
@@ -43,12 +51,57 @@ const CAPABILITIES: Capability[] = [
   { feature: 'User / Team / Access Management', wa: true, admin: false, editor: false },
 ]
 
+/**
+ * `EMPTY_VALUE` (`--`) for "this level holds nothing", never an em-dash.
+ *
+ * This function returned `'—'` for an absent capability, which is the one thing `EMPTY_VALUE`'s own
+ * docblock forbids ("not an em-dash, because that is what real Rally renders"), and this was the
+ * only file in Settings still doing it. It matters here more than in most places: the cell sits in a
+ * table whose other rows print real capability lists, so a glyph that renders differently from every
+ * other absent value in the product reads as a third state rather than as "none".
+ *
+ * The rule is about the PLACEHOLDER, not the character: `Backlog — Work Items` is a capability name
+ * and the summary sentence above uses an em-dash as punctuation. Both are ordinary typography and
+ * neither is a value standing in for something absent.
+ */
 function renderCell(value: boolean | Action[]): string {
   if (value === true) return 'Full'
-  if (value === false) return '—'
   if (Array.isArray(value)) return value.join(', ')
-  return '—'
+  return EMPTY_VALUE
 }
+
+/**
+ * One column per access level, declared once for the heading and the cells alike.
+ *
+ * `feature` is the flexible column and every level column is fixed, so a long feature name yields
+ * instead of squeezing the three level headings — `Workspace Admin` is the longest label on the
+ * screen and was the one at risk of wrapping.
+ */
+const MODEL_COLUMNS: PanelTableColumn[] = [
+  { key: 'feature', label: 'Feature' },
+  { key: 'wa', label: 'Workspace Admin', width: 148, align: 'center' },
+  { key: 'admin', label: 'Admin', width: 132, align: 'center' },
+  { key: 'editor', label: 'Editor', width: 132, align: 'center' },
+]
+
+/** The three levels, as the summary cards above the table. */
+const LEVELS = [
+  {
+    name: 'Workspace Admin',
+    tone: 'text-primary',
+    description: 'Company authority. Manages users, Projects, Teams, access. Not a Project member.',
+  },
+  {
+    name: 'Admin',
+    tone: 'text-success',
+    description: 'Per-Project. All Teams. Full delivery admin. No structural admin.',
+  },
+  {
+    name: 'Editor',
+    tone: 'text-warning',
+    description: 'Per-Project + assigned Teams. Create/edit/delete team-scoped work.',
+  },
+]
 
 export function PermissionModelTab() {
   return (
@@ -61,62 +114,61 @@ export function PermissionModelTab() {
       <div className="flex-1 overflow-y-auto px-8 py-6">
         <div className="mx-auto max-w-4xl space-y-6">
           {/* Model summary */}
-          <div className="space-y-2 rounded-lg border border-border-subtle p-4">
-            <h3 className="text-ui-sm font-semibold text-foreground">3-Level Access Model</h3>
-            <p className="text-ui-sm text-foreground-subtle">
-              Authorization is fixed — no custom roles or permission matrix editor.
-            </p>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-md border border-border-subtle p-3">
-                <p className="text-ui-sm font-semibold text-primary">Workspace Admin</p>
-                <p className="mt-1 text-ui-xs text-foreground-subtle">
-                  Company authority. Manages users, Projects, Teams, access. Not a Project member.
-                </p>
+          <Card>
+            <CardHeader title="3-Level Access Model" />
+            <CardBody className="space-y-3">
+              <p className="text-ui-sm text-foreground-subtle">
+                Authorization is fixed — no custom roles or permission matrix editor.
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {LEVELS.map((level) => (
+                  <div key={level.name} className="rounded-md border border-border-subtle p-3">
+                    <p className={`text-ui-sm font-semibold ${level.tone}`}>{level.name}</p>
+                    <p className="mt-1 text-ui-xs text-foreground-subtle">{level.description}</p>
+                  </div>
+                ))}
               </div>
-              <div className="rounded-md border border-border-subtle p-3">
-                <p className="text-ui-sm font-semibold text-success">Admin</p>
-                <p className="mt-1 text-ui-xs text-foreground-subtle">
-                  Per-Project. All Teams. Full delivery admin. No structural admin.
-                </p>
-              </div>
-              <div className="rounded-md border border-border-subtle p-3">
-                <p className="text-ui-sm font-semibold text-warning">Editor</p>
-                <p className="mt-1 text-ui-xs text-foreground-subtle">
-                  Per-Project + assigned Teams. Create/edit/delete team-scoped work.
-                </p>
-              </div>
-            </div>
-          </div>
+            </CardBody>
+          </Card>
 
           {/* Capability table */}
-          <div className="overflow-hidden rounded-lg border border-border-subtle">
-            <div className="grid grid-cols-[1fr_repeat(3,1fr)] border-b border-border-subtle bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
-              <span>Feature</span>
-              <span className="text-center">Workspace Admin</span>
-              <span className="text-center">Admin</span>
-              <span className="text-center">Editor</span>
-            </div>
-            {CAPABILITIES.map((cap) => (
-              <div
-                key={cap.feature}
-                className="grid grid-cols-[1fr_repeat(3,1fr)] border-b border-border-subtle px-4 py-2 text-ui-sm last:border-b-0"
-              >
-                <span className="text-foreground">{cap.feature}</span>
-                <span className="text-center text-foreground-subtle">{renderCell(cap.wa)}</span>
-                <span className="text-center text-foreground-subtle">{renderCell(cap.admin)}</span>
-                <span className="text-center text-foreground-subtle">{renderCell(cap.editor)}</span>
-              </div>
-            ))}
-          </div>
+          <Card>
+            <PanelTable columns={MODEL_COLUMNS}>
+              {CAPABILITIES.map((cap) => (
+                <PanelTableRow key={cap.feature} className="min-h-0 py-2 last:border-b-0">
+                  <PanelTableCell column={MODEL_COLUMNS[0]} className="text-ui-sm text-foreground">
+                    {cap.feature}
+                  </PanelTableCell>
+                  {(
+                    [
+                      [MODEL_COLUMNS[1], cap.wa],
+                      [MODEL_COLUMNS[2], cap.admin],
+                      [MODEL_COLUMNS[3], cap.editor],
+                    ] as const
+                  ).map(([column, value]) => (
+                    <PanelTableCell
+                      key={column.key}
+                      column={column}
+                      className="text-ui-sm text-foreground-subtle"
+                    >
+                      {renderCell(value)}
+                    </PanelTableCell>
+                  ))}
+                </PanelTableRow>
+              ))}
+            </PanelTable>
+          </Card>
 
           {/* No Access note */}
-          <div className="rounded-lg border border-border-subtle p-4">
-            <h3 className="text-ui-sm font-semibold text-foreground">No Access</h3>
-            <p className="mt-1 text-ui-sm text-foreground-subtle">
-              Projects you have no access to are hidden from lists, pickers, and navigation. Direct
-              URLs are denied (403). Access changes take effect on your next request.
-            </p>
-          </div>
+          <Card>
+            <CardHeader title="No Access" />
+            <CardBody>
+              <p className="text-ui-sm text-foreground-subtle">
+                Projects you have no access to are hidden from lists, pickers, and navigation.
+                Direct URLs are denied (403). Access changes take effect on your next request.
+              </p>
+            </CardBody>
+          </Card>
         </div>
       </div>
     </>

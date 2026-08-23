@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { cn, relativeTime } from './utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { setFormatPrefs } from './format-prefs'
+import { addIsoDays, cn, relativeTime, todayIsoDate, DEFAULT_TIMEBOX_DAYS } from './utils'
 
 describe('cn (class name merge)', () => {
   it('joins class names', () => {
@@ -45,5 +46,57 @@ describe('relativeTime', () => {
     const result = relativeTime(ago(60 * 24 * 60 * 60_000))
     expect(result).not.toMatch(/ago|just now/)
     expect(result).toMatch(/[A-Z][a-z]{2} \d{1,2}/)
+  })
+})
+
+describe('todayIsoDate / addIsoDays — the create-modal date prefill', () => {
+  const restore = () => setFormatPrefs({ locale: 'en', timeZone: 'UTC' })
+  afterEach(restore)
+
+  it("reads TODAY in the reader's own zone, not UTC", () => {
+    // 2026-08-23T22:00Z is already the 24th in Bangkok (UTC+7) and still the 23rd in New York.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-23T22:00:00Z'))
+    try {
+      setFormatPrefs({ timeZone: 'Asia/Bangkok' })
+      expect(todayIsoDate()).toBe('2026-08-24')
+
+      setFormatPrefs({ timeZone: 'America/New_York' })
+      expect(todayIsoDate()).toBe('2026-08-23')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('returns yyyy-MM-dd regardless of the LOCALE', () => {
+    // `en-CA` is pinned inside the helper precisely so the SHAPE cannot follow the reader's locale
+    // while the DAY does — a `de` reader must not get `24.8.2026` into a date field.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-23T12:00:00Z'))
+    try {
+      setFormatPrefs({ locale: 'de', timeZone: 'UTC' })
+      expect(todayIsoDate()).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('adds whole calendar days, including across a month and a year end', () => {
+    expect(addIsoDays('2026-08-23', DEFAULT_TIMEBOX_DAYS)).toBe('2026-09-06')
+    expect(addIsoDays('2026-12-28', 7)).toBe('2027-01-04')
+    expect(addIsoDays('2026-08-23', 0)).toBe('2026-08-23')
+  })
+
+  it('survives a DST boundary — the reason the arithmetic anchors at noon', () => {
+    // US DST springs forward on 2027-03-14. Anchored at midnight this lands an hour from the shift
+    // and the calendar day can move; at noon it cannot.
+    expect(addIsoDays('2027-03-07', 14)).toBe('2027-03-21')
+    // EU clocks change 2026-10-25.
+    expect(addIsoDays('2026-10-18', 14)).toBe('2026-11-01')
+  })
+
+  it('returns the input unchanged for an unparseable date rather than throwing', () => {
+    expect(addIsoDays('', 14)).toBe('')
+    expect(addIsoDays('not-a-date', 14)).toBe('not-a-date')
   })
 })

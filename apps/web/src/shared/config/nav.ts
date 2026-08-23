@@ -298,3 +298,35 @@ export const NAV_PERMISSIONS: ReadonlyMap<string, string> = (() => {
 export function navPermissionFor(path: string): string | undefined {
   return NAV_PERMISSIONS.get(path)
 }
+
+/**
+ * Is `path` the surface the reader is currently on?
+ *
+ * `/` matches only itself — every path starts with it, so a prefix test would light Home everywhere.
+ */
+export function isNavPathActive(currentPath: string, path: string): boolean {
+  return path === '/' ? currentPath === '/' : currentPath.startsWith(path)
+}
+
+/**
+ * Is `item` the top-nav GROUP the reader is inside? True for ANY of its children, not just for the
+ * parent's own `path`.
+ *
+ * A parent row's `path` is only the dropdown's DEFAULT destination — {@link NAV_PERMISSIONS} derives
+ * its map on the same principle, that the LEAF describes the surface. Testing the parent's path
+ * alone therefore asked whether the reader was on the group's FIRST child, so the trigger lit for
+ * that one child and went dark for every other: `Track` was unlit on `Team Status`, `Plan` on
+ * `Timeboxes`, `Portfolio` on both `Capacity Planning` and `Release Tracking`. `Quality` looked
+ * correct only because it happens to have a single child. The reader loses the one cue naming the
+ * section they are in, on exactly the screens they navigated two levels to reach.
+ *
+ * Children are consulted UNFILTERED, permission-hidden ones included: a child the caller cannot see
+ * is a child they cannot be standing on, so it can never match, and filtering first would make the
+ * answer depend on a permission read this question does not need.
+ */
+export function isNavGroupActive(currentPath: string, item: NavItem): boolean {
+  return (
+    isNavPathActive(currentPath, item.path) ||
+    (item.children ?? []).some((child) => isNavPathActive(currentPath, child.path))
+  )
+}

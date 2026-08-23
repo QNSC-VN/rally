@@ -137,7 +137,9 @@ export function ColumnFieldsMenu<K extends string>({
           border: `1px solid ${PANEL_BORDER}`,
           borderRadius: 4,
           boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
-          zIndex: 50,
+          // No stacking value here: `AppPopoverContent` sets the layer floor for every popover, and
+          // this menu's copy of it went there. An inline one would also OUTRANK that class and
+          // quietly become the only place the layer is stated for this menu.
           padding: 6,
         }}
       >

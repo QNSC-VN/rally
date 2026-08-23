@@ -1,3 +1,23 @@
+/**
+ * Settings > Labels — per-project label CRUD.
+ *
+ * NOT WIRED INTO THE SIDEBAR, and that is the whole reason this note exists.
+ * ------------------------------------------------------------------------
+ * `LabelsTab` is exported and imported NOWHERE: `settings-page.tsx`'s tab registry does not list it,
+ * and no other surface renders it. It lost its call site in PR 128 ("align app with BA SRS") and has
+ * been unreachable since, so a reader finding this file has no way to tell whether that was a
+ * decision or an accident — which is exactly the state `notifications-tab.tsx` avoids by saying so
+ * in its own header.
+ *
+ * Recorded rather than deleted (product-owner ruling, 2026-08-23): the API it calls is live
+ * (`useProjectLabels` / `useCreateLabel` / `useUpdateLabel` / `useDeleteLabel`), labels are a real
+ * `project:edit` capability, and the BA has not been asked whether the surface is dropped or merely
+ * unscheduled. Deleting it would throw away a working screen on a guess about the answer.
+ *
+ * BEFORE CHANGING THIS FILE, know that nothing renders it — a fix here reaches no user. Re-wiring it
+ * is a PRODUCT decision, not a refactor: the registry mirrors the BA mockup, so adding a nav row the
+ * mockup does not have needs a ruling first.
+ */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'

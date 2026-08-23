@@ -52,6 +52,13 @@ import { SelectionCheckbox } from '@/shared/ui/selection-checkbox'
 import { memberSelectOption, OwnerAvatar } from '@/shared/ui/owner-cell'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
 import { IconButton } from '@/shared/ui/icon-button'
+import {
+  PanelTable,
+  PanelTableCell,
+  PanelTableRow,
+  type PanelTableColumn,
+} from '@/shared/ui/table/panel-table'
+import { EMPTY_VALUE } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { FormField } from '@/shared/ui/form-field'
@@ -86,6 +93,24 @@ export function ProjectTeamsTab({
    * crash, no error, just a column that quietly stops working for the level that uses it most.
    */
   const { data: wsMembers = [] } = useWorkspaceMemberOptions(workspaceId)
+  /**
+   * Column widths, stated once for the heading and the cells alike.
+   *
+   * `Team` is the flexible one; every other column is fixed, so a long team name yields instead of
+   * squeezing `Members` and `Actions` until their headings wrap. The `Actions` column exists only
+   * for a Workspace Admin, which is why this is built rather than a module constant — the row
+   * renders the same conditional, from the same array.
+   */
+  const teamColumns: PanelTableColumn[] = [
+    { key: 'key', label: t('teams.colKey'), width: 80 },
+    { key: 'name', label: t('teams.colTeam') },
+    { key: 'lead', label: t('teams.colLead'), width: 128 },
+    { key: 'status', label: t('common:status'), width: 96 },
+    { key: 'members', label: t('teams.colMembers'), width: 80, align: 'center' },
+    ...(isWA
+      ? [{ key: 'actions', label: t('common:actions'), width: 80, align: 'center' as const }]
+      : []),
+  ]
   const [editing, setEditing] = useState<Team | null>(null)
   const [creating, setCreating] = useState(false)
   const [deactivateTarget, setDeactivateTarget] = useState<Team | null>(null)
@@ -125,78 +150,89 @@ export function ProjectTeamsTab({
         </div>
       ) : (
         <div className="rounded-lg border border-border-subtle">
-          <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover px-4 py-2 text-ui-xs font-semibold tracking-wide text-foreground-subtle uppercase">
-            <span className="w-20">Key</span>
-            <span className="flex-1">Team</span>
-            <span className="w-28">Lead</span>
-            <span className="w-24">Status</span>
-            <span className="w-20 text-center">Members</span>
-            {isWA && <span className="w-20 text-center">Actions</span>}
-          </div>
-          {/* `team`, not `t` — `t` is the translator in this scope now. */}
-          {teams.map((team) => (
-            <div
-              key={team.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => onOpenTeam(team)}
-              onKeyDown={(e) => e.key === 'Enter' && onOpenTeam(team)}
-              className="flex cursor-pointer items-center gap-2 border-b border-border-subtle px-4 py-2.5 text-left transition-colors last:border-b-0 hover:bg-surface-hover"
-            >
-              <span className="w-20 font-mono text-ui-xs text-foreground-subtle">{team.key}</span>
-              <span className="flex-1 truncate text-ui-sm font-medium text-foreground">
-                {team.name}
-              </span>
-              <span className="flex w-28 min-w-0 items-center gap-1.5">
-                {(() => {
-                  const lead = wsMembers.find((m) => m.userId === team.leadId)
-                  const name = lead?.displayName ?? lead?.email ?? '--'
-                  return (
-                    <>
-                      <OwnerAvatar name={name} size={16} />
-                      <span className="truncate text-ui-xs text-foreground-subtle">{name}</span>
-                    </>
-                  )
-                })()}
-              </span>
-              <span className="w-24 text-ui-xs text-foreground-subtle capitalize">
-                {team.status === 'active' ? 'Active' : 'Deactivated'}
-              </span>
-              <span className="w-20 text-center text-ui-sm text-foreground-subtle">
-                {team.memberCount ?? 0}
-              </span>
-              {isWA && (
-                /* stopPropagation: the row opens detail; the icon acts alone. */
-                <span
-                  className="flex w-20 justify-center gap-1"
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => e.stopPropagation()}
+          {/*
+           * The shared panel table, for the reason Home's two tables gave: `flex-1` on the Team
+           * column with no `min-w-0` cannot shrink below its own content, so a long team name
+           * squeezes the fixed columns until their headings wrap. Same shape, same latent defect,
+           * so the same component rather than a third copy of the geometry.
+           */}
+          <PanelTable columns={teamColumns} gapClassName="gap-2">
+            {/* `team`, not `t` — `t` is the translator in this scope now. */}
+            {teams.map((team) => {
+              const lead = wsMembers.find((m) => m.userId === team.leadId)
+              const leadName = lead?.displayName ?? lead?.email ?? EMPTY_VALUE
+              return (
+                <PanelTableRow
+                  key={team.id}
+                  gapClassName="gap-2"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpenTeam(team)}
+                  onKeyDown={(e) => e.key === 'Enter' && onOpenTeam(team)}
+                  className="cursor-pointer py-2.5 text-left last:border-b-0"
                 >
-                  <IconButton
-                    size="sm"
-                    aria-label="Edit team"
-                    title="Edit"
-                    onClick={() => setEditing(team)}
+                  <PanelTableCell
+                    column={teamColumns[0]}
+                    className="font-mono text-ui-xs text-foreground-subtle"
                   >
-                    <Pencil size={13} />
-                  </IconButton>
-                  {team.status === 'active' ? (
-                    <IconButton
-                      size="sm"
-                      aria-label="Deactivate team"
-                      title="Deactivate"
-                      onClick={() => setDeactivateTarget(team)}
-                      className="text-destructive hover:text-destructive"
+                    {team.key}
+                  </PanelTableCell>
+                  <PanelTableCell column={teamColumns[1]}>
+                    <span className="truncate text-ui-sm font-medium text-foreground">
+                      {team.name}
+                    </span>
+                  </PanelTableCell>
+                  <PanelTableCell column={teamColumns[2]} className="gap-1.5">
+                    <OwnerAvatar name={leadName} size={16} />
+                    <span className="truncate text-ui-xs text-foreground-subtle">{leadName}</span>
+                  </PanelTableCell>
+                  <PanelTableCell
+                    column={teamColumns[3]}
+                    className="text-ui-xs text-foreground-subtle capitalize"
+                  >
+                    {team.status === 'active' ? 'Active' : 'Deactivated'}
+                  </PanelTableCell>
+                  <PanelTableCell
+                    column={teamColumns[4]}
+                    className="text-ui-sm text-foreground-subtle"
+                  >
+                    {team.memberCount ?? 0}
+                  </PanelTableCell>
+                  {isWA && (
+                    /* stopPropagation: the row opens detail; the icon acts alone. */
+                    <PanelTableCell
+                      column={teamColumns[5]}
+                      className="gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
                     >
-                      <Archive size={13} />
-                    </IconButton>
-                  ) : (
-                    <RestoreButton teamId={team.id} name={team.name} />
+                      <IconButton
+                        size="sm"
+                        aria-label="Edit team"
+                        title="Edit"
+                        onClick={() => setEditing(team)}
+                      >
+                        <Pencil size={13} />
+                      </IconButton>
+                      {team.status === 'active' ? (
+                        <IconButton
+                          size="sm"
+                          aria-label="Deactivate team"
+                          title="Deactivate"
+                          onClick={() => setDeactivateTarget(team)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Archive size={13} />
+                        </IconButton>
+                      ) : (
+                        <RestoreButton teamId={team.id} name={team.name} />
+                      )}
+                    </PanelTableCell>
                   )}
-                </span>
-              )}
-            </div>
-          ))}
+                </PanelTableRow>
+              )
+            })}
+          </PanelTable>
         </div>
       )}
 

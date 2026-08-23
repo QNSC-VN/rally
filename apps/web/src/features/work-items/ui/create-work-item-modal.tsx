@@ -5,7 +5,6 @@
  * "Create" stays on backlog; "Create with details" navigates to the detail page.
  */
 import { useEffect, useRef, useState } from 'react'
-import { useAuthStore } from '@/shared/lib/stores/auth.store'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import { useCreateWorkItem, useStoryOptions, type WorkItem } from '@/features/work-items/api'
@@ -14,6 +13,7 @@ import { useTeamOwnerOptions } from '@/features/teams/api'
 import { useProjectTeamScope } from '@/features/access/api'
 import { useAppContext } from '@/shared/lib/stores/app-context.store'
 import { useRecordProject } from '@/shared/lib/deep-link-project'
+import { useDefaultOwner } from '@/shared/lib/hooks/use-default-owner'
 import { BRAND } from '@/shared/config/brand'
 import { WORK_ITEM_TYPE_CONFIG } from '@/entities/work-item/model/types'
 import { AppModal, ModalBody, ModalFooter } from '@/shared/ui/app-modal'
@@ -71,26 +71,8 @@ export function CreateWorkItemModal({
   const projectDisplay = useRecordProject(projectId)
   // Auto-fill from the Team selected in the workspace context (falls back to "No team")
   const [teamId, setTeamId] = useState(team?.teamId ?? '')
-  /**
-   * Owner defaults to the CURRENT USER when they are eligible, and to `Unassigned` otherwise.
-   *
-   * `WIC-FR-006` (BA `c42df59`, 2026-08-22): "Owner defaults to the authenticated current user only
-   * when that user is eligible in the selected Project/Team. Otherwise it defaults to `Unassigned`.
-   * User can always explicitly choose `Unassigned`/`No Entry`." Rally agrees — its Owner "defaults to
-   * the user who creates the defect but can be changed at any time".
-   *
-   * THIS REVERSES `GAP-P1-WID-007`/P6-TC-007's "default to Unassigned", which this field held until
-   * now, and the reversal is narrower than the original rule was: the old defect was seeding the
-   * creator's id UNCONDITIONALLY, so an item created by someone with no business owning it arrived
-   * owned by them, and a Task under it inherited that (P6-TC-007's "null-owner Task attributed to a
-   * named member"). Gating on the candidate feed is what makes the default safe — the creator is
-   * offered only when the shared assignment rule already offers them.
-   *
-   * `eligibleDefaultOwner` recomputes as the Team changes, because the feed does; an owner the reader
-   * has explicitly chosen is never overwritten (`ownerTouched`).
-   */
-  const [assigneeId, setAssigneeId] = useState('')
-  const [ownerTouched, setOwnerTouched] = useState(false)
+  // Owner is not declared here: its default is gated on the candidate feed, so it is resolved
+  // alongside that feed below (`useDefaultOwner`).
   const [storyPoints, setStoryPoints] = useState('')
   const [parentStoryId, setParentStoryId] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -141,23 +123,22 @@ export function CreateWorkItemModal({
    */
   const { data: members = [] } = useTeamOwnerOptions(projectId, selectedTeamId || null)
   /**
-   * The default owner: the signed-in user, but only while the feed actually offers them.
+   * The default owner: the signed-in user, but only while the feed above actually offers them.
    *
-   * Reads the same feed the picker renders, so the default can never be a value the dropdown would
+   * Reads the SAME feed the picker renders, so the default can never be a value the dropdown would
    * not show — and it follows a Team change, since eligibility does (`WIC-FR-006A`: an Editor
-   * qualifies only in an assigned Team, and with no Team only a Project Admin is offered).
+   * qualifies only in an assigned Team, and with no Team only a Project Admin is offered). Derived,
+   * never stored, and a choice the reader has made (`Unassigned` included) is never overwritten;
+   * {@link useDefaultOwner} owns both properties and the rule behind them.
+   *
+   * This was three lines of inline ternary here, which is where the shared hook came FROM: three
+   * other create surfaces asked the same question and two of them answered it differently.
    */
-  const currentUserId = useAuthStore((st) => st.user?.id)
-  /**
-   * DERIVED, never stored: an effect that wrote this into state cascaded renders (and the linter says
-   * so), and it would also have to re-run on every Team change to stay right. `ownerTouched` is the
-   * only state the default needs — the reader's own choice, `Unassigned` included, wins from then on.
-   */
-  const effectiveAssigneeId = ownerTouched
-    ? assigneeId
-    : currentUserId && members.some((m) => m.userId === currentUserId)
-      ? currentUserId
-      : ''
+  const {
+    ownerId: effectiveAssigneeId,
+    setOwnerId: setAssigneeId,
+    resetOwner,
+  } = useDefaultOwner(members)
 
   const titleRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef(submit)
@@ -355,8 +336,14 @@ export function CreateWorkItemModal({
               setTeamError(null)
               // The Owner options ARE the team's members (GAP-P1-WID-007), so a selection made
               // against the previous team is no longer offered — and a draft must not submit a value
-              // its own picker would not show. Choosing "No team" clears it for the same reason.
-              setAssigneeId('')
+              // its own picker would not show. Choosing "No team" drops it for the same reason.
+              //
+              // `resetOwner`, NOT `setAssigneeId('')`: the second records an explicit `Unassigned`,
+              // which is a choice the reader is entitled to keep forever, so it suppressed the
+              // default for the rest of the form. Opening with `All Teams` and then picking a Team
+              // containing yourself left Owner on `— No Entry —` (reported 2026-08-23). This forgets
+              // the old choice instead, and the new team's roster re-decides the default.
+              resetOwner()
             }}
             teams={teams}
             /* Blank is a legal, and the DEFAULT, choice FOR AN ADMIN — WIC-FR-005 /
@@ -371,11 +358,9 @@ export function CreateWorkItemModal({
           <OwnerSelectField
             id="wi-owner"
             value={effectiveAssigneeId}
-            onChange={(next) => {
-              // Any deliberate pick — `Unassigned` included — stops the default from reasserting.
-              setOwnerTouched(true)
-              setAssigneeId(next)
-            }}
+            // Any deliberate pick — `Unassigned` included — stops the default from reasserting;
+            // the hook records that, so there is no second flag to keep in step.
+            onChange={setAssigneeId}
             members={members}
           />
         </div>
