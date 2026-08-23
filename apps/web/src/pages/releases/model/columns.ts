@@ -30,7 +30,7 @@ export const RELEASES_COLUMNS: ColumnSpec<Release, unknown, ColKey>[] = [
   {
     key: 'releaseDate',
     label: 'Release Date',
-    defaultWidth: 96,
+    defaultWidth: 116,
     minWidth: 80,
     sortCol: 'releaseDate',
   },

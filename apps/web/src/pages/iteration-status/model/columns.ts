@@ -32,10 +32,12 @@ export const ITERATION_STATUS_COLUMNS: ColumnSpec<unknown, unknown, ColKey>[] = 
   { key: 'iteration', label: 'Iteration', defaultWidth: 160, minWidth: 120 },
   { key: 'state', label: 'Schedule State', defaultWidth: 132, minWidth: 132 },
   { key: 'flowState', label: 'Flow State', defaultWidth: 132, minWidth: 120 },
-  { key: 'block', label: 'Block', defaultWidth: 60, minWidth: 56 },
+  // 60px fitted the CONTENT (one status glyph) but not the HEADER: 'Block' plus its sort caret
+  // and the cell padding truncated to 'Bl...', so the column announced itself as an ellipsis.
+  { key: 'block', label: 'Block', defaultWidth: 84, minWidth: 76 },
   { key: 'blockedReason', label: 'Blocked Reason', defaultWidth: 160, minWidth: 100 },
-  { key: 'planEstimate', label: 'Plan Estimate', defaultWidth: 80 },
-  { key: 'taskEstimate', label: 'Task Estimate', defaultWidth: 80 },
+  { key: 'planEstimate', label: 'Plan Estimate', defaultWidth: 124 },
+  { key: 'taskEstimate', label: 'Task Estimate', defaultWidth: 124 },
   { key: 'toDo', label: 'To Do', defaultWidth: 70 },
   { key: 'tasksPct', label: 'Tasks', defaultWidth: 110, minWidth: 80 },
   { key: 'actual', label: 'Actual', defaultWidth: 70 },

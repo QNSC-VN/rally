@@ -280,6 +280,9 @@ function OwnerInlineCell({
   return (
     <div onClick={(e) => e.stopPropagation()}>
       <OwnerSelectCell
+        // Clip, like `Submitted By` beside it: two people per row, so a wrapped name here doubles
+        // the height of every row in the grid.
+        truncate
         ownerName={defect.assigneeName}
         assigneeId={defect.assigneeId}
         members={memberFeed.rows}
@@ -346,8 +349,8 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     key: 'name',
     label: 'Name',
     sortCol: 'name',
-    defaultWidth: 200,
-    minWidth: 120,
+    defaultWidth: 300,
+    minWidth: 160,
     locked: true,
     cellClassName: 'min-w-0 px-0',
     cell: (d, ctx) => <DefectNameCell defect={d} canEdit={ctx.canManage} />,
@@ -442,8 +445,8 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     key: 'fixedInBuild',
     label: 'Fixed In Build',
     sortCol: 'fixedInBuild',
-    defaultWidth: 100,
-    minWidth: 70,
+    defaultWidth: 132,
+    minWidth: 96,
     cellClassName: 'px-0',
     cell: (d, ctx) => (
       <FixedInBuildCell defect={d} canEdit={ctx.canManage} projectId={ctx.projectId} />
@@ -464,17 +467,18 @@ export const QUALITY_COLUMNS: ColumnSpec<DefectRow, QualityCtx, QualityColKey>[]
     key: 'submittedBy',
     label: 'Submitted By',
     sortCol: 'submittedBy',
-    defaultWidth: 100,
-    minWidth: 70,
+    defaultWidth: 160,
+    minWidth: 110,
     cellClassName: 'overflow-hidden px-2',
-    cell: (d) => <OwnerCell name={d.createdByName} />,
+    // `truncate`: this grid renders two people per row, so a wrapped name doubles every row height.
+    cell: (d) => <OwnerCell name={d.createdByName} truncate />,
   },
   {
     key: 'owner',
     label: 'Owner',
     sortCol: 'owner',
-    defaultWidth: 100,
-    minWidth: 70,
+    defaultWidth: 160,
+    minWidth: 110,
     cellClassName: 'overflow-hidden px-0',
     cell: (d, ctx) => (
       <OwnerInlineCell defect={d} canEdit={ctx.canManage} projectId={ctx.projectId} />

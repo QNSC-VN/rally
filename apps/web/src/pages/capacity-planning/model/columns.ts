@@ -45,7 +45,7 @@ export const CAPACITY_PLAN_COLUMNS: ColumnSpec<CapacityPlan, unknown, PlanColKey
     minWidth: 110,
     sortCol: 'updatedAt',
   },
-  { key: 'teamCount', label: 'Teams in Plan', defaultWidth: 110, minWidth: 90, align: 'right' },
+  { key: 'teamCount', label: 'Teams in Plan', defaultWidth: 124, minWidth: 100, align: 'right' },
 ]
 
 export type TeamColKey =
@@ -204,7 +204,7 @@ export const CAPACITY_ITEM_COLUMNS: ColumnSpec<CapacityPlanItem, unknown, ItemCo
   {
     key: 'assignment',
     label: 'Planned Team Assignment',
-    defaultWidth: 150,
+    defaultWidth: 192,
     minWidth: 130,
     sortCol: 'assignment',
   },

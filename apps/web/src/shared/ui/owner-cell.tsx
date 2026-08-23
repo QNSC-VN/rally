@@ -6,6 +6,17 @@ interface OwnerCellProps {
   name?: string | null
   /** Extra classes merged onto the wrapper. */
   className?: string
+  /**
+   * Clip a long name to one line with an ellipsis instead of wrapping it.
+   *
+   * OPT-IN, because the right answer depends on the column and not on the component. A wide Owner
+   * column (Home's Project Health, at 160px) should wrap — the name is the whole value, and a
+   * clipped one is unreadable. A NARROW column in a dense grid should clip: Quality renders two
+   * people per row (`Submitted By` and `Owner`) and a wrapped name there grew every row to two
+   * lines, so eleven defects took the vertical space of twenty-two and the grid stopped being
+   * scannable. The full name stays available as the element's `title`.
+   */
+  truncate?: boolean
 }
 
 /**
@@ -72,22 +83,36 @@ export function OwnerAvatar({
   )
 }
 
-export function OwnerCell({ name, className }: OwnerCellProps) {
+export function OwnerCell({ name, className, truncate = false }: OwnerCellProps) {
   if (!name) {
     return <span className="text-ui-sm text-foreground-disabled">--</span>
   }
 
   return (
-    // `items-start` and no `overflow-hidden`: a person's name is user-supplied and so
-    // unbounded, and the initials chip must stay on the first line when it wraps. Safe to
-    // wrap here because this cell only appears in grid rows and detail fields — the
-    // pickers render `OwnerAvatar` plus a plain label, not this component.
-    <div className={cn('flex items-start gap-1', className)}>
+    /*
+     * `items-center`, not `items-start`, and no `overflow-hidden`: a person's name is user-supplied
+     * and so unbounded, so it still wraps — but the chip now centres against the WHOLE wrapped
+     * block rather than pinning to its first line.
+     *
+     * Top-alignment was chosen for a one-line name, where the two are indistinguishable. On a name
+     * that wraps to two lines — "Hieu Vu Minh Bui" in a 128px column, which is the ordinary case for
+     * a Vietnamese full name — the glyph sat against the first line with the second hanging below
+     * it, so the cell read as top-heavy beside every neighbouring cell, which centres. Wrapping is
+     * the common case here, not the exception, which is what makes centring the right default.
+     */
+    <div className={cn('flex items-center gap-1', truncate && 'overflow-hidden', className)}>
       <OwnerAvatar name={name} />
       {/* `text-ui-sm` and a line box at least as tall as the avatar — the same rule `TeamCell` follows.
           At 10px, top-aligned, a read-only owner rendered visibly smaller and higher than the identical
           value in an owner PICKER one row up. */}
-      <span className="flex min-h-5 min-w-0 items-center text-ui-sm break-words whitespace-normal text-muted-foreground">
+      <span
+        // `title` only when clipped: a tooltip repeating a fully visible name is noise.
+        title={truncate ? name : undefined}
+        className={cn(
+          'flex min-h-5 min-w-0 items-center text-ui-sm text-muted-foreground',
+          truncate ? 'truncate whitespace-nowrap' : 'break-words whitespace-normal',
+        )}
+      >
         {name}
       </span>
     </div>
@@ -174,6 +199,13 @@ interface OwnerSelectCellProps {
   ariaLabel?: string
   /** Extra classes for the editable trigger (e.g. full-cell padding). */
   className?: string
+  /**
+   * Clip rather than wrap in the READ-ONLY branch — see {@link OwnerCell}'s own `truncate`. The
+   * editable branch already clips, since `SearchableSelect` renders a single-line trigger; passing
+   * this makes the two branches of one column agree about row height instead of the cell growing
+   * the moment the reader loses edit rights.
+   */
+  truncate?: boolean
 }
 
 /**
@@ -192,8 +224,9 @@ export function OwnerSelectCell({
   onChange,
   ariaLabel = 'Owner',
   className,
+  truncate = false,
 }: OwnerSelectCellProps) {
-  if (!canEdit) return <OwnerCell name={ownerName} />
+  if (!canEdit) return <OwnerCell name={ownerName} truncate={truncate} />
 
   return (
     <SearchableSelect
