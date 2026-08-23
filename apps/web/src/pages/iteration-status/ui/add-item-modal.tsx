@@ -67,12 +67,8 @@ export function AddItemModal({
   const [type, setType] = useState<'story' | 'defect'>('story')
   const [title, setTitle] = useState('')
   const [planEstimate, setPlanEstimate] = useState('')
-  /**
-   * Owner defaults to the current user when this modal's own feed offers them (`WIC-FR-006`) — the
-   * same rule and the same gate Create Work Item applies, via the one shared hook so the two
-   * surfaces cannot answer it differently.
-   */
-  const { ownerId: assigneeId, setOwnerId: setAssigneeId } = useDefaultOwner(members)
+  // Owner is not declared here: its default is gated on the candidate feed, so it is resolved
+  // alongside that feed below (`useDefaultOwner`).
   const [teamTouched, setTeamTouched] = useState('')
   const [teamError, setTeamError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -103,6 +99,18 @@ export function AddItemModal({
    * reader changes the Team above.
    */
   const { data: members = [] } = useTeamOwnerOptions(projectId, teamId || iteration.teamId)
+
+  /**
+   * Owner defaults to the current user when the feed ABOVE offers them (`WIC-FR-006`) — the same
+   * rule and the same gate Create Work Item applies, through the one shared hook so the two
+   * surfaces cannot answer it differently.
+   *
+   * Declared AFTER `members` deliberately: the gate reads that feed, so a call placed with the
+   * other `useState` lines is a temporal-dead-zone error rather than a style preference. It was
+   * exactly that for one commit — `members` moved below it when this modal's feed became
+   * team-scoped, and `tsc` caught it (TS2448) where a reviewer would not have.
+   */
+  const { ownerId: assigneeId, setOwnerId: setAssigneeId } = useDefaultOwner(members)
 
   async function submit(openDetail = false) {
     setError(null)
