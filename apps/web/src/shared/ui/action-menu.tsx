@@ -69,7 +69,7 @@ export function ActionMenu({
       <AppPopoverContent
         align="end"
         sideOffset={4}
-        className="z-50 min-w-44 rounded-sm border border-border-strong bg-card py-1 shadow-lg"
+        className="min-w-44 rounded-sm border border-border-strong bg-card py-1 shadow-lg"
         // Any item click is a decision — the menu has done its job either way.
         onClick={() => setOpen(false)}
       >

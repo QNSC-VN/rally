@@ -327,7 +327,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
       <AppPopoverContent
         align="start"
         sideOffset={3}
-        className="z-50 w-[var(--radix-popover-trigger-width)] min-w-48 overflow-hidden rounded-md p-1 shadow-lg ring-1 ring-black/5"
+        className="w-[var(--radix-popover-trigger-width)] min-w-48 overflow-hidden rounded-md p-1 shadow-lg ring-1 ring-black/5"
         style={{ backgroundColor: BRAND.surface }}
       >
         {/* Search box — one full border, blue while focused (Rally parity). */}

@@ -107,7 +107,7 @@ export function DateField({
       <AppPopoverContent
         align="start"
         sideOffset={4}
-        className="z-50 rounded-md border border-border bg-card shadow-lg"
+        className="rounded-md border border-border bg-card shadow-lg"
         style={{ backgroundColor: BRAND.surface }}
       >
         <Calendar
