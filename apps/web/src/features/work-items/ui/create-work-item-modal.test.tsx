@@ -304,3 +304,63 @@ describe('CreateWorkItemModal — Team is required for an Editor (BA ruling 2026
     expect(teamOwnerOptions).toHaveBeenLastCalledWith('proj-1', null)
   })
 })
+
+/**
+ * The reported case (2026-08-23): open with NO team, then pick one.
+ *
+ * Every case above pre-seeds a team through `appContext` and returns the same roster whatever
+ * `teamId` is asked for, so the feed is populated on the very first render and the default has
+ * something to match immediately. That is not how the modal opens for a Workspace Admin with
+ * `All Teams` selected: `useTeamOwnerOptions` is DISABLED while no team is chosen
+ * (`enabled: !!teamId`), so `members` is `[]`, Owner correctly reads `Unassigned` — and the
+ * question is whether it RE-RESOLVES once the roster arrives after a Team is picked.
+ *
+ * It must, because the default is derived rather than stored; this pins that it does, with the feed
+ * keyed on the team so the two branches can answer differently.
+ */
+describe('CreateWorkItemModal — the Owner default follows a LATER Team choice', () => {
+  /** `useTeamOwnerOptions(projectId, teamId)`: nobody until a team is chosen, then that team's roster. */
+  function rosterPerTeam(rosters: Record<string, Array<typeof ALICE>>) {
+    teamOwnerOptions.mockImplementation((_projectId: unknown, teamId: unknown) => ({
+      data: typeof teamId === 'string' && teamId ? (rosters[teamId] ?? []) : [],
+    }))
+  }
+
+  beforeEach(() => {
+    // No team in context — the `All Teams` shell state the report was filed from.
+    appContext.mockReturnValue({ workspace: { workspaceId: 'ws-1' }, team: null })
+  })
+
+  it('seeds the creator once the CHOSEN team turns out to contain them', async () => {
+    rosterPerTeam({ 'team-1': [ALICE] })
+    open()
+
+    // Opens Unassigned, and that is correct: with no team the feed offers nobody.
+    expect(screen.getByRole('button', { name: 'Owner' }).textContent).toContain('— No Entry —')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Team' }))
+    fireEvent.click(await screen.findByText('Team Alpha'))
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Owner' }).textContent,
+        'picking a Team the creator belongs to must default the Owner to them',
+      ).toContain('Alice Smith'),
+    )
+  })
+
+  it('leaves it Unassigned when the chosen team does NOT contain them', async () => {
+    // The control. Without it the case above also passes for an UNCONDITIONAL default — which is
+    // the shape that caused `P6-TC-007` in the first place.
+    rosterPerTeam({
+      'team-2': [{ userId: 'someone-else', displayName: 'Bo', email: 'bo@qnsc.dev' }],
+    })
+    open()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Team' }))
+    fireEvent.click(await screen.findByText('Team Beta'))
+
+    await waitFor(() => expect(teamOwnerOptions).toHaveBeenLastCalledWith('proj-1', 'team-2'))
+    expect(screen.getByRole('button', { name: 'Owner' }).textContent).toContain('— No Entry —')
+  })
+})

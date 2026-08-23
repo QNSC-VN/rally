@@ -75,3 +75,50 @@ describe('useDefaultOwner', () => {
     expect(result.current.ownerId).toBe(ME)
   })
 })
+
+/**
+ * `resetOwner` versus `setOwnerId('')` — the pair that made a reported bug possible.
+ *
+ * A Team change has to drop an owner belonging to the previous team, and the obvious spelling for
+ * that is `setOwnerId('')`. It is wrong: `''` IS the reader's explicit `Unassigned`, a choice they
+ * are entitled to keep, so recording it suppressed the default for the rest of the form's life —
+ * open with `All Teams`, pick a Team containing yourself, and Owner stayed `— No Entry —`
+ * (reported 2026-08-23). "Forget what was chosen" and "choose nobody" are different intents.
+ */
+describe('useDefaultOwner — resetOwner', () => {
+  beforeEach(() => signIn(ME))
+
+  it('falls back to the default again, where setOwnerId("") would not', () => {
+    const { result, rerender } = renderHook(({ feed }) => useDefaultOwner(feed), {
+      initialProps: { feed: [] as { userId: string }[] },
+    })
+
+    // The reported sequence: no team, so no candidates and no default.
+    expect(result.current.ownerId).toBe('')
+
+    // What the Team-change handler used to do.
+    act(() => result.current.setOwnerId(''))
+    rerender({ feed: [{ userId: ME }] })
+    expect(
+      result.current.ownerId,
+      'an explicit Unassigned is a CHOICE and must survive a feed change',
+    ).toBe('')
+
+    // What it does now.
+    act(() => result.current.resetOwner())
+    expect(result.current.ownerId, 'resetOwner forgets the choice, so the default applies').toBe(ME)
+    expect(result.current.touched).toBe(false)
+  })
+
+  it('still lets the reader hold Unassigned deliberately after a reset', () => {
+    // The control: reset must not make `Unassigned` unreachable, or it has traded one bug for the
+    // `ownerId || default` bug this hook was written to fix.
+    const { result } = renderHook(() => useDefaultOwner([{ userId: ME }]))
+    act(() => result.current.resetOwner())
+    expect(result.current.ownerId).toBe(ME)
+
+    act(() => result.current.setOwnerId(''))
+    expect(result.current.ownerId).toBe('')
+    expect(result.current.touched).toBe(true)
+  })
+})

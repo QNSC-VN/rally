@@ -134,7 +134,11 @@ export function CreateWorkItemModal({
    * This was three lines of inline ternary here, which is where the shared hook came FROM: three
    * other create surfaces asked the same question and two of them answered it differently.
    */
-  const { ownerId: effectiveAssigneeId, setOwnerId: setAssigneeId } = useDefaultOwner(members)
+  const {
+    ownerId: effectiveAssigneeId,
+    setOwnerId: setAssigneeId,
+    resetOwner,
+  } = useDefaultOwner(members)
 
   const titleRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef(submit)
@@ -332,8 +336,14 @@ export function CreateWorkItemModal({
               setTeamError(null)
               // The Owner options ARE the team's members (GAP-P1-WID-007), so a selection made
               // against the previous team is no longer offered — and a draft must not submit a value
-              // its own picker would not show. Choosing "No team" clears it for the same reason.
-              setAssigneeId('')
+              // its own picker would not show. Choosing "No team" drops it for the same reason.
+              //
+              // `resetOwner`, NOT `setAssigneeId('')`: the second records an explicit `Unassigned`,
+              // which is a choice the reader is entitled to keep forever, so it suppressed the
+              // default for the rest of the form. Opening with `All Teams` and then picking a Team
+              // containing yourself left Owner on `— No Entry —` (reported 2026-08-23). This forgets
+              // the old choice instead, and the new team's roster re-decides the default.
+              resetOwner()
             }}
             teams={teams}
             /* Blank is a legal, and the DEFAULT, choice FOR AN ADMIN — WIC-FR-005 /

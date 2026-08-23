@@ -50,6 +50,20 @@ export interface DefaultOwnerState {
   ownerId: string
   /** Pass to the picker's `onChange`. Records the choice, so the default never returns. */
   setOwnerId: (userId: string) => void
+  /**
+   * Forget the reader's choice and fall back to the default again.
+   *
+   * DISTINCT FROM `setOwnerId('')`, and the distinction is a reported bug. A Team change has to drop
+   * an owner belonging to the previous team — their row is no longer offered, and a draft must not
+   * submit a value its own picker would not show. Spelling that as `setOwnerId('')` records an
+   * explicit `Unassigned`, which is exactly the state the reader is allowed to hold forever, so the
+   * default was suppressed for the rest of the form's life: pick a Team containing you, and Owner
+   * stayed `— No Entry —` (reported 2026-08-23).
+   *
+   * "Clear what was chosen" and "choose nobody" are different intents. Only the second is the
+   * reader's.
+   */
+  resetOwner: () => void
   /** Whether the reader has chosen — exposed for callers that must not submit an untouched form. */
   touched: boolean
 }
@@ -67,10 +81,12 @@ export function useDefaultOwner(candidates: OwnerCandidate[]): DefaultOwnerState
     currentUserId && candidates.some((c) => c.userId === currentUserId) ? currentUserId : ''
 
   const setOwnerId = useCallback((userId: string) => setChosen(userId), [])
+  const resetOwner = useCallback(() => setChosen(null), [])
 
   return {
     ownerId: chosen ?? eligibleDefault,
     setOwnerId,
+    resetOwner,
     touched: chosen !== null,
   }
 }
