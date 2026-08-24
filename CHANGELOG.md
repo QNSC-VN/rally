@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.7.6](https://github.com/QNSC-VN/rally/compare/v0.7.5...v0.7.6) (2026-08-23)
+
+
+### ✨ Features
+
+* **infra:** per-environment email feedback chains — verdicts land in the database that sent them ([#480](https://github.com/QNSC-VN/rally/issues/480)) ([72c8464](https://github.com/QNSC-VN/rally/commit/72c8464b14ca664ff8a682d2c9abac0c016bd97e))
+* **work-items,iterations:** align the remaining BA scope from c42df59 ([#485](https://github.com/QNSC-VN/rally/issues/485)) ([ac593fe](https://github.com/QNSC-VN/rally/commit/ac593fec04222133cd1fccbcd3aecff34226b923))
+
+
+### 🐛 Bug Fixes
+
+* **iteration-status,backlog,portfolio:** scope every Owner feed to the row's Team, give a row its Delete, and point the chevrons at time ([#486](https://github.com/QNSC-VN/rally/issues/486)) ([e046f9f](https://github.com/QNSC-VN/rally/commit/e046f9fbd49a6ea785731eca48a31434f98fd67a))
+* **web:** eight UI/UX reports, and the shared components they came from ([#487](https://github.com/QNSC-VN/rally/issues/487)) ([815e205](https://github.com/QNSC-VN/rally/commit/815e205159d345386b2c660fc5b590842ad64af7))
+* **work-items:** derive the parent Schedule State from its task set, as Rally does ([#482](https://github.com/QNSC-VN/rally/issues/482)) ([b4a75d2](https://github.com/QNSC-VN/rally/commit/b4a75d227e7c7b83ca8dbd39e2900eaba33d06d3))
+* **work-items:** feed the Parent Story picker from the write's rule, not the Backlog's ([#484](https://github.com/QNSC-VN/rally/issues/484)) ([929590e](https://github.com/QNSC-VN/rally/commit/929590ece683e3c834e96de44519d42b96dbd1ea))
+* **workspace,projects:** staff a Team from its Project, and show the Workspace Admin on it ([#483](https://github.com/QNSC-VN/rally/issues/483)) ([50954ad](https://github.com/QNSC-VN/rally/commit/50954ad2b7d237ebf5f712e4851229681efb9678))
+
 ## [0.7.5](https://github.com/QNSC-VN/rally/compare/v0.7.4...v0.7.5) (2026-08-21)
 
 
