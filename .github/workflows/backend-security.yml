@@ -22,17 +22,27 @@ concurrency:
 
 permissions:
   contents: read
-  security-events: write # SARIF upload (no-op on free plan, lights up after GHAS)
-  packages: read # ceiling for the reusable Trivy build to pull private @qnsc-vn/* (packages can only be reduced, not elevated, in the called workflow)
 
 jobs:
   # Replaces Code Scanning Default Setup's `Analyze (actions)` as the required
   # gate — that managed check doesn't reliably report on bot-authored PRs
   # (Dependabot/Renovate), leaving the required check stuck "Expected" forever.
   actions-security:
+    permissions:
+      contents: read
+      security-events: write
     uses: QNSC-VN/qnsc-ci/.github/workflows/actions-security.yml@v1
+    with:
+      blocking: true
 
   security:
+    # A CEILING, not a grant this workflow uses: the reusable's Trivy job declares
+    # `packages: read`, and a called workflow can only REDUCE the caller's permissions,
+    # never elevate them.
+    permissions:
+      contents: read
+      security-events: write # SARIF upload (no-op on free plan, lights up after GHAS)
+      packages: read
     uses: QNSC-VN/qnsc-ci/.github/workflows/security.yml@v1.10.0
     with:
       product: rally
