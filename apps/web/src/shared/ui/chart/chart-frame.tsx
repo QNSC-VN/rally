@@ -164,38 +164,52 @@ export function ChartFrame({
  *
  * `sr-only` rather than `display: none`: the latter is skipped by assistive tech too, which would
  * make this an accessibility feature that helps nobody.
+ *
+ * THE CLASS GOES ON A WRAPPER `div`, NEVER ON THE `<table>` ITSELF.
+ * ----------------------------------------------------------------
+ * `sr-only` hides by shrinking to `1px × 1px` and clipping. A `<table>` sets `display: table`, which
+ * SIZES TO ITS CONTENT and so overrides both dimensions — the element stays `position: absolute` and
+ * clipped, and therefore invisible, but it still lays out at its full size. Measured here: 906.9 ×
+ * 693px of invisible table inside the Release Tracking burnup card.
+ *
+ * That is not a cosmetic detail. The card is a flex child, so those 693px inflated the column, which
+ * pushed the page past the viewport and gave `Portfolio > Release Tracking` a scrollbar and a screen
+ * of empty space under a chart that fits — reported 2026-08-24. A `div` has no such behaviour, so the
+ * class does what it says and the table inside it is measured at zero.
  */
 function ChartDataTableFallback({ columns, rows, caption, noDataLabel }: ChartDataTable) {
   return (
-    <table className="sr-only">
-      <caption>{caption}</caption>
-      <thead>
-        <tr>
-          {columns.map((column) => (
-            <th key={column} scope="col">
-              {column}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, index) => (
-          <tr key={index}>
-            {row.map((cell, cellIndex) =>
-              cellIndex === 0 ? (
-                <th key={cellIndex} scope="row">
-                  {cell}
-                </th>
-              ) : (
-                // A gap is spoken as a gap. "0" here would be the same fabrication the charts
-                // refuse to draw.
-                <td key={cellIndex}>{cell ?? noDataLabel}</td>
-              ),
-            )}
+    <div className="sr-only">
+      <table>
+        <caption>{caption}</caption>
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column} scope="col">
+                {column}
+              </th>
+            ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              {row.map((cell, cellIndex) =>
+                cellIndex === 0 ? (
+                  <th key={cellIndex} scope="row">
+                    {cell}
+                  </th>
+                ) : (
+                  // A gap is spoken as a gap. "0" here would be the same fabrication the charts
+                  // refuse to draw.
+                  <td key={cellIndex}>{cell ?? noDataLabel}</td>
+                ),
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
