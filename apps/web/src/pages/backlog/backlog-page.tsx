@@ -27,7 +27,6 @@ import { PaginationFooter } from '@/shared/ui/pagination-footer'
 import { InlineEditableCell } from '@/shared/ui/inline-editable-cell'
 import { OwnerSelectCell, type OwnerSelectMember } from '@/shared/ui/owner-cell'
 import { BulkDeleteCopy } from '@/features/work-items/ui/bulk-delete-copy'
-import { WorkItemRowActions } from '@/features/work-items/ui/work-item-row-actions'
 import { RankEdgeActions } from '@/features/work-items/ui/rank-edge-actions'
 import { BulkScheduleActions } from '@/features/work-items/ui/bulk-schedule-bar'
 import { useRowSelection } from '@/shared/lib/hooks/use-row-selection'
@@ -419,7 +418,6 @@ export function BacklogPage() {
                 active={item.itemKey === summaryItemKey}
                 onToggleSelect={onToggleSelect}
                 canAssignRelease={canAssignRelease}
-                canDelete={can('work_item:delete')}
                 onOpen={() => openItem(item)}
                 colStyles={colStyles}
                 canEdit={canEdit}
@@ -560,9 +558,6 @@ interface BacklogRowProps {
    * grid they own.
    */
   canAssignRelease: boolean
-  /** `work_item:delete` — the code `DELETE /work-items/:id` itself requires. False renders no row
-   *  action menu at all, rather than one whose single item refuses. */
-  canDelete: boolean
   /** The assignee feed (`useProjectMemberOptions`) — the shared picker shape, which permits null. */
   members: OwnerSelectMember[]
   releases: Array<{ id: string; name: string; releaseKey?: string | null }>
@@ -596,7 +591,6 @@ function BacklogRow({
   colStyles,
   canEdit,
   canAssignRelease,
-  canDelete,
   members,
   releases,
   iterations,
@@ -639,7 +633,7 @@ function BacklogRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex min-h-[34px] items-center gap-2 border-b border-border-inner px-3 transition-colors duration-100 hover:bg-primary-lighter"
+      className="group flex min-h-[35px] items-center gap-2 border-b border-border-inner px-3 transition-colors duration-100 hover:bg-primary-lighter"
       style={{
         minWidth: 'max-content',
         backgroundColor: isDragging
@@ -679,7 +673,14 @@ function BacklogRow({
       </div>
 
       {/* Title — inline edit */}
-      <div className="min-w-0 shrink-0 px-0" style={colStyles.name} onClick={stop}>
+      {/* `flex items-center`, like every sibling cell: the title WRAPS, so without it the cell grows
+          taller than the row and the inline-edit hover outline is drawn around that overflowing box
+          — which paints over the neighbouring column instead of inside this one. */}
+      <div
+        className="flex min-w-0 shrink-0 items-center px-0"
+        style={colStyles.name}
+        onClick={stop}
+      >
         {canEdit ? (
           <InlineEditableCell
             value={item.title}
@@ -882,22 +883,28 @@ function BacklogRow({
         />
       </div>
 
-      {/* Row actions — `P2-BL-FR-022` / §124: "Delete Defect | Row/detail action with confirmation".
-          A TRAILING cell rather than a declared column: it is an affordance, not data, so it must not
-          be resizable, reorderable or — the reason that matters — hideable, since hiding it would take
-          away the row's only verb. Revealed on hover like the drag grip, and on FOCUS too, or a
-          keyboard reader could tab to a control they cannot see. */}
-      <div
-        className="ml-auto flex shrink-0 items-center px-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
-        onClick={stop}
-      >
-        <WorkItemRowActions
-          itemId={item.id}
-          itemKey={item.itemKey}
-          projectId={item.projectId}
-          canDelete={canDelete}
-        />
-      </div>
+      {/*
+       * NO trailing row-actions cell. Removed on the product owner's ruling, 2026-08-24, and this
+       * note exists because putting it back is a one-line temptation that reopens two defects.
+       *
+       * WHAT IT LOOKED LIKE. A `⋮` menu holding Delete, in a cell marked `ml-auto`. Two things went
+       * wrong with that, and only the first is obvious:
+       *
+       *  1. `ml-auto` inside a row whose `minWidth` is `max-content` pins the cell to the far right
+       *     of the ROW, which is wider than the viewport on any grid that scrolls horizontally. The
+       *     menu therefore detached from the row on scroll — it rendered mid-row, and its popover
+       *     opened at the left edge of the screen, nowhere near the record it acted on.
+       *  2. The HEADER has no matching trailing column (`BACKLOG_HEADER_COLUMNS` is the column list,
+       *     and an affordance is deliberately not in it). So the header and the rows resolved to
+       *     different total widths and every column drifted out of alignment with its own heading.
+       *
+       * `P2-BL-FR-022` / §124 ("Delete Defect | Row or detail action with confirmation") is what the
+       * cell was added FOR, and removing it reverses that: Delete is now reachable from the bulk bar
+       * (select the row first) and from the record's own detail page, not from the row itself. That
+       * is a DECLARED REVERSAL of a BA finding the BA had raised twice — see
+       * `docs/PR-487-BA-CONFLICTS.md`. If it comes back, it needs a real trailing COLUMN that the
+       * header renders too, not an `ml-auto` cell the header knows nothing about.
+       */}
     </div>
   )
 }
