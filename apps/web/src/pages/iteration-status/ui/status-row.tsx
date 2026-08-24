@@ -253,10 +253,26 @@ export function StatusRow({
           <IdCell type={item.type} itemKey={item.itemKey} onOpen={onOpen} />
         </div>
 
-        {/* Name — click to edit inline (Rally parity); use the ID link to open */}
+        {/*
+         * Name — click to edit inline (Rally parity); use the ID link to open.
+         *
+         * NO `overflow-hidden` here, deliberately, and it is the difference between a row that fits
+         * its content and one that clips it. `TableRow` sets a `min-h` FLOOR and `items-center`, so
+         * it grows to its tallest child — but a cell that clips its own content reports the clipped
+         * height, so the row never learns it needs more room. A two-line title was cut off
+         * mid-word and the inline-edit hover box, drawn around the real (taller) content, escaped
+         * the column and painted over Feature.
+         *
+         * `min-w-0` is what makes `break-words` work in a flex child; the width ceiling comes from
+         * `colStyles.name`. The Backlog's Name cell is the control case — same row chrome, no
+         * `overflow-hidden`, and its rows have always grown correctly.
+         *
+         * The Owner / Dev Owner cells below KEEP `overflow-hidden`: they render a single-line
+         * `OwnerSelectCell` trigger, so clipping is the intended behaviour there.
+         */}
         <div
           style={colStyles.name}
-          className="overflow-hidden px-0"
+          className="flex min-w-0 items-center px-0"
           onClick={(e) => e.stopPropagation()}
         >
           <InlineEditableCell
@@ -503,7 +519,7 @@ export function StatusRow({
         {/* Owner */}
         <div
           style={colStyles.owner}
-          className="overflow-hidden px-0"
+          className="flex items-center overflow-hidden px-0"
           onClick={(e) => e.stopPropagation()}
         >
           <OwnerSelectCell
@@ -538,7 +554,7 @@ export function StatusRow({
         {/* Dev Owner — editable assignee (distinct from Owner) */}
         <div
           style={colStyles.devOwner}
-          className="overflow-hidden px-0"
+          className="flex items-center overflow-hidden px-0"
           onClick={(e) => e.stopPropagation()}
         >
           <OwnerSelectCell
@@ -697,7 +713,7 @@ function ChildTaskRow({
       </div>
       <div
         style={colStyles.name}
-        className="overflow-hidden px-0"
+        className="flex min-w-0 items-center px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <InlineEditableCell
@@ -803,7 +819,7 @@ function ChildTaskRow({
       </div>
       <div
         style={colStyles.owner}
-        className="overflow-hidden px-0"
+        className="flex items-center overflow-hidden px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <OwnerSelectCell
@@ -817,7 +833,7 @@ function ChildTaskRow({
       <div style={colStyles.milestones} className="px-2" />
       <div
         style={colStyles.devOwner}
-        className="overflow-hidden px-0"
+        className="flex items-center overflow-hidden px-0"
         onClick={(e) => e.stopPropagation()}
       >
         <OwnerSelectCell

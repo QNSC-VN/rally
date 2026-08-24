@@ -353,7 +353,7 @@ export function TrackingGrid({
         {rows.map((row) => (
           /**
            * The same row chrome every other data grid in this app draws — Iteration Status, Backlog,
-           * Portfolio, the capacity tables: `group`, a `min-h-[34px]` floor, `border-border-inner`,
+           * Portfolio, the capacity tables: `group`, a `min-h-[35px]` floor, `border-border-inner`,
            * `transition-colors` and `hover:bg-primary-lighter`.
            *
            * This one had been hand-written with `hover:bg-surface-hover` (the LIST-row hover, used by
@@ -366,7 +366,7 @@ export function TrackingGrid({
            */
           <div
             key={row.id}
-            className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
+            className="group flex min-h-[35px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
           >
             {table.renderCells(row, ctx)}
           </div>

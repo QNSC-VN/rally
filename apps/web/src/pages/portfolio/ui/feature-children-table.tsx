@@ -463,7 +463,7 @@ function ChildRow({
       <TableRow
         // `min-w-max` (not an inline style) so the row is as wide as its columns and the
         // horizontal scroll region covers all of them.
-        // `min-h-[34px]` with `items-center`, exactly as Iteration Status sizes its rows: a
+        // `min-h-[35px]` with `items-center`, exactly as Iteration Status sizes its rows: a
         // MINIMUM, not a fixed height, so the row grows when a long Name or ID wraps, and the
         // cells stay vertically centred within whatever height that produces.
         className="px-3"

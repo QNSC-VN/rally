@@ -58,7 +58,7 @@ interface AuditCtx {
 
 // Match the Users / Teams row look, but READ-ONLY: no cursor, no click, no gutter.
 const ROW_CLASS =
-  'group flex min-h-[34px] items-center gap-2 border-b border-border-subtle bg-card px-3 text-ui-md transition-colors duration-100 hover:bg-primary-lighter'
+  'group flex min-h-[35px] items-center gap-2 border-b border-border-subtle bg-card px-3 text-ui-md transition-colors duration-100 hover:bg-primary-lighter'
 
 export function AuditLogTab() {
   const { t } = useTranslation('settings')

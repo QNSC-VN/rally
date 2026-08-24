@@ -632,7 +632,7 @@ export function MilestonesPage() {
         renderRow={(ms, { gutter }) => (
           <div
             key={ms.id}
-            className="flex min-h-[34px] items-center gap-2 border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
+            className="flex min-h-[35px] items-center gap-2 border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter"
             style={{ minWidth: 'max-content' }}
           >
             {gutter}

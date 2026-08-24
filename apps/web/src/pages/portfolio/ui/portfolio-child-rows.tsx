@@ -76,7 +76,7 @@ type ColStyleFor = (key: ColKey, base?: CSSProperties) => CSSProperties
  */
 function ChildRow({ children }: { children: React.ReactNode }) {
   return (
-    // Height and type scale MATCH the parent row (`min-h-[34px]`, `text-ui-md`), not a
+    // Height and type scale MATCH the parent row (`min-h-[35px]`, `text-ui-md`), not a
     // smaller variant. They diverged before, which made every editable control on a child
     // row visibly smaller than the identical control one row above — the inline-edit box
     // most obviously. Subordination is carried by the indent, the dashed divider and the
@@ -86,7 +86,7 @@ function ChildRow({ children }: { children: React.ReactNode }) {
       // A stable hook for the AC-5 cap: "up to 5 linked items". Counting rendered rows is the only
       // way to assert a cap as a property rather than against a fixture's child count.
       data-child-preview-row=""
-      className="flex min-h-[34px] items-center border-b border-dashed border-border-subtle px-3 text-ui-md text-muted-foreground hover:bg-primary-lighter"
+      className="flex min-h-[35px] items-center border-b border-dashed border-border-subtle px-3 text-ui-md text-muted-foreground hover:bg-primary-lighter"
     >
       {/* Mirrors the parent's gutter through the shared component (inert here — a child
           is not selectable and not rankable) so column 1 starts at the same x. */}

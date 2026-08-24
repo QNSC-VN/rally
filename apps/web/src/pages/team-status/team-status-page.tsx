@@ -639,7 +639,7 @@ function TaskRow({
 
   return (
     <div
-      className="flex min-h-[34px] items-center border-b border-border-inner bg-card px-3 text-ui-sm transition-colors duration-100 hover:bg-primary-lighter"
+      className="flex min-h-[35px] items-center border-b border-border-inner bg-card px-3 text-ui-sm transition-colors duration-100 hover:bg-primary-lighter"
       style={{ minWidth: 'max-content' }}
     >
       <div className="w-6 shrink-0" /> {/* Spacer for expand arrow */}

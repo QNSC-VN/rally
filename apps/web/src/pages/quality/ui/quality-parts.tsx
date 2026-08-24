@@ -837,7 +837,7 @@ export function DefectTableRow({
   return (
     <div
       ref={setNodeRef}
-      className="group flex min-h-[34px] items-center gap-2 border-b border-border-inner px-3 transition-colors duration-100 hover:bg-primary-lighter"
+      className="group flex min-h-[35px] items-center gap-2 border-b border-border-inner px-3 transition-colors duration-100 hover:bg-primary-lighter"
       style={{
         transform: CSS.Transform.toString(transform),
         transition,

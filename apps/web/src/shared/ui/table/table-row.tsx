@@ -3,7 +3,7 @@ import { forwardRef, type HTMLAttributes } from 'react'
 import { cn } from '@/shared/lib/utils'
 
 export interface TableRowProps extends HTMLAttributes<HTMLDivElement> {
-  /** 30px floor instead of 34px — the nested and allocation grids sit tighter. */
+  /** 30px floor instead of 35px — the nested and allocation grids sit tighter. */
   compact?: boolean
   /** `min-w-max`, for a grid inside a horizontal scroll region: the row spans all its columns. */
   fitContent?: boolean
@@ -49,7 +49,10 @@ export const TableRow = forwardRef<HTMLDivElement, TableRowProps>(function Table
       ref={ref}
       className={cn(
         'group flex items-center border-b border-border-inner text-ui-md transition-colors',
-        compact ? 'min-h-[30px]' : 'min-h-[34px]',
+        // 35px, not 34: a row's real height is fractional once a cell wraps (measured 47.32px on a
+        // two-line title), and at a 34px floor the sub-pixel remainder left a seam that reads as the
+        // row failing to fit its own content. The extra pixel absorbs the rounding.
+        compact ? 'min-h-[30px]' : 'min-h-[35px]',
         fitContent && 'min-w-max',
         interactive && 'cursor-pointer',
         nested ? 'bg-surface-subtle' : 'hover:bg-primary-lighter',
