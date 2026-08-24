@@ -399,7 +399,18 @@ export function NewProjectModal({
 
   return (
     <AppModal open onClose={onClose} title={t('create.title')} width={560}>
-      <form onSubmit={handleSubmit}>
+      {/*
+       * The form has to BE the flex column, or `ModalBody` cannot scroll.
+       *
+       * `AppModal` is `flex flex-col` with a `maxHeight`, and `ModalBody` is `flex-1
+       * overflow-y-auto` — that pairing is what keeps a long form scrollable inside a capped card.
+       * A plain `<form>` between the two breaks it: the body is then a flex child of the FORM, which
+       * has no height of its own, so it grows to its content instead of scrolling. This form is
+       * ~742px tall, and the footer — with `Create Project` in it — was pushed off the bottom of the
+       * screen (reported 2026-08-24). `min-h-0` is required too: a flex child defaults to
+       * `min-height: auto`, which refuses to shrink below its content and would re-create the bug.
+       */}
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
         <ModalBody className="space-y-4">
           <ProjectFormFields
             workspaceId={workspaceId}

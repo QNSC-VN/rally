@@ -87,7 +87,10 @@ function AddStatusModal({ projectId, onClose }: { projectId: string; onClose: ()
 
   return (
     <AppModal open onClose={onClose} title={t('workflow.addStatus')} width={420}>
-      <form onSubmit={(e) => void handleSubmit(e)}>
+      {/* The flex column lives on the FORM — see the note in `projects/ui/project-parts.tsx`: a
+          plain form between AppModal and ModalBody stops the body scrolling, because the body is
+          then a flex child of the form rather than of the height-capped card. */}
+      <form onSubmit={(e) => void handleSubmit(e)} className="flex min-h-0 flex-1 flex-col">
         <ModalBody className="space-y-4">
           <FormField label={t('workflow.statusNameLabel')} required>
             <Input
