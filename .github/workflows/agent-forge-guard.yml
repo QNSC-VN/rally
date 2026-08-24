@@ -26,6 +26,7 @@ jobs:
         with:
           # The guard diffs against the merge base, which does not exist in a shallow clone.
           fetch-depth: 0
+          persist-credentials: false
 
       - name: capture the pull request body
         # Written to a file rather than passed as an argument: a body containing a shell
@@ -35,8 +36,10 @@ jobs:
         run: printf '%s' "$PR_BODY" > /tmp/pr-body.txt
 
       - name: test-guard
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           python3 tools/agent_forge_test_guard.py \
-            --base "origin/${{ github.event.pull_request.base.ref }}" \
+            --base "origin/$BASE_REF" \
             --head HEAD \
             --body-file /tmp/pr-body.txt

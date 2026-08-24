@@ -54,7 +54,6 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  id-token: write
   contents: read
 
 env:
@@ -69,6 +68,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: shared
     timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
 
     # The one thing that genuinely must not run twice at once, and the reason the
     # whole workflow used to share a group: a release pushes main and the vX.Y.Z tag
@@ -85,6 +87,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.10.0
         with:
@@ -126,9 +130,14 @@ jobs:
     runs-on: ubuntu-latest
     environment: develop   # no approval gate
     timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.10.0
         with:
@@ -207,9 +216,14 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0   # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: QNSC-VN/qnsc-ci/actions/setup-tofu-aws@v1.10.0
         with:
