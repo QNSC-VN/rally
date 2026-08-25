@@ -80,7 +80,21 @@ export function AppModal({
             'duration-150 outline-none',
             className,
           )}
-          style={{ width, border: `1px solid ${BRAND.border}` }}
+          /**
+           * `maxHeight` is what makes `ModalBody`'s scrolling work at all.
+           *
+           * The card is centred with `top-1/2 -translate-y-1/2`, so with no height ceiling a tall
+           * form grows in BOTH directions and runs off the top and bottom of the screen at once.
+           * `ModalBody` is already `flex-1 overflow-y-auto` — built to scroll — but a flex child
+           * only scrolls when its parent has a height to be constrained by, so without this it
+           * simply grew instead and took the header and the footer BUTTONS off-screen with it.
+           * That is the failure mode: not a clipped form, an unreachable Create button. Reported
+           * on Settings > Workspaces & Projects > Create project, 2026-08-24.
+           *
+           * `90dvh`, not `90vh`: on a mobile browser `vh` is the tallest viewport, including the
+           * space the collapsing URL bar occupies, so a `90vh` card can still be cut off there.
+           */
+          style={{ width, maxHeight: '90dvh', border: `1px solid ${BRAND.border}` }}
         >
           {/* ── Header ───────────────────────────────────────────────────── */}
           <div

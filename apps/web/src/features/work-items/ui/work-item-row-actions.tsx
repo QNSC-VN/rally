@@ -1,3 +1,22 @@
+/**
+ * NOT RENDERED ANYWHERE — read this before wiring it back in.
+ *
+ * The Backlog was its only call site, and that cell was removed on the product owner's ruling
+ * (2026-08-24) because of HOW it was mounted, not because the verb is unwanted: the cell carried
+ * `ml-auto` inside a row whose `minWidth` is `max-content`, so on a horizontally scrolling grid it
+ * detached from its own row — the trigger rendered mid-row and its popover opened at the far left of
+ * the screen. The header had no matching trailing column either, so header and rows resolved to
+ * different widths and every column drifted out of alignment. See the note at the removal site in
+ * `pages/backlog/backlog-page.tsx`.
+ *
+ * Kept rather than deleted because the component itself is sound and the requirement it was built
+ * for is still on the books — `P2-BL-FR-022` / §124, "Delete Defect | Row or detail action with
+ * confirmation", which the BA raised twice. Removing the row affordance is therefore a DECLARED
+ * REVERSAL of a BA finding, recorded in `docs/PR-487-BA-CONFLICTS.md`.
+ *
+ * IF IT COMES BACK: mount it as a real trailing COLUMN that the header renders too, never as an
+ * `ml-auto` cell the header knows nothing about. That is the mistake that produced both defects.
+ */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2 } from 'lucide-react'

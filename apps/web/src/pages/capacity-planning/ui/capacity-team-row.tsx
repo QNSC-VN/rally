@@ -111,7 +111,7 @@ export function CapacityTeamRow({
   }
 
   return (
-    <div className="group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter">
+    <div className="group flex min-h-[35px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter">
       {gutter}
 
       <div

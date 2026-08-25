@@ -107,7 +107,7 @@ export function CapacityItemRow({
   return (
     <div
       className={cn(
-        'group flex min-h-[34px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter',
+        'group flex min-h-[35px] items-center border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter',
         // Dimmed, not hidden: the commitment is real and still editable, and Rally's line
         // informs rather than gates.
         belowCutline && 'opacity-60',

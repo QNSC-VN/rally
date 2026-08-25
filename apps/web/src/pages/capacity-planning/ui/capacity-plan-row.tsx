@@ -66,7 +66,7 @@ export function CapacityPlanRow({
   return (
     <div
       role="row"
-      className="group flex min-h-[34px] w-full items-center border-b border-border-inner px-3 text-left text-ui-md transition-colors hover:bg-primary-lighter"
+      className="group flex min-h-[35px] w-full items-center border-b border-border-inner px-3 text-left text-ui-md transition-colors hover:bg-primary-lighter"
     >
       {gutter}
 

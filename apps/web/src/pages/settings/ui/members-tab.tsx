@@ -158,7 +158,7 @@ const MEMBER_COLUMNS: ColumnSpec<WorkspaceMember, MemberCtx, MemberColKey>[] = [
 // the Users grid reads the same as the rest of the app. Rows are not clickable —
 // the cells are the interactive surface (inline edit) — so no cursor-pointer.
 const ROW_CLASS =
-  'group flex min-h-[34px] items-center gap-2 border-b border-border-subtle bg-card px-3 text-ui-md transition-colors duration-100 hover:bg-primary-lighter'
+  'group flex min-h-[35px] items-center gap-2 border-b border-border-subtle bg-card px-3 text-ui-md transition-colors duration-100 hover:bg-primary-lighter'
 
 /** Click-to-sort state for the shared header (same contract as the list pages). */
 function useColumnSort() {

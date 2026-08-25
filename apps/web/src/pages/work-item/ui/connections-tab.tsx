@@ -205,7 +205,7 @@ const CHANGESET_COLUMNS: ColumnSpec<ScmChangeset, ScmCtx, ChangeColKey>[] = [
 ]
 
 const ROW_CLASS =
-  'flex min-h-[34px] items-center gap-2 border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter'
+  'flex min-h-[35px] items-center gap-2 border-b border-border-inner px-3 text-ui-md transition-colors hover:bg-primary-lighter'
 
 function includesCI(haystack: string, needle: string): boolean {
   return haystack.toLowerCase().includes(needle.trim().toLowerCase())
