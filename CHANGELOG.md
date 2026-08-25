@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.7.7](https://github.com/QNSC-VN/rally/compare/v0.7.6...v0.7.7) (2026-08-25)
+
+
+### ✨ Features
+
+* **ci:** add zizmor Actions-security scan job ([#493](https://github.com/QNSC-VN/rally/issues/493)) ([74d111f](https://github.com/QNSC-VN/rally/commit/74d111f65ae949495ab701ddc357ed567e99851e))
+
+
+### 🐛 Bug Fixes
+
+* **ci:** add missing packages:read to backend-deploy caller permissions ([#497](https://github.com/QNSC-VN/rally/issues/497)) ([92ef015](https://github.com/QNSC-VN/rally/commit/92ef015920905c68e354977099d8b21d1b19b6b1))
+* **ci:** code injection, scope permissions, persist-credentials, enforce zizmor ([#495](https://github.com/QNSC-VN/rally/issues/495)) ([a2d5292](https://github.com/QNSC-VN/rally/commit/a2d5292e877851ec8f92d86aa10952ff321ceee5))
+* **ci:** restore deploy permissions broken by the zizmor excessive-permissions fix ([#496](https://github.com/QNSC-VN/rally/issues/496)) ([c4cf28d](https://github.com/QNSC-VN/rally/commit/c4cf28d3877ff8643c8720d8a01a2e9ce1c6f283))
+* **web:** seven layout defects, and the shared components behind them ([#492](https://github.com/QNSC-VN/rally/issues/492)) ([b314bf9](https://github.com/QNSC-VN/rally/commit/b314bf978ff676913fb35a9f8925e5bb065caab5))
+
 ## [0.7.6](https://github.com/QNSC-VN/rally/compare/v0.7.5...v0.7.6) (2026-08-23)
 
 
