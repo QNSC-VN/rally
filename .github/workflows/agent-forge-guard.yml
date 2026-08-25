@@ -22,7 +22,7 @@ jobs:
   test-guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The guard diffs against the merge base, which does not exist in a shallow clone.
           fetch-depth: 0
