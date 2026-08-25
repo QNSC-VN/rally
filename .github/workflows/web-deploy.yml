@@ -183,8 +183,15 @@ jobs:
 
   deploy:
     needs: [wait-for-infra, wait-for-ci]
+    # Must match the UNION of every inner job's own permissions in the reusable
+    # web-deploy.yml, not just its top-level default (contents: read) — GitHub
+    # validates a reusable call's whole permission chain at trigger time, and
+    # a caller job that only grants the top-level default causes a
+    # startup_failure before any job runs. packages:read is for the build
+    # job's pnpm install of private @scope/* GitHub Packages.
     permissions:
       contents: read
+      packages: read
     uses: QNSC-VN/qnsc-ci/.github/workflows/web-deploy.yml@v1.10.0
     with:
       product: rally
