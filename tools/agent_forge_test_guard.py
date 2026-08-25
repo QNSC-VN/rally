@@ -19,6 +19,7 @@ this platform.
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
 import re
 import subprocess
@@ -91,6 +92,102 @@ def assertion_delta(base: str, head: str, path: str) -> tuple[int, int]:
     return added, removed
 
 
+def _names_at(revision: str, path: str) -> set[str] | None:
+    """Dependency names declared in a manifest at one revision, or None if unparseable here.
+
+    None is not a failure: it means this format is not one this script can read, and the caller then
+    falls back to treating any change as needing approval. Conservative on purpose — an unreadable
+    manifest is the one case where "the file changed" is the best question available.
+    """
+    blob = subprocess.run(
+        ["git", "show", f"{revision}:{path}"], capture_output=True, text=True, check=False
+    )
+    if blob.returncode != 0:
+        # Absent at this revision — a manifest being ADDED. Every name in it is new.
+        return set()
+    text = blob.stdout
+    name = pathlib.PurePosixPath(path).name
+
+    if name in ("package.json", "composer.json"):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        names: set[str] = set()
+        for block in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies",
+                      "require", "require-dev"):
+            entry = parsed.get(block)
+            if isinstance(entry, dict):
+                names |= {str(key).lower() for key in entry}
+        return names
+
+    if name.startswith("requirements") and name.endswith(".txt"):
+        names = set()
+        for line in text.splitlines():
+            candidate = line.split("#", 1)[0].strip()
+            if not candidate or candidate.startswith("-"):
+                continue
+            names.add(re.split(r"[\[<>=!~; ]", candidate, maxsplit=1)[0].strip().lower())
+        return names
+
+    if name in ("pyproject.toml", "Cargo.toml"):
+        try:
+            import tomllib
+        except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ ships it
+            return None
+        try:
+            parsed = tomllib.loads(text)
+        except tomllib.TOMLDecodeError:
+            return None
+        names = set()
+        project = parsed.get("project")
+        if isinstance(project, dict):
+            for spec in project.get("dependencies") or ():
+                names.add(re.split(r"[\[<>=!~; ]", str(spec), maxsplit=1)[0].strip().lower())
+            optional = project.get("optional-dependencies")
+            if isinstance(optional, dict):
+                for group in optional.values():
+                    for spec in group or ():
+                        head_of = re.split(r"[\[<>=!~; ]", str(spec), maxsplit=1)[0]
+                        names.add(head_of.strip().lower())
+        for block in ("dependencies", "dev-dependencies", "build-dependencies"):
+            entry = parsed.get(block)
+            if isinstance(entry, dict):
+                names |= {str(key).lower() for key in entry}
+        return names
+
+    if name == "go.mod":
+        names = set()
+        for line in text.splitlines():
+            candidate = line.strip()
+            if candidate.startswith("require "):
+                candidate = candidate[len("require ") :].strip()
+            if not candidate or candidate.startswith(("//", "module ", "go ", "require (", ")")):
+                continue
+            names.add(candidate.split()[0].lower())
+        return names
+
+    return None
+
+
+def added_dependencies(base: str, head: str, path: str) -> set[str] | None:
+    """Names present at `head` and absent at `base`, or None when the format is unreadable.
+
+    ADDED ONLY. A version bump is not a new dependency, and a removal is not a supply-chain risk —
+    which is the whole reason this asks about names rather than about the file. The check used to
+    fire on the manifest CHANGING, so every `chore(release)` pull request that bumped its own
+    `version` field failed it: rally's #494 touched `package.json`, `CHANGELOG.md` and
+    `.release-please-manifest.json` and was told to declare a dependency it had not added. It merged
+    past the failure, which is the real damage — a check that cries wolf on every release teaches
+    everyone to override it, and then it is overridden on the pull request that mattered.
+    """
+    before = _names_at(base, path)
+    after = _names_at(head, path)
+    if before is None or after is None:
+        return None
+    return after - before
+
+
 def declared_dependencies(body: str) -> set[str]:
     """Packages the pull request body says a human approved."""
     approved: set[str] = set()
@@ -125,12 +222,24 @@ def check(base: str, head: str, body: str) -> list[str]:
                         f"body with a line beginning `{TEST_APPROVAL}`."
                     )
         elif pathlib.PurePosixPath(path).name in MANIFESTS:
+            added = added_dependencies(base, head, path)
+            if added is not None and not added:
+                # The manifest changed and its dependency names did not: a version bump, a script,
+                # a field of metadata. Nothing arrived that carries a licence or a transitive tree.
+                continue
             approved = declared_dependencies(body)
-            if not approved:
+            unapproved = sorted(added - approved) if added is not None else []
+            if added is None and not approved:
                 failures.append(
-                    f"{path} changed but no dependency was approved. A dependency is a licence, a "
-                    f"maintainer and a transitive tree, none of which is visible in the diff — so "
-                    f"name what was added in the pull request body with a line beginning "
+                    f"{path} changed and this check cannot read that format, so it cannot tell a "
+                    f"version bump from a new dependency. Name what was added in the pull request "
+                    f"body with a line beginning `{DEPENDENCY_APPROVAL}: <package>`."
+                )
+            elif unapproved:
+                failures.append(
+                    f"{path} adds {', '.join(unapproved)}, which nobody approved. A dependency is "
+                    f"a licence, a maintainer and a transitive tree, none of which is visible in "
+                    f"the diff — so name it in the pull request body with a line beginning "
                     f"`{DEPENDENCY_APPROVAL}: <package>`."
                 )
     return failures
