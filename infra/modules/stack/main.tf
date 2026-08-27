@@ -469,6 +469,34 @@ module "otel_agent_worker" {
   memory_limit_mib = floor(local.otel_worker_memory * 0.625)
 }
 
+# ── FireLens log router sidecars ──────────────────────────────────────────────
+# Same gate as otel_agent above: a no-op until otlp_endpoint AND the
+# observability-token secret both exist. Dual-writes to CloudWatch (unchanged
+# destination, compliance retention) AND Grafana (same backend/credential the
+# otel_agent sidecars already use for metrics/traces) — see the module README
+# for why this needs its own sidecar rather than folding into otel_agent.
+module "firelens_agent_api" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.1.0"
+
+  otlp_endpoint        = var.observability.otlp_endpoint
+  token_secret_arn     = try(module.secrets.secret_arns["observability-token"], "")
+  cloudwatch_log_group = local.api_log_group
+  router_log_group     = local.api_log_group
+  region               = var.region
+  kms_key_arn          = local.kms_key_arn
+}
+
+module "firelens_agent_worker" {
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.1.0"
+
+  otlp_endpoint        = var.observability.otlp_endpoint
+  token_secret_arn     = try(module.secrets.secret_arns["observability-token"], "")
+  cloudwatch_log_group = local.worker_log_group
+  router_log_group     = local.worker_log_group
+  region               = var.region
+  kms_key_arn          = local.kms_key_arn
+}
+
 
 # ── ALB ───────────────────────────────────────────────────────────────────────
 # The ALB is shared and lives in runtime-dev. module.api attaches a host-header
@@ -612,9 +640,13 @@ locals {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.1.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.0"
 
   cpu_architecture = var.cpu_architecture
+  # Same gate as OTEL_ENABLED below: only switches log driver once a real
+  # router exists in additional_containers, never a bare no-op flip.
+  use_firelens             = module.firelens_agent_api.enabled
+  execution_s3_bucket_arns = module.firelens_agent_api.execution_s3_bucket_arns
 
   service_name = "api"
   cluster_name = module.ecs_cluster.cluster_name
@@ -708,6 +740,7 @@ module "api" {
     local.secret_iam_arns,
     [module.rds.master_secret_arn],
     aws_secretsmanager_secret.tunnel_token[*].arn,
+    module.firelens_agent_api.secret_arns,
   )
   kms_key_arn = local.kms_key_arn
   secrets = concat(local.api_db_secrets, [
@@ -821,6 +854,7 @@ module "api" {
   additional_containers = concat(
     module.otel_agent_api.container_definitions,
     module.tunnel_api.container_definitions,
+    module.firelens_agent_api.container_definitions,
   )
 
 
@@ -854,9 +888,11 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.1.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.0"
 
-  cpu_architecture = var.cpu_architecture
+  cpu_architecture         = var.cpu_architecture
+  use_firelens             = module.firelens_agent_worker.enabled
+  execution_s3_bucket_arns = module.firelens_agent_worker.execution_s3_bucket_arns
 
   service_name = "worker"
   cluster_name = module.ecs_cluster.cluster_name
@@ -900,7 +936,7 @@ module "worker" {
   # `secret_iam_arns`, NOT `secret_arns` — same reason as the api execution role above:
   # a bundled `secret_arns` yields valueFrom references that are invalid as IAM resources
   # and fail silently at apply time, surfacing only as a boot failure.
-  secret_arns = concat(local.secret_iam_arns, [module.rds.master_secret_arn])
+  secret_arns = concat(local.secret_iam_arns, [module.rds.master_secret_arn], module.firelens_agent_worker.secret_arns)
   kms_key_arn = local.kms_key_arn
   secrets = concat(local.worker_db_secrets, [
     # DB credentials come from local.worker_db_secrets above: the RDS-managed
@@ -1006,7 +1042,10 @@ module "worker" {
 
   # Merged into the task definition; reachable from the app at 127.0.0.1 via the
   # shared task network namespace. Empty list until a backend is configured.
-  additional_containers = module.otel_agent_worker.container_definitions
+  additional_containers = concat(
+    module.otel_agent_worker.container_definitions,
+    module.firelens_agent_worker.container_definitions,
+  )
 
 
   tags = merge(local.tags, { Service = "worker" })
