@@ -476,7 +476,7 @@ module "otel_agent_worker" {
 # otel_agent sidecars already use for metrics/traces) — see the module README
 # for why this needs its own sidecar rather than folding into otel_agent.
 module "firelens_agent_api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.1.1"
 
   otlp_endpoint        = var.observability.otlp_endpoint
   token_secret_arn     = try(module.secrets.secret_arns["observability-token"], "")
@@ -487,7 +487,7 @@ module "firelens_agent_api" {
 }
 
 module "firelens_agent_worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.1.1"
 
   otlp_endpoint        = var.observability.otlp_endpoint
   token_secret_arn     = try(module.secrets.secret_arns["observability-token"], "")
@@ -645,8 +645,8 @@ module "api" {
   cpu_architecture = var.cpu_architecture
   # Same gate as OTEL_ENABLED below: only switches log driver once a real
   # router exists in additional_containers, never a bare no-op flip.
-  use_firelens             = module.firelens_agent_api.enabled
-  execution_s3_bucket_arns = module.firelens_agent_api.execution_s3_bucket_arns
+  use_firelens   = module.firelens_agent_api.enabled
+  s3_bucket_arns = module.firelens_agent_api.task_s3_bucket_arns
 
   service_name = "api"
   cluster_name = module.ecs_cluster.cluster_name
@@ -890,9 +890,9 @@ module "api" {
 module "worker" {
   source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.0"
 
-  cpu_architecture         = var.cpu_architecture
-  use_firelens             = module.firelens_agent_worker.enabled
-  execution_s3_bucket_arns = module.firelens_agent_worker.execution_s3_bucket_arns
+  cpu_architecture = var.cpu_architecture
+  use_firelens     = module.firelens_agent_worker.enabled
+  s3_bucket_arns   = module.firelens_agent_worker.task_s3_bucket_arns
 
   service_name = "worker"
   cluster_name = module.ecs_cluster.cluster_name
