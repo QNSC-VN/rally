@@ -90,14 +90,17 @@ variable "cloudflare_account_id" {
 
 variable "otlp_endpoint" {
   description = <<-EOT
-    OTLP/HTTP base URL of the telemetry backend, e.g.
-    `https://otlp-gateway-prod-ap-southeast-1.grafana.net/otlp`.
+    OTLP/HTTP base URL of the telemetry backend — qnsc-infra's live/observability
+    stack, region prod-ap-southeast-0, with the `/otlp` suffix the otlphttp
+    exporter needs (the stack's own `otlp_url` output omits it).
 
-    Empty (the default) keeps telemetry DORMANT: no collector sidecar is created
-    and OTEL_ENABLED stays false. Populate the `observability-token` secret with
-    the Authorization header BEFORE setting this, or the collector starts and
-    cannot authenticate.
+    Setting this creates the `observability-token` Secrets Manager secret (empty)
+    and flips the sidecar on in the task definition — but the secret's VALUE must
+    be populated by hand (Basic base64(stack_id:token), never through Terraform —
+    see modules/stack/main.tf) and the service must be DEPLOYED before telemetry
+    actually flows. Blank would keep telemetry dormant; this repo's stack is live,
+    so blank is no longer the deliberate default.
   EOT
   type        = string
-  default     = ""
+  default     = "https://otlp-gateway-prod-ap-southeast-0.grafana.net/otlp"
 }
