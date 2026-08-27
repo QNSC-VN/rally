@@ -476,7 +476,7 @@ module "otel_agent_worker" {
 # otel_agent sidecars already use for metrics/traces) — see the module README
 # for why this needs its own sidecar rather than folding into otel_agent.
 module "firelens_agent_api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.1.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.1.2"
 
   otlp_endpoint        = var.observability.otlp_endpoint
   token_secret_arn     = try(module.secrets.secret_arns["observability-token"], "")
@@ -487,7 +487,7 @@ module "firelens_agent_api" {
 }
 
 module "firelens_agent_worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.1.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.1.2"
 
   otlp_endpoint        = var.observability.otlp_endpoint
   token_secret_arn     = try(module.secrets.secret_arns["observability-token"], "")
