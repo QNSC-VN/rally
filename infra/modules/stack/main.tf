@@ -471,13 +471,24 @@ module "otel_agent_worker" {
 
 # ── FireLens log router sidecars ──────────────────────────────────────────────
 # Same gate as otel_agent above: a no-op until otlp_endpoint AND the
-# observability-token secret both exist. Dual-writes to CloudWatch (unchanged
-# destination, compliance retention) AND Grafana (same backend/credential the
-# otel_agent sidecars already use for metrics/traces) — see the module README
-# for why this needs its own sidecar rather than folding into otel_agent.
+# observability-token secret both exist. GRAFANA ONLY — CloudWatch dual-write
+# was tried, worked, and was deliberately dropped (#507); see the module
+# README for why this needs its own sidecar rather than folding into
+# otel_agent.
+#
+# service_name MUST match the app's own hardcoded OTel service name exactly
+# (app.module.ts / worker.module.ts's `serviceName: 'rally-api'` /
+# `'rally-worker'`) — there is no shared var on the app side to read from, so
+# a mismatch here doesn't error, it silently creates a THIRD service_name in
+# Grafana that nothing else uses. product/env mirror otel_agent_{api,worker}
+# above exactly, for the same reason: logs, metrics and traces must agree on
+# which namespace/environment they belong to.
 module "firelens_agent_api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.1"
 
+  service_name     = "rally-api"
+  product          = var.product
+  env              = var.env
   otlp_endpoint    = var.observability.otlp_endpoint
   token_secret_arn = try(module.secrets.secret_arns["observability-token"], "")
   router_log_group = local.api_log_group
@@ -486,8 +497,11 @@ module "firelens_agent_api" {
 }
 
 module "firelens_agent_worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.1"
 
+  service_name     = "rally-worker"
+  product          = var.product
+  env              = var.env
   otlp_endpoint    = var.observability.otlp_endpoint
   token_secret_arn = try(module.secrets.secret_arns["observability-token"], "")
   router_log_group = local.worker_log_group
