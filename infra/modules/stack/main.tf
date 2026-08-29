@@ -509,6 +509,21 @@ module "firelens_agent_worker" {
   kms_key_arn      = local.kms_key_arn
 }
 
+# SINGLE SOURCE OF TRUTH for every threshold that appears BOTH as an alert
+# condition (module.alerts, below) and as a visible line on the dashboard
+# (grafana_dashboard.overview, further below). Defined once, here, so the
+# two can never silently drift apart — a dashboard line at a different
+# number than the alert that's supposed to explain it is worse than no
+# line at all: it tells the reader the wrong thing is "the bad number".
+locals {
+  alert_thresholds = {
+    http_error_rate     = 0.05 # ratio, 0-1
+    http_p99_latency_ms = 2000
+    db_pool_waiting     = 0
+    worker_failure_rate = 0.1 # ratio, 0-1
+  }
+}
+
 # ── Grafana Alerting ──────────────────────────────────────────────────────────
 # ALONGSIDE CloudWatch Alarms (monitor_target_health below), not replacing it —
 # CloudWatch stays on infra-level signals it can see directly; this covers
@@ -537,7 +552,7 @@ module "alerts" {
       promql    = "db_pool_waiting{deployment_environment_name=\"${var.env}\"}"
       for       = "5m"
       op        = "gt"
-      threshold = 0
+      threshold = local.alert_thresholds.db_pool_waiting
       severity  = "warning"
       summary   = "Connections are queueing for the DB pool in ${var.env} — pool is undersized or a query is holding connections too long."
     },
@@ -546,7 +561,7 @@ module "alerts" {
       promql    = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
       for       = "5m"
       op        = "gt"
-      threshold = 0.05
+      threshold = local.alert_thresholds.http_error_rate
       severity  = "critical"
       summary   = "HTTP 5xx rate above 5% in ${var.env} for 5m."
     },
@@ -555,7 +570,7 @@ module "alerts" {
       promql    = "histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
       for       = "5m"
       op        = "gt"
-      threshold = 2000
+      threshold = local.alert_thresholds.http_p99_latency_ms
       severity  = "warning"
       summary   = "HTTP p99 latency above 2s in ${var.env} for 5m."
     },
@@ -564,7 +579,7 @@ module "alerts" {
       promql    = "sum(rate(job_failures_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(job_runs_total{deployment_environment_name=\"${var.env}\"}[5m]))"
       for       = "5m"
       op        = "gt"
-      threshold = 0.1
+      threshold = local.alert_thresholds.worker_failure_rate
       severity  = "warning"
       summary   = "Worker job failure rate above 10% in ${var.env} for 5m."
     },
@@ -620,6 +635,27 @@ resource "grafana_dashboard" "overview" {
     refresh       = "1m"
     tags          = ["rally", var.env, "provisioned"]
 
+    # Vertical marker on every panel showing when a deploy landed —
+    # backend-deploy.yml's `annotate-deploy` job posts these via Grafana's
+    # own annotation API after each successful deploy, tagged so ONLY this
+    # product's THIS environment's deploys show here (a develop dashboard
+    # showing prod's deploy markers, or rally's dashboard showing another
+    # product's, would misattribute exactly the correlation this exists to
+    # enable). Built-in "-- Grafana --" datasource — Grafana's own
+    # annotation store, not a Loki/Prometheus query.
+    annotations = {
+      list = [
+        {
+          name       = "Deploys"
+          datasource = { type = "grafana", uid = "-- Grafana --" }
+          enable     = true
+          iconColor  = "blue"
+          tags       = ["deploy", "rally", var.env]
+          type       = "tags"
+        }
+      ]
+    }
+
     panels = [
       {
         id         = 1
@@ -634,12 +670,29 @@ resource "grafana_dashboard" "overview" {
         }]
       },
       {
-        id          = 2
-        title       = "HTTP error rate"
-        type        = "timeseries"
-        gridPos     = { h = 8, w = 12, x = 12, y = 0 }
-        datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
-        fieldConfig = { defaults = { unit = "percentunit", thresholds = { steps = [{ color = "green", value = null }, { color = "yellow", value = 0.02 }, { color = "red", value = 0.05 }] } } }
+        id         = 2
+        title      = "HTTP error rate"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 12, y = 0 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # Red step is local.alert_thresholds.http_error_rate itself — the
+        # exact number http-5xx-rate alerts on, not a separately-chosen
+        # "looks about right" value. thresholdsStyle draws it as a visible
+        # LINE on the graph, not just a value-color change, so the reader
+        # sees where the alert boundary sits without opening the rule.
+        fieldConfig = {
+          defaults = {
+            unit   = "percentunit"
+            custom = { thresholdsStyle = { mode = "line" } }
+            thresholds = {
+              steps = [
+                { color = "green", value = null },
+                { color = "yellow", value = local.alert_thresholds.http_error_rate / 2 },
+                { color = "red", value = local.alert_thresholds.http_error_rate },
+              ]
+            }
+          }
+        }
         targets = [{
           expr  = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
           refId = "A"
@@ -661,12 +714,26 @@ resource "grafana_dashboard" "overview" {
         }]
       },
       {
-        id          = 4
-        title       = "HTTP p50/p95/p99 latency"
-        type        = "timeseries"
-        gridPos     = { h = 8, w = 12, x = 12, y = 8 }
-        datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
-        fieldConfig = { defaults = { unit = "ms" } }
+        id         = 4
+        title      = "HTTP p50/p95/p99 latency"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 12, y = 8 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # Red step is local.alert_thresholds.http_p99_latency_ms — the
+        # http-p99-latency alert's own boundary, drawn as a line, not
+        # re-chosen here.
+        fieldConfig = {
+          defaults = {
+            unit   = "ms"
+            custom = { thresholdsStyle = { mode = "line" } }
+            thresholds = {
+              steps = [
+                { color = "green", value = null },
+                { color = "red", value = local.alert_thresholds.http_p99_latency_ms },
+              ]
+            }
+          }
+        }
         targets = [
           {
             expr         = "histogram_quantile(0.50, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
@@ -691,6 +758,24 @@ resource "grafana_dashboard" "overview" {
         type       = "timeseries"
         gridPos    = { h = 8, w = 12, x = 0, y = 16 }
         datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # Threshold applies to the whole PANEL, not the "waiting" series
+        # alone (Grafana field config has no per-series threshold) — reads
+        # correctly regardless, since local.alert_thresholds.db_pool_waiting
+        # is 0 and "waiting" sitting above 0 at all is exactly what
+        # db-pool-contention alerts on; "in_use" naturally runs above 0
+        # under normal load, so the line is visually crossed by that
+        # series constantly — expected, not a bug.
+        fieldConfig = {
+          defaults = {
+            custom = { thresholdsStyle = { mode = "line" } }
+            thresholds = {
+              steps = [
+                { color = "green", value = null },
+                { color = "red", value = local.alert_thresholds.db_pool_waiting },
+              ]
+            }
+          }
+        }
         targets = [
           {
             expr         = "db_pool_in_use{deployment_environment_name=\"${var.env}\"}"
@@ -742,6 +827,27 @@ resource "grafana_dashboard" "runtime" {
     time          = { from = "now-6h", to = "now" }
     refresh       = "1m"
     tags          = ["rally", var.env, "provisioned"]
+
+    # Vertical marker on every panel showing when a deploy landed —
+    # backend-deploy.yml's `annotate-deploy` job posts these via Grafana's
+    # own annotation API after each successful deploy, tagged so ONLY this
+    # product's THIS environment's deploys show here (a develop dashboard
+    # showing prod's deploy markers, or rally's dashboard showing another
+    # product's, would misattribute exactly the correlation this exists to
+    # enable). Built-in "-- Grafana --" datasource — Grafana's own
+    # annotation store, not a Loki/Prometheus query.
+    annotations = {
+      list = [
+        {
+          name       = "Deploys"
+          datasource = { type = "grafana", uid = "-- Grafana --" }
+          enable     = true
+          iconColor  = "blue"
+          tags       = ["deploy", "rally", var.env]
+          type       = "tags"
+        }
+      ]
+    }
 
     panels = [
       # ── Downstream dependencies: THIS is usually WHY latency/errors moved

@@ -242,3 +242,41 @@ jobs:
     # Least-privilege: pass only what the reusable declares (no `secrets: inherit`).
     secrets:
       AWS_ACCOUNT_ID:       ${{ vars.AWS_ACCOUNT_ID }}
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Deploy annotation — a vertical marker on every Grafana dashboard panel
+  # showing exactly when this deploy landed, so a metric spike can be
+  # correlated to a release at a glance instead of cross-referencing commit
+  # times by hand. Uses the SAME org-level GRAFANA_ALERTS_TOKEN this repo's
+  # Terraform alerting/dashboards already authenticate with (Admin-scoped,
+  # covers annotation writes) — no new credential.
+  #
+  # A SEPARATE job here, not a step inside `deploy`: the actual deploy steps
+  # live in qnsc-ci's shared reusable workflow, a different repo, not edited
+  # by this change. Own repo, own job — matches how this repo's dashboard/
+  # alerting Terraform already lives here rather than in the shared module
+  # family (see infra/modules/stack's own reasoning).
+  #
+  # Deliberately best-effort: `continue-on-error` on the one step that can
+  # fail, so a Grafana outage or a bad token never fails a real deploy over
+  # a marker nobody's on-call rotation depends on being able to trust.
+  annotate-deploy:
+    needs: [deploy]
+    if: always() && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Post deploy annotation to Grafana
+        continue-on-error: true
+        env:
+          GRAFANA_ALERTS_TOKEN: ${{ secrets.GRAFANA_ALERTS_TOKEN }}
+          DEPLOY_ENV: ${{ github.ref_type == 'tag' && 'production' || 'develop' }}
+        run: |
+          curl -sf -X POST "https://qnsc.grafana.net/api/annotations" \
+            -H "Authorization: Bearer ${GRAFANA_ALERTS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+                  --arg text "rally deployed ${GITHUB_SHA:0:7} to ${DEPLOY_ENV}" \
+                  --arg env "$DEPLOY_ENV" \
+                  '{tags: ["deploy", "rally", $env], text: $text}')"
