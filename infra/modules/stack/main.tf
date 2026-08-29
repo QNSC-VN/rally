@@ -543,6 +543,10 @@ locals {
   # someone adds later gets a safe default instead of a hard failure on
   # an unrelated change.
   alert_thresholds = lookup(local.alert_thresholds_by_env, var.env, local.alert_thresholds_by_env.develop)
+
+  # main, not a tag/sha: a runbook is meant to be edited without cutting a release,
+  # and Grafana's alert panel just needs a URL that resolves, not a pinned revision.
+  runbook_base_url = "https://github.com/QNSC-VN/rally/blob/main/docs/runbooks/alerts"
 }
 
 # ── Grafana Alerting ──────────────────────────────────────────────────────────
@@ -560,7 +564,7 @@ locals {
 # is a bug in THIS file, not in the module.
 module "alerts" {
   count  = var.grafana_alerting_auth != "" ? 1 : 0
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability-alerts?ref=observability-alerts-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability-alerts?ref=observability-alerts-v1.1.0"
 
   product                    = var.product
   env                        = var.env
@@ -569,40 +573,44 @@ module "alerts" {
 
   rules = [
     {
-      name      = "db-pool-contention"
-      promql    = "db_pool_waiting{deployment_environment_name=\"${var.env}\"}"
-      for       = "5m"
-      op        = "gt"
-      threshold = local.alert_thresholds.db_pool_waiting
-      severity  = "warning"
-      summary   = "Connections are queueing for the DB pool in ${var.env} — pool is undersized or a query is holding connections too long."
+      name        = "db-pool-contention"
+      promql      = "db_pool_waiting{deployment_environment_name=\"${var.env}\"}"
+      for         = "5m"
+      op          = "gt"
+      threshold   = local.alert_thresholds.db_pool_waiting
+      severity    = "warning"
+      summary     = "Connections are queueing for the DB pool in ${var.env} — pool is undersized or a query is holding connections too long."
+      runbook_url = "${local.runbook_base_url}/db-pool-contention.md"
     },
     {
-      name      = "http-5xx-rate"
-      promql    = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
-      for       = "5m"
-      op        = "gt"
-      threshold = local.alert_thresholds.http_error_rate
-      severity  = "critical"
-      summary   = "HTTP 5xx rate above 5% in ${var.env} for 5m."
+      name        = "http-5xx-rate"
+      promql      = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+      for         = "5m"
+      op          = "gt"
+      threshold   = local.alert_thresholds.http_error_rate
+      severity    = "critical"
+      summary     = "HTTP 5xx rate above 5% in ${var.env} for 5m."
+      runbook_url = "${local.runbook_base_url}/http-5xx-rate.md"
     },
     {
-      name      = "http-p99-latency"
-      promql    = "histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
-      for       = "5m"
-      op        = "gt"
-      threshold = local.alert_thresholds.http_p99_latency_ms
-      severity  = "warning"
-      summary   = "HTTP p99 latency above 2s in ${var.env} for 5m."
+      name        = "http-p99-latency"
+      promql      = "histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
+      for         = "5m"
+      op          = "gt"
+      threshold   = local.alert_thresholds.http_p99_latency_ms
+      severity    = "warning"
+      summary     = "HTTP p99 latency above 2s in ${var.env} for 5m."
+      runbook_url = "${local.runbook_base_url}/http-p99-latency.md"
     },
     {
-      name      = "worker-job-failure-rate"
-      promql    = "sum(rate(job_failures_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(job_runs_total{deployment_environment_name=\"${var.env}\"}[5m]))"
-      for       = "5m"
-      op        = "gt"
-      threshold = local.alert_thresholds.worker_failure_rate
-      severity  = "warning"
-      summary   = "Worker job failure rate above 10% in ${var.env} for 5m."
+      name        = "worker-job-failure-rate"
+      promql      = "sum(rate(job_failures_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(job_runs_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+      for         = "5m"
+      op          = "gt"
+      threshold   = local.alert_thresholds.worker_failure_rate
+      severity    = "warning"
+      summary     = "Worker job failure rate above 10% in ${var.env} for 5m."
+      runbook_url = "${local.runbook_base_url}/worker-job-failure-rate.md"
     },
   ]
 }
