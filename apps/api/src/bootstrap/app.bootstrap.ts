@@ -146,6 +146,14 @@ export async function bootstrapApp(app: NestFastifyApplication): Promise<void> {
     });
   }
 
-  // Graceful shutdown — ECS SIGTERM drains in-flight requests
-  app.enableShutdownHooks();
+  // Graceful shutdown is handled by main.ts's own SIGTERM/SIGINT listeners, which
+  // flush OTel before calling app.close() — NOT app.enableShutdownHooks() here.
+  // That call registers Nest's OWN SIGTERM/SIGINT listener that also calls
+  // app.close(), so a single SIGTERM fired BOTH listeners, running app.close()
+  // (and therefore every onModuleDestroy hook, including DrizzleProvider's
+  // pool.end()) twice concurrently — the second call threw "Connection is
+  // closed." / "Called end on pool more than once" on every task stop, visible
+  // as a recurring ERROR log on every deploy and scale-down. Confirmed via the
+  // shipped dashboards: worker's main.ts never calls enableShutdownHooks and
+  // never showed this error.
 }
