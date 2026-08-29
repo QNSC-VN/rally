@@ -515,13 +515,34 @@ module "firelens_agent_worker" {
 # two can never silently drift apart — a dashboard line at a different
 # number than the alert that's supposed to explain it is worse than no
 # line at all: it tells the reader the wrong thing is "the bad number".
+#
+# PER-ENVIRONMENT, deliberately — a pre-prod audit finding, fixed before
+# prod ever got its own rules: production is STRICTER than develop.
+# Develop traffic is synthetic/low-stakes; the same 5% error rate that's a
+# shrug there is a real incident against paying customers in production.
+# Zero infra cost — pure config, the free lever to pull before spending
+# money on anything else (see qnsc-infra/live/observability's own
+# retention-tier note for the one lever that DOES cost money).
 locals {
-  alert_thresholds = {
-    http_error_rate     = 0.05 # ratio, 0-1
-    http_p99_latency_ms = 2000
-    db_pool_waiting     = 0
-    worker_failure_rate = 0.1 # ratio, 0-1
+  alert_thresholds_by_env = {
+    develop = {
+      http_error_rate     = 0.05 # ratio, 0-1
+      http_p99_latency_ms = 2000
+      db_pool_waiting     = 0
+      worker_failure_rate = 0.10 # ratio, 0-1
+    }
+    production = {
+      http_error_rate     = 0.02
+      http_p99_latency_ms = 1000
+      db_pool_waiting     = 0
+      worker_failure_rate = 0.05
+    }
   }
+  # Falls back to develop's (looser) numbers for any env string that isn't
+  # one of the two above, rather than erroring — a third environment
+  # someone adds later gets a safe default instead of a hard failure on
+  # an unrelated change.
+  alert_thresholds = lookup(local.alert_thresholds_by_env, var.env, local.alert_thresholds_by_env.develop)
 }
 
 # ── Grafana Alerting ──────────────────────────────────────────────────────────
