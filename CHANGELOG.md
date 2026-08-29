@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.7.8](https://github.com/QNSC-VN/rally/compare/v0.7.7...v0.7.8) (2026-08-29)
+
+
+### ✨ Features
+
+* **infra:** CloudWatch alarms for the SES bounce/complaint queue ([#515](https://github.com/QNSC-VN/rally/issues/515)) ([b5fb543](https://github.com/QNSC-VN/rally/commit/b5fb543be4448ec6a74d8f3ec4879b74c89ef3c9))
+* **infra:** drop CloudWatch dual-write, Grafana-only for logs ([#507](https://github.com/QNSC-VN/rally/issues/507)) ([9bbd20b](https://github.com/QNSC-VN/rally/commit/9bbd20bd65ec781d597b200edc4809898f5f411d))
+* **infra:** HTTP availability SLO with burn-rate alerting ([#517](https://github.com/QNSC-VN/rally/issues/517)) ([47c0d55](https://github.com/QNSC-VN/rally/commit/47c0d5571c2d0300922d78d96f58bdc72e228dd2))
+* **infra:** Logs Explorer panel + trace-search Explore link ([#514](https://github.com/QNSC-VN/rally/issues/514)) ([8de1f3e](https://github.com/QNSC-VN/rally/commit/8de1f3e35433705681ea84d6b447855c0c55ca86))
+* **infra:** production alert thresholds stricter than develop ([#512](https://github.com/QNSC-VN/rally/issues/512)) ([034aeac](https://github.com/QNSC-VN/rally/commit/034aeacb57af2f44d10925e7bc0bfd7bd410de83))
+* **infra:** provision rally's Grafana dashboard ([#510](https://github.com/QNSC-VN/rally/issues/510)) ([4fc8d35](https://github.com/QNSC-VN/rally/commit/4fc8d356bc1cf1850c7b11bcdf0eec7333a2fb7c))
+* **infra:** recent-errors and log-volume panels on dashboards ([#511](https://github.com/QNSC-VN/rally/issues/511)) ([839ddec](https://github.com/QNSC-VN/rally/commit/839ddecf5470d6b8a4f8850904359d42e0d55bba))
+* **infra:** runbook links on every Grafana alert rule ([#516](https://github.com/QNSC-VN/rally/issues/516)) ([4b4b891](https://github.com/QNSC-VN/rally/commit/4b4b891bc0562a1b7fb21a143672cd7724b56cba))
+* **infra:** wire firelens-agent, dual-write logs to CloudWatch and Grafana ([#502](https://github.com/QNSC-VN/rally/issues/502)) ([0684dde](https://github.com/QNSC-VN/rally/commit/0684dde653c6ede160527bac920ba080dd027335))
+* **infra:** wire Grafana Alerting for DB pool, HTTP errors, latency, worker failures ([#509](https://github.com/QNSC-VN/rally/issues/509)) ([dfd6b2e](https://github.com/QNSC-VN/rally/commit/dfd6b2e62eb3d44063cdfdd1069cb3b3e45bd63f))
+* **infra:** wire otlp_endpoint to the live Grafana Cloud stack ([#500](https://github.com/QNSC-VN/rally/issues/500)) ([bcb7125](https://github.com/QNSC-VN/rally/commit/bcb71258127ed3ebc4b317367c48423d5692723c))
+
+
+### 🐛 Bug Fixes
+
+* **api:** remove double SIGTERM/SIGINT handler causing pool.end() twice ([#518](https://github.com/QNSC-VN/rally/issues/518)) ([5ae156b](https://github.com/QNSC-VN/rally/commit/5ae156be4fcbfb7c1f503322c9a367036e0d3673))
+* **infra:** bump ecs-service to v2.3.1, grants s3:GetBucketLocation ([#504](https://github.com/QNSC-VN/rally/issues/504)) ([b417a03](https://github.com/QNSC-VN/rally/commit/b417a03c2c7270a7a9f078f6b0364e44977b1031))
+* **infra:** bump firelens-agent to v0.1.1, task-role S3 grant not execution-role ([#503](https://github.com/QNSC-VN/rally/issues/503)) ([31922eb](https://github.com/QNSC-VN/rally/commit/31922eb0d0d5670b63c948f60b4d8e1bd97c6eb5))
+* **infra:** bump firelens-agent to v0.1.2, real Fluent Bit init version ([#505](https://github.com/QNSC-VN/rally/issues/505)) ([65e7cb7](https://github.com/QNSC-VN/rally/commit/65e7cb7ad574dd637306789115ea3d8b0de1c435))
+* **infra:** bump firelens-agent to v0.1.3, fixes \$message escaping crash ([#506](https://github.com/QNSC-VN/rally/issues/506)) ([412a354](https://github.com/QNSC-VN/rally/commit/412a35432f59e2320c126794fb02f4ae5937779e))
+* **infra:** bump firelens-agent, wire service_name/product/env for correct log labels ([#508](https://github.com/QNSC-VN/rally/issues/508)) ([0380eff](https://github.com/QNSC-VN/rally/commit/0380eff98f5e4466c61f4b349a805d5377168607))
+* **infra:** dashboard panel bugs found on a real screenshot review ([#513](https://github.com/QNSC-VN/rally/issues/513)) ([c6782e5](https://github.com/QNSC-VN/rally/commit/c6782e5dbf76a9d98ab636865c87ab25fd8312de))
+
 ## [0.7.7](https://github.com/QNSC-VN/rally/compare/v0.7.6...v0.7.7) (2026-08-25)
 
 
