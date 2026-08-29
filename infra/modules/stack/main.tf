@@ -774,8 +774,9 @@ resource "grafana_dashboard" "overview" {
           }
         }
         targets = [{
-          expr  = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
-          refId = "A"
+          expr         = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+          legendFormat = "error rate"
+          refId        = "A"
         }]
       },
       {
@@ -856,14 +857,20 @@ resource "grafana_dashboard" "overview" {
             }
           }
         }
+        # sum by (service_name), not the raw metric: caught on a real
+        # screenshot review, before prod — an ungrouped query returns one
+        # series PER RUNNING TASK (service_instance_id differs across
+        # replicas/rollouts even though service_name doesn't), which
+        # rendered as duplicate-looking "rally-api in_use" legend entries
+        # instead of one line per service.
         targets = [
           {
-            expr         = "db_pool_in_use{deployment_environment_name=\"${var.env}\"}"
+            expr         = "sum(db_pool_in_use{deployment_environment_name=\"${var.env}\"}) by (service_name)"
             legendFormat = "{{service_name}} in_use"
             refId        = "A"
           },
           {
-            expr         = "db_pool_waiting{deployment_environment_name=\"${var.env}\"}"
+            expr         = "sum(db_pool_waiting{deployment_environment_name=\"${var.env}\"}) by (service_name)"
             legendFormat = "{{service_name}} waiting"
             refId        = "B"
           },
