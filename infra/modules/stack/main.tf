@@ -624,6 +624,16 @@ data "grafana_data_source" "loki" {
   name     = var.grafana_alerting.logs_datasource_name
 }
 
+# Read-only lookup, used only for the Overview dashboard's "Search traces"
+# link (Explore, not an embedded panel — see that link's own comment for
+# why). Never queried directly: no trace PromQL/TraceQL target reads this
+# UID, so an empty/wrong value would break only that one link, not a panel.
+data "grafana_data_source" "tempo" {
+  count    = var.grafana_alerting_auth != "" ? 1 : 0
+  provider = grafana
+  name     = var.grafana_alerting.traces_datasource_name
+}
+
 # A SUBFOLDER of the shared Dashboards folder, not dashboards filed
 # directly into it by title. Reversed from an earlier attempt in this same
 # file: alert rule groups stay at one-per-product forever, so a flat
@@ -661,6 +671,49 @@ resource "grafana_dashboard" "overview" {
     time          = { from = "now-6h", to = "now" }
     refresh       = "1m"
     tags          = ["rally", var.env, "provisioned"]
+
+    # "level" gates the Logs Explorer panel below — a debug/investigation
+    # tool, not a golden-signal panel, so it defaults to every level
+    # instead of narrowing to errors like "Recent errors" does. Standard
+    # Grafana custom-variable shape (verified against years of stable
+    # Grafana docs, unlike the panel-JSON shapes flagged elsewhere in this
+    # file as needing a real export to trust): "All" maps to the regex
+    # ".*", matching detected_level's actual values (error/warn/info/debug).
+    templating = {
+      list = [
+        {
+          name    = "level"
+          type    = "custom"
+          label   = "Level"
+          query   = "All : .*,error : error,warn : warn,info : info,debug : debug"
+          current = { text = "All", value = ".*" }
+          options = [
+            { text = "All", value = ".*", selected = true },
+            { text = "error", value = "error", selected = false },
+            { text = "warn", value = "warn", selected = false },
+            { text = "info", value = "info", selected = false },
+            { text = "debug", value = "debug", selected = false },
+          ]
+        }
+      ]
+    }
+
+    # No dashboard-embedded trace list/search panel: researched again this
+    # session, real JSON shape for a sortable multi-trace TraceQL table
+    # panel is still unverifiable (GitHub code search for "tableType":
+    # "traces" / "queryType":"traceql" returned zero real fixtures, and
+    # Grafana's own docs describe the feature without giving the JSON). A
+    # dashboard LINK is the documented, stable mechanism instead — Explore
+    # with the Tempo datasource preselected, no guessed panel model.
+    links = [
+      {
+        title       = "Search traces (Tempo Explore)"
+        url         = "/explore?left=%7B%22datasource%22:%22${data.grafana_data_source.tempo[0].uid}%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22queryType%22:%22traceqlSearch%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D"
+        type        = "link"
+        icon        = "search"
+        targetBlank = true
+      }
+    ]
 
     # Vertical marker on every panel showing when a deploy landed —
     # backend-deploy.yml's `annotate-deploy` job posts these via Grafana's
@@ -869,6 +922,37 @@ resource "grafana_dashboard" "overview" {
         targets = [{
           datasource = { type = "loki", uid = data.grafana_data_source.loki[0].uid }
           expr       = "{service_name=~\"rally-api|rally-worker\", deployment_environment_name=\"${var.env}\"} | detected_level=\"error\""
+          refId      = "A"
+        }]
+      },
+      # Full-text, all-levels debug tool — "Recent errors" above answers
+      # "is something on fire"; this answers "what did this specific
+      # request/instance actually log", which needs every level and a
+      # freetext search box, not a fixed filter. `$level` (templating,
+      # above) narrows by severity; the `|~` line-contains filter gives a
+      # freetext box in the Loki query editor's UI for free (Grafana infers
+      # it from the LogQL, same as the panel-type inference noted on
+      # "Recent errors"). Same verified `type: "logs"` shape, just a second
+      # instance with different options/query — not a new panel type.
+      {
+        id         = 8
+        title      = "Logs Explorer"
+        type       = "logs"
+        gridPos    = { h = 10, w = 24, x = 0, y = 32 }
+        datasource = { type = "loki", uid = data.grafana_data_source.loki[0].uid }
+        options = {
+          dedupStrategy      = "none"
+          enableLogDetails   = true
+          prettifyLogMessage = false
+          showCommonLabels   = false
+          showLabels         = true
+          showTime           = true
+          sortOrder          = "Descending"
+          wrapLogMessage     = false
+        }
+        targets = [{
+          datasource = { type = "loki", uid = data.grafana_data_source.loki[0].uid }
+          expr       = "{service_name=~\"rally-api|rally-worker\", deployment_environment_name=\"${var.env}\"} | detected_level=~\"$level\""
           refId      = "A"
         }]
       },
