@@ -132,6 +132,20 @@ variable "grafana_alerting_prometheus_datasource_name" {
   default     = "grafanacloud-qnsc-prom"
 }
 
+variable "grafana_dashboards_folder_uid" {
+  description = <<-EOT
+    qnsc-infra's live/observability stack's `dashboards_folder_uid` output —
+    the shared folder every product's own dashboard lives in. A DIFFERENT
+    folder from grafana_alerting_folder_uid below; do not merge them.
+
+    Empty until qnsc-infra's Dashboards folder is applied and its real UID
+    backfilled here — same bootstrap sequencing grafana_alerting_folder_uid
+    itself went through.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "grafana_alerting_folder_uid" {
   description = "qnsc-infra's live/observability stack's `alerting_folder_uid` output — the shared folder every product's rule groups live under. Same value in every environment; not a secret."
   type        = string

@@ -529,7 +529,7 @@ module "alerts" {
   product                    = var.product
   env                        = var.env
   prometheus_datasource_name = var.grafana_alerting.prometheus_datasource_name
-  folder_uid                 = var.grafana_alerting.folder_uid
+  folder_uid                 = var.grafana_alerting.alerts_folder_uid
 
   rules = [
     {
@@ -593,7 +593,7 @@ data "grafana_data_source" "prometheus" {
 resource "grafana_dashboard" "this" {
   count     = var.grafana_alerting_auth != "" ? 1 : 0
   provider  = grafana
-  folder    = var.grafana_alerting.folder_uid
+  folder    = var.grafana_alerting.dashboards_folder_uid
   overwrite = true
 
   config_json = jsonencode({
