@@ -18,6 +18,7 @@ terraform {
   required_providers {
     aws        = { source = "hashicorp/aws", version = "~> 5.0" }
     cloudflare = { source = "cloudflare/cloudflare", version = "~> 4.0" }
+    grafana    = { source = "grafana/grafana", version = "~> 3.0" }
   }
 
   backend "s3" {
@@ -42,6 +43,17 @@ provider "aws" {
 
 provider "cloudflare" {
   api_token = var.cloudflare_api_token != "" ? var.cloudflare_api_token : null
+}
+
+// Configured UNCONDITIONALLY, like the cloudflare provider above — providers
+// can't be conditional — but touches nothing at all while
+// grafana_alerting_auth is empty: module.alerts (inside module.stack) is
+// count-gated to zero in that state, so this config is simply never used
+// for an actual API call. See modules/stack/variables.tf's
+// grafana_alerting_auth for the full reasoning.
+provider "grafana" {
+  url  = var.grafana_alerting_url
+  auth = var.grafana_alerting_auth
 }
 
 // Route 53 publishes health-check metrics ONLY to us-east-1, so the ingress alarm in
@@ -520,6 +532,13 @@ module "stack" {
     // Cost control. Note this drops most ERROR traces too — keeping every
     // error needs tail sampling, which needs a gateway, not a sidecar.
     sampling_probability = 0.1
+  }
+
+  grafana_alerting_auth = var.grafana_alerting_auth
+  grafana_alerting = {
+    url                        = var.grafana_alerting_url
+    prometheus_datasource_name = var.grafana_alerting_prometheus_datasource_name
+    folder_uid                 = var.grafana_alerting_folder_uid
   }
 
   alarm_emails          = var.alarm_emails

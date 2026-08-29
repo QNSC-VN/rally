@@ -509,6 +509,68 @@ module "firelens_agent_worker" {
   kms_key_arn      = local.kms_key_arn
 }
 
+# ── Grafana Alerting ──────────────────────────────────────────────────────────
+# ALONGSIDE CloudWatch Alarms (monitor_target_health below), not replacing it —
+# CloudWatch stays on infra-level signals it can see directly; this covers
+# only what CloudWatch cannot: application-level telemetry. Dormant until
+# var.grafana_alerting_auth is set (count, not a no-op module — see that
+# variable's own description for why count and not the usual empty-string
+# no-op pattern).
+#
+# Every promql below scopes to THIS environment explicitly
+# (deployment_environment_name), deliberately NOT to `service_namespace`/
+# product — this module's own philosophy (see its README) is that a query
+# is used verbatim, no hidden label injection, so a rule scoped wrong here
+# is a bug in THIS file, not in the module.
+module "alerts" {
+  count  = var.grafana_alerting_auth != "" ? 1 : 0
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability-alerts?ref=observability-alerts-v1.0.0"
+
+  product                    = var.product
+  env                        = var.env
+  prometheus_datasource_name = var.grafana_alerting.prometheus_datasource_name
+  folder_uid                 = var.grafana_alerting.folder_uid
+
+  rules = [
+    {
+      name      = "db-pool-contention"
+      promql    = "db_pool_waiting{deployment_environment_name=\"${var.env}\"}"
+      for       = "5m"
+      op        = "gt"
+      threshold = 0
+      severity  = "warning"
+      summary   = "Connections are queueing for the DB pool in ${var.env} — pool is undersized or a query is holding connections too long."
+    },
+    {
+      name      = "http-5xx-rate"
+      promql    = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+      for       = "5m"
+      op        = "gt"
+      threshold = 0.05
+      severity  = "critical"
+      summary   = "HTTP 5xx rate above 5% in ${var.env} for 5m."
+    },
+    {
+      name      = "http-p99-latency"
+      promql    = "histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
+      for       = "5m"
+      op        = "gt"
+      threshold = 2000
+      severity  = "warning"
+      summary   = "HTTP p99 latency above 2s in ${var.env} for 5m."
+    },
+    {
+      name      = "worker-job-failure-rate"
+      promql    = "sum(rate(job_failures_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(job_runs_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+      for       = "5m"
+      op        = "gt"
+      threshold = 0.1
+      severity  = "warning"
+      summary   = "Worker job failure rate above 10% in ${var.env} for 5m."
+    },
+  ]
+}
+
 
 # ── ALB ───────────────────────────────────────────────────────────────────────
 # The ALB is shared and lives in runtime-dev. module.api attaches a host-header
