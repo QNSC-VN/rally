@@ -498,6 +498,7 @@ variable "grafana_alerting" {
     url                        = optional(string, "https://qnsc.grafana.net")
     prometheus_datasource_name = optional(string, "grafanacloud-qnsc-prom")
     logs_datasource_name       = optional(string, "grafanacloud-qnsc-logs")
+    traces_datasource_name     = optional(string, "grafanacloud-qnsc-traces")
     alerts_folder_uid          = optional(string, "")
     dashboards_folder_uid      = optional(string, "")
   })
