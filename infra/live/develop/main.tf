@@ -519,6 +519,7 @@ module "stack" {
   grafana_alerting = {
     url                        = var.grafana_alerting_url
     prometheus_datasource_name = var.grafana_alerting_prometheus_datasource_name
+    logs_datasource_name       = var.grafana_logs_datasource_name
     alerts_folder_uid          = var.grafana_alerting_folder_uid
     dashboards_folder_uid      = var.grafana_dashboards_folder_uid
   }
