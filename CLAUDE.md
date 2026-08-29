@@ -1804,9 +1804,16 @@ there, not here. `libs/platform` keeps only re-export façades (`observability/i
 - **Metrics are emitted, not declared.** If you add a name to `METRIC_NAMES` in the
   package, something must record it — a spec asserts instruments == names. This repo
   previously declared 23 names and implemented none.
-- **`OTEL_ENABLED` is `false` everywhere** and no collector exists yet, so spans and
-  metrics are no-ops today. Logs are the live signal. See
-  `docs/superpowers/specs/2026-07-26-observability-architecture-design.md`.
+- **`OTEL_ENABLED` is live in both environments now** (`module.otel_agent_{api,worker}.enabled`,
+  true once `otlp_endpoint` is set — it is, in both `infra/live/develop` and `infra/live/prod`).
+  Spans, metrics, logs and traces all flow to Grafana Cloud (Mimir/Loki/Tempo) via the OTLP
+  gateway, with dashboards, per-env alert thresholds, log-to-trace derived-field correlation
+  and CloudWatch alarms for RDS/ECS/ALB/cache/SQS alongside it. This reverses the note that
+  used to be here ("`OTEL_ENABLED` is `false` everywhere, no collector exists") — that was true
+  before the stack was built out; do not trust it. See
+  `docs/superpowers/specs/2026-07-26-observability-architecture-design.md` for the original
+  design (now largely implemented, not aspirational) and `docs/runbooks/alerts/` for what to
+  do when one of the four Grafana alert rules fires.
 
 ## Infrastructure invariants
 
