@@ -448,6 +448,53 @@ variable "observability" {
   default = {}
 }
 
+variable "grafana_alerting_auth" {
+  description = <<-EOT
+    Stack service account token — qnsc-infra/live/observability's
+    `alerting_service_account_token` output. A SEPARATE variable from
+    `grafana_alerting` below (not nested in that object), same reason
+    `cloudflare_api_token` is its own top-level variable rather than folded
+    into some larger config object: this carries a raw secret value directly
+    through Terraform, and `sensitive = true` only masks plan/apply OUTPUT
+    for a variable as a whole — nesting it would either blunt-hide the
+    harmless fields alongside it or not mask this one at all.
+
+    The master switch, same pattern as `observability.otlp_endpoint` above:
+    while empty, `module.alerts` is not created at all — count, not a
+    dormant no-op module, because `observability-alerts` has no provider
+    block of its own (a module that configures its own provider cannot be
+    used with count/for_each at all — see that module's README) and
+    inherits the ROOT's `grafana` provider automatically. The root provider
+    itself is configured unconditionally (providers can't be conditional),
+    but touches nothing at all while count is 0.
+
+    Reaches Terraform via TF_VAR_grafana_alerting_auth in CI
+    (GRAFANA_ALERTS_TOKEN secret) — NEVER through AWS Secrets Manager,
+    unlike the OTLP token: this credential is needed at PLAN/APPLY time
+    only, nothing running in a task ever calls the Grafana instance API.
+  EOT
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "grafana_alerting" {
+  description = <<-EOT
+    Grafana Alerting config, ALONGSIDE CloudWatch Alarms
+    (monitor_target_health below), not replacing it — CloudWatch stays on
+    infra-level signals it can see directly; this covers only what
+    CloudWatch cannot (DB pool contention, HTTP error rate, latency, worker
+    job failure rate). None of these fields are secret — see
+    `grafana_alerting_auth` for the one that is.
+  EOT
+  type = object({
+    url                        = optional(string, "https://qnsc.grafana.net")
+    prometheus_datasource_name = optional(string, "grafanacloud-qnsc-prom")
+    folder_uid                 = optional(string, "")
+  })
+  default = {}
+}
+
 variable "monitor_target_health" {
   description = <<-EOT
     Create the per-service UnHealthyHostCount alarm.

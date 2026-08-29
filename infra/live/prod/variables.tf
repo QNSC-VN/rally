@@ -104,3 +104,36 @@ variable "otlp_endpoint" {
   type        = string
   default     = "https://otlp-gateway-prod-ap-southeast-0.grafana.net/otlp"
 }
+
+variable "grafana_alerting_url" {
+  description = "The Grafana instance URL — qnsc-infra's live/observability stack's `alerting_grafana_url` output. Same value in every environment; not a secret."
+  type        = string
+  default     = "https://qnsc.grafana.net"
+}
+
+variable "grafana_alerting_auth" {
+  description = <<-EOT
+    Stack service account token — qnsc-infra's live/observability stack's
+    `alerting_service_account_token` output. Reaches Terraform via
+    TF_VAR_grafana_alerting_auth in CI (GRAFANA_ALERTS_TOKEN secret), NEVER
+    through AWS Secrets Manager — see modules/stack/variables.tf's
+    grafana_alerting_auth for why. Blank keeps Grafana Alerting dormant
+    (module.alerts is count-gated to zero); CloudWatch Alarms are unaffected
+    either way.
+  EOT
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "grafana_alerting_prometheus_datasource_name" {
+  description = "qnsc-infra's live/observability stack's `alerting_prometheus_datasource_name` output. Same value in every environment; not a secret."
+  type        = string
+  default     = "grafanacloud-qnsc-prom"
+}
+
+variable "grafana_alerting_folder_uid" {
+  description = "qnsc-infra's live/observability stack's `alerting_folder_uid` output — the shared folder every product's rule groups live under. Same value in every environment; not a secret."
+  type        = string
+  default     = "dfwj6sltnku0we"
+}
