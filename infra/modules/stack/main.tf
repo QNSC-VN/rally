@@ -2640,6 +2640,47 @@ resource "aws_sns_topic_subscription" "ses_bounce_to_sqs" {
   endpoint  = aws_sqs_queue.ses_bounce_feedback.arn
 }
 
+# This queue had NO alarm of any kind — checked, zero aws_cloudwatch_metric_alarm
+# resources reference it anywhere in this repo, unlike every other AWS resource the
+# stack owns. If BounceFeedbackService's long-poll loop stalls (a bug, a permission
+# change, a worker deploy that drops the consumer), bounce/complaint events pile up
+# silently: no failed health check, no 5xx, nothing — the app keeps sending mail to
+# addresses SES already told us are bad, which is the compliance-relevant failure
+# mode, not just a queue-depth one.
+resource "aws_cloudwatch_metric_alarm" "ses_bounce_queue_depth" {
+  alarm_name          = "${local.name}-ses-bounce-queue-depth-high"
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  dimensions          = { QueueName = aws_sqs_queue.ses_bounce_feedback.name }
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 3
+  threshold           = 100
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [module.observability.alarm_topic_arn]
+  tags                = local.tags
+}
+
+# The direct "is anyone draining this" signal — depth alone can spike from a real
+# burst of bounces/complaints and clear on its own; age only grows when nothing is
+# consuming. 1 hour is generous: BounceFeedbackService long-polls continuously, so a
+# healthy consumer never lets a message sit anywhere near that long.
+resource "aws_cloudwatch_metric_alarm" "ses_bounce_queue_stalled" {
+  alarm_name          = "${local.name}-ses-bounce-queue-stalled"
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateAgeOfOldestMessage"
+  dimensions          = { QueueName = aws_sqs_queue.ses_bounce_feedback.name }
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 3600
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [module.observability.alarm_topic_arn]
+  tags                = local.tags
+}
+
 # The feedback half of the SES loop: the worker's BounceFeedbackService long-polls the shared
 # bounce queue. Scoped to the ONE queue and the three calls a drain makes — Receive to claim a
 # batch, Delete to acknowledge (which the consumer does whether or not the event matched a row,
