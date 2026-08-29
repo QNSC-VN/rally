@@ -509,6 +509,21 @@ module "firelens_agent_worker" {
   kms_key_arn      = local.kms_key_arn
 }
 
+# SINGLE SOURCE OF TRUTH for every threshold that appears BOTH as an alert
+# condition (module.alerts, below) and as a visible line on the dashboard
+# (grafana_dashboard.overview, further below). Defined once, here, so the
+# two can never silently drift apart — a dashboard line at a different
+# number than the alert that's supposed to explain it is worse than no
+# line at all: it tells the reader the wrong thing is "the bad number".
+locals {
+  alert_thresholds = {
+    http_error_rate     = 0.05 # ratio, 0-1
+    http_p99_latency_ms = 2000
+    db_pool_waiting     = 0
+    worker_failure_rate = 0.1 # ratio, 0-1
+  }
+}
+
 # ── Grafana Alerting ──────────────────────────────────────────────────────────
 # ALONGSIDE CloudWatch Alarms (monitor_target_health below), not replacing it —
 # CloudWatch stays on infra-level signals it can see directly; this covers
@@ -529,7 +544,7 @@ module "alerts" {
   product                    = var.product
   env                        = var.env
   prometheus_datasource_name = var.grafana_alerting.prometheus_datasource_name
-  folder_uid                 = var.grafana_alerting.folder_uid
+  folder_uid                 = var.grafana_alerting.alerts_folder_uid
 
   rules = [
     {
@@ -537,7 +552,7 @@ module "alerts" {
       promql    = "db_pool_waiting{deployment_environment_name=\"${var.env}\"}"
       for       = "5m"
       op        = "gt"
-      threshold = 0
+      threshold = local.alert_thresholds.db_pool_waiting
       severity  = "warning"
       summary   = "Connections are queueing for the DB pool in ${var.env} — pool is undersized or a query is holding connections too long."
     },
@@ -546,7 +561,7 @@ module "alerts" {
       promql    = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
       for       = "5m"
       op        = "gt"
-      threshold = 0.05
+      threshold = local.alert_thresholds.http_error_rate
       severity  = "critical"
       summary   = "HTTP 5xx rate above 5% in ${var.env} for 5m."
     },
@@ -555,7 +570,7 @@ module "alerts" {
       promql    = "histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
       for       = "5m"
       op        = "gt"
-      threshold = 2000
+      threshold = local.alert_thresholds.http_p99_latency_ms
       severity  = "warning"
       summary   = "HTTP p99 latency above 2s in ${var.env} for 5m."
     },
@@ -564,11 +579,380 @@ module "alerts" {
       promql    = "sum(rate(job_failures_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(job_runs_total{deployment_environment_name=\"${var.env}\"}[5m]))"
       for       = "5m"
       op        = "gt"
-      threshold = 0.1
+      threshold = local.alert_thresholds.worker_failure_rate
       severity  = "warning"
       summary   = "Worker job failure rate above 10% in ${var.env} for 5m."
     },
   ]
+}
+
+# Resolved directly (not via a template variable) for the same reason the
+# alert rules resolve their datasource through observability-alerts rather
+# than a caller-supplied UID: this read is safe here because grafana_url/
+# grafana_alerting_auth are always plain, already-known CI-secret values by
+# apply time, never a same-run resource attribute racing its own creation.
+data "grafana_data_source" "prometheus" {
+  count    = var.grafana_alerting_auth != "" ? 1 : 0
+  provider = grafana
+  name     = var.grafana_alerting.prometheus_datasource_name
+}
+
+# A SUBFOLDER of the shared Dashboards folder, not dashboards filed
+# directly into it by title. Reversed from an earlier attempt in this same
+# file: alert rule groups stay at one-per-product forever, so a flat
+# Alerts folder distinguished by rule-group NAME never gets crowded — but
+# dashboards multiply (Overview, Runtime, eventually business KPIs), and a
+# flat folder full of "rally (develop) - X" / "rally (production) - X"
+# titles is exactly the mess a nested folder avoids. Grafana Cloud supports
+# folder nesting (`parent_folder_uid`); this is that.
+resource "grafana_folder" "product_dashboards" {
+  count             = var.grafana_alerting_auth != "" ? 1 : 0
+  provider          = grafana
+  parent_folder_uid = var.grafana_alerting.dashboards_folder_uid
+  title             = "Rally"
+}
+
+# TWO dashboards, not one growing page — the RED/USE split enterprise
+# on-call practice uses: "is something wrong" (Overview, golden signals)
+# is a different question from "why" (Runtime & Dependencies, saturation
+# and downstream call health), and conflating them means every routine
+# glance scrolls past diagnostic panels nobody needed yet. Deliberately
+# NOT a reusable qnsc-tf-modules module (see the module family's own
+# reasoning): a dashboard is a bespoke panel layout, no reuse payoff.
+resource "grafana_dashboard" "overview" {
+  count     = var.grafana_alerting_auth != "" ? 1 : 0
+  provider  = grafana
+  folder    = grafana_folder.product_dashboards[0].uid
+  overwrite = true
+
+  config_json = jsonencode({
+    title         = "Overview (${var.env})"
+    uid           = "rally-overview-${var.env}"
+    timezone      = "browser"
+    editable      = false
+    schemaVersion = 39
+    time          = { from = "now-6h", to = "now" }
+    refresh       = "1m"
+    tags          = ["rally", var.env, "provisioned"]
+
+    # Vertical marker on every panel showing when a deploy landed —
+    # backend-deploy.yml's `annotate-deploy` job posts these via Grafana's
+    # own annotation API after each successful deploy, tagged so ONLY this
+    # product's THIS environment's deploys show here (a develop dashboard
+    # showing prod's deploy markers, or rally's dashboard showing another
+    # product's, would misattribute exactly the correlation this exists to
+    # enable). Built-in "-- Grafana --" datasource — Grafana's own
+    # annotation store, not a Loki/Prometheus query.
+    annotations = {
+      list = [
+        {
+          name       = "Deploys"
+          datasource = { type = "grafana", uid = "-- Grafana --" }
+          enable     = true
+          iconColor  = "blue"
+          tags       = ["deploy", "rally", var.env]
+          type       = "tags"
+        }
+      ]
+    }
+
+    panels = [
+      {
+        id         = 1
+        title      = "HTTP request rate, by route"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 0, y = 0 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        targets = [{
+          expr         = "sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m])) by (route)"
+          legendFormat = "{{route}}"
+          refId        = "A"
+        }]
+      },
+      {
+        id         = 2
+        title      = "HTTP error rate"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 12, y = 0 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # Red step is local.alert_thresholds.http_error_rate itself — the
+        # exact number http-5xx-rate alerts on, not a separately-chosen
+        # "looks about right" value. thresholdsStyle draws it as a visible
+        # LINE on the graph, not just a value-color change, so the reader
+        # sees where the alert boundary sits without opening the rule.
+        fieldConfig = {
+          defaults = {
+            unit   = "percentunit"
+            custom = { thresholdsStyle = { mode = "line" } }
+            thresholds = {
+              steps = [
+                { color = "green", value = null },
+                { color = "yellow", value = local.alert_thresholds.http_error_rate / 2 },
+                { color = "red", value = local.alert_thresholds.http_error_rate },
+              ]
+            }
+          }
+        }
+        targets = [{
+          expr  = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+          refId = "A"
+        }]
+      },
+      {
+        id         = 3
+        title      = "HTTP status code distribution"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 0, y = 8 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # Splits 2xx/3xx/4xx/5xx as separate series — the single error-rate
+        # RATIO above says "how bad"; this says "client mistakes vs our
+        # own faults", which is the next question anyone asks after that.
+        targets = [{
+          expr         = "sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m])) by (status_class)"
+          legendFormat = "{{status_class}}"
+          refId        = "A"
+        }]
+      },
+      {
+        id         = 4
+        title      = "HTTP p50/p95/p99 latency"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 12, y = 8 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # Red step is local.alert_thresholds.http_p99_latency_ms — the
+        # http-p99-latency alert's own boundary, drawn as a line, not
+        # re-chosen here.
+        fieldConfig = {
+          defaults = {
+            unit   = "ms"
+            custom = { thresholdsStyle = { mode = "line" } }
+            thresholds = {
+              steps = [
+                { color = "green", value = null },
+                { color = "red", value = local.alert_thresholds.http_p99_latency_ms },
+              ]
+            }
+          }
+        }
+        targets = [
+          {
+            expr         = "histogram_quantile(0.50, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
+            legendFormat = "p50"
+            refId        = "A"
+          },
+          {
+            expr         = "histogram_quantile(0.95, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
+            legendFormat = "p95"
+            refId        = "B"
+          },
+          {
+            expr         = "histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
+            legendFormat = "p99"
+            refId        = "C"
+          },
+        ]
+      },
+      {
+        id         = 5
+        title      = "DB pool: in use vs waiting"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 0, y = 16 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # Threshold applies to the whole PANEL, not the "waiting" series
+        # alone (Grafana field config has no per-series threshold) — reads
+        # correctly regardless, since local.alert_thresholds.db_pool_waiting
+        # is 0 and "waiting" sitting above 0 at all is exactly what
+        # db-pool-contention alerts on; "in_use" naturally runs above 0
+        # under normal load, so the line is visually crossed by that
+        # series constantly — expected, not a bug.
+        fieldConfig = {
+          defaults = {
+            custom = { thresholdsStyle = { mode = "line" } }
+            thresholds = {
+              steps = [
+                { color = "green", value = null },
+                { color = "red", value = local.alert_thresholds.db_pool_waiting },
+              ]
+            }
+          }
+        }
+        targets = [
+          {
+            expr         = "db_pool_in_use{deployment_environment_name=\"${var.env}\"}"
+            legendFormat = "{{service_name}} in_use"
+            refId        = "A"
+          },
+          {
+            expr         = "db_pool_waiting{deployment_environment_name=\"${var.env}\"}"
+            legendFormat = "{{service_name}} waiting"
+            refId        = "B"
+          },
+        ]
+      },
+      {
+        id         = 6
+        title      = "Worker job success vs failure rate"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 12, y = 16 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        targets = [
+          {
+            expr         = "sum(rate(job_runs_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+            legendFormat = "runs"
+            refId        = "A"
+          },
+          {
+            expr         = "sum(rate(job_failures_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+            legendFormat = "failures"
+            refId        = "B"
+          },
+        ]
+      },
+    ]
+  })
+}
+
+resource "grafana_dashboard" "runtime" {
+  count     = var.grafana_alerting_auth != "" ? 1 : 0
+  provider  = grafana
+  folder    = grafana_folder.product_dashboards[0].uid
+  overwrite = true
+
+  config_json = jsonencode({
+    title         = "Runtime & Dependencies (${var.env})"
+    uid           = "rally-runtime-${var.env}"
+    timezone      = "browser"
+    editable      = false
+    schemaVersion = 39
+    time          = { from = "now-6h", to = "now" }
+    refresh       = "1m"
+    tags          = ["rally", var.env, "provisioned"]
+
+    # Vertical marker on every panel showing when a deploy landed —
+    # backend-deploy.yml's `annotate-deploy` job posts these via Grafana's
+    # own annotation API after each successful deploy, tagged so ONLY this
+    # product's THIS environment's deploys show here (a develop dashboard
+    # showing prod's deploy markers, or rally's dashboard showing another
+    # product's, would misattribute exactly the correlation this exists to
+    # enable). Built-in "-- Grafana --" datasource — Grafana's own
+    # annotation store, not a Loki/Prometheus query.
+    annotations = {
+      list = [
+        {
+          name       = "Deploys"
+          datasource = { type = "grafana", uid = "-- Grafana --" }
+          enable     = true
+          iconColor  = "blue"
+          tags       = ["deploy", "rally", var.env]
+          type       = "tags"
+        }
+      ]
+    }
+
+    panels = [
+      # ── Downstream dependencies: THIS is usually WHY latency/errors moved
+      # on the Overview dashboard, not what moved — DB and outbound HTTP
+      # calls are the two dependency classes this stack instruments.
+      {
+        id          = 1
+        title       = "DB client operation latency (p99, by operation)"
+        type        = "timeseries"
+        gridPos     = { h = 8, w = 12, x = 0, y = 0 }
+        datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        fieldConfig = { defaults = { unit = "s" } }
+        targets = [{
+          expr         = "histogram_quantile(0.99, sum(rate(db_client_operation_duration_seconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le, db_operation_name))"
+          legendFormat = "{{db_operation_name}}"
+          refId        = "A"
+        }]
+      },
+      {
+        id         = 2
+        title      = "DB client connections: by state, vs pending requests"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 12, y = 0 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # db_client_connection_count carries a `used`/`idle` state label —
+        # summing without it would silently add opposite-meaning numbers
+        # together into one uninterpretable line.
+        targets = [
+          {
+            expr         = "sum(db_client_connection_count{deployment_environment_name=\"${var.env}\"}) by (service_name, db_client_connection_state)"
+            legendFormat = "{{service_name}} {{db_client_connection_state}}"
+            refId        = "A"
+          },
+          {
+            expr         = "sum(db_client_connection_pending_requests{deployment_environment_name=\"${var.env}\"}) by (service_name)"
+            legendFormat = "{{service_name}} pending"
+            refId        = "B"
+          },
+        ]
+      },
+      {
+        id         = 3
+        title      = "Outbound HTTP client calls: rate + p99 latency"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 0, y = 8 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # A dependency going slow/down shows up HERE before it shows up as
+        # our own error rate — this is what SCM/Entra/email-provider calls
+        # look like from the inside.
+        targets = [{
+          expr         = "sum(rate(http_client_duration_milliseconds_count{deployment_environment_name=\"${var.env}\"}[5m])) by (net_peer_name)"
+          legendFormat = "{{net_peer_name}}"
+          refId        = "A"
+        }]
+      },
+      {
+        id         = 4
+        title      = "Queue processed rate + lag (p99)"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 12, y = 8 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        targets = [
+          {
+            expr         = "sum(rate(queue_processed_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+            legendFormat = "processed/s"
+            refId        = "A"
+          },
+          {
+            expr         = "histogram_quantile(0.99, sum(rate(queue_lag_seconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
+            legendFormat = "lag p99 (s)"
+            refId        = "B"
+          },
+        ]
+      },
+      # ── Runtime saturation (USE method): the process's OWN resource
+      # pressure — an event loop backing up or heap climbing explains a
+      # latency/error spike the dependency panels above can't.
+      {
+        id          = 5
+        title       = "Node.js event loop lag (p99, by service)"
+        type        = "timeseries"
+        gridPos     = { h = 8, w = 12, x = 0, y = 16 }
+        datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        fieldConfig = { defaults = { unit = "s" } }
+        targets = [{
+          expr         = "nodejs_eventloop_delay_p99_seconds{deployment_environment_name=\"${var.env}\"}"
+          legendFormat = "{{service_name}}"
+          refId        = "A"
+        }]
+      },
+      {
+        id          = 6
+        title       = "V8 heap used, by service"
+        type        = "timeseries"
+        gridPos     = { h = 8, w = 12, x = 12, y = 16 }
+        datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        fieldConfig = { defaults = { unit = "bytes" } }
+        targets = [{
+          expr         = "sum(v8js_memory_heap_used_bytes{deployment_environment_name=\"${var.env}\"}) by (service_name)"
+          legendFormat = "{{service_name}}"
+          refId        = "A"
+        }]
+      },
+    ]
+  })
 }
 
 

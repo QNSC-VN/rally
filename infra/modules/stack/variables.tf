@@ -480,17 +480,25 @@ variable "grafana_alerting_auth" {
 
 variable "grafana_alerting" {
   description = <<-EOT
-    Grafana Alerting config, ALONGSIDE CloudWatch Alarms
+    Grafana Alerting + Dashboards config, ALONGSIDE CloudWatch Alarms
     (monitor_target_health below), not replacing it — CloudWatch stays on
     infra-level signals it can see directly; this covers only what
     CloudWatch cannot (DB pool contention, HTTP error rate, latency, worker
-    job failure rate). None of these fields are secret — see
-    `grafana_alerting_auth` for the one that is.
+    job failure rate) plus this product's own dashboard. None of these
+    fields are secret — see `grafana_alerting_auth` for the one that is.
+
+    `alerts_folder_uid` and `dashboards_folder_uid` are DIFFERENT folders in
+    the same shared Grafana stack (qnsc-infra/live/observability's
+    `alerting_folder_uid` and `dashboards_folder_uid` outputs respectively)
+    — do not collapse them into one field. A real bug caught before merge:
+    the dashboard resource briefly reused `alerts_folder_uid`, which would
+    have filed rally's dashboard under the Alerts folder.
   EOT
   type = object({
     url                        = optional(string, "https://qnsc.grafana.net")
     prometheus_datasource_name = optional(string, "grafanacloud-qnsc-prom")
-    folder_uid                 = optional(string, "")
+    alerts_folder_uid          = optional(string, "")
+    dashboards_folder_uid      = optional(string, "")
   })
   default = {}
 }

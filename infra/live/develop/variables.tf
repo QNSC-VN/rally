@@ -125,3 +125,17 @@ variable "grafana_alerting_folder_uid" {
   type        = string
   default     = "dfwj6sltnku0we"
 }
+
+variable "grafana_dashboards_folder_uid" {
+  description = <<-EOT
+    qnsc-infra's live/observability stack's `dashboards_folder_uid` output —
+    the shared folder every product's own dashboard lives in. A DIFFERENT
+    folder from grafana_alerting_folder_uid above; do not merge them.
+
+    Empty until qnsc-infra's Dashboards folder is applied and its real UID
+    backfilled here — same bootstrap sequencing grafana_alerting_folder_uid
+    itself went through.
+  EOT
+  type        = string
+  default     = ""
+}
