@@ -1,7 +1,16 @@
 # Observability Architecture — Design
 
-Date: 2026-07-26 · Status: **proposed, awaiting sign-off** · Scope: **platform-wide** (rally, opshub, and every product after them)
+Date: 2026-07-26 · Status: **SUPERSEDED — see `2026-08-30-observability-architecture-current-state.md`** · Scope: **platform-wide** (rally, opshub, and every product after them)
 Author role: solution architect. Supersedes the observability sections of `RALLY_HARDENING_PLAN.md` (R9) and `OPSHUB_RALLY_PARITY_PLAN.md` (P2-1).
+
+**This document describes the ORIGINAL plan, not what was actually built.** Two decisions
+below were reversed during implementation: app logs go directly to Loki via FireLens
+(`firelens-agent`), not through CloudWatch Logs + a Grafana CloudWatch datasource (§4/§5
+below); and CloudWatch stayed alarm-only for AWS-native infra metrics (RDS/ECS/ALB/cache/
+SQS), with no CloudWatch datasource wired into Grafana at all — a genuinely two-source
+design (Grafana for app signals, CloudWatch console for infra alarms), not the
+one-pane-via-CloudWatch-datasource plan this document proposes. Read this only for the
+original reasoning/cost analysis; read the other document for what is actually live.
 
 ---
 
