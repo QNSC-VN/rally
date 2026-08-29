@@ -582,23 +582,37 @@ data "grafana_data_source" "prometheus" {
   name     = var.grafana_alerting.prometheus_datasource_name
 }
 
-# ONE dashboard for this product, living in the SAME shared "Dashboards"
-# folder qnsc-infra/live/observability provisions — distinguished by TITLE
-# ("rally (develop)"/"rally (production)"), not a folder per product, same
-# pattern module.alerts already uses for the Alerts folder. Deliberately
-# NOT a reusable qnsc-tf-modules module the way observability-alerts is:
-# a dashboard is a bespoke panel layout, not a parameterizable
-# {promql, threshold} list, so a generic module here would be indirection
-# with no reuse payoff — every product's dashboard looks different.
-resource "grafana_dashboard" "this" {
+# A SUBFOLDER of the shared Dashboards folder, not dashboards filed
+# directly into it by title. Reversed from an earlier attempt in this same
+# file: alert rule groups stay at one-per-product forever, so a flat
+# Alerts folder distinguished by rule-group NAME never gets crowded — but
+# dashboards multiply (Overview, Runtime, eventually business KPIs), and a
+# flat folder full of "rally (develop) - X" / "rally (production) - X"
+# titles is exactly the mess a nested folder avoids. Grafana Cloud supports
+# folder nesting (`parent_folder_uid`); this is that.
+resource "grafana_folder" "product_dashboards" {
+  count             = var.grafana_alerting_auth != "" ? 1 : 0
+  provider          = grafana
+  parent_folder_uid = var.grafana_alerting.dashboards_folder_uid
+  title             = "Rally"
+}
+
+# TWO dashboards, not one growing page — the RED/USE split enterprise
+# on-call practice uses: "is something wrong" (Overview, golden signals)
+# is a different question from "why" (Runtime & Dependencies, saturation
+# and downstream call health), and conflating them means every routine
+# glance scrolls past diagnostic panels nobody needed yet. Deliberately
+# NOT a reusable qnsc-tf-modules module (see the module family's own
+# reasoning): a dashboard is a bespoke panel layout, no reuse payoff.
+resource "grafana_dashboard" "overview" {
   count     = var.grafana_alerting_auth != "" ? 1 : 0
   provider  = grafana
-  folder    = var.grafana_alerting.dashboards_folder_uid
+  folder    = grafana_folder.product_dashboards[0].uid
   overwrite = true
 
   config_json = jsonencode({
-    title         = "rally (${var.env})"
-    uid           = "rally-${var.env}"
+    title         = "Overview (${var.env})"
+    uid           = "rally-overview-${var.env}"
     timezone      = "browser"
     editable      = false
     schemaVersion = 39
@@ -609,13 +623,13 @@ resource "grafana_dashboard" "this" {
     panels = [
       {
         id         = 1
-        title      = "HTTP request rate"
+        title      = "HTTP request rate, by route"
         type       = "timeseries"
-        gridPos    = { h = 8, w = 8, x = 0, y = 0 }
+        gridPos    = { h = 8, w = 12, x = 0, y = 0 }
         datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
         targets = [{
-          expr         = "sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m])) by (http_route)"
-          legendFormat = "{{http_route}}"
+          expr         = "sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m])) by (route)"
+          legendFormat = "{{route}}"
           refId        = "A"
         }]
       },
@@ -623,19 +637,34 @@ resource "grafana_dashboard" "this" {
         id          = 2
         title       = "HTTP error rate"
         type        = "timeseries"
-        gridPos     = { h = 8, w = 8, x = 8, y = 0 }
+        gridPos     = { h = 8, w = 12, x = 12, y = 0 }
         datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
-        fieldConfig = { defaults = { unit = "percentunit" } }
+        fieldConfig = { defaults = { unit = "percentunit", thresholds = { steps = [{ color = "green", value = null }, { color = "yellow", value = 0.02 }, { color = "red", value = 0.05 }] } } }
         targets = [{
           expr  = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
           refId = "A"
         }]
       },
       {
-        id          = 3
+        id         = 3
+        title      = "HTTP status code distribution"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 0, y = 8 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # Splits 2xx/3xx/4xx/5xx as separate series — the single error-rate
+        # RATIO above says "how bad"; this says "client mistakes vs our
+        # own faults", which is the next question anyone asks after that.
+        targets = [{
+          expr         = "sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m])) by (status_class)"
+          legendFormat = "{{status_class}}"
+          refId        = "A"
+        }]
+      },
+      {
+        id          = 4
         title       = "HTTP p50/p95/p99 latency"
         type        = "timeseries"
-        gridPos     = { h = 8, w = 8, x = 16, y = 0 }
+        gridPos     = { h = 8, w = 12, x = 12, y = 8 }
         datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
         fieldConfig = { defaults = { unit = "ms" } }
         targets = [
@@ -657,10 +686,10 @@ resource "grafana_dashboard" "this" {
         ]
       },
       {
-        id         = 4
+        id         = 5
         title      = "DB pool: in use vs waiting"
         type       = "timeseries"
-        gridPos    = { h = 8, w = 8, x = 0, y = 8 }
+        gridPos    = { h = 8, w = 12, x = 0, y = 16 }
         datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
         targets = [
           {
@@ -676,10 +705,10 @@ resource "grafana_dashboard" "this" {
         ]
       },
       {
-        id         = 5
+        id         = 6
         title      = "Worker job success vs failure rate"
         type       = "timeseries"
-        gridPos    = { h = 8, w = 8, x = 8, y = 8 }
+        gridPos    = { h = 8, w = 12, x = 12, y = 16 }
         datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
         targets = [
           {
@@ -694,16 +723,125 @@ resource "grafana_dashboard" "this" {
           },
         ]
       },
+    ]
+  })
+}
+
+resource "grafana_dashboard" "runtime" {
+  count     = var.grafana_alerting_auth != "" ? 1 : 0
+  provider  = grafana
+  folder    = grafana_folder.product_dashboards[0].uid
+  overwrite = true
+
+  config_json = jsonencode({
+    title         = "Runtime & Dependencies (${var.env})"
+    uid           = "rally-runtime-${var.env}"
+    timezone      = "browser"
+    editable      = false
+    schemaVersion = 39
+    time          = { from = "now-6h", to = "now" }
+    refresh       = "1m"
+    tags          = ["rally", var.env, "provisioned"]
+
+    panels = [
+      # ── Downstream dependencies: THIS is usually WHY latency/errors moved
+      # on the Overview dashboard, not what moved — DB and outbound HTTP
+      # calls are the two dependency classes this stack instruments.
       {
-        id          = 6
-        title       = "Queue lag (p99)"
+        id          = 1
+        title       = "DB client operation latency (p99, by operation)"
         type        = "timeseries"
-        gridPos     = { h = 8, w = 8, x = 16, y = 8 }
+        gridPos     = { h = 8, w = 12, x = 0, y = 0 }
         datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
         fieldConfig = { defaults = { unit = "s" } }
         targets = [{
-          expr         = "histogram_quantile(0.99, sum(rate(queue_lag_seconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
-          legendFormat = "p99"
+          expr         = "histogram_quantile(0.99, sum(rate(db_client_operation_duration_seconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le, db_operation_name))"
+          legendFormat = "{{db_operation_name}}"
+          refId        = "A"
+        }]
+      },
+      {
+        id         = 2
+        title      = "DB client connections: by state, vs pending requests"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 12, y = 0 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # db_client_connection_count carries a `used`/`idle` state label —
+        # summing without it would silently add opposite-meaning numbers
+        # together into one uninterpretable line.
+        targets = [
+          {
+            expr         = "sum(db_client_connection_count{deployment_environment_name=\"${var.env}\"}) by (service_name, db_client_connection_state)"
+            legendFormat = "{{service_name}} {{db_client_connection_state}}"
+            refId        = "A"
+          },
+          {
+            expr         = "sum(db_client_connection_pending_requests{deployment_environment_name=\"${var.env}\"}) by (service_name)"
+            legendFormat = "{{service_name}} pending"
+            refId        = "B"
+          },
+        ]
+      },
+      {
+        id         = 3
+        title      = "Outbound HTTP client calls: rate + p99 latency"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 0, y = 8 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        # A dependency going slow/down shows up HERE before it shows up as
+        # our own error rate — this is what SCM/Entra/email-provider calls
+        # look like from the inside.
+        targets = [{
+          expr         = "sum(rate(http_client_duration_milliseconds_count{deployment_environment_name=\"${var.env}\"}[5m])) by (net_peer_name)"
+          legendFormat = "{{net_peer_name}}"
+          refId        = "A"
+        }]
+      },
+      {
+        id         = 4
+        title      = "Queue processed rate + lag (p99)"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 12, y = 8 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        targets = [
+          {
+            expr         = "sum(rate(queue_processed_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+            legendFormat = "processed/s"
+            refId        = "A"
+          },
+          {
+            expr         = "histogram_quantile(0.99, sum(rate(queue_lag_seconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
+            legendFormat = "lag p99 (s)"
+            refId        = "B"
+          },
+        ]
+      },
+      # ── Runtime saturation (USE method): the process's OWN resource
+      # pressure — an event loop backing up or heap climbing explains a
+      # latency/error spike the dependency panels above can't.
+      {
+        id          = 5
+        title       = "Node.js event loop lag (p99, by service)"
+        type        = "timeseries"
+        gridPos     = { h = 8, w = 12, x = 0, y = 16 }
+        datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        fieldConfig = { defaults = { unit = "s" } }
+        targets = [{
+          expr         = "nodejs_eventloop_delay_p99_seconds{deployment_environment_name=\"${var.env}\"}"
+          legendFormat = "{{service_name}}"
+          refId        = "A"
+        }]
+      },
+      {
+        id          = 6
+        title       = "V8 heap used, by service"
+        type        = "timeseries"
+        gridPos     = { h = 8, w = 12, x = 12, y = 16 }
+        datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        fieldConfig = { defaults = { unit = "bytes" } }
+        targets = [{
+          expr         = "sum(v8js_memory_heap_used_bytes{deployment_environment_name=\"${var.env}\"}) by (service_name)"
+          legendFormat = "{{service_name}}"
           refId        = "A"
         }]
       },
