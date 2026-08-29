@@ -571,6 +571,146 @@ module "alerts" {
   ]
 }
 
+# Resolved directly (not via a template variable) for the same reason the
+# alert rules resolve their datasource through observability-alerts rather
+# than a caller-supplied UID: this read is safe here because grafana_url/
+# grafana_alerting_auth are always plain, already-known CI-secret values by
+# apply time, never a same-run resource attribute racing its own creation.
+data "grafana_data_source" "prometheus" {
+  count    = var.grafana_alerting_auth != "" ? 1 : 0
+  provider = grafana
+  name     = var.grafana_alerting.prometheus_datasource_name
+}
+
+# ONE dashboard for this product, living in the SAME shared "Dashboards"
+# folder qnsc-infra/live/observability provisions — distinguished by TITLE
+# ("rally (develop)"/"rally (production)"), not a folder per product, same
+# pattern module.alerts already uses for the Alerts folder. Deliberately
+# NOT a reusable qnsc-tf-modules module the way observability-alerts is:
+# a dashboard is a bespoke panel layout, not a parameterizable
+# {promql, threshold} list, so a generic module here would be indirection
+# with no reuse payoff — every product's dashboard looks different.
+resource "grafana_dashboard" "this" {
+  count     = var.grafana_alerting_auth != "" ? 1 : 0
+  provider  = grafana
+  folder    = var.grafana_alerting.folder_uid
+  overwrite = true
+
+  config_json = jsonencode({
+    title         = "rally (${var.env})"
+    uid           = "rally-${var.env}"
+    timezone      = "browser"
+    editable      = false
+    schemaVersion = 39
+    time          = { from = "now-6h", to = "now" }
+    refresh       = "1m"
+    tags          = ["rally", var.env, "provisioned"]
+
+    panels = [
+      {
+        id         = 1
+        title      = "HTTP request rate"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 8, x = 0, y = 0 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        targets = [{
+          expr         = "sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m])) by (http_route)"
+          legendFormat = "{{http_route}}"
+          refId        = "A"
+        }]
+      },
+      {
+        id          = 2
+        title       = "HTTP error rate"
+        type        = "timeseries"
+        gridPos     = { h = 8, w = 8, x = 8, y = 0 }
+        datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        fieldConfig = { defaults = { unit = "percentunit" } }
+        targets = [{
+          expr  = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+          refId = "A"
+        }]
+      },
+      {
+        id          = 3
+        title       = "HTTP p50/p95/p99 latency"
+        type        = "timeseries"
+        gridPos     = { h = 8, w = 8, x = 16, y = 0 }
+        datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        fieldConfig = { defaults = { unit = "ms" } }
+        targets = [
+          {
+            expr         = "histogram_quantile(0.50, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
+            legendFormat = "p50"
+            refId        = "A"
+          },
+          {
+            expr         = "histogram_quantile(0.95, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
+            legendFormat = "p95"
+            refId        = "B"
+          },
+          {
+            expr         = "histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
+            legendFormat = "p99"
+            refId        = "C"
+          },
+        ]
+      },
+      {
+        id         = 4
+        title      = "DB pool: in use vs waiting"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 8, x = 0, y = 8 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        targets = [
+          {
+            expr         = "db_pool_in_use{deployment_environment_name=\"${var.env}\"}"
+            legendFormat = "{{service_name}} in_use"
+            refId        = "A"
+          },
+          {
+            expr         = "db_pool_waiting{deployment_environment_name=\"${var.env}\"}"
+            legendFormat = "{{service_name}} waiting"
+            refId        = "B"
+          },
+        ]
+      },
+      {
+        id         = 5
+        title      = "Worker job success vs failure rate"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 8, x = 8, y = 8 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        targets = [
+          {
+            expr         = "sum(rate(job_runs_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+            legendFormat = "runs"
+            refId        = "A"
+          },
+          {
+            expr         = "sum(rate(job_failures_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+            legendFormat = "failures"
+            refId        = "B"
+          },
+        ]
+      },
+      {
+        id          = 6
+        title       = "Queue lag (p99)"
+        type        = "timeseries"
+        gridPos     = { h = 8, w = 8, x = 16, y = 8 }
+        datasource  = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        fieldConfig = { defaults = { unit = "s" } }
+        targets = [{
+          expr         = "histogram_quantile(0.99, sum(rate(queue_lag_seconds_bucket{deployment_environment_name=\"${var.env}\"}[5m])) by (le))"
+          legendFormat = "p99"
+          refId        = "A"
+        }]
+      },
+    ]
+  })
+}
+
 
 # ── ALB ───────────────────────────────────────────────────────────────────────
 # The ALB is shared and lives in runtime-dev. module.api attaches a host-header
