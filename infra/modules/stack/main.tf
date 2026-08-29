@@ -597,6 +597,12 @@ data "grafana_data_source" "prometheus" {
   name     = var.grafana_alerting.prometheus_datasource_name
 }
 
+data "grafana_data_source" "loki" {
+  count    = var.grafana_alerting_auth != "" ? 1 : 0
+  provider = grafana
+  name     = var.grafana_alerting.logs_datasource_name
+}
+
 # A SUBFOLDER of the shared Dashboards folder, not dashboards filed
 # directly into it by title. Reversed from an earlier attempt in this same
 # file: alert rule groups stay at one-per-product forever, so a flat
@@ -808,6 +814,36 @@ resource "grafana_dashboard" "overview" {
           },
         ]
       },
+      # The one panel on this dashboard that isn't a metric: every panel
+      # above says something is wrong; this shows the ACTUAL error, so
+      # reading it doesn't require switching to Explore. Full width,
+      # bottom of the page — supporting detail, not a golden signal.
+      # Shape verified against a real Grafana dashboard export (Loki
+      # `type: "logs"` panels are undocumented in the schema itself), not
+      # guessed — the same discipline as everything else added this
+      # session that touches Grafana's opaque JSON models.
+      {
+        id         = 7
+        title      = "Recent errors"
+        type       = "logs"
+        gridPos    = { h = 8, w = 24, x = 0, y = 24 }
+        datasource = { type = "loki", uid = data.grafana_data_source.loki[0].uid }
+        options = {
+          dedupStrategy      = "none"
+          enableLogDetails   = true
+          prettifyLogMessage = false
+          showCommonLabels   = false
+          showLabels         = false
+          showTime           = true
+          sortOrder          = "Descending"
+          wrapLogMessage     = false
+        }
+        targets = [{
+          datasource = { type = "loki", uid = data.grafana_data_source.loki[0].uid }
+          expr       = "{service_name=~\"rally-api|rally-worker\", deployment_environment_name=\"${var.env}\"} | detected_level=\"error\""
+          refId      = "A"
+        }]
+      },
     ]
   })
 }
@@ -947,6 +983,26 @@ resource "grafana_dashboard" "runtime" {
         fieldConfig = { defaults = { unit = "bytes" } }
         targets = [{
           expr         = "sum(v8js_memory_heap_used_bytes{deployment_environment_name=\"${var.env}\"}) by (service_name)"
+          legendFormat = "{{service_name}}"
+          refId        = "A"
+        }]
+      },
+      # Sanity-checks the log pipeline ITSELF — a silent break upstream
+      # (FireLens router down, Loki ingestion rejecting) shows here as
+      # volume dropping to zero, which every panel above would miss:
+      # they'd just look "quiet", not "broken". Verified the LogQL
+      # aggregation syntax against real data before shipping (count_over_time
+      # wrapped in sum() is a metric query through the same Loki datasource
+      # the logs panel above uses, panel type "timeseries" not "logs").
+      {
+        id         = 7
+        title      = "Log volume (lines/5m)"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 24, x = 0, y = 24 }
+        datasource = { type = "loki", uid = data.grafana_data_source.loki[0].uid }
+        targets = [{
+          datasource   = { type = "loki", uid = data.grafana_data_source.loki[0].uid }
+          expr         = "sum(count_over_time({service_name=~\"rally-api|rally-worker\", deployment_environment_name=\"${var.env}\"}[5m])) by (service_name)"
           legendFormat = "{{service_name}}"
           refId        = "A"
         }]

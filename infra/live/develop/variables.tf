@@ -120,6 +120,12 @@ variable "grafana_alerting_prometheus_datasource_name" {
   default     = "grafanacloud-qnsc-prom"
 }
 
+variable "grafana_logs_datasource_name" {
+  description = "Grafana Cloud's auto-provisioned Loki datasource name for this stack (confirmed against the stack's own Details page, same naming convention as the Prometheus one). Same value in every environment; not a secret."
+  type        = string
+  default     = "grafanacloud-qnsc-logs"
+}
+
 variable "grafana_alerting_folder_uid" {
   description = "qnsc-infra's live/observability stack's `alerting_folder_uid` output — the shared folder every product's rule groups live under. Same value in every environment; not a secret."
   type        = string
