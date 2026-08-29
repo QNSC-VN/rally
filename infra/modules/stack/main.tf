@@ -547,6 +547,19 @@ locals {
   # main, not a tag/sha: a runbook is meant to be edited without cutting a release,
   # and Grafana's alert panel just needs a URL that resolves, not a pinned revision.
   runbook_base_url = "https://github.com/QNSC-VN/rally/blob/main/docs/runbooks/alerts"
+
+  # A DIFFERENT number from http_error_rate above, deliberately not reused. The
+  # alert threshold answers "is this bad enough to page right now" over 5
+  # minutes; the SLO objective answers "did we meet our commitment" over 30
+  # days. Prod's 99.5% success rate allows ~3.6 hours of full outage a month —
+  # looser than it sounds because it is a MONTHLY budget, not a per-incident
+  # one, so it tolerates one real incident without also demanding perfection
+  # every single day.
+  slo_success_objective_by_env = {
+    develop    = 0.99
+    production = 0.995
+  }
+  slo_success_objective = lookup(local.slo_success_objective_by_env, var.env, local.slo_success_objective_by_env.develop)
 }
 
 # ── Grafana Alerting ──────────────────────────────────────────────────────────
@@ -613,6 +626,76 @@ module "alerts" {
       runbook_url = "${local.runbook_base_url}/worker-job-failure-rate.md"
     },
   ]
+}
+
+# SLO, not another alert rule — a DIFFERENT question from the four above.
+# http-5xx-rate asks "is this bad enough to page right now" over 5 minutes;
+# this asks "did we meet our commitment" over 30 days, and generates its own
+# fast-burn/slow-burn alerts on top (Grafana computes those from the error
+# budget, not from a threshold this file chooses). Same gating as
+# module.alerts — dormant until var.grafana_alerting_auth is set.
+#
+# `status_class` is a real, confirmed Mimir label (queried directly against
+# the datasource before this session's dashboards shipped), same one the
+# "HTTP status code distribution" dashboard panel groups by — not guessed.
+resource "grafana_slo" "http_availability" {
+  count       = var.grafana_alerting_auth != "" ? 1 : 0
+  provider    = grafana
+  name        = "HTTP availability (${var.env})"
+  description = "Fraction of HTTP requests that do not return a 5xx, over a rolling 30-day window."
+
+  query {
+    type = "ratio"
+    ratio {
+      success_metric = "http_server_requests_total{deployment_environment_name=\"${var.env}\", status_class!=\"5xx\"}"
+      total_metric   = "http_server_requests_total{deployment_environment_name=\"${var.env}\"}"
+    }
+  }
+
+  objectives {
+    value  = local.slo_success_objective
+    window = "30d"
+  }
+
+  destination_datasource {
+    uid = data.grafana_data_source.prometheus[0].uid
+  }
+
+  label {
+    key   = "product"
+    value = var.product
+  }
+  label {
+    key   = "env"
+    value = var.env
+  }
+
+  # Minimal on purpose: an annotation-only burn-rate alert (no threshold to
+  # tune here — Grafana derives fast/slow burn rate from the objective and
+  # window itself) routed through the SAME Teams contact point every other
+  # rule in this stack uses, via the shared root notification policy.
+  alerting {
+    fastburn {
+      annotation {
+        key   = "name"
+        value = "SLO fast burn: HTTP availability (${var.env})"
+      }
+      annotation {
+        key   = "description"
+        value = "Error budget for HTTP availability in ${var.env} is burning fast enough to exhaust the 30-day budget in hours, not days."
+      }
+    }
+    slowburn {
+      annotation {
+        key   = "name"
+        value = "SLO slow burn: HTTP availability (${var.env})"
+      }
+      annotation {
+        key   = "description"
+        value = "Error budget for HTTP availability in ${var.env} is burning steadily — on pace to exhaust the 30-day budget before the window resets."
+      }
+    }
+  }
 }
 
 # Resolved directly (not via a template variable) for the same reason the
