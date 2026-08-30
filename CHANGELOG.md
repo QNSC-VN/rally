@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.12](https://github.com/QNSC-VN/rally/compare/v0.7.11...v0.7.12) (2026-08-30)
+
+
+### 🐛 Bug Fixes
+
+* **infra:** login failure-rate panel showing "No data" at zero failures ([#529](https://github.com/QNSC-VN/rally/issues/529)) ([836ba4d](https://github.com/QNSC-VN/rally/commit/836ba4d55d23bb3731c7c9233766396118e1daab))
+* **infra:** zero-error absent-vector bug on 3 ratio panels/alerts, move Login panel up ([#531](https://github.com/QNSC-VN/rally/issues/531)) ([daa522a](https://github.com/QNSC-VN/rally/commit/daa522ad912226d87a7025c050a0454a5c3ec67e))
+
 ## [0.7.11](https://github.com/QNSC-VN/rally/compare/v0.7.10...v0.7.11) (2026-08-30)
 
 
