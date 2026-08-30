@@ -628,8 +628,14 @@ module "alerts" {
       runbook_url = "${local.runbook_base_url}/worker-job-failure-rate.md"
     },
     {
-      name        = "auth-login-failure-rate"
-      promql      = "sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\", outcome=\"failure\"}[15m])) / sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\"}[15m]))"
+      name = "auth-login-failure-rate"
+      # `or vector(0)` on the numerator — same reasoning as the dashboard
+      # panel's identical query: zero failures means the series is absent,
+      # not present-at-zero, and dividing by an absent vector produces an
+      # empty result rather than 0. no_data_state = "OK" below already
+      # prevented a false page from this, but the query itself should read
+      # correctly on inspection, not rely on the no-data fallback to be safe.
+      promql      = "(sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\", outcome=\"failure\"}[15m])) or vector(0)) / sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\"}[15m]))"
       for         = "15m"
       op          = "gt"
       threshold   = local.alert_thresholds.auth_login_failure_rate
@@ -1091,7 +1097,15 @@ resource "grafana_dashboard" "overview" {
           }
         }
         targets = [{
-          expr         = "sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\", outcome=\"failure\"}[15m])) / sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\"}[15m]))"
+          # `or vector(0)` on the numerator: confirmed live in prod (the first
+          # real login ever recorded) that zero failures means the "failure"
+          # series is genuinely ABSENT, not present-at-zero — dividing by an
+          # absent vector produces an empty result in PromQL, which Grafana
+          # renders as "No data" even though the honest answer is "0%,
+          # working perfectly." The denominator needs no such guard: it is
+          # only ever queried once at least one login (success or failure)
+          # exists, at which point it is real and positive by construction.
+          expr         = "(sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\", outcome=\"failure\"}[15m])) or vector(0)) / sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\"}[15m]))"
           legendFormat = "failure rate"
           refId        = "A"
         }]
