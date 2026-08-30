@@ -507,6 +507,7 @@ variable "grafana_alerting" {
     alerts_folder_uid             = optional(string, "")
     dashboards_folder_uid         = optional(string, "")
     product_dashboards_folder_uid = optional(string, "")
+    slos_folder_uid               = optional(string, "")
   })
   default = {}
 }

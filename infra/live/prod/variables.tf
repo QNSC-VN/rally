@@ -193,3 +193,17 @@ variable "grafana_alerting_folder_uid" {
   type        = string
   default     = "efwpy0l5x8nwgb"
 }
+
+variable "grafana_slos_folder_uid" {
+  description = <<-EOT
+    qnsc-infra's live/observability stack's `slos_folder_uid` output —
+    the shared folder every product's SLOs live under. Same value in
+    every environment; not a secret.
+
+    Was never set until this variable existed, which left rally's
+    grafana_slo resource in Grafana's own default SLO folder outside the
+    QNSC company tree everything else here lives under.
+  EOT
+  type        = string
+  default     = "ffwpy0lokzcw0e"
+}
