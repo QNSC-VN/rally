@@ -643,6 +643,11 @@ resource "grafana_slo" "http_availability" {
   provider    = grafana
   name        = "HTTP availability (${var.env})"
   description = "Fraction of HTTP requests that do not return a 5xx, over a rolling 30-day window."
+  # Was unset, which left this in Grafana's own default SLO folder outside
+  # the QNSC company tree everything else here lives under. See
+  # var.grafana_alerting.slos_folder_uid's own description before ever
+  # changing which folder this points to again.
+  folder_uid = var.grafana_alerting.slos_folder_uid
 
   query {
     type = "ratio"

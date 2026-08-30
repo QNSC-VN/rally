@@ -542,6 +542,7 @@ module "stack" {
     alerts_folder_uid             = var.grafana_alerting_folder_uid
     dashboards_folder_uid         = var.grafana_dashboards_folder_uid
     product_dashboards_folder_uid = var.grafana_rally_dashboards_folder_uid
+    slos_folder_uid               = var.grafana_slos_folder_uid
   }
 
   alarm_emails          = var.alarm_emails
