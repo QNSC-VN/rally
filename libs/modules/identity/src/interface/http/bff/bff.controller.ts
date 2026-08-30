@@ -20,6 +20,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type {} from '@fastify/csrf-protection';
 import '@fastify/cookie';
 import { Auth, AppConfigService, Public, RateLimit, UnauthorizedException } from '@platform';
+import { AuthMetrics } from '@qnsc-vn/observability';
 import type { JwtPayload } from '@platform';
 import {
   AuthService,
@@ -56,6 +57,7 @@ export class BffController {
     private readonly workspaceService: WorkspaceService,
     private readonly config: AppConfigService,
     @Inject(SSO_CONNECTION_REPOSITORY) private readonly ssoRepo: ISsoConnectionRepository,
+    private readonly authMetrics: AuthMetrics,
   ) {}
 
   // ── POST /bff/login/sso ────────────────────────────────────────────────────
@@ -131,9 +133,13 @@ export class BffController {
     try {
       result = await this.bff.completeLogin({ code, state, cookieState, ip: req.ip });
     } catch {
-      // Never surface OIDC/internal detail to the browser on the login path.
+      // Never surface OIDC/internal detail to the browser on the login path — the
+      // metric is what tells us login itself is degraded, since the 401 alone
+      // cannot distinguish a broken IdP integration from a user retrying a stale link.
+      this.authMetrics.recordLogin('sso', 'failure');
       throw new UnauthorizedException('AUTH_TOKEN_INVALID', 'Login could not be completed');
     }
+    this.authMetrics.recordLogin('sso', 'success');
 
     reply.clearCookie(BFF_STATE_COOKIE, { path: '/' });
     reply.setCookie(BFF_SESSION_COOKIE, result.sid, {
@@ -167,7 +173,14 @@ export class BffController {
     if (!this.bff.devLoginAllowed) {
       throw new NotFoundException();
     }
-    const sid = await this.bff.devLogin(dto.email, req.ip);
+    let sid: string;
+    try {
+      sid = await this.bff.devLogin(dto.email, req.ip);
+    } catch (err) {
+      this.authMetrics.recordLogin('dev', 'failure');
+      throw err;
+    }
+    this.authMetrics.recordLogin('dev', 'success');
     reply.setCookie(BFF_SESSION_COOKIE, sid, {
       httpOnly: true,
       secure: true,
