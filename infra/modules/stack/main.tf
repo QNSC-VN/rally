@@ -577,7 +577,7 @@ locals {
 # is a bug in THIS file, not in the module.
 module "alerts" {
   count  = var.grafana_alerting_auth != "" ? 1 : 0
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability-alerts?ref=observability-alerts-v1.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability-alerts?ref=observability-alerts-v1.1.1"
 
   product                    = var.product
   env                        = var.env
