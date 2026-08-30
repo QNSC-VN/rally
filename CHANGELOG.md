@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.9](https://github.com/QNSC-VN/rally/compare/v0.7.8...v0.7.9) (2026-08-30)
+
+
+### 🐛 Bug Fixes
+
+* **infra:** bump observability-alerts to v1.1.1, fixes prod apply failure ([#520](https://github.com/QNSC-VN/rally/issues/520)) ([3452970](https://github.com/QNSC-VN/rally/commit/3452970739ef28d20dfbfdcad3217ca1ba6fb455))
+
 ## [0.7.8](https://github.com/QNSC-VN/rally/compare/v0.7.7...v0.7.8) (2026-08-29)
 
 
