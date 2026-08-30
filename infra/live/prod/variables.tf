@@ -165,14 +165,31 @@ variable "grafana_rally_dashboards_folder_uid" {
     infra/modules/stack — since develop and prod are separate Terraform
     root modules with separate state, that created two real, separate
     "Rally" folders (confirmed live). Now a plain UID, created once,
-    centrally, same as grafana_alerting_folder_uid.
+    centrally, same as grafana_alerting_folder_uid — see that variable's
+    own description for the destroy+recreate fragility this inherits.
   EOT
   type        = string
-  default     = "ffwpw6i5b56o0c"
+  default     = "cfwpy0n7xqcqoc"
 }
 
 variable "grafana_alerting_folder_uid" {
-  description = "qnsc-infra's live/observability stack's `alerting_folder_uid` output — the shared folder every product's rule groups live under. Same value in every environment; not a secret."
+  description = <<-EOT
+    qnsc-infra's live/observability stack's `alerting_folder_uid` output —
+    the shared folder every product's rule groups live under. Same value
+    in every environment; not a secret.
+
+    This is a HARDCODED UID, not a live reference, and that is a real
+    fragility: setting `parent_folder_uid` on an EXISTING Grafana folder
+    forces a destroy+recreate in the Terraform provider (not an in-place
+    move, confirmed the hard way — qnsc-infra#98's re-parenting under a new
+    "QNSC" company folder destroyed and recreated this folder, its
+    contents (including rally's own alert rule group and 2 dashboards),
+    AND `rally_dashboards_folder_uid` above, which depends on it). Every
+    UID here needs re-backfilling whenever that happens again. A
+    `terraform_remote_state` read against qnsc-infra's own state would
+    self-heal instead of silently going stale — worth doing before the
+    next folder change, not after.
+  EOT
   type        = string
-  default     = "dfwj6sltnku0we"
+  default     = "efwpy0l5x8nwgb"
 }
