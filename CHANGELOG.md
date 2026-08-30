@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.11](https://github.com/QNSC-VN/rally/compare/v0.7.10...v0.7.11) (2026-08-30)
+
+
+### ✨ Features
+
+* **identity:** record auth.login metric on the BFF login paths ([#526](https://github.com/QNSC-VN/rally/issues/526)) ([4f09097](https://github.com/QNSC-VN/rally/commit/4f0909736120adfbc5ef3cd6ed02f9cfcd8676ee))
+* **infra:** dashboard panel + alert for the new auth.login metric ([#528](https://github.com/QNSC-VN/rally/issues/528)) ([1152f82](https://github.com/QNSC-VN/rally/commit/1152f829f2664bc42aff2ba361b4e67ab5aec572))
+
 ## [0.7.10](https://github.com/QNSC-VN/rally/compare/v0.7.9...v0.7.10) (2026-08-30)
 
 
