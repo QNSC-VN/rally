@@ -526,16 +526,18 @@ module "firelens_agent_worker" {
 locals {
   alert_thresholds_by_env = {
     develop = {
-      http_error_rate     = 0.05 # ratio, 0-1
-      http_p99_latency_ms = 2000
-      db_pool_waiting     = 0
-      worker_failure_rate = 0.10 # ratio, 0-1
+      http_error_rate         = 0.05 # ratio, 0-1
+      http_p99_latency_ms     = 2000
+      db_pool_waiting         = 0
+      worker_failure_rate     = 0.10 # ratio, 0-1
+      auth_login_failure_rate = 0.30 # looser than http_error_rate — dev logins fail on typos/expired dev sessions, not just real outages
     }
     production = {
-      http_error_rate     = 0.02
-      http_p99_latency_ms = 1000
-      db_pool_waiting     = 0
-      worker_failure_rate = 0.05
+      http_error_rate         = 0.02
+      http_p99_latency_ms     = 1000
+      db_pool_waiting         = 0
+      worker_failure_rate     = 0.05
+      auth_login_failure_rate = 0.15
     }
   }
   # Falls back to develop's (looser) numbers for any env string that isn't
@@ -624,6 +626,16 @@ module "alerts" {
       severity    = "warning"
       summary     = "Worker job failure rate above 10% in ${var.env} for 5m."
       runbook_url = "${local.runbook_base_url}/worker-job-failure-rate.md"
+    },
+    {
+      name        = "auth-login-failure-rate"
+      promql      = "sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\", outcome=\"failure\"}[15m])) / sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\"}[15m]))"
+      for         = "15m"
+      op          = "gt"
+      threshold   = local.alert_thresholds.auth_login_failure_rate
+      severity    = "warning"
+      summary     = "Login failure rate above ${local.alert_thresholds.auth_login_failure_rate * 100}% in ${var.env} for 15m — the generic 401 on this path never surfaces WHY, check Recent errors / Logs Explorer for the actual IdP error."
+      runbook_url = "${local.runbook_base_url}/auth-login-failure-rate.md"
     },
   ]
 }
@@ -1051,6 +1063,37 @@ resource "grafana_dashboard" "overview" {
           datasource = { type = "loki", uid = data.grafana_data_source.loki[0].uid }
           expr       = "{service_name=~\"rally-api|rally-worker\", deployment_environment_name=\"${var.env}\"} | detected_level=~\"$level\""
           refId      = "A"
+        }]
+      },
+      # "Is login itself working" — a question the HTTP error-rate panel above
+      # cannot answer, because the BFF login callback deliberately collapses
+      # every failure into one generic 401 (never surfaces OIDC/internal
+      # detail to the browser). auth_login_total is the only place that
+      # distinction is visible. Red step is auth-login-failure-rate's own
+      # threshold, same single-source-of-truth pattern as every other
+      # threshold line on this dashboard.
+      {
+        id         = 9
+        title      = "Login success vs failure rate"
+        type       = "timeseries"
+        gridPos    = { h = 8, w = 12, x = 0, y = 42 }
+        datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
+        fieldConfig = {
+          defaults = {
+            unit   = "percentunit"
+            custom = { thresholdsStyle = { mode = "line" } }
+            thresholds = {
+              steps = [
+                { color = "green", value = null },
+                { color = "red", value = local.alert_thresholds.auth_login_failure_rate },
+              ]
+            }
+          }
+        }
+        targets = [{
+          expr         = "sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\", outcome=\"failure\"}[15m])) / sum(rate(auth_login_total{deployment_environment_name=\"${var.env}\"}[15m]))"
+          legendFormat = "failure rate"
+          refId        = "A"
         }]
       },
     ]
