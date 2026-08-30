@@ -14,6 +14,7 @@ import { JwtAuthGuard } from './auth/jwt.guard';
 // Metric instruments come from the shared package so every product emits the same
 // names with the same bounded labels.
 import {
+  AuthMetrics,
   DbPoolMetrics,
   HttpMetrics,
   JobMetrics,
@@ -89,6 +90,7 @@ import { StorageService } from './storage/storage.service';
     QueueMetrics,
     DbPoolMetrics,
     SecurityMetrics,
+    AuthMetrics,
     // Auth-token cache (denylist / rotation grace / user revocation) owned by
     // @qnsc-vn/identity, composing the shared CacheService primitive.
     AuthTokenCache,
@@ -136,6 +138,7 @@ import { StorageService } from './storage/storage.service';
     QueueMetrics,
     DbPoolMetrics,
     SecurityMetrics,
+    AuthMetrics,
     JwtAuthGuard,
     OutboxService,
     AuditProducer,
