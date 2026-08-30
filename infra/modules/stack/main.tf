@@ -301,7 +301,7 @@ module "cache" {
   # — that is where the saving is — and issues a different endpoint, so the change is a
   # task-definition revision and a rolling deploy, not an in-place edit.
   count  = var.cache.enabled && !var.cache.shared ? 1 : 0
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.0.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/cache?ref=cache-v1.1.0"
 
   name              = "${local.name}-cache"
   subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
@@ -1430,7 +1430,7 @@ locals {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
 
   cpu_architecture = var.cpu_architecture
   # Same gate as OTEL_ENABLED below: only switches log driver once a real
@@ -1678,7 +1678,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.1"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
 
   cpu_architecture = var.cpu_architecture
   use_firelens     = module.firelens_agent_worker.enabled
@@ -2013,7 +2013,7 @@ module "dns_api" {
 # gone — two topics per environment meant two subscriptions to confirm and two
 # places to look. The fail-open alarm below publishes to this module's topic.
 module "observability" {
-  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v4.1.0"
+  source = "git::https://github.com/QNSC-VN/qnsc-tf-modules.git//modules/observability?ref=observability-v4.2.1"
 
   create_dashboard = var.create_dashboard
 
@@ -2024,6 +2024,17 @@ module "observability" {
   # Full ALB ARN — exposed by the runtime stack for exactly this. Without it the
   # module silently skips the two user-facing ALB alarms.
   alb_arn = try(data.terraform_remote_state.runtime.outputs.alb_arn, "")
+
+  # Node mode only, and only rally's OWN dedicated node (never the shared node in
+  # the runtime layer — see cache_cluster_id's own description for why: a shared
+  # node's alarms belong where the node is created, not in one tenant's stack).
+  # enable_cache_alarms is a SEPARATE, plan-time-known condition from
+  # cache_cluster_id's value: on a from-scratch environment the cache node's
+  # cluster_id output is unknown until apply, and a count gated on that directly
+  # is a hard OpenTofu error, not a deferred plan (opshub hit this live; ported
+  # back here before rally ever exercises the same first-apply path).
+  enable_cache_alarms = var.cache.enabled && !var.cache.shared && var.cache.mode == "node"
+  cache_cluster_id    = var.cache.enabled && !var.cache.shared && var.cache.mode == "node" ? module.cache[0].cluster_id : ""
   # `identifier` (rally-prod), NOT `instance_id` (db-F35NKOG…). CloudWatch publishes RDS
   # metrics under the DBInstanceIdentifier dimension, and `aws_db_instance.id` returns the
   # RESOURCE id on AWS provider 5.x — so this pointed at a dimension value that does not
