@@ -598,8 +598,11 @@ module "alerts" {
       runbook_url = "${local.runbook_base_url}/db-pool-contention.md"
     },
     {
-      name        = "http-5xx-rate"
-      promql      = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+      name = "http-5xx-rate"
+      # `or vector(0)` on the numerator — same reasoning as the dashboard
+      # panel's identical query and the auth-login-failure-rate rule: zero
+      # 5xx means the series is absent, not present-at-zero.
+      promql      = "(sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) or vector(0)) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
       for         = "5m"
       op          = "gt"
       threshold   = local.alert_thresholds.http_error_rate
@@ -618,8 +621,10 @@ module "alerts" {
       runbook_url = "${local.runbook_base_url}/http-p99-latency.md"
     },
     {
-      name        = "worker-job-failure-rate"
-      promql      = "sum(rate(job_failures_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(job_runs_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+      name = "worker-job-failure-rate"
+      # `or vector(0)` on the numerator — same reasoning as http-5xx-rate and
+      # auth-login-failure-rate above.
+      promql      = "(sum(rate(job_failures_total{deployment_environment_name=\"${var.env}\"}[5m])) or vector(0)) / sum(rate(job_runs_total{deployment_environment_name=\"${var.env}\"}[5m]))"
       for         = "5m"
       op          = "gt"
       threshold   = local.alert_thresholds.worker_failure_rate
@@ -889,7 +894,12 @@ resource "grafana_dashboard" "overview" {
           }
         }
         targets = [{
-          expr         = "sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
+          # `or vector(0)` on the numerator — confirmed live in prod: zero 5xx
+          # ever recorded means http_server_errors_total is genuinely ABSENT,
+          # not present-at-zero, and dividing by an absent vector renders as
+          # "No data" instead of the honest 0%. Same fix as the login
+          # failure-rate panel/alert.
+          expr         = "(sum(rate(http_server_errors_total{deployment_environment_name=\"${var.env}\"}[5m])) or vector(0)) / sum(rate(http_server_requests_total{deployment_environment_name=\"${var.env}\"}[5m]))"
           legendFormat = "error rate"
           refId        = "A"
         }]
@@ -952,7 +962,7 @@ resource "grafana_dashboard" "overview" {
         id         = 5
         title      = "DB pool: in use vs waiting"
         type       = "timeseries"
-        gridPos    = { h = 8, w = 12, x = 0, y = 16 }
+        gridPos    = { h = 8, w = 12, x = 0, y = 24 }
         datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
         # Threshold applies to the whole PANEL, not the "waiting" series
         # alone (Grafana field config has no per-series threshold) — reads
@@ -995,7 +1005,7 @@ resource "grafana_dashboard" "overview" {
         id         = 6
         title      = "Worker job success vs failure rate"
         type       = "timeseries"
-        gridPos    = { h = 8, w = 12, x = 12, y = 16 }
+        gridPos    = { h = 8, w = 12, x = 12, y = 24 }
         datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
         targets = [
           {
@@ -1022,7 +1032,7 @@ resource "grafana_dashboard" "overview" {
         id         = 7
         title      = "Recent errors"
         type       = "logs"
-        gridPos    = { h = 8, w = 24, x = 0, y = 24 }
+        gridPos    = { h = 8, w = 24, x = 0, y = 32 }
         datasource = { type = "loki", uid = data.grafana_data_source.loki[0].uid }
         options = {
           dedupStrategy      = "none"
@@ -1053,7 +1063,7 @@ resource "grafana_dashboard" "overview" {
         id         = 8
         title      = "Logs Explorer"
         type       = "logs"
-        gridPos    = { h = 10, w = 24, x = 0, y = 32 }
+        gridPos    = { h = 10, w = 24, x = 0, y = 42 }
         datasource = { type = "loki", uid = data.grafana_data_source.loki[0].uid }
         options = {
           dedupStrategy      = "none"
@@ -1082,7 +1092,7 @@ resource "grafana_dashboard" "overview" {
         id         = 9
         title      = "Login success vs failure rate"
         type       = "timeseries"
-        gridPos    = { h = 8, w = 12, x = 0, y = 42 }
+        gridPos    = { h = 8, w = 12, x = 0, y = 16 }
         datasource = { type = "prometheus", uid = data.grafana_data_source.prometheus[0].uid }
         fieldConfig = {
           defaults = {
