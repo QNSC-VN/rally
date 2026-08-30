@@ -487,20 +487,26 @@ variable "grafana_alerting" {
     job failure rate) plus this product's own dashboard. None of these
     fields are secret — see `grafana_alerting_auth` for the one that is.
 
-    `alerts_folder_uid` and `dashboards_folder_uid` are DIFFERENT folders in
-    the same shared Grafana stack (qnsc-infra/live/observability's
-    `alerting_folder_uid` and `dashboards_folder_uid` outputs respectively)
-    — do not collapse them into one field. A real bug caught before merge:
-    the dashboard resource briefly reused `alerts_folder_uid`, which would
-    have filed rally's dashboard under the Alerts folder.
+    `alerts_folder_uid`, `dashboards_folder_uid` and
+    `product_dashboards_folder_uid` are THREE DIFFERENT folders in the same
+    shared Grafana stack — do not collapse them. A real bug caught before
+    merge: the dashboard resource briefly reused `alerts_folder_uid`, which
+    would have filed rally's dashboard under the Alerts folder. A second
+    real bug, caught in production: `product_dashboards_folder_uid` used to
+    be a `grafana_folder` resource created HERE, once per environment —
+    since develop and prod are separate Terraform root modules with
+    separate state, that created two real, separate "Rally" folders. It is
+    now qnsc-infra/live/observability's `rally_dashboards_folder_uid`
+    output — a plain UID, created once, centrally, same as the other two.
   EOT
   type = object({
-    url                        = optional(string, "https://qnsc.grafana.net")
-    prometheus_datasource_name = optional(string, "grafanacloud-qnsc-prom")
-    logs_datasource_name       = optional(string, "grafanacloud-qnsc-logs")
-    traces_datasource_name     = optional(string, "grafanacloud-qnsc-traces")
-    alerts_folder_uid          = optional(string, "")
-    dashboards_folder_uid      = optional(string, "")
+    url                           = optional(string, "https://qnsc.grafana.net")
+    prometheus_datasource_name    = optional(string, "grafanacloud-qnsc-prom")
+    logs_datasource_name          = optional(string, "grafanacloud-qnsc-logs")
+    traces_datasource_name        = optional(string, "grafanacloud-qnsc-traces")
+    alerts_folder_uid             = optional(string, "")
+    dashboards_folder_uid         = optional(string, "")
+    product_dashboards_folder_uid = optional(string, "")
   })
   default = {}
 }
