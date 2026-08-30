@@ -725,20 +725,21 @@ data "grafana_data_source" "tempo" {
   name     = var.grafana_alerting.traces_datasource_name
 }
 
-# A SUBFOLDER of the shared Dashboards folder, not dashboards filed
-# directly into it by title. Reversed from an earlier attempt in this same
-# file: alert rule groups stay at one-per-product forever, so a flat
-# Alerts folder distinguished by rule-group NAME never gets crowded — but
-# dashboards multiply (Overview, Runtime, eventually business KPIs), and a
-# flat folder full of "rally (develop) - X" / "rally (production) - X"
-# titles is exactly the mess a nested folder avoids. Grafana Cloud supports
-# folder nesting (`parent_folder_uid`); this is that.
-resource "grafana_folder" "product_dashboards" {
-  count             = var.grafana_alerting_auth != "" ? 1 : 0
-  provider          = grafana
-  parent_folder_uid = var.grafana_alerting.dashboards_folder_uid
-  title             = "Rally"
-}
+# NOT created here — a real bug this used to be, confirmed via a live
+# screenshot: develop and prod are separate Terraform ROOT MODULES with
+# separate state, so each one's own `grafana_folder.product_dashboards`
+# independently created its OWN "Rally" folder the moment prod applied for
+# the first time — two real, separate top-level folders with the same
+# title, each holding only that environment's own dashboards. Made worse
+# by `dashboards_folder_uid` (the PARENT folder) never actually being
+# backfilled from its "" default, so neither copy was even nested where
+# intended.
+#
+# Fixed by creating it ONCE, centrally, in qnsc-infra/live/observability
+# (`grafana_folder.rally_dashboards`) — same fix as `alerts_folder_uid`
+# already being a plain resource reference there, not a var that can be
+# left unset. `var.grafana_alerting.product_dashboards_folder_uid` below
+# is that folder's real UID.
 
 # TWO dashboards, not one growing page — the RED/USE split enterprise
 # on-call practice uses: "is something wrong" (Overview, golden signals)
@@ -750,7 +751,7 @@ resource "grafana_folder" "product_dashboards" {
 resource "grafana_dashboard" "overview" {
   count     = var.grafana_alerting_auth != "" ? 1 : 0
   provider  = grafana
-  folder    = grafana_folder.product_dashboards[0].uid
+  folder    = var.grafana_alerting.product_dashboards_folder_uid
   overwrite = true
 
   config_json = jsonencode({
@@ -1054,7 +1055,7 @@ resource "grafana_dashboard" "overview" {
 resource "grafana_dashboard" "runtime" {
   count     = var.grafana_alerting_auth != "" ? 1 : 0
   provider  = grafana
-  folder    = grafana_folder.product_dashboards[0].uid
+  folder    = var.grafana_alerting.product_dashboards_folder_uid
   overwrite = true
 
   config_json = jsonencode({

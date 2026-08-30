@@ -141,15 +141,34 @@ variable "grafana_logs_datasource_name" {
 variable "grafana_dashboards_folder_uid" {
   description = <<-EOT
     qnsc-infra's live/observability stack's `dashboards_folder_uid` output —
-    the shared folder every product's own dashboard lives in. A DIFFERENT
-    folder from grafana_alerting_folder_uid below; do not merge them.
+    the PARENT folder every product's own dashboard subfolder nests under.
+    A DIFFERENT folder from grafana_alerting_folder_uid below; do not merge
+    them.
 
     Empty until qnsc-infra's Dashboards folder is applied and its real UID
     backfilled here — same bootstrap sequencing grafana_alerting_folder_uid
-    itself went through.
+    itself went through. Still unset: nothing in this repo currently reads
+    it directly (rally's own dashboards nest under
+    grafana_rally_dashboards_folder_uid below, not this one).
   EOT
   type        = string
   default     = ""
+}
+
+variable "grafana_rally_dashboards_folder_uid" {
+  description = <<-EOT
+    qnsc-infra's live/observability stack's `rally_dashboards_folder_uid`
+    output — rally's own dashboard SUBFOLDER, nested under the parent
+    above. Same value in every environment; not a secret.
+
+    Used to be a `grafana_folder` resource created per-environment inside
+    infra/modules/stack — since develop and prod are separate Terraform
+    root modules with separate state, that created two real, separate
+    "Rally" folders (confirmed live). Now a plain UID, created once,
+    centrally, same as grafana_alerting_folder_uid.
+  EOT
+  type        = string
+  default     = "ffwpw6i5b56o0c"
 }
 
 variable "grafana_alerting_folder_uid" {

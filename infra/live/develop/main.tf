@@ -517,11 +517,12 @@ module "stack" {
 
   grafana_alerting_auth = var.grafana_alerting_auth
   grafana_alerting = {
-    url                        = var.grafana_alerting_url
-    prometheus_datasource_name = var.grafana_alerting_prometheus_datasource_name
-    logs_datasource_name       = var.grafana_logs_datasource_name
-    alerts_folder_uid          = var.grafana_alerting_folder_uid
-    dashboards_folder_uid      = var.grafana_dashboards_folder_uid
+    url                           = var.grafana_alerting_url
+    prometheus_datasource_name    = var.grafana_alerting_prometheus_datasource_name
+    logs_datasource_name          = var.grafana_logs_datasource_name
+    alerts_folder_uid             = var.grafana_alerting_folder_uid
+    dashboards_folder_uid         = var.grafana_dashboards_folder_uid
+    product_dashboards_folder_uid = var.grafana_rally_dashboards_folder_uid
   }
 
   alarm_emails          = var.alarm_emails
