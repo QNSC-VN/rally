@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.10](https://github.com/QNSC-VN/rally/compare/v0.7.9...v0.7.10) (2026-08-30)
+
+
+### ✨ Features
+
+* **infra:** file rally's SLO under the shared QNSC SLOs folder ([#525](https://github.com/QNSC-VN/rally/issues/525)) ([073ded7](https://github.com/QNSC-VN/rally/commit/073ded7fb2a59b1393881ec36f2a6dbd6ad51727))
+
+
+### 🐛 Bug Fixes
+
+* **infra:** create rally's dashboard folder centrally, stop duplicating it ([#522](https://github.com/QNSC-VN/rally/issues/522)) ([f85f8ad](https://github.com/QNSC-VN/rally/commit/f85f8adc1b7bd247ca583cece595655a7380ad17))
+* **infra:** update stale Grafana folder UIDs after qnsc-infra re-parenting ([#524](https://github.com/QNSC-VN/rally/issues/524)) ([81e8750](https://github.com/QNSC-VN/rally/commit/81e8750b344decd74273f1f0bff73c63e48047cc))
+
 ## [0.7.9](https://github.com/QNSC-VN/rally/compare/v0.7.8...v0.7.9) (2026-08-30)
 
 
