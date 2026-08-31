@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { StorageService } from './storage.service';
 import type { AppConfigService } from '../config/app-config.service';
 import type { ResilienceService } from '../resilience/resilience.service';
+import { ResiliencePreset } from '../resilience/resilience.types';
 
 /**
  * These assert the CONTRACT BETWEEN the presigned URL and the headers the client
@@ -178,5 +179,81 @@ describe('StorageService — public/private credential separation', () => {
     });
     expect(await presign(svc, 'public')).toContain('rally-test-public');
     expect(await presign(svc, 'private')).toContain('rally-test-attachments');
+  });
+});
+
+/**
+ * `headObject` runs under two DIFFERENT resilience budgets — the long background one
+ * for a future sweep or verifier, and a short interactive one for the request path
+ * (`AttachmentsService.confirm`). These assert the routing rather than the numbers
+ * (the numbers live in `resilience.presets.budgets.spec.ts`), because the failure
+ * mode here is not a wrong constant: it is TWO BUDGETS SHARING ONE POLICY NAME.
+ *
+ * `ResilienceService.getOrCreatePolicy` caches by name and returns a cached entry
+ * without comparing its options, so a single name would let whichever caller warmed
+ * the cache first silently impose its timeout, retry count and circuit on the other
+ * for the process lifetime — and on a low-traffic service that first caller is
+ * whichever request happened to arrive after a deploy. Nothing about that is visible
+ * at the call site, which is exactly why it is pinned.
+ */
+describe('StorageService — headObject resilience budget', () => {
+  const calls: { name: string; preset: unknown }[] = [];
+
+  // Does NOT invoke the operation: these cases are about which policy the call is
+  // routed through, and running the real S3 client would make a network attempt.
+  const resilience = {
+    execute: (name: string, _fn: unknown, preset: unknown) => {
+      calls.push({ name, preset });
+      return Promise.resolve({ ContentLength: 42, ChecksumSHA256: null });
+    },
+  } as unknown as ResilienceService;
+
+  const config = {
+    get: (k: string) =>
+      (
+        ({
+          S3_ATTACHMENTS_BUCKET: 'rally-test-attachments',
+          S3_PUBLIC_ASSETS_BUCKET: 'rally-test-public',
+          STORAGE_ENDPOINT: 'https://acct.r2.cloudflarestorage.com',
+          STORAGE_ACCESS_KEY_ID: 'AKIAEXAMPLE',
+          STORAGE_SECRET_ACCESS_KEY: 'secretexample',
+          STORAGE_FORCE_PATH_STYLE: true,
+          AWS_REGION: 'ap-southeast-1',
+        }) as Record<string, unknown>
+      )[k],
+  } as unknown as AppConfigService;
+
+  let service: StorageService;
+
+  beforeEach(() => {
+    calls.length = 0;
+    service = new StorageService(config, resilience);
+  });
+
+  it('defaults to the long background budget', async () => {
+    await service.headObject('k');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].preset).toBe(ResiliencePreset.STORAGE);
+  });
+
+  it('honours an interactive budget when the caller asks for one', async () => {
+    await service.headObject('k', 'private', ResiliencePreset.STORAGE_INTERACTIVE);
+    expect(calls[0].preset).toBe(ResiliencePreset.STORAGE_INTERACTIVE);
+  });
+
+  it('gives the two budgets DISTINCT policy names, or one silently wins', async () => {
+    await service.headObject('k');
+    await service.headObject('k', 'private', ResiliencePreset.STORAGE_INTERACTIVE);
+    expect(calls[0].name).not.toBe(calls[1].name);
+    expect(new Set(calls.map((c) => c.name)).size).toBe(2);
+  });
+
+  it('keeps the policy name bounded — preset-derived, never key-derived', async () => {
+    // A name built from the object key would put one policy (and one metric label
+    // value) per uploaded file into the process. Two different keys, one name.
+    await service.headObject('a/b/one.png', 'private', ResiliencePreset.STORAGE_INTERACTIVE);
+    await service.headObject('a/b/two.png', 'private', ResiliencePreset.STORAGE_INTERACTIVE);
+    expect(calls[0].name).toBe(calls[1].name);
+    expect(calls[0].name).not.toContain('one.png');
   });
 });

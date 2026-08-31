@@ -1,6 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
-import { NotFoundException, PreconditionFailedException, Span, StorageService } from '@platform';
+import {
+  NotFoundException,
+  PreconditionFailedException,
+  ResiliencePreset,
+  Span,
+  StorageService,
+} from '@platform';
 import type { JwtPayload, DbExecutor } from '@platform';
 import { FILE_REPOSITORY, type IFileRepository } from '../domain/ports/file.repository';
 import type { UploadPolicy } from '../domain/attachment-policy';
@@ -116,7 +122,19 @@ export class AttachmentsService {
   async confirm(actor: JwtPayload, fileId: string, policy: UploadPolicy): Promise<StoredFile> {
     const file = await this.requirePending(actor.workspaceId, fileId);
 
-    const head = await this.storage.headObject(file.storageKey, policy.visibility);
+    // STORAGE_INTERACTIVE, not the default background budget. This is the last hop of
+    // a browser upload and the user is holding the request open, so the HEAD gets ~6s
+    // worst case (2 attempts x 3s) instead of the reaper's minutes. Under the old
+    // budget an R2 blip made this call take minutes and still answer 412 — because
+    // `headObject` returns null on any error and the branch below reads that as "not
+    // uploaded" — so it fired no 5xx alert and was indistinguishable from a 10s
+    // request in the histogram. The reaper's long budget is unchanged; see
+    // RESILIENCE_PRESETS for both sets of numbers.
+    const head = await this.storage.headObject(
+      file.storageKey,
+      policy.visibility,
+      ResiliencePreset.STORAGE_INTERACTIVE,
+    );
     if (!head) {
       throw new PreconditionFailedException(
         'ATTACHMENT_NOT_UPLOADED',

@@ -94,6 +94,25 @@ export class HttpLoggingInterceptor implements NestInterceptor {
    * Server-sent-event responses stay open for minutes, so recording that as request
    * latency would dominate the p95 for the whole route and make the number useless.
    * Count the request, skip the duration.
+   *
+   * THE GUARD BELONGS ON BOTH THE SUCCESS AND THE ERROR TAP, and for a while it was
+   * only on the success one. Impact was small in practice — the only streaming route,
+   * `GET /notifications/stream`, calls `reply.hijack()` and its handler returns as
+   * soon as setup completes, so a rejection there carries setup time rather than
+   * connection lifetime — but the asymmetry is a trap rather than a decision. Any
+   * future stream that keeps its handler alive for the life of the connection (an
+   * `await` on a close promise is the obvious shape) would report a
+   * connection-lifetime "latency" on the error path only, and the resulting p99 would
+   * be minutes for reasons no dashboard could explain. Two paths, one rule.
+   *
+   * The header read works through a hijacked reply. `NotificationSseController` sets
+   * `Content-Type` on `reply.raw`, not on the FastifyReply, and Fastify's
+   * `Reply.prototype.getHeader` falls through to `this.raw.getHeader(key)` when its
+   * own header store has no entry (fastify 5, `lib/reply.js`) — so the streaming
+   * response is detectable from either tap. `getHeader` stays OPTIONAL in the
+   * parameter type because a non-Fastify response object (an interceptor unit test's
+   * stub, a future adapter) legitimately has none, and an absent header must read as
+   * "not streaming" rather than throw inside a metrics guard.
    */
   private isStreaming(response: { getHeader?: (name: string) => unknown }): boolean {
     const contentType = response.getHeader?.('content-type');
@@ -200,13 +219,22 @@ export class HttpLoggingInterceptor implements NestInterceptor {
               'INTERNAL';
           }
           const userId = req.user?.sub;
-          this.metrics.record({
-            route: this.routeLabel(req, url),
-            method,
-            statusCode,
-            durationMs: duration,
-            errorCode,
-          });
+          // Same streaming exclusion as the success tap above — see isStreaming for
+          // why it has to be on both. The response is fetched here only for that
+          // check: `statusCode` comes from the EXCEPTION, not from the reply, because
+          // the global filter has not written the status yet at this point.
+          const response = context
+            .switchToHttp()
+            .getResponse<{ getHeader?: (name: string) => unknown }>();
+          if (!this.isStreaming(response)) {
+            this.metrics.record({
+              route: this.routeLabel(req, url),
+              method,
+              statusCode,
+              durationMs: duration,
+              errorCode,
+            });
+          }
 
           this.log(statusCode, {
             msg: `<-- ${method} ${url} ${statusCode} ${duration}ms [${errorCode}]`,
