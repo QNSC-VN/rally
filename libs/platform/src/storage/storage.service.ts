@@ -11,6 +11,7 @@ import { AppConfigService } from '../config/app-config.service';
 import { ResilienceService } from '../resilience/resilience.service';
 import { ResiliencePreset } from '../resilience/resilience.types';
 import type {
+  HeadObjectBudget,
   HeadObjectResult,
   PresignGetRequest,
   PresignPutRequest,
@@ -137,6 +138,21 @@ export class StorageService {
    * Content-Disposition is baked in at PUT time so it is stored as object
    * metadata and therefore applies to EVERY later read — including a CDN read
    * that never passes through presignGet.
+   *
+   * ON THE RESILIENCE BUDGET (applies to presignGet too). Both presign methods run on
+   * the request path with a user waiting, and both are deliberately LEFT on the
+   * long-budget STORAGE preset rather than moved to STORAGE_INTERACTIVE, because
+   * neither makes a network call: `getSignedUrl` is a local HMAC-SHA256 computation
+   * over the canonical request, and the ~60s timeout it nominally sits under is
+   * unreachable. The one theoretical exception is credential resolution — an
+   * `S3Client` with no static credentials walks the provider chain, and in ECS that
+   * means one HTTP call to the container credentials endpoint on first use, cached
+   * thereafter. It does not apply to the deployed configuration: `STORAGE_ENDPOINT`
+   * is set to R2 with static `STORAGE_ACCESS_KEY_ID` / `STORAGE_SECRET_ACCESS_KEY`,
+   * so the chain is never walked. Changing these to the interactive budget would add
+   * a retry to a pure function and buy nothing; if the AWS-S3 code path (no endpoint,
+   * task-role credentials) is ever deployed, the FIRST presign of a process becomes a
+   * network call and this decision should be revisited then.
    */
   async presignPut(req: PresignPutRequest): Promise<PresignPutResult> {
     const uploadUrl = await this.resilience.execute(
@@ -193,14 +209,32 @@ export class StorageService {
   /**
    * HEAD an object to verify it was actually uploaded, and read back its size
    * and stored checksum. Returns null if the object does not exist.
+   *
+   * `budget` is REQUIRED READING for a new caller, because the failure it controls is
+   * silent. This method swallows every error and returns null, and the only caller —
+   * `AttachmentsService.confirm()` — reads null as "not uploaded" and answers 412. So
+   * under the default background budget an R2 outage produced a MINUTES-long request
+   * that ended in a 2xx or a 4xx: no 5xx alert fired, and the latency was clamped at
+   * the histogram's old 10s ceiling. An interactive caller MUST pass
+   * `ResiliencePreset.STORAGE_INTERACTIVE`. The default stays STORAGE so a future
+   * background caller (a checksum verifier, an orphan sweep) gets the long budget it
+   * wants without having to know this exists.
    */
   async headObject(
     key: string,
     visibility: StorageVisibility = 'private',
+    budget: HeadObjectBudget = ResiliencePreset.STORAGE,
   ): Promise<HeadObjectResult | null> {
     try {
       const result = await this.resilience.execute(
-        'storage.headObject',
+        // The policy name CARRIES THE BUDGET, and it has to. `ResilienceService`
+        // caches policies by name and returns a cached entry without comparing its
+        // options (`getOrCreatePolicy`), so a single name shared by two budgets means
+        // whichever caller ran first silently decides the timeout, the retry count
+        // and the circuit for the other one, for the lifetime of the process. Both
+        // values come from the ResiliencePreset enum, so this is bounded label
+        // cardinality, not a constructed string.
+        `storage.headObject:${budget}`,
         () =>
           this.clientFor(visibility).send(
             new HeadObjectCommand({
@@ -209,7 +243,7 @@ export class StorageService {
               ChecksumMode: 'ENABLED',
             }),
           ),
-        ResiliencePreset.STORAGE,
+        budget,
       );
       return {
         contentLength: result.ContentLength ?? 0,

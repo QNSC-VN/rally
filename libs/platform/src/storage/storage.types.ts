@@ -1,5 +1,20 @@
+import { ResiliencePreset } from '../resilience/resilience.types';
+
 /** Which bucket an object lives in. Mirrors storage.files.visibility. */
 export type StorageVisibility = 'private' | 'public';
+
+/**
+ * How long a `headObject` caller is willing to wait.
+ *
+ * Narrowed to the two object-store presets rather than accepting any
+ * `ResiliencePreset`, so a caller cannot HEAD an object under the CACHE budget (500ms,
+ * no retry) or the EMAIL one (five attempts) by passing something that happens to
+ * type-check. The choice is "is a user waiting on this or not", and there are exactly
+ * two answers.
+ */
+export type HeadObjectBudget =
+  | ResiliencePreset.STORAGE
+  | ResiliencePreset.STORAGE_INTERACTIVE;
 
 export interface PresignPutRequest {
   key: string;

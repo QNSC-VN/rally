@@ -11,6 +11,12 @@ export enum ResiliencePreset {
   CACHE = 'cache',
   EMAIL = 'email',
   STORAGE = 'storage',
+  /**
+   * The same object store as STORAGE, on the INTERACTIVE request path. Two presets
+   * because the acceptable wait is a property of the CALLER, not of the dependency:
+   * see RESILIENCE_PRESETS for the numbers and the evidence.
+   */
+  STORAGE_INTERACTIVE = 'storage_interactive',
 }
 
 export interface RetryOptions {

@@ -13,6 +13,20 @@
  *
  * Shutdown: call `shutdownOtel()` from the worker's signal handler BEFORE
  * `app.close()`.
+ *
+ * NO `httpDurationBoundaries` HERE, unlike `apps/api/src/otel.ts`, and that is a
+ * finding rather than an omission. The worker records no inbound HTTP at all: it
+ * boots through `NestFactory.createApplicationContext` (worker/main.ts), so there is
+ * no HTTP adapter and no listening socket; `HttpLoggingInterceptor` — the only thing
+ * in this codebase that records `http.server.duration` — is registered as an
+ * APP_INTERCEPTOR in `apps/api/src/app.module.ts` and nowhere else; and
+ * `WorkerModule` registers no controllers-with-adapter path that could reach it. The
+ * option installs a View on the `http.server.duration` instrument specifically, so
+ * passing it here would create a metric view for an instrument this process never
+ * records — a config line whose only effect is to look like coverage. Outbound calls
+ * the worker DOES make (Graph, SES, R2, GitHub) land on `http.client.duration`, which
+ * this option does not touch; if that histogram's tail becomes interesting it needs
+ * its own option in the package rather than this one being widened to match on name.
  */
 import { startOtel, shutdownOtel } from '@qnsc-vn/observability/otel';
 
