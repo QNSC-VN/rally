@@ -100,26 +100,13 @@ jobs:
         working-directory: infra/live/_shared
         run: tofu init -input=false
 
-      # `TF_VAR_cloudflare_api_token` is REQUIRED here, not optional, and its absence is what broke
-      # the first apply of the SES identity: `_shared` declares a `cloudflare` provider for the DKIM
-      # CNAMEs that prove the domain, and a provider with no credential fails CONFIG VALIDATION —
-      # "must provide exactly one of api_key, api_token or api_user_service_key" — before any resource
-      # is even planned. The develop and prod jobs below already map it; this job was the one that did
-      # not, so the whole shared apply exited 1 and the identity was never created.
-      #
-      # The secret is ORG-level, so it is reachable from every job in every repo including this one;
-      # what was missing was only the mapping into the `TF_VAR_` name OpenTofu reads.
       - name: tofu validate
         working-directory: infra/live/_shared
         run: tofu validate
-        env:
-          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: tofu apply
         working-directory: infra/live/_shared
         run: tofu apply -input=false -auto-approve
-        env:
-          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Develop — only on a branch push to main (NOT on tag pushes).
