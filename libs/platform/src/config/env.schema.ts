@@ -195,7 +195,7 @@ export const EnvSchema = z
     // ── Email ──────────────────────────────────────────────────────────────────
     /**
      * Which email transport to use. Defaults to 'dev' (logs to stdout).
-     * 'ses' requires SES_FROM_EMAIL + IAM role with ses:SendEmail.
+     * 'ses' requires MAIL_FROM_EMAIL + IAM role with ses:SendEmail.
      * 'resend' requires RESEND_API_KEY + a verified domain in the Resend dashboard.
      */
     EMAIL_PROVIDER: z.enum(['ses', 'resend', 'dev']).default('dev'),
@@ -203,8 +203,6 @@ export const EnvSchema = z
     MAIL_FROM_NAME: z.string().default('Mini Rally'),
     /** Verified sender address — used by all providers. Required when EMAIL_PROVIDER != 'dev'. */
     MAIL_FROM_EMAIL: z.string().email().optional(),
-    /** Legacy alias for MAIL_FROM_EMAIL. Supported for backward-compatibility. */
-    SES_FROM_EMAIL: z.string().email().optional(),
     /** Required when EMAIL_PROVIDER=resend. */
     RESEND_API_KEY: z.string().optional(),
     /** Reply-To address shown in email clients. Defaults to a no-reply alias. */
@@ -391,13 +389,13 @@ export const EnvSchema = z
      * the rule this repo already follows for the database credentials above, and for the same
      * reason — a precise message now beats an invisible outage later.
      */
-    if (env.EMAIL_PROVIDER !== 'dev' && !env.MAIL_FROM_EMAIL && !env.SES_FROM_EMAIL) {
+    if (env.EMAIL_PROVIDER !== 'dev' && !env.MAIL_FROM_EMAIL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['MAIL_FROM_EMAIL'],
         message:
           `EMAIL_PROVIDER is "${env.EMAIL_PROVIDER}", which sends real mail, so a verified sender ` +
-          `is required. Set MAIL_FROM_EMAIL (or the legacy SES_FROM_EMAIL), or set ` +
+          `is required. Set MAIL_FROM_EMAIL, or set ` +
           `EMAIL_PROVIDER=dev to log messages instead of sending them.`,
       });
     }

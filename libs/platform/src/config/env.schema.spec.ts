@@ -152,14 +152,6 @@ describe('EnvSchema — email sender', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts the legacy SES_FROM_EMAIL alias', () => {
-    // Still honoured by `resolveFromEmail`, so the guard must not reject a deploy that uses it.
-    const result = EnvSchema.safeParse(
-      env({ EMAIL_PROVIDER: 'ses', SES_FROM_EMAIL: 'noreply@qnsc.vn' }),
-    );
-    expect(result.success).toBe(true);
-  });
-
   it('needs no sender for the dev provider, which only logs', () => {
     // The default. Local development and CI must not have to configure mail at all.
     expect(EnvSchema.safeParse(env({ EMAIL_PROVIDER: 'dev' })).success).toBe(true);
