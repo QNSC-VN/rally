@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.13](https://github.com/QNSC-VN/rally/compare/v0.7.12...v0.7.13) (2026-08-31)
+
+
+### ✨ Features
+
+* **infra:** wire cache CPU/memory/eviction alarms, same as opshub ([#532](https://github.com/QNSC-VN/rally/issues/532)) ([7045d60](https://github.com/QNSC-VN/rally/commit/7045d60f052d49e16d6cca9467cfaaac9ca05e9d))
+
+
+### 🐛 Bug Fixes
+
+* volume-gate the low-traffic latency alerts, warm the DB pool, bound the interactive storage budget ([#535](https://github.com/QNSC-VN/rally/issues/535)) ([a00283a](https://github.com/QNSC-VN/rally/commit/a00283af215b34a234d35e705bbf0e5a512d6758))
+
 ## [0.7.12](https://github.com/QNSC-VN/rally/compare/v0.7.11...v0.7.12) (2026-08-30)
 
 
