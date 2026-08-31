@@ -7,12 +7,9 @@ import type { EmailCategory } from '../email.provider';
 
 /**
  * Resolve the verified sender address from config.
- * MAIL_FROM_EMAIL is canonical; SES_FROM_EMAIL is kept as a backward-compat alias.
- * Throws if neither is set (caught at module init, not at send time).
  */
 export function resolveFromEmail(config: AppConfigService): string {
-  const email = (config.get('MAIL_FROM_EMAIL') ?? config.get('SES_FROM_EMAIL'));
-  return email ?? '';
+  return config.get('MAIL_FROM_EMAIL') ?? '';
 }
 
 /**
