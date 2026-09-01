@@ -27,9 +27,12 @@ export type EmailCategory = 'transactional' | 'notification' | 'marketing';
 
 export interface EmailPayload {
   to: string;
-  /** Formatted "Display Name <address@domain.com>" sender. Providers should
-   *  build this from MAIL_FROM_NAME + MAIL_FROM_EMAIL env vars; callers can
-   *  override for special cases (e.g. a team-specific sender). */
+  /** Formatted "Display Name <address@domain.com>" sender. `EmailService` resolves
+   *  this ONCE from MAIL_FROM_NAME + MAIL_FROM_EMAIL and always passes it explicitly;
+   *  a provider that receives this absent MUST throw rather than fall back to a
+   *  hard-coded or provider-level default (see resend.provider.ts / ses.provider.ts).
+   *  Optional only so a caller invoking a provider directly (tests, the dev transport)
+   *  is not forced to fabricate one. */
   from?: string;
   /** Reply-To address. Defaults to MAIL_REPLY_TO config value. */
   replyTo?: string;

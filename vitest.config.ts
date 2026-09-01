@@ -70,7 +70,9 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'lcov'],
+      // `json-summary` writes coverage/coverage-summary.json, which
+      // `pnpm check:coverage-floors` reads to enforce the ratchet described below.
+      reporter: ['text', 'lcov', 'json-summary'],
       // Coverage ratchet: measure every file that HAS a unit spec — kept in sync
       // by test/coverage-include.spec.ts, which fails when a spec's subject is
       // missing from this list. It previously named four files by hand, one of
@@ -164,6 +166,12 @@ export default defineConfig({
       // stmts 86.06, branch 79.79, funcs 84.84, lines 86.84. All four still clear the floors, so they
       // stay where they are — funcs is the tightest at 0.84 over, which is the margin the note above
       // deliberately leaves for a single added branch.
+      //
+      // This used to be manual discipline only, and it slipped: the floors sat ~11 points under real
+      // coverage for two phases (70/66/62/70 against 82/77/81/83), which would have let a ten-point
+      // regression pass unnoticed. `pnpm check:coverage-floors` (ported from opshub's
+      // test/check-coverage-floors.ts) now fails CI when any floor sits more than 3 points behind
+      // measured coverage, so raising these is enforced rather than remembered.
       thresholds: {
         lines: 85,
         functions: 84,
