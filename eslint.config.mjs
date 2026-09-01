@@ -24,9 +24,9 @@ export default tseslint.config(
       'no-console': 'warn',
     },
   },
-  // db/ scripts are Node scripts that legitimately use console
+  // db/ scripts and the coverage-floor CLI checker are Node scripts that legitimately use console
   {
-    files: ['db/**/*.ts'],
+    files: ['db/**/*.ts', 'test/check-coverage-floors.ts'],
     rules: { 'no-console': 'off' },
   },
   // spec files use vi.fn() mocks that are inherently untyped — relax unsafe rules

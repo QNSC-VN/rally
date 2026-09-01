@@ -1,6 +1,11 @@
 /**
- * Shared helpers for email provider constructors.
- * Keeps FROM-address resolution and header-building DRY across SES, Resend, etc.
+ * Shared helpers for email dispatch.
+ *
+ * FROM-address resolution is used by `EmailService` alone — it resolves `from` ONCE,
+ * centrally, and passes it explicitly on every `provider.send()` call. Providers no
+ * longer resolve or fall back to a from-address themselves; each just throws when
+ * `payload.from` is absent (see resend.provider.ts / ses.provider.ts). Header-building
+ * (`buildUnsubscribeHeaders`) stays here since it is still per-provider.
  */
 import type { AppConfigService } from '../../config/app-config.service';
 import type { EmailCategory } from '../email.provider';

@@ -29,18 +29,15 @@ import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { AppConfigService } from '../../config/app-config.service';
 import { buildAwsClientConfig } from '../../aws';
 import type { IEmailProvider, EmailPayload, EmailSendResult } from '../email.provider';
-import { buildFromAddress } from './shared';
 
 @Injectable()
 export class SesEmailProvider implements IEmailProvider {
   private readonly logger = new Logger(SesEmailProvider.name);
   private readonly ses: SESv2Client;
-  private readonly fromAddress: string;
   private readonly replyTo: string | undefined;
   private readonly configSetName: string | undefined;
 
   constructor(private readonly config: AppConfigService) {
-    this.fromAddress = buildFromAddress(config);
     this.replyTo = config.get('MAIL_REPLY_TO');
     this.configSetName =
       (config.get('SES_BOUNCE_CONFIGSET') as string | undefined)?.trim() || undefined;
@@ -49,6 +46,18 @@ export class SesEmailProvider implements IEmailProvider {
   }
 
   async send(payload: EmailPayload): Promise<EmailSendResult> {
+    if (!payload.from) {
+      /*
+       * NO HARD-CODED FALLBACK SENDER, and no silent provider-level default either.
+       * `EmailService` always supplies `from` from configuration, and the env schema
+       * refuses to boot a non-dev provider without one. With SES this would fail
+       * LOUDER than a plain throw — an unverified identity is rejected outright — but
+       * that message would name the wrong problem, so the refusal stays here where it
+       * can name the actual missing variable.
+       */
+      throw new Error('SES: no sender address configured (MAIL_FROM_EMAIL)');
+    }
+
     const category = payload.category ?? 'transactional';
     const replyToAddresses = payload.replyTo
       ? [payload.replyTo]
@@ -59,7 +68,7 @@ export class SesEmailProvider implements IEmailProvider {
     try {
       const result = await this.ses.send(
         new SendEmailCommand({
-          FromEmailAddress: payload.from ?? this.fromAddress,
+          FromEmailAddress: payload.from,
           ...(replyToAddresses.length > 0 ? { ReplyToAddresses: replyToAddresses } : {}),
           Destination: { ToAddresses: [payload.to] },
           ...(this.configSetName ? { ConfigurationSetName: this.configSetName } : {}),

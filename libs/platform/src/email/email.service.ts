@@ -24,15 +24,31 @@ import type { IEmailProvider, EmailSendResult } from './email.provider';
 import { renderEmailTemplate } from './templates';
 import type { EmailTemplateName, EmailTemplateVars } from './templates';
 import { ResilienceService, ResiliencePreset } from '../resilience';
+import { AppConfigService } from '../config/app-config.service';
+import { resolveFromEmail, buildFromAddress } from './providers/shared';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
+  /**
+   * `undefined` when no sender is configured, never a string containing "undefined".
+   *
+   * `MAIL_FROM_EMAIL` has no default, because defaulting it would let a misconfigured
+   * deployment send from a domain it may not own. The env schema refuses to boot a
+   * non-dev provider without one (see the `EMAIL_PROVIDER !== 'dev'` check in
+   * `env.schema.ts`), so this is only reachable under `dev`, where the provider just
+   * logs and has nothing to send from.
+   */
+  private readonly from: string | undefined;
+
   constructor(
     @Inject(EMAIL_PROVIDER) private readonly provider: IEmailProvider,
     private readonly resilience: ResilienceService,
-  ) {}
+    config: AppConfigService,
+  ) {
+    this.from = resolveFromEmail(config) ? buildFromAddress(config) : undefined;
+  }
 
   /**
    * Render `template` with `vars` and send via the registered IEmailProvider.
@@ -66,6 +82,7 @@ export class EmailService {
       () =>
         this.provider.send({
           to,
+          from: this.from,
           subject: rendered.subject,
           html: rendered.html,
           text: rendered.text,

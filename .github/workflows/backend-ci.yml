@@ -173,6 +173,17 @@ jobs:
           CSRF_SECRET: ci-test-csrf-secret-min-32-characters-ok
           COOKIE_SECRET: ci-test-cookie-secret-min-32-characters-ok
 
+      # Coverage floors used to be manual discipline only, and it slipped: they sat ~11 points
+      # under real coverage for two phases (70/66/62/70 against 82/77/81/83), so a ten-point
+      # regression would have passed unnoticed — a ratchet that trails that far measures
+      # nothing (see "Coverage is a ratchet, not a target" in CLAUDE.md). Ported from opshub's
+      # `check:coverage-floors`, which guards the same class of drift there: this fails when
+      # any floor in vitest.config.ts falls more than 3 points behind measured coverage.
+      # Reads the json-summary report the step above just wrote, so it never runs coverage
+      # twice.
+      - name: Coverage floors track actual coverage
+        run: pnpm check:coverage-floors
+
       # The BA flow e2e specs boot the real AppModule with a synthetic admin
       # actor (no SSO login), so they need the demo admin to already be an
       # active workspace member. That row is created by the full seed, not by

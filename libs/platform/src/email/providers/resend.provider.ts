@@ -25,13 +25,12 @@ import { Resend } from 'resend';
 import { randomUUID } from 'node:crypto';
 import { AppConfigService } from '../../config/app-config.service';
 import type { IEmailProvider, EmailPayload, EmailSendResult } from '../email.provider';
-import { buildFromAddress, resolveFromEmail, buildUnsubscribeHeaders } from './shared';
+import { buildUnsubscribeHeaders } from './shared';
 
 @Injectable()
 export class ResendEmailProvider implements IEmailProvider {
   private readonly logger = new Logger(ResendEmailProvider.name);
   private readonly client: Resend;
-  private readonly fromAddress: string;
   private readonly replyTo: string | undefined;
   private readonly appBaseUrl: string;
 
@@ -42,16 +41,21 @@ export class ResendEmailProvider implements IEmailProvider {
     }
     this.client = new Resend(apiKey);
 
-    const fromEmail = resolveFromEmail(config);
-    if (!fromEmail) {
-      throw new Error('MAIL_FROM_EMAIL must be set when EMAIL_PROVIDER=resend');
-    }
-    this.fromAddress = buildFromAddress(config);
     this.replyTo = config.get('MAIL_REPLY_TO');
     this.appBaseUrl = config.get('APP_BASE_URL');
   }
 
   async send(payload: EmailPayload): Promise<EmailSendResult> {
+    if (!payload.from) {
+      /*
+       * NO HARD-CODED FALLBACK SENDER, and no silent provider-level default either.
+       * `EmailService` always supplies `from` from configuration, and the env schema
+       * refuses to boot a non-dev provider without one — this is the third line of
+       * defence, and it throws rather than guessing at a sender.
+       */
+      throw new Error('Resend: no sender address configured (MAIL_FROM_EMAIL)');
+    }
+
     const category = payload.category ?? 'transactional';
     const idempotencyKey = payload.idempotencyKey ?? randomUUID();
 
@@ -63,7 +67,7 @@ export class ResendEmailProvider implements IEmailProvider {
     try {
       const { data, error } = await this.client.emails.send(
         {
-          from: payload.from ?? this.fromAddress,
+          from: payload.from,
           to: payload.to,
           replyTo: payload.replyTo ?? this.replyTo,
           subject: payload.subject,
