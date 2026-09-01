@@ -43,7 +43,7 @@ jobs:
       contents: read
       security-events: write # SARIF upload (no-op on free plan, lights up after GHAS)
       packages: read
-    uses: QNSC-VN/qnsc-ci/.github/workflows/security.yml@v1.10.0
+    uses: QNSC-VN/qnsc-ci/.github/workflows/security.yml@v1.13.1
     with:
       product: rally
       image_target: api
