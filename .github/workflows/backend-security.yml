@@ -31,7 +31,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
-    uses: QNSC-VN/qnsc-ci/.github/workflows/actions-security.yml@v1
+    uses: quynhonsemiconductor/qnsc-ci/.github/workflows/actions-security.yml@v1
     with:
       blocking: true
 
@@ -43,7 +43,7 @@ jobs:
       contents: read
       security-events: write # SARIF upload (no-op on free plan, lights up after GHAS)
       packages: read
-    uses: QNSC-VN/qnsc-ci/.github/workflows/security.yml@v1.10.0
+    uses: quynhonsemiconductor/qnsc-ci/.github/workflows/security.yml@v1.10.0
     with:
       product: rally
       image_target: api

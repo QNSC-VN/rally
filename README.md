@@ -1,10 +1,10 @@
 # Rally
 
-Single-tenant project-management application. Runs on **ECS Fargate** (AWS), per the [platform architecture](https://github.com/QNSC-VN/.github/blob/main/docs/PLATFORM_ARCHITECTURE.md).
+Single-tenant project-management application. Runs on **ECS Fargate** (AWS), per the [platform architecture](https://github.com/quynhonsemiconductor/.github/blob/main/docs/PLATFORM_ARCHITECTURE.md).
 
 > **Not multi-tenant.** Rally was built as a multi-tenant SaaS and stopped being one on 2026-07-09, when `tenant` was merged into `workspace` ([design](docs/superpowers/specs/2026-07-09-drop-multi-tenant-merge-into-workspace-design.md)). `workspace` is now the switchable root; users are global and join workspaces via `workspace_members`. The deployment seeds exactly one workspace (`db/seeds/bootstrap.ts`), so in practice the boundary that separates users is **project**, enforced by `PolicyGuard`. There is no RLS and no DB-level isolation — see the ratchets in `test/workspace-scope.ratchet.spec.ts` and `test/route-policy.ratchet.spec.ts` for what holds that line instead.
 
-> **Monorepo.** Consolidates the former `rally-api` + `rally-web` + `rally-infra` into one repository per [REPOSITORY_STRUCTURE.md](https://github.com/QNSC-VN/.github/blob/main/docs/REPOSITORY_STRUCTURE.md). Old repos are archived (read-only) for history.
+> **Monorepo.** Consolidates the former `rally-api` + `rally-web` + `rally-infra` into one repository per [REPOSITORY_STRUCTURE.md](https://github.com/quynhonsemiconductor/.github/blob/main/docs/REPOSITORY_STRUCTURE.md). Old repos are archived (read-only) for history.
 
 ## Layout
 
@@ -20,7 +20,7 @@ rally/
 ├── deploy/ecs/    # deploy-descriptor notes (task-def is infra-owned — see deploy/ecs/README.md)
 ├── infra/         # OpenTofu (product-owned resources), sources qnsc-tf-modules via git ref
 │   └── live/{_shared,develop,prod}/
-├── .github/workflows/   # CI/CD — calls reusable workflows/actions from QNSC-VN/qnsc-ci
+├── .github/workflows/   # CI/CD — calls reusable workflows/actions from quynhonsemiconductor/qnsc-ci
 ├── Dockerfile     # multi-target: api, worker, migrator (web is static, no container)
 └── pnpm-workspace.yaml
 ```
@@ -59,10 +59,10 @@ pnpm build:web               # web (tsc + vite build → apps/web/dist)
 
 ## Deploy (ECS Fargate)
 
-Push-based CD via GitHub Actions → `QNSC-VN/qnsc-ci` reusable workflows/actions:
+Push-based CD via GitHub Actions → `quynhonsemiconductor/qnsc-ci` reusable workflows/actions:
 `build → Trivy scan → Cosign sign → push ECR → register task-def revision → update-service → health check`.
 Promotion `develop → prod` is a tagged release. See `.github/workflows/` and `deploy/ecs/README.md`.
 
 ## Infra
 
-`infra/live/{develop,prod}` compose modules from [`qnsc-tf-modules`](https://github.com/QNSC-VN/qnsc-tf-modules) (ecs-cluster, ecs-service, rds, messaging, secrets, pages-web, dns-record). The shared VPC/NAT/ALB (+ prod cache/WAF) live once per env in `qnsc-infra` (`platform/runtime-dev` / `runtime-prod`) and are consumed via `terraform_remote_state`; RDS + Fargate stay per-product (dev cache is a per-product single-node `cache.t4g.micro` ElastiCache — it survives task replacement so BFF sessions persist across deploys). State in S3 + DynamoDB (shared bootstrap). `infra/live/_shared` holds per-product ECR repos + GitHub OIDC deploy roles.
+`infra/live/{develop,prod}` compose modules from [`qnsc-tf-modules`](https://github.com/quynhonsemiconductor/qnsc-tf-modules) (ecs-cluster, ecs-service, rds, messaging, secrets, pages-web, dns-record). The shared VPC/NAT/ALB (+ prod cache/WAF) live once per env in `qnsc-infra` (`platform/runtime-dev` / `runtime-prod`) and are consumed via `terraform_remote_state`; RDS + Fargate stay per-product (dev cache is a per-product single-node `cache.t4g.micro` ElastiCache — it survives task replacement so BFF sessions persist across deploys). State in S3 + DynamoDB (shared bootstrap). `infra/live/_shared` holds per-product ECR repos + GitHub OIDC deploy roles.
