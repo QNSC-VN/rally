@@ -20,7 +20,7 @@ rally/
 ├── deploy/ecs/    # deploy-descriptor notes (task-def is infra-owned — see deploy/ecs/README.md)
 ├── infra/         # OpenTofu (product-owned resources), sources qnsc-tf-modules via git ref
 │   └── live/{_shared,develop,prod}/
-├── .github/workflows/   # CI/CD — calls reusable workflows/actions from quynhonsemiconductor/qnsc-ci
+├── .github/workflows/   # CI/CD — calls reusable workflows/actions from quynhonsemiconductor/ci
 ├── Dockerfile     # multi-target: api, worker, migrator (web is static, no container)
 └── pnpm-workspace.yaml
 ```
@@ -59,10 +59,10 @@ pnpm build:web               # web (tsc + vite build → apps/web/dist)
 
 ## Deploy (ECS Fargate)
 
-Push-based CD via GitHub Actions → `quynhonsemiconductor/qnsc-ci` reusable workflows/actions:
+Push-based CD via GitHub Actions → `quynhonsemiconductor/ci` reusable workflows/actions:
 `build → Trivy scan → Cosign sign → push ECR → register task-def revision → update-service → health check`.
 Promotion `develop → prod` is a tagged release. See `.github/workflows/` and `deploy/ecs/README.md`.
 
 ## Infra
 
-`infra/live/{develop,prod}` compose modules from [`qnsc-tf-modules`](https://github.com/quynhonsemiconductor/qnsc-tf-modules) (ecs-cluster, ecs-service, rds, messaging, secrets, pages-web, dns-record). The shared VPC/NAT/ALB (+ prod cache/WAF) live once per env in `qnsc-infra` (`platform/runtime-dev` / `runtime-prod`) and are consumed via `terraform_remote_state`; RDS + Fargate stay per-product (dev cache is a per-product single-node `cache.t4g.micro` ElastiCache — it survives task replacement so BFF sessions persist across deploys). State in S3 + DynamoDB (shared bootstrap). `infra/live/_shared` holds per-product ECR repos + GitHub OIDC deploy roles.
+`infra/live/{develop,prod}` compose modules from [`qnsc-tf-modules`](https://github.com/quynhonsemiconductor/tf-modules) (ecs-cluster, ecs-service, rds, messaging, secrets, pages-web, dns-record). The shared VPC/NAT/ALB (+ prod cache/WAF) live once per env in `qnsc-infra` (`platform/runtime-dev` / `runtime-prod`) and are consumed via `terraform_remote_state`; RDS + Fargate stay per-product (dev cache is a per-product single-node `cache.t4g.micro` ElastiCache — it survives task replacement so BFF sessions persist across deploys). State in S3 + DynamoDB (shared bootstrap). `infra/live/_shared` holds per-product ECR repos + GitHub OIDC deploy roles.

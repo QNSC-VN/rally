@@ -223,7 +223,7 @@ locals {
 }
 
 module "secrets" {
-  source      = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/secrets?ref=secrets-v2.1.1"
+  source      = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/secrets?ref=secrets-v2.1.1"
   prefix      = "${var.product}/${var.env}"
   kms_key_arn = local.kms_key_arn
 
@@ -269,7 +269,7 @@ module "secrets" {
 
 # ── RDS PostgreSQL 17 ─────────────────────────────────────────────────────────
 module "rds" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/rds?ref=rds-v2.1.2"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/rds?ref=rds-v2.1.2"
 
   identifier        = local.name
   subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
@@ -301,7 +301,7 @@ module "cache" {
   # — that is where the saving is — and issues a different endpoint, so the change is a
   # task-definition revision and a rolling deploy, not an in-place edit.
   count  = var.cache.enabled && !var.cache.shared ? 1 : 0
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/cache?ref=cache-v1.1.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/cache?ref=cache-v1.1.0"
 
   name              = "${local.name}-cache"
   subnet_ids        = data.terraform_remote_state.runtime.outputs.data_subnet_ids
@@ -331,7 +331,7 @@ module "cache" {
 # running cloudflared would be left holding one that no longer authenticates.
 module "tunnel" {
   count  = var.tunnel_enabled && var.cloudflare_account_id != "" ? 1 : 0
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/cf-tunnel?ref=cf-tunnel-v0.2.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/cf-tunnel?ref=cf-tunnel-v0.2.1"
 
   account_id = var.cloudflare_account_id
   name       = local.name
@@ -425,7 +425,7 @@ resource "aws_secretsmanager_secret_version" "tunnel_token" {
 # SSE was the compatibility question and it is answered: NotificationSseController
 # writes a `: heartbeat` every 25s, inside Cloudflare's ~100s idle timeout.
 module "tunnel_api" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/tunnel-agent?ref=tunnel-agent-v1.0.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/tunnel-agent?ref=tunnel-agent-v1.0.0"
 
   tunnel_token_secret_arn = length(aws_secretsmanager_secret.tunnel_token) > 0 ? aws_secretsmanager_secret.tunnel_token[0].arn : ""
   // Same local as the tunnel's own ingress rule above: the connector forwards to this
@@ -436,7 +436,7 @@ module "tunnel_api" {
 }
 
 module "otel_agent_api" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.0"
 
   product       = var.product
   env           = var.env
@@ -453,7 +453,7 @@ module "otel_agent_api" {
 }
 
 module "otel_agent_worker" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-agent?ref=observability-agent-v1.0.0"
 
   product       = var.product
   env           = var.env
@@ -484,7 +484,7 @@ module "otel_agent_worker" {
 # above exactly, for the same reason: logs, metrics and traces must agree on
 # which namespace/environment they belong to.
 module "firelens_agent_api" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.1"
 
   service_name     = "rally-api"
   product          = var.product
@@ -497,7 +497,7 @@ module "firelens_agent_api" {
 }
 
 module "firelens_agent_worker" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/firelens-agent?ref=firelens-agent-v0.2.1"
 
   service_name     = "rally-worker"
   product          = var.product
@@ -774,7 +774,7 @@ locals {
 # plainly what the silence means.
 module "alerts" {
   count  = var.grafana_alerting_auth != "" ? 1 : 0
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/observability-alerts?ref=observability-alerts-v1.1.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability-alerts?ref=observability-alerts-v1.1.1"
 
   product                    = var.product
   env                        = var.env
@@ -1559,7 +1559,7 @@ resource "grafana_dashboard" "runtime" {
 
 # ── ECS Cluster ───────────────────────────────────────────────────────────────
 module "ecs_cluster" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/ecs-cluster?ref=ecs-cluster-v2.0.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-cluster?ref=ecs-cluster-v2.0.0"
   name   = local.name
   tags   = local.tags
 
@@ -1695,7 +1695,7 @@ locals {
 
 # ── ECS Service — API ─────────────────────────────────────────────────────────
 module "api" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
 
   cpu_architecture = var.cpu_architecture
   # Same gate as OTEL_ENABLED below: only switches log driver once a real
@@ -1943,7 +1943,7 @@ module "api" {
 
 # ── ECS Service — Worker ──────────────────────────────────────────────────────
 module "worker" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecs-service?ref=ecs-service-v2.3.2"
 
   cpu_architecture = var.cpu_architecture
   use_firelens     = module.firelens_agent_worker.enabled
@@ -2116,7 +2116,7 @@ module "worker" {
 # Runs `pnpm migration:run` then exits. Never scheduled as a service; deploy
 # pipelines trigger it with: aws ecs run-task ...
 module "migrator" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/oneshot-task?ref=oneshot-task-v2.0.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/oneshot-task?ref=oneshot-task-v2.0.0"
 
   # Same architecture as the api and worker, and not independently settable: the migrator
   # runs the SAME image family, so a mismatch here is a task that cannot start during a
@@ -2227,7 +2227,7 @@ module "migrator" {
 # wired.
 module "web" {
   count  = var.cloudflare_account_id != "" ? 1 : 0
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/pages-web?ref=pages-web-v1.0.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/pages-web?ref=pages-web-v1.0.1"
 
   account_id  = var.cloudflare_account_id
   name        = "${local.name}-web"
@@ -2251,7 +2251,7 @@ module "web" {
 # var.api_domain. The api ECS service already attaches its /* forward
 # rule to that HTTPS listener (see module.api.alb_listener_arn).
 module "dns_api" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/dns-record?ref=dns-record-v1.1.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/dns-record?ref=dns-record-v1.1.0"
 
   enabled = local.cloudflare_zone_id != ""
   zone_id = local.cloudflare_zone_id
@@ -2278,7 +2278,7 @@ module "dns_api" {
 # gone — two topics per environment meant two subscriptions to confirm and two
 # places to look. The fail-open alarm below publishes to this module's topic.
 module "observability" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/observability?ref=observability-v4.3.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/observability?ref=observability-v4.3.0"
 
   create_dashboard = var.create_dashboard
 

@@ -205,7 +205,7 @@ module "stack" {
   // nodes holding a few thousand keys between them. The runtime layer already owned the
   // security group and the data subnets; only the node was duplicated.
   //
-  // Saves $15.45/mo across the account. Created in quynhonsemiconductor/qnsc-infra#69.
+  // Saves $15.45/mo across the account. Created in quynhonsemiconductor/infra#69.
   //
   // DATABASE 0. qnsc-kb takes database 1. The index is enforced by the server rather than
   // by a key-prefix convention every library has to honour — cluster mode is disabled on

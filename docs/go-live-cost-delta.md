@@ -63,7 +63,7 @@ The NAT line is the one item that is **not** in this repository. It lives in
 `qnsc-infra/live/runtime-prod`, and it is not optional: with `nat_type = "none"` a Fargate
 task cannot pull from ECR, read a secret, or let cloudflared dial out — so production has
 no ingress either. It fails at task start with `ResourceInitializationError`, long after
-a clean apply. See quynhonsemiconductor/qnsc-infra#68, which must land **before** the floors go to 1.
+a clean apply. See quynhonsemiconductor/infra#68, which must land **before** the floors go to 1.
 
 ### Three checklist items were declined on cost
 
@@ -255,7 +255,7 @@ one instance in `azs[0]`. An AZ failure therefore takes egress from every privat
 not just that AZ's. Tasks already running keep serving; nothing new can start. Accepted on
 the same reasoning as the database: it is single-AZ too.
 
-Tracked in quynhonsemiconductor/qnsc-infra#68.
+Tracked in quynhonsemiconductor/infra#68.
 
 ### CloudWatch alarms: +$0.90
 

@@ -27,7 +27,7 @@ idle — so the newest tag is *not* live, and nothing is. Pick deliberately; do 
    propagate.
 
 **Have ready:** AWS SSO session (`qnsc-admin`), a Cloudflare API token with Tunnel +
-DNS write, and access to both `quynhonsemiconductor/rally` and `quynhonsemiconductor/qnsc-infra`.
+DNS write, and access to both `quynhonsemiconductor/rally` and `quynhonsemiconductor/infra`.
 
 ---
 

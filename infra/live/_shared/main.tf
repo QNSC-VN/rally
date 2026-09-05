@@ -45,7 +45,7 @@ data "terraform_remote_state" "platform" {
 
 # ── ECR Repositories ──────────────────────────────────────────────────────────
 module "ecr" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/ecr?ref=ecr-v2.0.0"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/ecr?ref=ecr-v2.0.0"
 
   # ecr-v2.0.0 splits the keep-count lifecycle rule by tag prefix. The single rule it
   # replaces was provably dead: `tagPrefixList` is AND, not OR, so one rule listing
@@ -69,7 +69,7 @@ module "ecr" {
 # The web SPA deploys to Cloudflare Pages (see live/*/main.tf module "web"), so
 # it needs no AWS deploy role here.
 module "iam_oidc" {
-  source = "git::https://github.com/quynhonsemiconductor/qnsc-tf-modules.git//modules/iam-oidc?ref=iam-oidc-v3.0.1"
+  source = "git::https://github.com/quynhonsemiconductor/tf-modules.git//modules/iam-oidc?ref=iam-oidc-v3.0.1"
 
   product           = "rally"
   github_org        = local.github_org
