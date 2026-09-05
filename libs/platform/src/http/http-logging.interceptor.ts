@@ -2,8 +2,8 @@ import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } fr
 import type { FastifyRequest } from 'fastify';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
-import { DomainException as SharedDomainException } from '@qnsc-vn/platform-http';
-import { HttpMetrics, IGNORED_REQUEST_PATHS, normalizeRoute } from '@qnsc-vn/observability';
+import { DomainException as SharedDomainException } from '@quynhonsemiconductor/platform-http';
+import { HttpMetrics, IGNORED_REQUEST_PATHS, normalizeRoute } from '@quynhonsemiconductor/observability';
 import { AppConfigService } from '../config/app-config.service';
 import { albReceivedAtMs, albWaitMs, arrivalAtMs } from './request-timing';
 
@@ -203,7 +203,7 @@ export class HttpLoggingInterceptor implements NestInterceptor {
           const duration = Date.now() - startTime;
           // Reflect the ACTUAL response status in the access log. The global
           // exception filter maps DomainException (rally's own or a shared
-          // @qnsc-vn/* package's — both extend the shared base) to its
+          // @quynhonsemiconductor/* package's — both extend the shared base) to its
           // `httpStatus`; without this branch such errors would be mislogged as
           // 500/INTERNAL and pollute 5xx error-rate alerts. Fall back to Nest's
           // HttpException accessors, then to 500.

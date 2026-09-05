@@ -1,7 +1,7 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 import { AppConfigService, buildAwsClientConfig } from '@platform';
-import type { ISecretResolver } from '@qnsc-vn/identity';
+import type { ISecretResolver } from '@quynhonsemiconductor/identity';
 
 /**
  * A ref in ECS `valueFrom` form: "<secret arn>:<json key>:<version stage>:<version id>",

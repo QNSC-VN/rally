@@ -192,7 +192,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: QNSC-VN/qnsc-ci/.github/workflows/web-deploy.yml@v1.13.1
+    uses: quynhonsemiconductor/ci/.github/workflows/web-deploy.yml@v1
     with:
       product: rally
       # Monorepo: run wrangler from the web package dir so it discovers the

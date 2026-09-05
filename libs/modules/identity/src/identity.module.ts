@@ -22,14 +22,14 @@ import {
   OidcTokenVerifier,
   ConnectionRegistry,
   SECRET_RESOLVER,
-} from '@qnsc-vn/identity';
+} from '@quynhonsemiconductor/identity';
 import type {
   AuthServiceOptions,
   EntraVerifierOptions,
   BffOptions,
   ISsoConnectionRepository,
   ISecretResolver,
-} from '@qnsc-vn/identity';
+} from '@quynhonsemiconductor/identity';
 import { AppConfigService, BFF_SESSION_RESOLVER } from '@platform';
 import { AccessModule, AccessService } from '@modules/access';
 import { WorkspaceModule, WorkspaceService } from '@modules/workspace';
@@ -48,7 +48,7 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
 
 /**
  * Rally's identity module. The refresh-rotation auth engine, Entra token
- * verification, and cookie contract all live in `@qnsc-vn/identity`; rally
+ * verification, and cookie contract all live in `@quynhonsemiconductor/identity`; rally
  * supplies the product-specific adapters via the shared DI tokens:
  *
  *  - persistence ports  → rally's drizzle repositories
@@ -75,7 +75,7 @@ import { DrizzleTransactionRunner } from './application/transaction-runner';
 
     // BFF (Backend-for-Frontend) same-origin OIDC session — rally's only auth
     // path. The Entra client, session store, and orchestrator now live in
-    // `@qnsc-vn/identity`; rally binds `BFF_OPTIONS` from its env config and
+    // `@quynhonsemiconductor/identity`; rally binds `BFF_OPTIONS` from its env config and
     // adapts the core principal to `req.user` via `RallyBffSessionResolver`.
     EntraOidcClient,
     BffSessionStore,

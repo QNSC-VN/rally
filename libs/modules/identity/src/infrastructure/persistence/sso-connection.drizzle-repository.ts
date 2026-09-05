@@ -4,7 +4,7 @@ import { InjectDrizzle } from '@platform';
 import type { DrizzleDB } from '@platform';
 import { ssoConnections, ssoConnectionDomains, users } from '../../../../../../db/schema/identity';
 import { workspaceInvitations, workspaceMembers } from '../../../../../../db/schema/workspace';
-import type { SsoConnection, ISsoConnectionRepository } from '@qnsc-vn/identity';
+import type { SsoConnection, ISsoConnectionRepository } from '@quynhonsemiconductor/identity';
 
 /** Lower-cased email domain (the part after `@`), or null for a malformed email. */
 function emailDomain(email: string): string | null {

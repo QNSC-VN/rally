@@ -185,7 +185,7 @@ function describeProjectAccess(c: RenderCtx, verb: 'granted' | 'changed' | 'remo
 }
 
 /**
- * A sign-in, sign-out or workspace switch, written by `@qnsc-vn/identity` (`auth.*`).
+ * A sign-in, sign-out or workspace switch, written by `@quynhonsemiconductor/identity` (`auth.*`).
  *
  * These are the highest-VOLUME rows in the log and had no templates, so every one of them rendered
  * through the fallback as "Auth Login Sso — Workspace 019f742b" — the workspace id repeated on rows
@@ -249,7 +249,7 @@ const ACTION_TEMPLATES: Record<string, (c: RenderCtx) => string> = {
   'project.member.updated': (c) => describeProjectAccess(c, 'changed'),
   'project.member.removed': (c) => describeProjectAccess(c, 'removed'),
 
-  // ── Authentication (written by @qnsc-vn/identity, not by AUDIT_ACTION) ──
+  // ── Authentication (written by @quynhonsemiconductor/identity, not by AUDIT_ACTION) ──
   'auth.login.sso': (c) => describeAuth(c, 'Signed in through SSO'),
   'auth.login.dev': (c) => describeAuth(c, 'Signed in through the developer login'),
   'auth.logout': (c) => describeAuth(c, 'Signed out'),

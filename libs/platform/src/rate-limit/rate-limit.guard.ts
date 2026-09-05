@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/commo
 import { Reflector } from '@nestjs/core';
 import { createHash } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { CacheService } from '@qnsc-vn/platform-cache';
+import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { RateLimitedException } from '../errors/exceptions';
 import {
   RATE_LIMIT_METADATA_KEY,
@@ -11,7 +11,7 @@ import {
   type RateLimitTier,
 } from './rate-limit.constants';
 
-import { failOpenLog, SecurityMetrics } from '@qnsc-vn/observability';
+import { failOpenLog, SecurityMetrics } from '@quynhonsemiconductor/observability';
 
 /**
  * Global rate-limit guard backed by Valkey (Redis-compatible) sliding window.

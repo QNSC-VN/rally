@@ -23,7 +23,7 @@ import { ACTION_TEMPLATES_FOR_CONTRACT } from '../../../../apps/web/src/entities
  *
  * Mirrors `fe-permission-contract.spec.ts`, including why it lives on this side of the boundary.
  * Deliberately NOT an equality check: the frontend also describes `auth.*` codes written by
- * `@qnsc-vn/identity`, which are not in this repo's `AUDIT_ACTION` at all.
+ * `@quynhonsemiconductor/identity`, which are not in this repo's `AUDIT_ACTION` at all.
  */
 describe('frontend audit describer contract', () => {
   it('every AUDIT_ACTION code has a frontend describer template', () => {

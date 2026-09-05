@@ -1,5 +1,5 @@
 /**
- * Request context — re-exported from `@qnsc-vn/observability`.
+ * Request context — re-exported from `@quynhonsemiconductor/observability`.
  *
  * There must be exactly ONE `AsyncLocalStorage` instance in the process. The
  * package owns it because the package's logger mixin reads it and `withJobContext`
@@ -17,4 +17,4 @@ export {
   RequestContextService,
   requestContextStorage,
   type RequestContext,
-} from '@qnsc-vn/observability';
+} from '@quynhonsemiconductor/observability';

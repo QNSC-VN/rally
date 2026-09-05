@@ -4,7 +4,7 @@ import type { FastifyReply } from 'fastify';
 import '@fastify/cookie';
 import { Auth, ApiCommonErrors, BFF_SESSION_COOKIE, ConflictException } from '@platform';
 import type { JwtPayload } from '@platform';
-import { AuthService } from '@qnsc-vn/identity';
+import { AuthService } from '@quynhonsemiconductor/identity';
 import { AccessService, SelfScoped } from '@modules/access';
 import { WorkspaceService } from '@modules/workspace';
 import { AttachmentsService, USER_AVATAR_POLICY } from '@modules/attachments';

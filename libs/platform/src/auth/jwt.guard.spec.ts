@@ -3,9 +3,9 @@ import type { ExecutionContext } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { JwtAuthGuard } from './jwt.guard';
 import type { RequestContextService } from '../context/request-context';
-import type { AuthTokenCache } from '@qnsc-vn/identity';
+import type { AuthTokenCache } from '@quynhonsemiconductor/identity';
 import type { BffSessionResolver } from './bff-session-resolver';
-import type { SecurityMetrics } from '@qnsc-vn/observability';
+import type { SecurityMetrics } from '@quynhonsemiconductor/observability';
 import { BFF_SESSION_COOKIE } from './bff-session-resolver';
 import type { JwtPayload } from './jwt.strategy';
 

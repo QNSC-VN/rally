@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BffService } from '@qnsc-vn/identity';
+import { BffService } from '@quynhonsemiconductor/identity';
 import { type BffSessionResolver, type JwtPayload, toRallyPrincipal } from '@platform';
 
 /**
- * Rally adapter binding the shared `@qnsc-vn/identity` {@link BffService} to
+ * Rally adapter binding the shared `@quynhonsemiconductor/identity` {@link BffService} to
  * rally's {@link BffSessionResolver} contract, which the platform
  * {@link JwtAuthGuard} consumes.
  *

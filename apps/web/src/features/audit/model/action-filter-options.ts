@@ -22,7 +22,7 @@
  *    here.
  * `libs/modules/audit/src/domain/fe-audit-action-filter.contract.spec.ts` runs in the backend suite,
  * where both sides are importable, and fails if this list drifts from `AUDIT_ACTION` plus the
- * `auth.*` codes `@qnsc-vn/identity` writes — so a new audited action cannot ship unfilterable.
+ * `auth.*` codes `@quynhonsemiconductor/identity` writes — so a new audited action cannot ship unfilterable.
  */
 
 /** Filter groups, in picker order. Labels are translated by the caller. */
@@ -43,7 +43,7 @@ export interface AuditActionOption {
  * `workspace.settings.updated` are configuration.
  */
 export const AUDIT_ACTION_OPTIONS: readonly AuditActionOption[] = [
-  // ── Sign-in (written by @qnsc-vn/identity, the highest-volume rows in the log) ──
+  // ── Sign-in (written by @quynhonsemiconductor/identity, the highest-volume rows in the log) ──
   { code: 'auth.login.sso', group: 'auth' },
   { code: 'auth.login.dev', group: 'auth' },
   { code: 'auth.logout', group: 'auth' },

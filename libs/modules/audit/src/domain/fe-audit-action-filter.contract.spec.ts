@@ -24,7 +24,7 @@ import {
  *    page, which is a control promising more than the query delivers.
  *
  * `auth.*` is listed literally, from `AuthService`'s own emits, for the same reason the describer
- * contract lists it: those codes belong to `@qnsc-vn/identity` and are in no `AUDIT_ACTION` entry,
+ * contract lists it: those codes belong to `@quynhonsemiconductor/identity` and are in no `AUDIT_ACTION` entry,
  * yet they are the highest-volume rows in the log — a rename there must fail here rather than
  * quietly drop sign-ins out of the filter.
  */

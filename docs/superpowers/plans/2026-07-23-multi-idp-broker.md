@@ -4,7 +4,7 @@
 
 > ## ⚠️ Status & revisions (2026-07-24) — read before executing
 > **Package tasks T1–T9 are DONE** on branch `feat/multi-idp-oidc-broker` (stacked on `feat/identity-invite-break-glass`), all green (163 tests). The following override the task text below:
-> - **Secret store = AWS Secrets Manager, NOT SSM.** Ignore the `AWS SSM` / `@aws-sdk/client-ssm` / `SsmSecretResolver` / `@qnsc-vn/identity/ssm` mentions. The package ships only the `SecretResolver` **port** (done, store-agnostic). **Rally (T9-app) implements `SecretsManagerSecretResolver`.** Secrets under `rally/${env}/sso/*`.
+> - **Secret store = AWS Secrets Manager, NOT SSM.** Ignore the `AWS SSM` / `@aws-sdk/client-ssm` / `SsmSecretResolver` / `@quynhonsemiconductor/identity/ssm` mentions. The package ships only the `SecretResolver` **port** (done, store-agnostic). **Rally (T9-app) implements `SecretsManagerSecretResolver`.** Secrets under `rally/${env}/sso/*`.
 > - **NEW IaC task (Terraform, `qnsc-tf-modules` + Rally live):** add a **task-role** policy `secretsmanager:GetSecretValue` on `rally/${env}/sso/*` + `kms:Decrypt` on the shared CMK (today only the *execution* role reads secrets, for boot-time env injection — the broker reads at **runtime**). Verify CMK key policy + runtime egress (VPC endpoint/NAT). Values set out-of-band. Rotation = separate hygiene follow-up.
 > - **SSO-identity: NO schema change.** Skip **T11's `sso_identities` re-key** and **T12's user-repo re-key** — `sso_identities` keeps `(provider, provider_sub)`; the broker keys by `connection.provider`. `upsertBySsoIdentity/findSsoIdentity` signatures are unchanged.
 > - **Registry has no cache** (instant cutoff), **one shared `assertConnectionAllows` gate**, and all broker code lives under `packages/identity/src/oidc/`.
@@ -13,13 +13,13 @@
 
 **Goal:** invite-only users from ANY OIDC directory (extra Entra tenants, Google Workspace, Okta, consumer Google) sign into any platform app through one email-first login — no local passwords, per-connection secrets in AWS SSM, MFA delegated to each IdP.
 
-**Design:** see the v2 spec. Key shifts from v1: **connection-driven provisioning** (route by the resolved connection, not a hardcoded `entra`/`tid`), **connection `kind`** (`directory` domain-routed vs `shared` invite-gated), **mandatory discovery**, **issuer-list + nonce verification**, the **connection schema/contract owned by `@qnsc-vn/identity`**, a **reference `SsmSecretResolver` shipped from the package**, and a **prerelease** so the app can consume the package before GA.
+**Design:** see the v2 spec. Key shifts from v1: **connection-driven provisioning** (route by the resolved connection, not a hardcoded `entra`/`tid`), **connection `kind`** (`directory` domain-routed vs `shared` invite-gated), **mandatory discovery**, **issuer-list + nonce verification**, the **connection schema/contract owned by `@quynhonsemiconductor/identity`**, a **reference `SsmSecretResolver` shipped from the package**, and a **prerelease** so the app can consume the package before GA.
 
 **Tech:** NestJS, Drizzle (Postgres), `jose`, Valkey, Vitest, `@aws-sdk/client-ssm`, React (Vite).
 
-**Repos:** `platform/qnsc-app-platform` (`@qnsc-vn/identity` — mechanism + contract) and `rally` (migration, wiring, endpoint, UI, seed).
+**Repos:** `platform/qnsc-app-platform` (`@quynhonsemiconductor/identity` — mechanism + contract) and `rally` (migration, wiring, endpoint, UI, seed).
 
-**Build order (P1):** do all **package** tasks (T1–T9) → **publish `@qnsc-vn/identity@X.Y.0-rc.1`** (T10) → **app** tasks consume the rc (T11–T17) → **GA publish + bump + cleanup** (T18). During package dev, apps may `pnpm link` the workspace; CI consumes the published rc.
+**Build order (P1):** do all **package** tasks (T1–T9) → **publish `@quynhonsemiconductor/identity@X.Y.0-rc.1`** (T10) → **app** tasks consume the rc (T11–T17) → **GA publish + bump + cleanup** (T18). During package dev, apps may `pnpm link` the workspace; CI consumes the published rc.
 
 ---
 
@@ -32,7 +32,7 @@
 
 ---
 
-# PACKAGE (`@qnsc-vn/identity`)
+# PACKAGE (`@quynhonsemiconductor/identity`)
 
 ## Task 1: Connection contract — schema SQL + assertion helper + widened type/port
 **Files (create/modify under `packages/identity/src`):** `connection/connection.contract.ts` (CREATE), `connection/connection.contract.test.ts` (CREATE), `domain-types.ts` (MODIFY `SsoConnection`), `repository-ports.ts` (MODIFY `ISsoConnectionRepository`).
@@ -113,14 +113,14 @@
 ## Task 9: Reference `SsmSecretResolver` (package subpath) + barrel
 **Files:** `ssm/ssm-secret-resolver.ts` (CREATE), `ssm/index.ts` (CREATE), `package.json` `exports["./ssm"]` + `peerDependencies: @aws-sdk/client-ssm`, `oidc` barrel in `index.ts`, `ssm/*.test.ts`.
 - [ ] `SsmSecretResolver implements ISecretResolver` — `GetParameterCommand({Name, WithDecryption:true})`, in-memory TTL cache, empty→throw. Constructed from an injected `SSMClient` (test seam).
-- [ ] Export `@qnsc-vn/identity` (oidc/*, connection contract) and `@qnsc-vn/identity/ssm` (resolver). Test the resolver with a stubbed client (no network). Commit.
+- [ ] Export `@quynhonsemiconductor/identity` (oidc/*, connection contract) and `@quynhonsemiconductor/identity/ssm` (resolver). Test the resolver with a stubbed client (no network). Commit.
 
 ## Task 10: Prerelease publish (unblocks the app)
-- [ ] `cd platform/qnsc-app-platform && npx vitest run packages/identity/src && <typecheck>` → green. Bump `@qnsc-vn/identity` to `X.Y.0-rc.1`; publish per the repo's release flow. Record the version for the app tasks.
+- [ ] `cd platform/qnsc-app-platform && npx vitest run packages/identity/src && <typecheck>` → green. Bump `@quynhonsemiconductor/identity` to `X.Y.0-rc.1`; publish per the repo's release flow. Record the version for the app tasks.
 
 ---
 
-# APP (Rally) — consumes `@qnsc-vn/identity@X.Y.0-rc.1`
+# APP (Rally) — consumes `@quynhonsemiconductor/identity@X.Y.0-rc.1`
 
 ## Task 11: Migrations — connection columns, domain table, identity re-key (Rally)
 **Files:** `db/schema/identity.ts`, `db/migrations/0057_sso_connection_oidc_fields.sql`, `db/migrations/meta/_journal.json`.
@@ -137,7 +137,7 @@
 
 ## Task 13: Wire the broker in Rally DI (Rally)
 **Files:** `libs/modules/identity/src/identity.module.ts`.
-- [ ] Bind `OidcDiscovery`, `OidcClient`, `OidcTokenVerifier`, `{ provide: SECRET_RESOLVER, useClass: SsmSecretResolver }` (from `@qnsc-vn/identity/ssm`), and `ConnectionRegistry` (factory injecting the connection repo + `SECRET_RESOLVER` + `OidcDiscovery` + `IDENTITY_REDIRECT_URI`). Extend the `BffService` provider to inject them. Keep the legacy Entra providers during transition. Typecheck; commit.
+- [ ] Bind `OidcDiscovery`, `OidcClient`, `OidcTokenVerifier`, `{ provide: SECRET_RESOLVER, useClass: SsmSecretResolver }` (from `@quynhonsemiconductor/identity/ssm`), and `ConnectionRegistry` (factory injecting the connection repo + `SECRET_RESOLVER` + `OidcDiscovery` + `IDENTITY_REDIRECT_URI`). Extend the `BffService` provider to inject them. Keep the legacy Entra providers during transition. Typecheck; commit.
 
 ## Task 14: `POST /bff/login/start` + rate-limit + audit (Rally)
 **Files:** `bff.controller.ts` (+ `dto/login-start.dto.ts`), controller test.
@@ -161,7 +161,7 @@
 - [ ] (Optional) mock-OIDC container for one full authorize→callback→session. Run e2e; commit.
 
 ## Task 18: GA publish + bump + runbook + cleanup
-- [ ] Package green → **GA publish** `@qnsc-vn/identity@X.Y.0`; bump Rally off the rc; `pnpm i`.
+- [ ] Package green → **GA publish** `@quynhonsemiconductor/identity@X.Y.0`; bump Rally off the rc; `pnpm i`.
 - [ ] Full verify (Rally): `tsc -b`, web `tsc`, `vitest run`, e2e — all green.
 - [ ] `docs/runbooks/add-sso-connection.md`: (1) put the IdP secret in SSM `/…/sso/<slug>/client_secret`; (2) insert an `sso_connections` row (`kind`, `provider`, `external_tenant_id`, `authority_url`, `client_id`, `client_secret_ref`, `allowed_email_domains` [directory] or invite [shared], `default_role_slug`, `workspace_id`, `status=active`); (3) register `IDENTITY_REDIRECT_URI` in the IdP; (4) test; (5) engagement end → `status='disabled'` (instant cutoff).
 - [ ] Post-verify: remove the legacy `EntraOidcClient`/`entra-verifier`/`GET /bff/login` shims once the home connection is confirmed on the generic path. Commit.

@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import { Observable, from, of } from 'rxjs';
 import { switchMap, tap } from 'rxjs/operators';
-import { CacheService } from '@qnsc-vn/platform-cache';
+import { CacheService } from '@quynhonsemiconductor/platform-cache';
 
 /** TTL for cached idempotent responses (24 hours). */
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;

@@ -68,7 +68,7 @@ export const ApiCommonErrors = (...codes: HttpErrorCode[]) =>
  * For anything that resolves a workspace or project resource, use `@AuthPolicy()`
  * on the controller plus `@RequirePermission(...)` from `@modules/access`, which
  * is the single authorization decision point. `@Auth()` used to also mount the
- * `PermissionGuard` from `@qnsc-vn/identity` and accept a workspace-tier code;
+ * `PermissionGuard` from `@quynhonsemiconductor/identity` and accept a workspace-tier code;
  * both are gone now that every permission check runs through `PolicyGuard`.
  */
 export const Auth = () => applyDecorators(UseGuards(JwtAuthGuard), ApiBearerAuth('access-token'));

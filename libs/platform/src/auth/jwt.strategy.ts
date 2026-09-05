@@ -2,12 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Algorithm } from 'jsonwebtoken';
-import type { JwtPayload as CoreJwtPayload } from '@qnsc-vn/identity';
+import type { JwtPayload as CoreJwtPayload } from '@quynhonsemiconductor/identity';
 import { AppConfigService } from '../config/app-config.service';
 import { toRallyPrincipal } from './rally-principal';
 
 /**
- * Rally's request-scoped auth principal. Extends the shared `@qnsc-vn/identity`
+ * Rally's request-scoped auth principal. Extends the shared `@quynhonsemiconductor/identity`
  * access-token payload — which carries the product-neutral `contextId` and the
  * product-defined `claims` bag — with rally's own flattened conveniences:
  * `workspaceId` (== `contextId`) and `permissions` (== `claims.permissions`).
@@ -39,7 +39,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   /**
-   * Map the verified `@qnsc-vn/identity` token onto rally's `req.user`:
+   * Map the verified `@quynhonsemiconductor/identity` token onto rally's `req.user`:
    * `contextId` → `workspaceId` and `claims.permissions` → `permissions`.
    * The denylist (Valkey) check happens in the JwtAuthGuard.
    */

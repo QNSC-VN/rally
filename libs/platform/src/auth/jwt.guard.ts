@@ -9,8 +9,8 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { RequestContextService } from '../context/request-context';
 
-import { failOpenLog, SecurityMetrics } from '@qnsc-vn/observability';
-import { AuthTokenCache } from '@qnsc-vn/identity';
+import { failOpenLog, SecurityMetrics } from '@quynhonsemiconductor/observability';
+import { AuthTokenCache } from '@quynhonsemiconductor/identity';
 import {
   BFF_SESSION_COOKIE,
   BFF_SESSION_RESOLVER,

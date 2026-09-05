@@ -7,7 +7,7 @@ import { users, ssoIdentities } from '../../../../../../db/schema/identity';
 import { ssoProviderEnum } from '../../../../../../db/schema/enums';
 
 type SsoProvider = (typeof ssoProviderEnum.enumValues)[number];
-import type { User, UserStatus, SsoIdentity, IUserRepository } from '@qnsc-vn/identity';
+import type { User, UserStatus, SsoIdentity, IUserRepository } from '@quynhonsemiconductor/identity';
 
 @Injectable()
 export class UserDrizzleRepository implements IUserRepository<DbExecutor> {

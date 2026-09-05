@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { CallHandler, ExecutionContext } from '@nestjs/common';
 import { Logger } from '@nestjs/common';
 import { of, throwError } from 'rxjs';
-import { PreconditionFailedException } from '@qnsc-vn/platform-http';
+import { PreconditionFailedException } from '@quynhonsemiconductor/platform-http';
 import { HttpLoggingInterceptor } from './http-logging.interceptor';
 import type { AppConfigService } from '../config/app-config.service';
-import type { HttpMetrics } from '@qnsc-vn/observability';
+import type { HttpMetrics } from '@quynhonsemiconductor/observability';
 
 /**
  * The streaming exclusion has to hold on BOTH taps of the interceptor's one `pipe`.

@@ -30,7 +30,7 @@ Backend commands run from the repo root (the backend IS the root package); the S
 only pnpm workspace member, so it is reached with `--filter rally-web`.
 
 ```bash
-export NODE_AUTH_TOKEN="$(gh auth token)"   # @qnsc-vn/* live on GitHub Packages (read:packages)
+export NODE_AUTH_TOKEN="$(gh auth token)"   # @quynhonsemiconductor/* live on GitHub Packages (read:packages)
 pnpm install                                # root (backend) + apps/web
 
 pnpm build                                  # nest build api + worker
@@ -1782,7 +1782,7 @@ history.
 
 ## Observability
 
-The implementation lives in `@qnsc-vn/observability` — shared with opshub, so fix it
+The implementation lives in `@quynhonsemiconductor/observability` — shared with opshub, so fix it
 there, not here. `libs/platform` keeps only re-export façades (`observability/index.ts`,
 `context/request-context.ts`) so existing `@platform` import sites stay valid.
 
@@ -1881,7 +1881,7 @@ Two settings in `infra/live/*` read like mistakes. Both are deliberate; changing
 either opens a hole or leaks API surface.
 
 - **`NODE_ENV=production` in DEVELOP.** Not a copy-paste error. `devLoginAllowed`
-  in `@qnsc-vn/identity` is `nodeEnv !== 'production'`, so flipping develop to
+  in `@quynhonsemiconductor/identity` is `nodeEnv !== 'production'`, so flipping develop to
   `development` would expose the **passwordless** `/v1/bff/dev-login` on a public
   host — anyone knowing a seeded address (`dev@qnsc.dev` is in this repo) could sign
   in as that user with no password. Develop deliberately requires real Entra SSO.
@@ -1914,7 +1914,7 @@ either opens a hole or leaks API surface.
   authenticated caller, so use it only where the surface is self-scoped
   (`me/*`, `notifications/*`) or runs around a session existing (`auth/*`).
   The old `@platform` `RequirePermission` + the `PermissionGuard` from
-  `@qnsc-vn/identity` are gone; so is `@RequireProjectPermission`.
+  `@quynhonsemiconductor/identity` are gone; so is `@RequireProjectPermission`.
 - **A route with no `@RequirePermission` is OPEN, not denied.** `PolicyGuard`
   returns `true` when it finds no metadata, and `@AuthPolicy()` sets none. That is
   why `test/route-policy.ratchet.spec.ts` counts undecorated handlers and only

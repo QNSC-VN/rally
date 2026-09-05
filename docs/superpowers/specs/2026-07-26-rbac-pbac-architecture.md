@@ -21,7 +21,7 @@
 ### 2.1 Enforcement — three mechanisms, one job
 | Mechanism | Where | Used for |
 |---|---|---|
-| `PermissionGuard` (`@RequirePermission`) | `@qnsc-vn/identity` pkg, bound in `platform.module.ts:103` | workspace-tier codes, from JWT snapshot |
+| `PermissionGuard` (`@RequirePermission`) | `@quynhonsemiconductor/identity` pkg, bound in `platform.module.ts:103` | workspace-tier codes, from JWT snapshot |
 | `ProjectPermissionGuard` (`@RequireProjectPermission`) | `libs/modules/access/.../project-permission.guard.ts` | project-tier, JWT fast-path then DB |
 | `AccessService.assertProjectPermission` | `access.service.ts:474` | project-tier when id known only after a load |
 

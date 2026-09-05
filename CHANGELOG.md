@@ -606,7 +606,7 @@
 ### ♻️ Refactors
 
 * **infra:** extract the product stack so develop and prod cannot drift ([#177](https://github.com/QNSC-VN/rally/issues/177)) ([8414254](https://github.com/QNSC-VN/rally/commit/841425459dbedb86f99cb8163af5165b62681652))
-* **observability:** adopt @qnsc-vn/observability and fix four logging defects ([#164](https://github.com/QNSC-VN/rally/issues/164)) ([6b02d4b](https://github.com/QNSC-VN/rally/commit/6b02d4bcf7ef25f3c62db77a61389f9d2c8697d9))
+* **observability:** adopt @quynhonsemiconductor/observability and fix four logging defects ([#164](https://github.com/QNSC-VN/rally/issues/164)) ([6b02d4b](https://github.com/QNSC-VN/rally/commit/6b02d4bcf7ef25f3c62db77a61389f9d2c8697d9))
 
 
 ### 📦 Dependencies
@@ -659,7 +659,7 @@
 
 ### ♻️ Refactors
 
-* **identity:** adopt shared @qnsc-vn/identity BFF mechanism ([#73](https://github.com/QNSC-VN/rally/issues/73)) ([cea7756](https://github.com/QNSC-VN/rally/commit/cea7756d58be126a83e8aabfb6bf07139eec5bf2))
+* **identity:** adopt shared @quynhonsemiconductor/identity BFF mechanism ([#73](https://github.com/QNSC-VN/rally/issues/73)) ([cea7756](https://github.com/QNSC-VN/rally/commit/cea7756d58be126a83e8aabfb6bf07139eec5bf2))
 
 ## [0.2.0](https://github.com/QNSC-VN/rally/compare/v0.1.0...v0.2.0) (2026-07-14)
 
@@ -791,7 +791,7 @@
 
 * **access:** project-scoped writes + monotonic roles; migration upgrade-path CI gate ([4a3e548](https://github.com/QNSC-VN/rally/commit/4a3e548feba63cf49b70f8cec011767e39109cc3))
 * adopt shared alb, dns-record, oneshot-task modules; export cloudflare facts from bootstrap ([c14e1f3](https://github.com/QNSC-VN/rally/commit/c14e1f3010481a51895a33551d398169b62c2298))
-* **auth:** delegate workspace-tier guard to @qnsc-vn/identity ([#70](https://github.com/QNSC-VN/rally/issues/70)) ([c4bd59b](https://github.com/QNSC-VN/rally/commit/c4bd59be798b2f67a98e23ed44ae468b1cd62049))
+* **auth:** delegate workspace-tier guard to @quynhonsemiconductor/identity ([#70](https://github.com/QNSC-VN/rally/issues/70)) ([c4bd59b](https://github.com/QNSC-VN/rally/commit/c4bd59be798b2f67a98e23ed44ae468b1cd62049))
 * **auth:** remove legacy ENTRA_DEFAULT_TENANT_ID SSO fallback ([4232fa5](https://github.com/QNSC-VN/rally/commit/4232fa5b047f1176c5dc28c4bc699ec57f8208cf))
 * **auth:** remove password login, SSO-only (mirror opshub) ([#38](https://github.com/QNSC-VN/rally/issues/38)) ([90c0cc0](https://github.com/QNSC-VN/rally/commit/90c0cc08b5150690d52ce3b4a7a0a8ae3c1b3ea2))
 * drop multi-tenancy, merge tenant into workspace ([#33](https://github.com/QNSC-VN/rally/issues/33)) ([71f9cc5](https://github.com/QNSC-VN/rally/commit/71f9cc5940828a4ea58cd3551415ac9bcc45c67d))

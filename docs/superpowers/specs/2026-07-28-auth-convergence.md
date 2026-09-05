@@ -6,7 +6,7 @@ Written 2026-07-28.
 ## Why this document exists
 
 rally and opshub are meant to stay boilerplate-identical, and their authentication
-mechanism already is — it lives in `@qnsc-vn/identity`. Their **authorization** did
+mechanism already is — it lives in `@quynhonsemiconductor/identity`. Their **authorization** did
 not: rally authorized from a permission list embedded in the access token, opshub
 from the database with scope dimensions. Both were internally coherent, so the
 question "which one is right?" kept getting re-litigated from taste rather than from
@@ -81,7 +81,7 @@ decorator shape.
     fast-pathed a workspace-wide grant from the token.
   - Project-tier checks are cached for the first time (was an uncached join per
     request).
-- `#241` — pinned `@qnsc-vn/identity` to exact `6.0.0`, which is also what proved
+- `#241` — pinned `@quynhonsemiconductor/identity` to exact `6.0.0`, which is also what proved
   the package's v6 trim was safe in a real consumer.
 
 Still open in rally: project scope is **additive** — a project-scoped role can add
@@ -123,7 +123,7 @@ project/workspace tier split.
 
 - **Do not reintroduce permissions into the token.** That snapshot is what forced
   the epoch counter, and the epoch is what forced the BFF re-mint path.
-- **Do not create a shared `@qnsc-vn/authz` package.** The shared package already
+- **Do not create a shared `@quynhonsemiconductor/authz` package.** The shared package already
   contained an authorization guard; both products abandoned it, and its wildcard
   vocabulary was unusable by one of them. Share the *shape*, copy the code — see the
   admission test.

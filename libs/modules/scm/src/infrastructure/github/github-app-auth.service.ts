@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { createPrivateKey, type KeyObject } from 'node:crypto';
 import { SignJWT } from 'jose';
 import { AppConfigService } from '@platform';
-import { SECRET_RESOLVER, type ISecretResolver } from '@qnsc-vn/identity';
+import { SECRET_RESOLVER, type ISecretResolver } from '@quynhonsemiconductor/identity';
 
 /**
  * Authenticates as the "Rally SCM" GitHub App and mints short-lived installation

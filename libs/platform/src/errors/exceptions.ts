@@ -1,4 +1,4 @@
-import { DomainException as SharedDomainException } from '@qnsc-vn/platform-http';
+import { DomainException as SharedDomainException } from '@quynhonsemiconductor/platform-http';
 import type { ErrorCategory, ErrorCode } from './error-codes';
 
 /**
@@ -7,8 +7,8 @@ import type { ErrorCategory, ErrorCode } from './error-codes';
  * Domain functions return Result<T,E>; they throw DomainException only at
  * use-case boundaries after losing the ability to continue.
  *
- * Extends the shared `@qnsc-vn/platform-http` DomainException so that errors
- * thrown by shared packages (e.g. @qnsc-vn/identity's AuthService) and errors
+ * Extends the shared `@quynhonsemiconductor/platform-http` DomainException so that errors
+ * thrown by shared packages (e.g. @quynhonsemiconductor/identity's AuthService) and errors
  * thrown by rally's own use-cases share ONE class identity. The global
  * exception filter maps both through a single `instanceof` branch instead of
  * letting shared-package errors fall through to a generic 500. Rally keeps its

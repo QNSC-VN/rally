@@ -20,7 +20,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type {} from '@fastify/csrf-protection';
 import '@fastify/cookie';
 import { Auth, AppConfigService, Public, RateLimit, UnauthorizedException } from '@platform';
-import { AuthMetrics } from '@qnsc-vn/observability';
+import { AuthMetrics } from '@quynhonsemiconductor/observability';
 import type { JwtPayload } from '@platform';
 import {
   AuthService,
@@ -28,7 +28,7 @@ import {
   readCookie,
   SSO_CONNECTION_REPOSITORY,
   type ISsoConnectionRepository,
-} from '@qnsc-vn/identity';
+} from '@quynhonsemiconductor/identity';
 import { AccessService, SelfScoped } from '@modules/access';
 import { WorkspaceService } from '@modules/workspace';
 import { CurrentUser } from '../decorators/current-user.decorator';

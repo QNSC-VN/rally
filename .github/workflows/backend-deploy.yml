@@ -284,8 +284,8 @@ jobs:
       contents: read
       id-token: write
       attestations: write
-      packages: read # build-push-ecr pulls private @qnsc-vn/* from GitHub Packages
-    uses: QNSC-VN/qnsc-ci/.github/workflows/backend-deploy.yml@v1.13.1
+      packages: read # build-push-ecr pulls private @quynhonsemiconductor/* from GitHub Packages
+    uses: quynhonsemiconductor/ci/.github/workflows/backend-deploy.yml@v1
     with:
       product: rally
       has_worker: true
