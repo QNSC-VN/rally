@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.14](https://github.com/quynhonsemiconductor/rally/compare/v0.7.13...v0.7.14) (2026-09-05)
+
+
+### 🐛 Bug Fixes
+
+* **ci:** make the tag deploy wait for the develop deploy of the same commit ([#536](https://github.com/quynhonsemiconductor/rally/issues/536)) ([194de1d](https://github.com/quynhonsemiconductor/rally/commit/194de1d1a5f4db92d5c613420a620fdf0c7a1c50))
+* **email:** centralize from-address resolution; add coverage-floor drift check ([#544](https://github.com/quynhonsemiconductor/rally/issues/544)) ([bd56840](https://github.com/quynhonsemiconductor/rally/commit/bd568406dc810173b548b28927e839a3e559a641))
+
+
+### ♻️ Refactors
+
+* **infra:** move SES domain identity to platform tier, align qnsc-ci pins ([#543](https://github.com/quynhonsemiconductor/rally/issues/543)) ([6c7e5f7](https://github.com/quynhonsemiconductor/rally/commit/6c7e5f7fa6f8e91ecd7580c204272ded8d871de6))
+
 ## [0.7.13](https://github.com/QNSC-VN/rally/compare/v0.7.12...v0.7.13) (2026-08-31)
 
 
