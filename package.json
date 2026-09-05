@@ -83,7 +83,7 @@
     "dompurify": "^3.4.13",
     "drizzle-orm": "^0.45.0",
     "drizzle-zod": "^0.8.0",
-    "fastify": "^5.12.3",
+    "fastify": "^5.10.0",
     "ioredis": "^5.11.1",
     "jose": "^6.2.3",
     "nestjs-pino": "^4.6.1",
@@ -133,14 +133,5 @@
     "unplugin-swc": "^1.5.9",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^4.1.10"
-  },
-  "pnpm": {
-    "overrides": {
-      "fast-uri": "^4.1.4",
-      "qs": "^6.16.0",
-      "browserslist": "^4.28.9",
-      "@tiptap/core": "^3.31.3",
-      "@tiptap/pm": "^3.31.3"
-    }
   }
 }
