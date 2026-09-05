@@ -45,7 +45,7 @@
  *   }
  */
 import { Logger } from '@nestjs/common';
-import { QueueMetrics, withJobContext, withRestoredTrace } from '@qnsc-vn/observability';
+import { QueueMetrics, withJobContext, withRestoredTrace } from '@quynhonsemiconductor/observability';
 
 import type { DrizzleDB, DrizzleTx } from '../database/drizzle.provider';
 
@@ -63,7 +63,7 @@ export type PostCommitTask = () => Promise<void>;
  * A distinct field rather than a distinguishable message, because a CloudWatch metric
  * filter matches structured fields, and pattern-matching on prose breaks the day
  * someone rewords a log line. Same reasoning and same shape as FAIL_OPEN_FIELD in
- * `@qnsc-vn/observability`.
+ * `@quynhonsemiconductor/observability`.
  *
  * `QueueMetrics.recordFailure` already counts this, but OTEL_ENABLED is "false" in
  * every deployed environment and no collector exists, so that counter reports nothing

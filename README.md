@@ -33,7 +33,7 @@ rally/
 
 ## Develop
 
-The shared `@qnsc-vn/*` libraries (e.g. `@qnsc-vn/identity`) are hosted on **GitHub Packages**, which requires read auth. **Do not mint a personal PAT** — reuse your existing GitHub CLI login (needs the `read:packages` scope):
+The shared `@quynhonsemiconductor/*` libraries (e.g. `@quynhonsemiconductor/identity`) are hosted on **GitHub Packages**, which requires read auth. **Do not mint a personal PAT** — reuse your existing GitHub CLI login (needs the `read:packages` scope):
 
 ```bash
 gh auth login                                        # one-time, if not already

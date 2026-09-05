@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { withJobContext } from '@qnsc-vn/observability';
+import { withJobContext } from '@quynhonsemiconductor/observability';
 import { RequestContextService, requestContextStorage } from './request-context';
 
 /**

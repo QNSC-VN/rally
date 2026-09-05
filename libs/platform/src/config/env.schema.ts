@@ -229,7 +229,7 @@ export const EnvSchema = z
      * every develop span, metric and log as `production` — indistinguishable from
      * real production — and silently applied the production sampling ratio there.
      *
-     * Infra sets this to `develop` / `production`. Left unset, `@qnsc-vn/observability`
+     * Infra sets this to `develop` / `production`. Left unset, `@quynhonsemiconductor/observability`
      * falls back to `NODE_ENV`, which is why this is optional rather than required.
      */
     DEPLOYMENT_ENV: z.string().optional(),

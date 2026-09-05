@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Pool } from 'pg';
 import { DrizzleProvider } from './drizzle.provider';
 import type { AppConfigService } from '../config/app-config.service';
-import type { DbPoolMetrics } from '@qnsc-vn/observability';
+import type { DbPoolMetrics } from '@quynhonsemiconductor/observability';
 
 /**
  * These cover the POOL WARM-UP, and the first case is the reason the rest exist.

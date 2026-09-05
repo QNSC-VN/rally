@@ -2,10 +2,10 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FAIL_OPEN_FIELD, failOpenLog } from '@qnsc-vn/observability';
+import { FAIL_OPEN_FIELD, failOpenLog } from '@quynhonsemiconductor/observability';
 
 /**
- * The log helper itself now lives in `@qnsc-vn/observability`; what stays here is the
+ * The log helper itself now lives in `@quynhonsemiconductor/observability`; what stays here is the
  * part only this repo can assert — that the field name the package emits is the one
  * this repo's Terraform actually filters on. The coupling is invisible from both
  * sides, so a package rename or an infra edit must fail a test rather than silently

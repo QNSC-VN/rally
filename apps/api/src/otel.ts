@@ -4,7 +4,7 @@
  * module loads them.
  *
  * The implementation is shared with the worker; see
- * the `@qnsc-vn/observability` package. Imported from its `/otel` subpath rather
+ * the `@quynhonsemiconductor/observability` package. Imported from its `/otel` subpath rather
  * than the package root on purpose: the root barrel reaches Nest and pino, which
  * would then be required *before* instrumentation is installed.
  *
@@ -12,7 +12,7 @@
  * `app.close()`. Do NOT register a second SIGTERM handler here — main.ts owns the
  * shutdown sequence.
  */
-import { startOtel, shutdownOtel } from '@qnsc-vn/observability/otel';
+import { startOtel, shutdownOtel } from '@quynhonsemiconductor/observability/otel';
 
 export { shutdownOtel };
 

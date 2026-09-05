@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { IClaimsProvider, ProductClaims } from '@qnsc-vn/identity';
+import type { IClaimsProvider, ProductClaims } from '@quynhonsemiconductor/identity';
 
 /**
  * Rally's {@link IClaimsProvider}.

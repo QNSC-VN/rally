@@ -173,7 +173,7 @@ export async function seedTenantBootstrapInto(database: Db): Promise<void> {
   // provisions on first SSO login. Set SSO_JIT_ENABLED=false to require pre-
   // provisioning — only seeded/invited users (matched by email) and
   // PLATFORM_ADMIN_EMAILS admins may sign in; everyone else is rejected until an
-  // admin invites them. The invited-user allow path needs @qnsc-vn/identity
+  // admin invites them. The invited-user allow path needs @quynhonsemiconductor/identity
   // >= 5.5.0 (older versions treat jitEnabled=false as block-everyone).
   const jitEnabled = (process.env['SSO_JIT_ENABLED'] ?? 'true').toLowerCase() !== 'false';
 

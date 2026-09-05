@@ -107,7 +107,7 @@ Tracked as work, not as divergence. Ordered plan in the convergence spec.
 
 ## Not divergence — fix on sight
 
-- `FailOpenControl` in `@qnsc-vn/observability` still declares `authz_epoch` and
+- `FailOpenControl` in `@quynhonsemiconductor/observability` still declares `authz_epoch` and
   `authz_epoch_bump`. Nothing emits them since #238. Removing union members is
   breaking, so they come out on the package's next major.
 - Neither repo has the weekly diff gate over the shared paths yet. Until it exists,

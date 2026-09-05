@@ -30,7 +30,7 @@ permissions:
   # this change is making: nothing here needs it today (the openapi job reads
   # `github.event.pull_request.base.sha` straight off the payload, which needs no grant).
   pull-requests: read
-  packages: read       # pull @qnsc-vn/* from GitHub Packages
+  packages: read       # pull @quynhonsemiconductor/* from GitHub Packages
 
 env:
   # 24, matching .nvmrc and the Dockerfile's `ARG NODE_VERSION=24`. Nothing overrides that
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # Authenticates pnpm against GitHub Packages for @qnsc-vn/* (see .npmrc).
+      # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
@@ -93,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # Authenticates pnpm against GitHub Packages for @qnsc-vn/* (see .npmrc).
+      # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     services:
@@ -382,7 +382,7 @@ jobs:
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
           # BuildKit secret consumed by the deps/prod-deps stages to auth
-          # pnpm against GitHub Packages for @qnsc-vn/* (never baked into a layer).
+          # pnpm against GitHub Packages for @quynhonsemiconductor/* (never baked into a layer).
           secrets: |
             node_auth_token=${{ secrets.GITHUB_TOKEN }}
 
@@ -418,7 +418,7 @@ jobs:
     needs: [quality]
     timeout-minutes: 20
     env:
-      # Authenticates pnpm against GitHub Packages for @qnsc-vn/* (see .npmrc).
+      # Authenticates pnpm against GitHub Packages for @quynhonsemiconductor/* (see .npmrc).
       NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     services:

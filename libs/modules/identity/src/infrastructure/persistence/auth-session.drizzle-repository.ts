@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
-import type { AuthSession, CreateSessionInput, IAuthSessionRepository } from '@qnsc-vn/identity';
+import type { AuthSession, CreateSessionInput, IAuthSessionRepository } from '@quynhonsemiconductor/identity';
 import { authSessions } from '../../../../../../db/schema/identity';
 import { ssoProviderEnum } from '../../../../../../db/schema/enums';
 

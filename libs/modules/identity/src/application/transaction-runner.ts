@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { ITransactionRunner } from '@qnsc-vn/identity';
+import type { ITransactionRunner } from '@quynhonsemiconductor/identity';
 import { InjectDrizzle } from '@platform';
 import type { DrizzleDB, DbExecutor } from '@platform';
 

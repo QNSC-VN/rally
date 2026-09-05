@@ -6,8 +6,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { AppConfigModule } from './config/config.module';
 import { AppConfigService } from './config/app-config.service';
 import { DatabaseModule } from './database/database.module';
-import { CacheModule } from '@qnsc-vn/platform-cache';
-import { AuthTokenCache } from '@qnsc-vn/identity';
+import { CacheModule } from '@quynhonsemiconductor/platform-cache';
+import { AuthTokenCache } from '@quynhonsemiconductor/identity';
 import { RequestContextService } from './context/request-context';
 import { JwtStrategy } from './auth/jwt.strategy';
 import { JwtAuthGuard } from './auth/jwt.guard';
@@ -20,7 +20,7 @@ import {
   JobMetrics,
   QueueMetrics,
   SecurityMetrics,
-} from '@qnsc-vn/observability';
+} from '@quynhonsemiconductor/observability';
 import { RateLimitGuard } from './rate-limit/rate-limit.guard';
 import { OutboxService } from './outbox/outbox.service';
 import { AuditProducer } from './audit/audit-producer.service';
@@ -46,7 +46,7 @@ import { StorageService } from './storage/storage.service';
   imports: [
     AppConfigModule,
     DatabaseModule,
-    // Shared Valkey/Redis cache primitive (@qnsc-vn/platform-cache). Rally runs
+    // Shared Valkey/Redis cache primitive (@quynhonsemiconductor/platform-cache). Rally runs
     // in `required` mode: a REDIS_URL must be configured for the process to boot.
     CacheModule.forRootAsync({
       inject: [AppConfigService],
@@ -92,7 +92,7 @@ import { StorageService } from './storage/storage.service';
     SecurityMetrics,
     AuthMetrics,
     // Auth-token cache (denylist / rotation grace / user revocation) owned by
-    // @qnsc-vn/identity, composing the shared CacheService primitive.
+    // @quynhonsemiconductor/identity, composing the shared CacheService primitive.
     AuthTokenCache,
     JwtStrategy,
     JwtAuthGuard,

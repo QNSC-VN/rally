@@ -5,7 +5,7 @@ import { AppConfigService } from '../config/app-config.service';
 import * as schema from '../../../../db/schema';
 import { pgOptions } from '../../../../db/pg-ssl';
 import { resolveDatabaseUrl } from '../../../../db/database-url';
-import { DbPoolMetrics } from '@qnsc-vn/observability';
+import { DbPoolMetrics } from '@quynhonsemiconductor/observability';
 
 export const DRIZZLE = Symbol('DRIZZLE');
 

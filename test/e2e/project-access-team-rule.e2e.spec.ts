@@ -25,7 +25,7 @@
  * are CSRF-exempt by design, so there is no token dance.
  *
  * THE REFUSAL IS 412, NOT 422. `PreconditionFailedException` maps to `PRECONDITION_FAILED` → 412 in
- * `@qnsc-vn/platform-http`, while every route in this repo declares `@ApiCommonErrors(…, 422)` for a
+ * `@quynhonsemiconductor/platform-http`, while every route in this repo declares `@ApiCommonErrors(…, 422)` for a
  * business-rule violation — `HttpErrorCode` in `libs/platform/src/auth/decorators.ts` does not even
  * admit 412. That mismatch is pre-existing and repo-wide (every `PreconditionFailedException` route
  * has it); asserted here as the RUNTIME status so this spec pins what the API actually answers rather
@@ -35,7 +35,7 @@ import { randomUUID } from 'node:crypto';
 
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@qnsc-vn/identity';
+import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../../apps/api/src/app.module';

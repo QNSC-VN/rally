@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
-import { createLoggerOptions } from '@qnsc-vn/observability';
+import { createLoggerOptions } from '@quynhonsemiconductor/observability';
 import { AppConfigService } from '@platform/config';
 import { PlatformModule } from '@platform';
 import { AuditModule } from '@modules/audit';

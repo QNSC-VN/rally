@@ -38,7 +38,7 @@ on `otlp_endpoint` being set — live in both develop and prod. Logs take a SEPA
 `firelens-agent` (Fluent Bit) ships container stdout straight to Loki, not through the OTel
 collector — deliberately a different pipeline, see that module's own README.
 
-**Metrics** (`libs/platform`'s `@qnsc-vn/observability`): `http_server_requests_total`,
+**Metrics** (`libs/platform`'s `@quynhonsemiconductor/observability`): `http_server_requests_total`,
 `http_server_errors_total`, `http_server_duration_milliseconds_bucket`, `db_pool_in_use`,
 `db_pool_waiting`, `db_client_operation_duration_seconds_bucket`, `db_client_connection_count`,
 `job_runs_total`, `job_failures_total`, `v8js_memory_heap_used_bytes`, Node.js event loop lag.

@@ -31,7 +31,7 @@ import {
   assertConnectionContract,
   type ISsoConnectionRepository,
   type EntraClaims,
-} from '@qnsc-vn/identity';
+} from '@quynhonsemiconductor/identity';
 import { AccessService } from '@modules/access';
 import { DRIZZLE, type DrizzleDB } from '@platform/database/drizzle.provider';
 import { AppModule } from '../../apps/api/src/app.module';

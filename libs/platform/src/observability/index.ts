@@ -1,6 +1,6 @@
 export * from './health.controller';
 /**
- * These now live in `@qnsc-vn/observability`, re-exported here so the existing
+ * These now live in `@quynhonsemiconductor/observability`, re-exported here so the existing
  * `@platform` import sites stay valid — the same reason `context/request-context.ts`
  * is a re-export. The package is the single implementation; this is the façade.
  */
@@ -13,4 +13,4 @@ export {
   currentTraceparent,
   withRestoredTrace,
   IGNORED_REQUEST_PATHS,
-} from '@qnsc-vn/observability';
+} from '@quynhonsemiconductor/observability';

@@ -6,7 +6,7 @@ import { SkipRateLimit } from '../rate-limit/rate-limit.decorator';
 import { InjectDrizzle } from '../database/drizzle.provider';
 import type { DrizzleDB } from '../database/drizzle.provider';
 import { sql } from 'drizzle-orm';
-import { CacheService } from '@qnsc-vn/platform-cache';
+import { CacheService } from '@quynhonsemiconductor/platform-cache';
 import { AppConfigService } from '../config/app-config.service';
 
 @ApiTags('health')

@@ -7,7 +7,7 @@
 
 > ## ⚠️ Implementation revisions (2026-07-24) — these SUPERSEDE conflicting text below
 > The package half (T1–T9) is built; these decisions were made/validated during implementation and override earlier wording:
-> 1. **Secret store → AWS Secrets Manager, not SSM (Decision 8).** SSM in this infra is `type=String` for *non-sensitive config*; the paved path for secrets is **Secrets Manager** (CMK, IAM, empty-in-IaC/value-out-of-band). The concrete resolver (`SecretsManagerSecretResolver`) is **app-side (Rally)**; the package ships only the store-agnostic **`SecretResolver` port** (no `@qnsc-vn/identity/ssm` subpath, no aws-sdk in the core package). Secrets live under `arn:…:secret:rally/${env}/sso/*`.
+> 1. **Secret store → AWS Secrets Manager, not SSM (Decision 8).** SSM in this infra is `type=String` for *non-sensitive config*; the paved path for secrets is **Secrets Manager** (CMK, IAM, empty-in-IaC/value-out-of-band). The concrete resolver (`SecretsManagerSecretResolver`) is **app-side (Rally)**; the package ships only the store-agnostic **`SecretResolver` port** (no `@quynhonsemiconductor/identity/ssm` subpath, no aws-sdk in the core package). Secrets live under `arn:…:secret:rally/${env}/sso/*`.
 > 2. **IaC (new work, all Terraform):** add a **task-role** policy `secretsmanager:GetSecretValue` on `rally/${env}/sso/*` + `kms:Decrypt` on the shared CMK (today only the *execution* role reads secrets, for boot-time env injection — the broker reads at **runtime**). Adopt the `rally/${env}/sso/*` prefix. Verify the shared CMK key policy allows the task role + runtime egress to Secrets Manager (VPC endpoint/NAT). Secret **values** stay manual/out-of-band. Rotation is a separate hygiene follow-up (no auto-rotation configured today).
 > 3. **SSO-identity key → `(provider-namespace, provider_sub)`, NOT `(connectionId, subject)` (revises Decision 12 / §3).** `identity.sso_identities` is **unchanged** (keeps its `(provider, provider_sub)` unique index — **no `connection_id` column, no re-key migration**). The broker keys identities by the connection's **`provider`** value (entra/google/okta), which also works for single-tenant `opshub` (connectionless identities). B1's real fix — connection-driven *routing/gating* — stands. (Rare same-provider-multi-connection-same-subject collisions are an accepted, documented edge.)
 > 4. **Registry has no cache (instant cutoff).** `ConnectionRegistry` does not cache the assembled connection — it re-reads the row each resolve, so `status='disabled'` locks out immediately. Expensive I/O is cached in `OidcDiscovery` + the `SecretResolver`.
@@ -21,7 +21,7 @@
 
 Rally authenticates only through a **single hard-coded Entra tenant** (BFF Auth-Code + PKCE). External teams — an outsourced vendor with its own directory, freelancers on Google — cannot sign in. The company is invite-only and runs on **M365 Business Standard** (Entra ID **Free** — app registrations + OIDC, security-defaults MFA, **no Conditional Access / P1**).
 
-**Goal:** turn `@qnsc-vn/identity` into a **provider-agnostic OIDC broker** driven by the `sso_connections` registry, reusable by **any** platform app, so any OIDC IdP (extra Entra tenants, Google Workspace, Okta, consumer Google) is federated by adding a connection — **no local passwords, one code path per IdP, near-zero running cost**.
+**Goal:** turn `@quynhonsemiconductor/identity` into a **provider-agnostic OIDC broker** driven by the `sso_connections` registry, reusable by **any** platform app, so any OIDC IdP (extra Entra tenants, Google Workspace, Okta, consumer Google) is federated by adding a connection — **no local passwords, one code path per IdP, near-zero running cost**.
 
 ### Why the broker (vs Entra B2B guests) on Business Standard
 - **MFA without P1:** each federated IdP enforces **its own** MFA (the vendor's tenant, Google Workspace). We get strong auth on external users *without* buying Entra P1/Conditional Access — which Business Standard doesn't include.
@@ -39,7 +39,7 @@ Rally authenticates only through a **single hard-coded Entra tenant** (BFF Auth-
 
 | # | Decision | Choice |
 |---|---|---|
-| 1 | Home for the code | Shared **`@qnsc-vn/identity`** — owns the broker mechanism **and** the `sso_connections` contract (schema + contract test). Consuming apps only wire + seed. |
+| 1 | Home for the code | Shared **`@quynhonsemiconductor/identity`** — owns the broker mechanism **and** the `sso_connections` contract (schema + contract test). Consuming apps only wire + seed. |
 | 2 | Federation model | **Generic per-connection OIDC** — one code path; each connection is a self-describing IdP resolved from a row. |
 | 3 | Connection **kind** | `directory` (a directory that **owns** its email domains → domain-routed, JIT-by-domain) **vs** `shared` (a shared/consumer IdP we don't own, e.g. consumer Google → **invite-gated**, never domain-routed). |
 | 4 | Provisioning | **Connection-driven**: `completeLogin` resolves the connection, then provisioning routes by the **resolved connection's id/workspace/role** — never by re-deriving `tid`/`provider` from claims. SSO identity keyed by **`(connectionId, subject)`**. |
@@ -102,7 +102,7 @@ One code path for every IdP. Generalize the Entra-specific pieces; keep them as 
 - **`OidcDiscovery`** — fetch + TTL-cache `.well-known/openid-configuration` (authorize/token/jwks/issuer). Injectable `fetch`/clock for tests.
 - **`OidcClient`** — provider-agnostic `buildAuthorizeUrl(conn, {state, codeChallenge, nonce})` + `exchangeCode(conn, {code, codeVerifier})`. Reads endpoints from the resolved connection.
 - **`OidcTokenVerifier`** — verify id_token against the connection's **issuer list** (`accepted_issuers` ∪ discovery issuer) + **audience=client_id** + **nonce**; map claims to the shared `OidcClaims` (= `EntraClaims`) shape.
-- **`SecretResolver`** (port) + **reference `SsmSecretResolver`** shipped at `@qnsc-vn/identity/ssm` (peer-dep `@aws-sdk/client-ssm`), in-memory TTL cache.
+- **`SecretResolver`** (port) + **reference `SsmSecretResolver`** shipped at `@quynhonsemiconductor/identity/ssm` (peer-dep `@aws-sdk/client-ssm`), in-memory TTL cache.
 - **`ConnectionRegistry`** — `resolveForEmail(email)` (directory-by-domain **or** shared-by-invite), `resolveById(id)`; loads the row, resolves the secret + discovery, returns a fully-formed `ResolvedConnection`; short-TTL cache keyed by connection id + secret version. Excludes `disabled`/misconfigured rows.
 - **`bff.service`** — `beginLogin(returnTo, email?)` (email→connection routing, persists **state + PKCE + nonce + connectionId**) and `completeLogin` (routes by stored `connectionId`).
 - **`auth.service`** — `resolveAndProvisionSsoUser(connection, claims)`: **connection-driven** (reuses the existing status/domain/JIT-invite/platform-admin gate, routes to `connection.workspaceId`/`defaultRoleSlug`), identity keyed by `(connectionId, subject)`.
@@ -150,7 +150,7 @@ Minimal change to the existing dark login card:
 ## 8. Platform ownership & reuse (any app, long-term)
 
 - **Schema contract in the package:** canonical column set + `assertConnectionContract(db)`; apps include the shared migration and run the contract test (no per-app drift).
-- **Reference `SsmSecretResolver`** at `@qnsc-vn/identity/ssm` — apps bind it; port stays open for alternatives (Secrets Manager, Vault).
+- **Reference `SsmSecretResolver`** at `@quynhonsemiconductor/identity/ssm` — apps bind it; port stays open for alternatives (Secrets Manager, Vault).
 - **Generic vocabulary** in the shared layer: "default/home connection", a generic `IDENTITY_*` config contract. `ENTRA_*`/`SSO_HOME_*` names stay as *app* config only.
 - **Additive + back-compat:** existing consumers keep working until they add connections; legacy Entra shims retained through transition.
 

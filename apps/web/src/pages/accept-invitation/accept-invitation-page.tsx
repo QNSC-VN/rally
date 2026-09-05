@@ -15,7 +15,7 @@
  * own address), so an unauthenticated arrival must sign in FIRST and come back. `requireAuth`
  * (`app/router/router.tsx`) already does exactly that: it redirects to `/login` with
  * `returnTo = window.location.pathname + window.location.search`, so `?token=` survives;
- * `isSafeReturnTo` in `@qnsc-vn/identity` accepts a root-relative path with a query; the BFF callback
+ * `isSafeReturnTo` in `@quynhonsemiconductor/identity` accepts a root-relative path with a query; the BFF callback
  * 302s back here. Registering this route as a child of `authRoute` is therefore the entire
  * implementation of "sign in, then accept" — nothing else was built for it.
  *

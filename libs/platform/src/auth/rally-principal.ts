@@ -1,8 +1,8 @@
-import type { JwtPayload as CoreJwtPayload } from '@qnsc-vn/identity';
+import type { JwtPayload as CoreJwtPayload } from '@quynhonsemiconductor/identity';
 import type { JwtPayload } from './jwt.strategy';
 
 /**
- * Project the product-neutral `@qnsc-vn/identity` access-token payload onto
+ * Project the product-neutral `@quynhonsemiconductor/identity` access-token payload onto
  * rally's request principal, adding the flattened conveniences rally's guards,
  * decorators, and controllers read: `workspaceId` (== `contextId`) and
  * `permissions` (== `claims.permissions`).

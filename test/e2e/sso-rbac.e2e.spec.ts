@@ -7,7 +7,7 @@
  * the matrix can tell "deliberately not a flow" from "untraced".
  *
  * This boots the REAL rally `AppModule` (real Nest DI, real Drizzle against the
- * seeded `rally-postgres`) and drives the REAL `@qnsc-vn/identity` `AuthService`.
+ * seeded `rally-postgres`) and drives the REAL `@quynhonsemiconductor/identity` `AuthService`.
  * The ONLY thing stubbed is the Entra token signature check
  * (`EntraTokenVerifier.verify`) — we cannot mint a Microsoft-signed JWT locally,
  * so the stub returns the `EntraClaims` a genuine verified token would yield.
@@ -30,7 +30,7 @@
 import 'reflect-metadata';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { AuthService, EntraTokenVerifier, type EntraClaims } from '@qnsc-vn/identity';
+import { AuthService, EntraTokenVerifier, type EntraClaims } from '@quynhonsemiconductor/identity';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AccessService } from '@modules/access';
 import { AppModule } from '../../apps/api/src/app.module';

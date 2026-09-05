@@ -4,7 +4,7 @@
  * before any module loads them.
  *
  * Shares the implementation with the API; see
- * the `@qnsc-vn/observability` package. Imported from its `/otel` subpath rather
+ * the `@quynhonsemiconductor/observability` package. Imported from its `/otel` subpath rather
  * than the package root on purpose: the root barrel reaches Nest and pino, which
  * would then be required *before* instrumentation is installed.
  *
@@ -28,7 +28,7 @@
  * this option does not touch; if that histogram's tail becomes interesting it needs
  * its own option in the package rather than this one being widened to match on name.
  */
-import { startOtel, shutdownOtel } from '@qnsc-vn/observability/otel';
+import { startOtel, shutdownOtel } from '@quynhonsemiconductor/observability/otel';
 
 export { shutdownOtel };
 

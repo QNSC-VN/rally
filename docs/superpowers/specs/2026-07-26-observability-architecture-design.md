@@ -74,7 +74,7 @@ No self-hosting to avoid a bill that hasn't arrived.
 ┌────────────────────────── ECS task (per service) ───────────────────────────┐
 │                                                                             │
 │  app container (rally-api | rally-worker | opshub-api | …)                   │
-│    @qnsc-vn/observability                                                    │
+│    @quynhonsemiconductor/observability                                                    │
 │      ├─ otel bootstrap  ── OTLP/HTTP ──▶ localhost:4318 ┐                    │
 │      ├─ pino logger (redaction, mixin)  ── stdout ──────┼──▶ awslogs driver  │
 │      ├─ ALS context (http middleware + job wrapper)     │                    │
@@ -99,7 +99,7 @@ Phase 3 addition, only when tail sampling is needed:
 
 ### 3.1 Code layer — one shared package
 
-**`@qnsc-vn/observability`**, published alongside the existing `@qnsc-vn/{identity,platform-cache,platform-http}`. This is what makes the pattern DRY across *repos*, not merely within one.
+**`@quynhonsemiconductor/observability`**, published alongside the existing `@quynhonsemiconductor/{identity,platform-cache,platform-http}`. This is what makes the pattern DRY across *repos*, not merely within one.
 
 | Export | Replaces | Notes |
 |---|---|---|
@@ -277,7 +277,7 @@ The SPA gap is the biggest blind spot in the current system: a user-visible JS c
 
 | Concern | Owner | Consumed by |
 |---|---|---|
-| SDK bootstrap, logger factory, ALS, span decorator, metrics registry, conventions | **`@qnsc-vn/observability`** (npm) | every product's `PlatformModule` |
+| SDK bootstrap, logger factory, ALS, span decorator, metrics registry, conventions | **`@quynhonsemiconductor/observability`** (npm) | every product's `PlatformModule` |
 | Collector sidecar container + config + IAM + token wiring | **`qnsc-tf-modules//modules/observability-agent`** (new) | every product's `infra/live/*` |
 | `awsfirelens` log-driver option | **`qnsc-tf-modules//modules/ecs-service`** (existing, Phase 4) | every product |
 | `SERVICE_VERSION` / `OTEL_RESOURCE_ATTRIBUTES` from the release tag | **`qnsc-ci`** deploy action | every product |
@@ -340,7 +340,7 @@ Each phase is independently shippable and leaves the system better than before. 
 
 ### Phase 0 — Package and fix (1–2 days)
 
-1. Publish `@qnsc-vn/observability` with the exports in §3.1.
+1. Publish `@quynhonsemiconductor/observability` with the exports in §3.1.
 2. Migrate rally api + worker onto it — deletes both `otel.ts` copies and both logger blocks (defects 1, 5).
 3. Fix defects 2 (dead `userId`), 3 (`withJobContext` in cron/relays/consumers), 8 (comment/code mismatch, and skip `/v1/readyz` too).
 
